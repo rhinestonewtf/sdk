@@ -115,11 +115,6 @@ export type OrchestratorEvmRecipient =
       readonly simulation?: OrchestratorAccountSimulation
     }
 
-export interface OrchestratorTokenRequest {
-  readonly tokenAddress: Address | string
-  readonly amount?: bigint
-}
-
 export interface OrchestratorSolanaInstruction {
   readonly programId: string
   readonly accounts: readonly {
@@ -136,19 +131,26 @@ export interface OrchestratorEvmDestinationExecution {
   readonly executionTokensReceived?: readonly Address[]
 }
 
+/**
+ * The singular Caucasus destination. `token` alone asks for everything the
+ * source yields; `token` with `amount` asks for exactly that amount; neither is
+ * an execution that delivers nothing.
+ */
 export type OrchestratorDestination =
   | {
       readonly vm: 'evm'
       readonly chainId: Caip2ChainId
+      readonly token?: Address
+      readonly amount?: bigint
       readonly recipient?: OrchestratorEvmRecipient
-      readonly tokenRequests: readonly OrchestratorTokenRequest[]
       readonly execution?: OrchestratorEvmDestinationExecution
     }
   | {
       readonly vm: 'svm'
       readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
       readonly recipient?: { readonly address: string }
-      readonly tokenRequests: readonly OrchestratorTokenRequest[]
       readonly execution?:
         | {
             readonly instructions: readonly OrchestratorSolanaInstruction[]
@@ -159,57 +161,37 @@ export type OrchestratorDestination =
   | {
       readonly vm: 'tvm' | 'stellar'
       readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
       readonly recipient: { readonly address: string }
-      readonly tokenRequests: readonly OrchestratorTokenRequest[]
     }
   | {
       readonly vm: 'hypercore'
       readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
       readonly recipient?: OrchestratorEvmRecipient
-      readonly tokenRequests: readonly OrchestratorTokenRequest[]
       readonly execution?: {
         readonly actions?: readonly HyperCoreAction[]
         readonly settlement?: OrchestratorEvmDestinationExecution
       }
     }
 
-export type OrchestratorChainSelector =
-  | 'all'
-  | { readonly only: readonly Caip2ChainId[] }
-  | { readonly except: readonly Caip2ChainId[] }
-
-export type OrchestratorTokenSelector = 'all' | OrchestratorTokenRestriction
-
-export type OrchestratorTokenRestriction =
-  | { readonly only: readonly string[] }
-  | { readonly except: readonly string[] }
-
-export interface OrchestratorSourceSelection {
-  readonly chains: OrchestratorChainSelector
-  readonly tokens: OrchestratorTokenSelector
-  /** Narrowing only: a per-chain entry always restricts, so it has no `'all'`. */
-  readonly perChain?: Readonly<
-    Record<Caip2ChainId, { readonly tokens: OrchestratorTokenRestriction }>
-  >
-}
-
-export interface OrchestratorSourceLimit {
-  readonly chainId: Caip2ChainId
-  readonly tokenAddress: string
-  readonly maxAmount: bigint
-}
-
+/**
+ * The one chain and token a singular Caucasus request spends. `maxAmount` caps
+ * what the route may take from the observed balance; `auxiliaryFunds` is extra
+ * balance of the same token the source calls make available. Both, and
+ * `execution`, are EVM-only except `maxAmount`.
+ */
 export interface OrchestratorSource {
-  readonly selection?: OrchestratorSourceSelection
-  readonly limits?: readonly OrchestratorSourceLimit[]
-  readonly auxiliaryFunds?: Readonly<
-    Record<Caip2ChainId, Readonly<Record<string, bigint>>>
-  >
-  readonly executions?: readonly {
-    readonly vm: 'evm'
-    readonly chainId: Caip2ChainId
+  readonly vm: 'evm' | 'svm'
+  readonly chainId: Caip2ChainId
+  readonly token: string
+  readonly maxAmount?: bigint
+  readonly auxiliaryFunds?: bigint
+  readonly execution?: {
     readonly calls: readonly OrchestratorExecution[]
-  }[]
+  }
 }
 
 export interface OrchestratorSponsorship {

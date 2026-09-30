@@ -197,9 +197,8 @@ describe
         account,
         label: 'plasma-swap/0x/usdt0-to-usdc',
         transaction: await withEnableData(account, session, {
-          chain: plasma,
-          tokenRequests: [{ address: usdc, amount: buyTarget }],
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          source: { chain: plasma, token: PLASMA_USDT0 },
+          destination: { chain: plasma, token: usdc, amount: buyTarget },
           // Sponsored so the orchestrator's fee / gas-refund plumbing ops
           // (an extra approve plus `callbackAllowMaxAmount`) are not charged to
           // the account. Those ops are authorised by the wildcard
@@ -356,9 +355,8 @@ describe
         account,
         label: 'plasma-swap/overspend',
         transaction: await withEnableData(account, session, {
-          chain: plasma,
-          tokenRequests: [{ address: usdc, amount: buyTarget }],
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          source: { chain: plasma, token: PLASMA_USDT0 },
+          destination: { chain: plasma, token: usdc, amount: buyTarget },
           signers: { type: 'session' as const, session },
         }),
       })
@@ -427,12 +425,15 @@ describe
         account,
         label: 'plasma-swap/wrong-recipient',
         transaction: await withEnableData(account, session, {
-          chain: plasma,
+          source: { chain: plasma, token: PLASMA_USDT0 },
           // ...but the intent asks for the SELL token, delivered elsewhere.
           // Nothing about this is a USDT0 -> USDC swap to the account.
-          tokenRequests: [{ address: PLASMA_USDT0, amount: 10_000n }],
-          recipient: owner.address,
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          destination: {
+            chain: plasma,
+            token: PLASMA_USDT0,
+            amount: 10_000n,
+            recipient: owner.address,
+          },
           signers: { type: 'session' as const, session },
         }),
       })
@@ -491,10 +492,13 @@ describe
         label: 'plasma-swap/unenabled-session',
         // NOTE: no withEnableData wrapper — deliberately unenabled.
         transaction: {
-          chain: plasma,
-          tokenRequests: [{ address: PLASMA_USDT0, amount: 10_000n }],
-          recipient: owner.address,
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          source: { chain: plasma, token: PLASMA_USDT0 },
+          destination: {
+            chain: plasma,
+            token: PLASMA_USDT0,
+            amount: 10_000n,
+            recipient: owner.address,
+          },
           signers: { type: 'session' as const, session },
         },
       })
@@ -546,9 +550,8 @@ describe
         account,
         label: 'plasma-swap/unrestricted-control',
         transaction: await withEnableData(account, session, {
-          chain: plasma,
-          tokenRequests: [{ address: usdc, amount: buyTarget }],
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          source: { chain: plasma, token: PLASMA_USDT0 },
+          destination: { chain: plasma, token: usdc, amount: buyTarget },
           sponsored: true,
           signers: { type: 'session' as const, session },
         }),
@@ -603,12 +606,15 @@ describe
         account,
         label: 'plasma-swap/arg-policy-recipient',
         transaction: await withEnableData(account, session, {
-          chain: plasma,
+          source: { chain: plasma, token: PLASMA_USDT0 },
           // ...but the swap is asked to deliver USDC to the owner EOA instead.
           // Everything else — target, selector, tokens, amount — is compliant.
-          tokenRequests: [{ address: usdc, amount: outsiderUsdcTarget }],
-          recipient: owner.address,
-          sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+          destination: {
+            chain: plasma,
+            token: usdc,
+            amount: outsiderUsdcTarget,
+            recipient: owner.address,
+          },
           sponsored: true,
           signers: { type: 'session' as const, session },
         }),
@@ -755,9 +761,12 @@ describe
           account,
           label: `plasma-swap/invariant/${offset}`,
           transaction: await withEnableData(account, session, {
-            chain: plasma,
-            tokenRequests: [{ address: usdc, amount: usdcBefore + BUY_DELTA }],
-            sourceAssets: { [plasma.id]: [PLASMA_USDT0] },
+            source: { chain: plasma, token: PLASMA_USDT0 },
+            destination: {
+              chain: plasma,
+              token: usdc,
+              amount: usdcBefore + BUY_DELTA,
+            },
             sponsored: true,
             signers: { type: 'session' as const, session },
           }),
@@ -778,8 +787,8 @@ describe
  * The shape the deposit service actually sends.
  *
  * `deposit-service-processor` builds its intents as
- *   sourceAssets:  [{ chain, address, amount? }]   (bounded source debit)
- *   tokenRequests: [{ address: target.token }]     (NO amount -> max-out)
+ *   source:      { chain, token, maxAmount? }   (bounded source debit)
+ *   destination: { chain, token }                (NO amount -> max-out)
  * i.e. an exact-INPUT swap, whereas every other test here asks for a fixed
  * output. The orchestrator's wrap gate keys off direction, and 0x is not in
  * SURPLUS_ELIGIBLE_QUOTERS, so this shape may take the DIRECT router path
@@ -824,18 +833,13 @@ describe
         label: 'plasma-swap/deposit-service-shape',
         transaction: await withEnableData(account, session, {
           // Deposit-service shape: bounded source debit, max-out target.
-          // Omitting `tokenRequests.amount` is what selects exact-INPUT, which
+          // Omitting `destination.amount` is what selects exact-INPUT, which
           // is what routes 0x directly instead of through the Swapper.
-          sourceChains: [plasma],
-          targetChain: plasma,
-          sourceAssets: [
-            { chain: plasma, address: PLASMA_USDT0, amount: 10_000n },
-          ],
-          tokenRequests: [{ address: usdc }],
+          source: { chain: plasma, token: PLASMA_USDT0, maxAmount: 10_000n },
+          destination: { chain: plasma, token: usdc },
           sponsored: true,
           signers: { type: 'session' as const, session },
-          // biome-ignore lint/suspicious/noExplicitAny: same-chain expressed via the cross-chain shape, as the deposit service does
-        } as any),
+        }),
       })
 
       logPlannedOps(execution)

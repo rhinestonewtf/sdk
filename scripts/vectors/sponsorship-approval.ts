@@ -1,15 +1,20 @@
-// Regenerates the sponsorship approval vectors from the checkout this script
-// runs in. The calibration provenance is carried over from the existing file:
-// re-run the calibration (docs/sponsorship-approval.md) before changing it.
+// Regenerates the singular sponsorship approval vectors
+// (test/vectors/sponsorship-approval-singular/vectors.json) from the checkout
+// this script runs in. The provenance block is carried over from the existing
+// file: update it when the orchestrator cross-check is re-run.
+//
+// The legacy vectors in test/vectors/sponsorship-approval are frozen and never
+// regenerated; nothing here writes them.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { SPONSORSHIP_APPROVAL_CONTRACT } from '../../src/clients/orchestrator/sponsorship-approval'
 import { computeIntentInputDigest } from '../../src/jwt-server/digest'
-import { deriveVectors } from '../../test/vectors/sponsorship-approval/derive'
-import { refusedVectors } from '../../test/vectors/sponsorship-approval/refused'
+import { deriveVectors } from '../../test/vectors/sponsorship-approval-singular/derive'
+import { refusedVectors } from '../../test/vectors/sponsorship-approval-singular/refused'
 
 const outPath = resolve(
   import.meta.dir,
-  '../../test/vectors/sponsorship-approval/vectors.json',
+  '../../test/vectors/sponsorship-approval-singular/vectors.json',
 )
 
 const previous = existsSync(outPath)
@@ -27,13 +32,14 @@ const cases = await Promise.all(
 )
 const refused = refusedVectors(
   Object.fromEntries(derived.map(({ id, body }) => [id, body])),
-).map(({ id, body, field }) => ({ id, body, reason: 'unsupported', field }))
+).map(({ id, body, field }) => ({ id, body, field }))
 
 writeFileSync(
   outPath,
   `${JSON.stringify(
     {
       schemaVersion: 1,
+      contractVersion: SPONSORSHIP_APPROVAL_CONTRACT,
       digest: 'sha256(RFC 8785 JCS(intentInput)), lowercase hex',
       provenance: previous?.provenance ?? null,
       cases,

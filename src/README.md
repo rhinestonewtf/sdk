@@ -186,34 +186,35 @@ Deliver from Solana to EVM, capping what the Swig wallet may debit:
 import { solanaDevnet } from '@rhinestone/sdk/solana'
 
 const prepared = await solanaAccount.prepareTransaction({
-  sourceChains: [solanaDevnet],
-  // `amount` is a ceiling on the source debit; omit it for no cap.
-  sourceAssets: [{ chain: solanaDevnet, address: splMint, amount: 4_000_000n }],
-  targetChain: baseSepolia,
+  // `maxAmount` is a ceiling on the source debit; omit it for no cap.
+  source: { chain: solanaDevnet, token: splMint, maxAmount: 4_000_000n },
   // No destination amount: deliver as much as the capped debit buys.
-  tokenRequests: [{ address: usdc }],
-  recipient: evmReceiver,
+  destination: { chain: baseSepolia, token: usdc, recipient: evmReceiver },
 })
 ```
 
-Send a crosschain transaction:
+Send a crosschain transaction. It spends one `source` token and lands on one
+`destination`; omit `source.chain` to spend on the destination chain:
 
 ```ts
 const prepared = await account.prepareTransaction({
-  sourceChains: [baseSepolia],
-  targetChain: arbitrumSepolia,
-  calls: [
-    {
-      to: usdc,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'transfer',
-        args: [recipient, amount],
-      }),
-    },
-  ],
-  tokenRequests: [{ address: usdc, amount }],
+  source: { chain: baseSepolia, token: usdcOnBaseSepolia },
+  destination: {
+    chain: arbitrumSepolia,
+    token: usdc,
+    amount,
+    calls: [
+      {
+        to: usdc,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [recipient, amount],
+        }),
+      },
+    ],
+  },
 })
 
 const signed = await account.signTransaction(prepared)

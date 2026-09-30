@@ -1,21 +1,28 @@
-// Derives each sponsorship approval vector from the SDK itself: the exact body a
-// sponsored `POST /quotes` sends and the approval input handed to
+// Derives each singular sponsorship approval vector from the SDK itself: the
+// exact body a sponsored `POST /quotes` sends and the approval input handed to
 // `getIntentExtensionToken`. EVM cases run through the public facade; the
-// Solana and smart-session cases through the request builders, whose facade
-// paths need a live Swig or session signer.
+// Solana, Swig-creation and smart-session cases through the request builders,
+// whose facade paths need a live Swig or session signer.
 import { hexToBytes } from 'viem'
+import { base } from 'viem/chains'
 import { locateSwigById } from '../../../src/accounts/solana/address'
 import {
   hyperCorePerp,
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
+  stellarMainnet,
   tronMainnet,
 } from '../../../src/chains/non-evm'
 import { mapIntentRequestToWire } from '../../../src/clients/orchestrator/mappers'
-import { projectCompatibleIntentInput } from '../../../src/clients/orchestrator/normalized'
+import type { SerializedIntentInput } from '../../../src/clients/orchestrator/public'
+import type { OrchestratorIntentRequest } from '../../../src/clients/orchestrator/types'
 import type { EvmAccountConfig } from '../../../src/evm/index'
 import { RhinestoneSDK } from '../../../src/index'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+} from '../../../src/modules/validators/smart-sessions/resolve'
 import { buildIntentRequest } from '../../../src/transactions/intents/request'
 import {
   buildSolanaIntentRequest,
@@ -37,7 +44,7 @@ const toJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value))
 
 class QuoteCaptured extends Error {}
 
-/** Runs one EVM case through `prepareTransaction`, capturing what it sends. */
+/** Runs one EVM case through the facade, capturing what it sends. */
 export async function deriveEvmCase(
   vector: EvmVectorCase,
 ): Promise<DerivedVector> {
@@ -76,7 +83,11 @@ export async function deriveEvmCase(
     const account = await sdk.createAccount({
       evm: vector.account as unknown as EvmAccountConfig,
     })
-    await account.prepareTransaction(vector.transaction as never).then(
+    const run =
+      vector.transaction === 'deploy'
+        ? account.deploy('evm', base, { sponsored: true })
+        : account.prepareTransaction(vector.transaction as never)
+    await run.then(
       () => {
         throw new Error(`${vector.id} was quoted without a captured body`)
       },
@@ -96,33 +107,40 @@ export async function deriveEvmCase(
 function fromBuilder(
   id: string,
   built: {
-    readonly request: Parameters<typeof mapIntentRequestToWire>[0]
-    readonly normalized: Parameters<typeof projectCompatibleIntentInput>[0]
+    readonly request: OrchestratorIntentRequest
+    readonly intentInput: SerializedIntentInput
   },
 ): DerivedVector {
   return {
     id,
     body: toJson(mapIntentRequestToWire(built.request)),
-    intentInput: toJson(projectCompatibleIntentInput(built.normalized)),
+    intentInput: toJson(built.intentInput),
   }
 }
 
 const ACCOUNT = '0x00000000000000000000000000000000000000a0'
 const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+const USDC_MAINNET = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 const MOCK_SIGNATURE = `0x${'5e'.repeat(65)}` as const
 
-/** A smart-session intent: mocked signatures and the session signature mode. */
-function smartSessionCase(): DerivedVector {
+/**
+ * A smart-session intent that enables its session: the dummy pre-claim call
+ * first on the source, mocked signatures, and the verifying signature mode.
+ */
+function smartSessionEnableCase(): DerivedVector {
   return fromBuilder(
-    'evm-smart-session',
+    'evm-smart-session-enable',
     buildIntentRequest({
       transaction: {
         destination: { kind: 'evm', id: 8453, caip2: 'eip155:8453' },
-        sourceChains: [{ kind: 'evm', id: 1, caip2: 'eip155:1' }],
+        source: {
+          chain: { kind: 'evm', id: 1, caip2: 'eip155:1' },
+          token: USDC_MAINNET,
+        },
         calls: [],
-        tokenRequests: [{ token: USDC_BASE, amount: 1_000_000n }],
-        accountAccessList: { chainIds: [1] },
-        signatureMode: 4,
+        token: USDC_BASE,
+        amount: 1_000_000n,
+        signatureMode: 5,
         options: {
           sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
         },
@@ -130,8 +148,14 @@ function smartSessionCase(): DerivedVector {
       account: { kind: 'erc7579', address: ACCOUNT, setupOps: [] },
       mockSignatures: { 1: MOCK_SIGNATURE, 8453: MOCK_SIGNATURE },
       calls: [{ target: USDC_BASE, value: 0n, data: '0xa9059cbb' }],
-      sourceCalls: {},
-      providedFunds: {},
+      sourceCalls: [
+        {
+          target: DUMMY_PRECLAIMOP_TARGET,
+          value: 0n,
+          data: DUMMY_PRECLAIMOP_SELECTOR,
+        },
+      ],
+      providedFunds: 0n,
     }),
   )
 }
@@ -139,6 +163,7 @@ function smartSessionCase(): DerivedVector {
 const SWIG_ID = `0x${'07'.repeat(32)}` as const
 const swig = locateSwigById(hexToBytes(SWIG_ID))
 const MINT = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+const NATIVE_SOL = solanaAddress('11111111111111111111111111111111')
 const SOLANA_RECIPIENT = solanaAddress('11111111111111111111111111111112')
 const PASSKEY = `0x02${'3c'.repeat(32)}` as const
 const ADDED_PASSKEY = `0x03${'4d'.repeat(32)}` as const
@@ -146,6 +171,7 @@ const RECOVERY_KEY = `0x02${'5e'.repeat(32)}` as const
 const k1 = { kind: 'secp256k1', address: owner.address } as const
 const r1 = { kind: 'secp256r1', publicKey: PASSKEY } as const
 const sponsorSettings = { gas: true, bridgeFees: false, swapFees: false }
+const AUTHORITY_SPONSORSHIP = { gas: true, bridgeFees: false, swapFees: false }
 
 function transfer(
   overrides: Partial<SolanaTransferInput> = {},
@@ -176,6 +202,28 @@ const delivery = {
   recipient: ACCOUNT,
 } as const
 
+const instructions = [
+  {
+    programId: MINT,
+    accounts: [{ pubkey: swig.wallet, isSigner: true, isWritable: true }],
+    data: 'AQID',
+  },
+]
+
+function authorityChange(
+  authority: SolanaTransferInput['authority'],
+  change: Extract<
+    SolanaTransferInput['action'],
+    { kind: 'authority' }
+  >['change'],
+): SolanaTransferInput {
+  return transfer({
+    authority,
+    sponsorSettings: AUTHORITY_SPONSORSHIP,
+    action: { kind: 'authority', change },
+  })
+}
+
 function solanaCases(): DerivedVector[] {
   const deployment = (
     authorization: SolanaDeploymentInput['authorization'],
@@ -191,9 +239,9 @@ function solanaCases(): DerivedVector[] {
     endpoint: 'https://dev.v1.orchestrator.rhinestone.dev',
   })
   return [
-    fromBuilder('solana-same-chain', buildSolanaIntentRequest(transfer())),
+    fromBuilder('solana-transfer', buildSolanaIntentRequest(transfer())),
     fromBuilder(
-      'solana-same-chain-capped',
+      'solana-transfer-capped',
       buildSolanaIntentRequest(
         transfer({
           chain: solanaMainnet,
@@ -209,22 +257,23 @@ function solanaCases(): DerivedVector[] {
       ),
     ),
     fromBuilder(
-      'solana-instructions',
+      'solana-instructions-sponsored',
       buildSolanaIntentRequest(
         transfer({
           action: {
             kind: 'instructions',
-            instructions: [
-              {
-                programId: MINT,
-                accounts: [
-                  { pubkey: swig.wallet, isSigner: true, isWritable: true },
-                ],
-                data: 'AQID',
-              },
-            ],
+            instructions,
             addressLookupTables: [SOLANA_RECIPIENT],
           },
+        }),
+      ),
+    ),
+    fromBuilder(
+      'solana-instructions-fee-token',
+      buildSolanaIntentRequest(
+        transfer({
+          action: { kind: 'instructions', instructions, feeToken: NATIVE_SOL },
+          sponsorSettings: undefined,
         }),
       ),
     ),
@@ -234,7 +283,7 @@ function solanaCases(): DerivedVector[] {
         transfer({
           action: {
             kind: 'transfer',
-            mint: MINT,
+            mint: NATIVE_SOL,
             amount: 1_000_000n,
             sourceLimit: 2_000_000n,
             delivery,
@@ -269,97 +318,44 @@ function solanaCases(): DerivedVector[] {
       ),
     ),
     fromBuilder(
-      'solana-authority-add',
+      'solana-authority-add-passkey',
       buildSolanaIntentRequest(
-        transfer({
-          action: {
-            kind: 'authority',
-            change: {
-              action: 'add',
-              keyType: 'passkey',
-              key: ADDED_PASSKEY,
-              permission: 'allButManageAuthority',
-            },
-          },
+        authorityChange(k1, {
+          action: 'add',
+          keyType: 'passkey',
+          key: ADDED_PASSKEY,
+          permission: 'allButManageAuthority',
         }),
       ),
     ),
     fromBuilder(
-      'solana-authority-add-passkey-owner',
+      'solana-authority-add-ecdsa-passkey-owner',
       buildSolanaIntentRequest(
-        transfer({
-          authority: r1,
-          action: {
-            kind: 'authority',
-            change: {
-              action: 'add',
-              keyType: 'passkey',
-              key: ADDED_PASSKEY,
-              permission: 'all',
-            },
-          },
+        authorityChange(r1, {
+          action: 'add',
+          keyType: 'ecdsa',
+          key: RECOVERY_KEY,
+          permission: 'manageAuthority',
         }),
       ),
     ),
     fromBuilder(
-      'solana-authority-remove',
+      'solana-authority-remove-passkey',
       buildSolanaIntentRequest(
-        transfer({
-          authority: r1,
-          action: {
-            kind: 'authority',
-            change: {
-              action: 'remove',
-              keyType: 'passkey',
-              key: ADDED_PASSKEY,
-            },
-          },
-        }),
-      ),
-    ),
-    fromBuilder(
-      'solana-authority-add-ecdsa-manage',
-      buildSolanaIntentRequest(
-        transfer({
-          authority: r1,
-          action: {
-            kind: 'authority',
-            change: {
-              action: 'add',
-              keyType: 'ecdsa',
-              key: RECOVERY_KEY,
-              permission: 'manageAuthority',
-            },
-          },
+        authorityChange(r1, {
+          action: 'remove',
+          keyType: 'passkey',
+          key: ADDED_PASSKEY,
         }),
       ),
     ),
     fromBuilder(
       'solana-authority-remove-ecdsa',
       buildSolanaIntentRequest(
-        transfer({
-          authority: r1,
-          action: {
-            kind: 'authority',
-            change: { action: 'remove', keyType: 'ecdsa', key: RECOVERY_KEY },
-          },
-        }),
-      ),
-    ),
-    fromBuilder(
-      'solana-authority-add-passkey-manage',
-      buildSolanaIntentRequest(
-        transfer({
-          authority: k1,
-          action: {
-            kind: 'authority',
-            change: {
-              action: 'add',
-              keyType: 'passkey',
-              key: ADDED_PASSKEY,
-              permission: 'manageAuthority',
-            },
-          },
+        authorityChange(k1, {
+          action: 'remove',
+          keyType: 'ecdsa',
+          key: RECOVERY_KEY,
         }),
       ),
     ),
@@ -381,9 +377,10 @@ export async function deriveVectors(): Promise<DerivedVector[]> {
   for (const vector of evmCases({
     solanaMainnet,
     tronMainnet,
+    stellarMainnet,
     hyperCorePerp,
   })) {
     evm.push(await deriveEvmCase(vector))
   }
-  return [...evm, smartSessionCase(), ...solanaCases()]
+  return [...evm, smartSessionEnableCase(), ...solanaCases()]
 }

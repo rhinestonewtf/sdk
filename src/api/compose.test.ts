@@ -1,8 +1,10 @@
 import {
   type Account,
+  type Address,
   encodeAbiParameters,
   erc20Abi,
   type Hex,
+  isAddressEqual,
   type TypedDataDefinition,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -15,7 +17,7 @@ import {
   plan,
   quote,
 } from '../../test/utils/caucasus'
-import { parseCaip2, toEvmChainReference } from '../chains/caip2'
+import { toEvmChainReference } from '../chains/caip2'
 import { solanaAddress, solanaDevnet } from '../chains/non-evm'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
@@ -23,10 +25,12 @@ import type { OrchestratorIntentRequest } from '../clients/orchestrator/types'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { UnsupportedAccountCapabilityError } from '../errors/capability'
 import {
   Eip7702InitSignatureRequiredError,
   SolanaQuoteExpiredError,
 } from '../errors/execution'
+import { getIntentExecutorModule } from '../modules/intent-executor'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
@@ -148,64 +152,12 @@ function fixture() {
 }
 
 describe('internal core composition', () => {
-  test('selects only real EVM sources in the destination network class', async () => {
-    const base = fixture()
-    const getChainCatalog = vi.fn(
-      async () =>
-        new ChainCatalog({
-          1: catalogChain('Ethereum', false),
-          11155111: catalogChain('Sepolia', true),
-          792703809: catalogChain('Solana', false),
-          999: catalogChain('Unknown EVM', false),
-        }),
-    )
-    const dependencies = {
-      ...base.dependencies,
-      orchestrator: { ...base.orchestrator, getChainCatalog },
-    }
-    const workflows = createCoreComposition(
-      base.context.sdk,
-      dependencies,
-    ).createAccount(base.context).workflows
-
-    await expect(
-      workflows.getEligibleEvmSourceChains(toEvmChainReference(1)),
-    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
-    await expect(
-      workflows.getEligibleEvmSourceChains(parseCaip2('hypercore:spot')),
-    ).resolves.toEqual([toEvmChainReference(1), toEvmChainReference(999)])
-    expect(getChainCatalog).toHaveBeenCalledTimes(2)
-  })
-
-  test('fails closed when destination metadata is unavailable', async () => {
-    const base = fixture()
-    const dependencies = {
-      ...base.dependencies,
-      orchestrator: {
-        ...base.orchestrator,
-        getChainCatalog: vi.fn(
-          async () => new ChainCatalog({ 1: catalogChain('Ethereum', false) }),
-        ),
-      },
-    }
-    const workflows = createCoreComposition(
-      base.context.sdk,
-      dependencies,
-    ).createAccount(base.context).workflows
-
-    await expect(
-      workflows.getEligibleEvmSourceChains(toEvmChainReference(8453)),
-    ).rejects.toThrow(/missing from the orchestrator chain catalog/)
-  })
-
   test('runs an intent through real account and signing implementations', async () => {
     const { composition, context, orchestrator } = fixture()
     const workflows = composition.createAccount(context).workflows
     const prepared = await workflows.prepareIntent(context, {
       destination: chain,
-      sourceChains: [chain],
       calls: [{ target, value: 0n, data: '0x' }],
-      tokenRequests: [],
     })
     const { intent: signed } = await workflows.signIntent(context, prepared)
     const submitted = await workflows.submitIntent(context, signed)
@@ -649,9 +601,9 @@ describe('internal core composition', () => {
       first.context,
     ).workflows
 
-    await expect(intentWorkflows.deploy(first.context, chain)).resolves.toBe(
-      true,
-    )
+    await expect(
+      intentWorkflows.deploy(first.context, chain, { sourceToken: target }),
+    ).resolves.toBe(true)
     expect(first.orchestrator.submitIntent).toHaveBeenCalledOnce()
     // Polling stays lean: the recorded detail block is not asked for.
     expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith(
@@ -699,9 +651,60 @@ describe('internal core composition', () => {
     }
     const workflows = base.composition.createAccount(adoptedContext).workflows
 
-    await expect(workflows.deploy(adoptedContext, chain)).resolves.toBe(true)
+    await expect(
+      workflows.deploy(adoptedContext, chain, { sponsored: true }),
+    ).resolves.toBe(true)
     expect(base.orchestrator.createQuote).toHaveBeenCalledOnce()
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
+  })
+
+  test('deploy sends no source and full sponsorship when sponsored', async () => {
+    const base = fixture()
+    const workflows = base.composition.createAccount(base.context).workflows
+
+    await workflows.deploy(base.context, chain, { sponsored: true })
+
+    const request = vi.mocked(base.orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request).not.toHaveProperty('source')
+    expect(request?.options?.sponsorship).toEqual({
+      gas: true,
+      bridgeFees: true,
+      swapFees: true,
+    })
+  })
+
+  test('unsponsored intent-path deploy without a source token throws before any RPC read', async () => {
+    const base = fixture()
+    const getCode = vi.fn(async () => ({ code: undefined }))
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(workflows.deploy(base.context, chain)).rejects.toThrow(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(getCode).not.toHaveBeenCalled()
+    expect(base.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('unsponsored intent-path deploy with a source token sends it as the source', async () => {
+    const base = fixture()
+    const workflows = base.composition.createAccount(base.context).workflows
+
+    await workflows.deploy(base.context, chain, { sourceToken: target })
+
+    const request = vi.mocked(base.orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request?.source).toMatchObject({
+      chainId: 'eip155:1',
+      token: target,
+    })
   })
 
   test('signs chainless Nexus init typed data without switching a wallet chain', async () => {
@@ -873,6 +876,96 @@ describe('internal core composition', () => {
     )
     expect(base.orchestrator.submitIntent).not.toHaveBeenCalled()
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
+  })
+
+  function missingModuleKernelContext(base: ReturnType<typeof fixture>) {
+    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    return {
+      ...base.context,
+      sdk,
+      account: resolveAccountConfig(sdk, {
+        account: { type: 'kernel' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        modules: [{ type: 'hook', address: `0x${'44'.repeat(20)}` }],
+      }),
+    }
+  }
+
+  // Installed except the intent executor, so the missing module list still
+  // resolves to the intent path rather than the UserOperation one.
+  function intentPathMulticall() {
+    const intentExecutor = getIntentExecutorModule('production')
+    return vi.fn(
+      async (
+        _context: unknown,
+        requests: readonly { args: readonly unknown[] }[],
+      ) =>
+        requests.map(({ args }) => ({
+          result: isAddressEqual(args[1] as Address, intentExecutor.address),
+        })),
+    )
+  }
+
+  test('setup intent path without a source token throws before the orchestrator is called', async () => {
+    const base = fixture()
+    const multicall = intentPathMulticall()
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: '0x01' as const })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: async <TResult>() => 0n as unknown as TResult,
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = missingModuleKernelContext(base)
+    const workflows = createCoreComposition(
+      context.sdk,
+      dependencies,
+    ).createAccount(context).workflows
+
+    await expect(workflows.setup(context, chain)).rejects.toThrow(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(base.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('setup intent path with a source token sends it as the source', async () => {
+    const base = fixture()
+    const multicall = intentPathMulticall()
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: '0x01' as const })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: async <TResult>() => 0n as unknown as TResult,
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = missingModuleKernelContext(base)
+    const orchestrator = {
+      ...base.orchestrator,
+      createQuote: vi.fn(async (request) => ({
+        traceId: 'trace-prepare',
+        routes: [quoteFor(request)],
+      })),
+    }
+    const workflows = createCoreComposition(context.sdk, {
+      ...dependencies,
+      orchestrator,
+    }).createAccount(context).workflows
+
+    await workflows.setup(context, chain, { sourceToken: target })
+
+    const request = vi.mocked(orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request?.source).toMatchObject({
+      chainId: 'eip155:1',
+      token: target,
+    })
   })
 
   test('signs raw signing requests through the standalone signIntent path (no intent id)', async () => {

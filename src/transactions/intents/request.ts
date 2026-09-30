@@ -2,33 +2,31 @@ import type { Address } from 'viem'
 import type { Call } from '../../calls/types'
 import { chainIdFromReference, chainVm, formatCaip2 } from '../../chains/caip2'
 import { normalizeTokenAddress } from '../../chains/tokens'
-import type { NormalizedIntentInput } from '../../clients/orchestrator/normalized'
+import type { SerializedIntentInput } from '../../clients/orchestrator/public'
+import { toSponsorshipApprovalInput } from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDestination,
   OrchestratorEvmDestinationExecution,
   OrchestratorExecution,
   OrchestratorIntentRequest,
+  OrchestratorSource,
   OrchestratorSponsorship,
-  OrchestratorTokenRequest,
 } from '../../clients/orchestrator/types'
 import {
   type IntentAccountProjection,
-  toNormalizedAccount,
-  toNormalizedRecipient,
   toWireEvmAccount,
   toWireRecipient,
 } from './account'
-import { buildIntentSource } from './source'
 import type { IntentInput } from './types'
 
 export interface BuiltIntentRequest {
-  /** The Caucasus HTTP request. */
+  /** The singular Caucasus HTTP request. */
   readonly request: OrchestratorIntentRequest
   /**
-   * The SDK's normalized sponsorship input, unchanged by the migration. Both
-   * views are built from the same resolved transaction so they cannot drift.
+   * The sponsorship approval input: `request` projected under the approval
+   * contract, so the two cannot drift.
    */
-  readonly normalized: NormalizedIntentInput
+  readonly intentInput: SerializedIntentInput
 }
 
 export function buildIntentRequest<CompatibilityConfig>(input: {
@@ -36,35 +34,16 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
   readonly account: IntentAccountProjection
   readonly mockSignatures?: Readonly<Record<`${number}`, `0x${string}`>>
   readonly calls: readonly Call[]
-  readonly sourceCalls: Readonly<Record<number, readonly Call[]>>
-  readonly providedFunds: Readonly<
-    Record<number, Readonly<Record<Address, bigint>>>
-  >
+  /** Resolved source calls, in order: smart-session enablement first. */
+  readonly sourceCalls: readonly Call[]
+  /** What the resolved source calls make available, in `source.token`. */
+  readonly providedFunds: bigint
 }): BuiltIntentRequest {
   const { transaction } = input
   const destinationChainId = chainIdFromReference(transaction.destination)
   const vm = chainVm(transaction.destination)
   const nonEvm = transaction.destination.kind === 'non-evm'
   const executions = input.calls.map(toExecution)
-  const sourceExecutions = Object.fromEntries(
-    Object.entries(input.sourceCalls).map(([chainId, calls]) => [
-      Number(chainId),
-      calls.map(toExecution),
-    ]),
-  )
-  const auxiliaryFunds = mergeAuxiliaryFunds(
-    transaction.options?.auxiliaryFunds,
-    input.providedFunds,
-  )
-  const tokenRequests: OrchestratorTokenRequest[] =
-    transaction.tokenRequests.map((request) => ({
-      tokenAddress: normalizeTokenAddress(
-        request.token,
-        destinationChainId,
-        nonEvm,
-      ),
-      ...(request.amount === undefined ? {} : { amount: request.amount }),
-    }))
   const signatureMode = transaction.signatureMode ?? 1
 
   const sponsorship = toSponsorship(transaction.options?.sponsorSettings)
@@ -86,71 +65,66 @@ export function buildIntentRequest<CompatibilityConfig>(input: {
       ? { quoters: transaction.options.quoters }
       : {}),
   }
+  const source = buildSource(
+    transaction,
+    input.sourceCalls.map(toExecution),
+    input.providedFunds,
+  )
 
-  return {
-    request: {
-      account: {
-        evm: toWireEvmAccount(input.account, {
-          signatureMode,
-          ...(input.mockSignatures
-            ? {
-                mockSignaturesByChain: mapMockSignatures(input.mockSignatures),
-              }
-            : {}),
-        }),
-      },
-      destination: buildDestination({
-        vm,
-        chainId: formatCaip2(destinationChainId),
-        transaction,
-        tokenRequests,
-        executions,
-      }),
-      ...(() => {
-        const source = buildIntentSource({
-          ...(transaction.accountAccessList
-            ? { policy: transaction.accountAccessList }
-            : {}),
-          ...(auxiliaryFunds ? { auxiliaryFunds } : {}),
-          ...(Object.keys(sourceExecutions).length > 0
-            ? { executions: sourceExecutions }
-            : {}),
-        })
-        return source ? { source } : {}
-      })(),
-      ...(Object.keys(options).length > 0 ? { options } : {}),
-    },
-    normalized: {
-      account: toNormalizedAccount(input.account, {
+  const request: OrchestratorIntentRequest = {
+    account: {
+      evm: toWireEvmAccount(input.account, {
+        signatureMode,
         ...(input.mockSignatures
-          ? { mockSignatures: input.mockSignatures }
+          ? {
+              mockSignaturesByChain: mapMockSignatures(input.mockSignatures),
+            }
           : {}),
       }),
-      destinationChainId,
-      destinationExecutions: executions,
-      tokenRequests,
-      ...(transaction.recipient
-        ? {
-            recipient: toNormalizedRecipient(transaction.recipient, {
-              evmAddressed: vm === 'evm' || vm === 'hypercore',
-            }),
-          }
-        : {}),
-      ...(transaction.gasLimit === undefined
-        ? {}
-        : { destinationGasUnits: transaction.gasLimit }),
-      ...(transaction.accountAccessList
-        ? { accountAccessList: transaction.accountAccessList }
-        : {}),
-      options: {
-        ...transaction.options,
-        signatureMode,
-        ...(auxiliaryFunds ? { auxiliaryFunds } : {}),
-      },
-      ...(Object.keys(sourceExecutions).length > 0
-        ? { preClaimExecutions: sourceExecutions }
-        : {}),
     },
+    ...(source ? { source } : {}),
+    destination: buildDestination({
+      vm,
+      chainId: formatCaip2(destinationChainId),
+      transaction,
+      ...(transaction.token === undefined
+        ? {}
+        : {
+            token: normalizeTokenAddress(
+              transaction.token,
+              destinationChainId,
+              nonEvm,
+            ),
+          }),
+      executions,
+    }),
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+  }
+  return { request, intentInput: toSponsorshipApprovalInput(request) }
+}
+
+function buildSource<CompatibilityConfig>(
+  transaction: IntentInput<CompatibilityConfig>,
+  calls: readonly OrchestratorExecution[],
+  providedFunds: bigint,
+): OrchestratorSource | undefined {
+  const source = transaction.source
+  if (!source) {
+    // Checked by the facade already; a request that loses its source calls here
+    // would quote an execution the caller did not ask for.
+    if (calls.length > 0) {
+      throw new Error('Source calls need a source chain to run on')
+    }
+    return undefined
+  }
+  const auxiliaryFunds = (source.auxiliaryFunds ?? 0n) + providedFunds
+  return {
+    vm: 'evm',
+    chainId: formatCaip2(source.chain.id),
+    token: normalizeTokenAddress(source.token, source.chain.id, false),
+    ...(source.maxAmount === undefined ? {} : { maxAmount: source.maxAmount }),
+    ...(auxiliaryFunds > 0n ? { auxiliaryFunds } : {}),
+    ...(calls.length > 0 ? { execution: { calls } } : {}),
   }
 }
 
@@ -158,10 +132,14 @@ function buildDestination<CompatibilityConfig>(input: {
   readonly vm: ReturnType<typeof chainVm>
   readonly chainId: string
   readonly transaction: IntentInput<CompatibilityConfig>
-  readonly tokenRequests: readonly OrchestratorTokenRequest[]
+  readonly token?: string
   readonly executions: readonly OrchestratorExecution[]
 }): OrchestratorDestination {
-  const { transaction, chainId, tokenRequests } = input
+  const { transaction, chainId } = input
+  const delivery = {
+    ...(input.token === undefined ? {} : { token: input.token }),
+    ...(transaction.amount === undefined ? {} : { amount: transaction.amount }),
+  }
   const recipient = transaction.recipient
     ? toWireRecipient(transaction.recipient)
     : undefined
@@ -171,8 +149,8 @@ function buildDestination<CompatibilityConfig>(input: {
       return {
         vm: 'evm',
         chainId,
+        ...(delivery as { token?: Address; amount?: bigint }),
         ...(recipient ? { recipient } : {}),
-        tokenRequests,
         ...(execution ? { execution } : {}),
       }
     }
@@ -182,8 +160,8 @@ function buildDestination<CompatibilityConfig>(input: {
       return {
         vm: 'svm',
         chainId,
+        ...delivery,
         ...(recipient ? { recipient: { address: recipient.address } } : {}),
-        tokenRequests,
       }
     }
     case 'tvm':
@@ -196,8 +174,8 @@ function buildDestination<CompatibilityConfig>(input: {
       return {
         vm: input.vm,
         chainId,
+        ...delivery,
         recipient: { address: recipient.address },
-        tokenRequests,
       }
     }
     case 'hypercore': {
@@ -216,8 +194,8 @@ function buildDestination<CompatibilityConfig>(input: {
       return {
         vm: 'hypercore',
         chainId,
+        ...delivery,
         ...(recipient ? { recipient } : {}),
-        tokenRequests,
         ...(execution ? { execution } : {}),
       }
     }
@@ -238,17 +216,10 @@ function evmExecution(
 }
 
 function toSponsorship(
-  settings:
-    | {
-        readonly gas: boolean
-        readonly bridgeFees: boolean
-        readonly swapFees: boolean
-        readonly protocolFees?: boolean
-      }
-    | undefined,
+  settings: NonNullable<IntentInput['options']>['sponsorSettings'],
 ): OrchestratorSponsorship | undefined {
-  // Caucasus renamed the block but kept the categories, including the
-  // difference between an explicit `false` and an omitted key.
+  // Copied category by category, keeping an explicit `false` distinct from an
+  // omitted key.
   return settings ? { ...settings } : undefined
 }
 
@@ -265,23 +236,4 @@ function mapMockSignatures(
 
 export function toExecution(call: Call): OrchestratorExecution {
   return { to: call.target, value: call.value, data: call.data }
-}
-
-function mergeAuxiliaryFunds(
-  configured:
-    | Readonly<Record<number, Readonly<Record<Address, bigint>>>>
-    | undefined,
-  provided: Readonly<Record<number, Readonly<Record<Address, bigint>>>>,
-): Readonly<Record<number, Readonly<Record<Address, bigint>>>> | undefined {
-  const result: Record<number, Record<Address, bigint>> = {}
-  for (const [chainId, balances] of Object.entries(configured ?? {})) {
-    result[Number(chainId)] = { ...balances }
-  }
-  for (const [chainId, balances] of Object.entries(provided)) {
-    const target = (result[Number(chainId)] ??= {})
-    for (const [token, amount] of Object.entries(balances)) {
-      target[token as Address] = (target[token as Address] ?? 0n) + amount
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined
 }

@@ -229,15 +229,15 @@ function edgeViolation(
     toLayer === 'clients' &&
     fromLayer !== 'clients' &&
     fromLayer !== 'api' &&
-    // `normalized.ts` joins the stable set: it is the SDK's own sponsorship
-    // projection, deliberately pinned across wire versions, and carries types
-    // plus one pure serializer rather than any transport.
+    // `sponsorship-approval.ts` joins the stable set: it is the SDK's own
+    // versioned sponsorship approval contract, pure functions over the request
+    // body rather than any transport.
     ![
       'port.ts',
       'types.ts',
       'errors.ts',
       'public.ts',
-      'normalized.ts',
+      'sponsorship-approval.ts',
     ].includes(clientFile(edge.to) ?? '') &&
     !(
       edge.to === 'src/clients/rpc/compatibility.ts' &&

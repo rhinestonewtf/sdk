@@ -12,7 +12,7 @@ import type {
 export function readSignatureMode(
   prepared: PreparedTransactionData,
 ): number | undefined {
-  return prepared.intentInput.options.signatureMode
+  return prepared.intentInput.account.evm?.signatureMode
 }
 
 // Single hex => ERC-1271 path; { preClaim, notarizedClaim } => the dual

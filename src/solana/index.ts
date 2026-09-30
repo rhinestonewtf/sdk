@@ -38,8 +38,8 @@ export type {
   SolanaOwner,
   SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
-  SolanaSourceAsset,
   SolanaStandaloneAccountConfig,
+  SolanaTransactionSource,
 } from '../config/account'
 export type {
   SolanaAuthorityExecutionMetadata,

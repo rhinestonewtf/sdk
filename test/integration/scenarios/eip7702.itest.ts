@@ -24,9 +24,8 @@ describe.sequential('SDK integration eip7702', () => {
       account,
       label: 'eip7702/missing-authorization/submit-error',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         eip7702InitSignature,
       },
       signAuthorizations: false,

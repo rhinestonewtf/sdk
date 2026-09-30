@@ -72,7 +72,6 @@ describe('mapIntentRequestToWire — swap sponsorship', () => {
       destination: {
         vm: 'evm',
         chainId: BASE,
-        tokenRequests: [],
       },
       options: { sponsorship },
     })
@@ -539,7 +538,8 @@ describe('mapIntentRequestToWire', () => {
     destination: {
       vm: 'evm',
       chainId: BASE,
-      tokenRequests: [{ tokenAddress: address, amount: 1_000_000n }],
+      token: address,
+      amount: 1_000_000n,
     },
   }
 
@@ -553,7 +553,8 @@ describe('mapIntentRequestToWire', () => {
       destination: {
         vm: 'evm',
         chainId: BASE,
-        tokenRequests: [{ tokenAddress: address, amount: '1000000' }],
+        token: address,
+        amount: '1000000',
       },
     })
   })
@@ -598,7 +599,6 @@ describe('mapIntentRequestToWire', () => {
       destination: {
         vm: 'svm',
         chainId: SOLANA,
-        tokenRequests: [],
         execution: { instructions, addressLookupTables: [recipient] },
       },
     }) as unknown as { destination: Record<string, unknown> }
@@ -631,7 +631,6 @@ describe('mapIntentRequestToWire', () => {
       destination: {
         vm: 'hypercore',
         chainId: 'hypercore:perp',
-        tokenRequests: [],
         execution: { actions: [action] },
       },
     }) as unknown as { destination: { execution?: { actions?: unknown } } }

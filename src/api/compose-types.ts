@@ -136,9 +136,6 @@ export interface SolanaWorkflows {
 
 export interface AccountWorkflows<CompatibilityConfig = unknown>
   extends SolanaWorkflows {
-  readonly getEligibleEvmSourceChains: (
-    destination: ChainReference,
-  ) => Promise<readonly EvmChainReference[]>
   readonly getAddress: (
     context: AccountInvocationContext<CompatibilityConfig>,
     chain: import('../chains/types').EvmChainReference,
@@ -287,12 +284,14 @@ export interface AccountWorkflows<CompatibilityConfig = unknown>
     chain: EvmChainReference,
     options?: {
       readonly sponsored?: boolean
+      readonly sourceToken?: Address
       readonly eip7702InitSignature?: Hex
     },
   ) => Promise<boolean>
   readonly setup: (
     context: AccountInvocationContext<CompatibilityConfig>,
     chain: EvmChainReference,
+    options?: { readonly sourceToken?: Address },
   ) => Promise<boolean>
   readonly getTransactionMessages: (
     prepared: PreparedIntent<CompatibilityConfig>,
@@ -304,7 +303,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown>
       readonly quote: PreparedIntent<CompatibilityConfig>['quote']
       readonly quotes: PreparedIntent<CompatibilityConfig>['quotes']
       readonly request: PreparedIntent<CompatibilityConfig>['request']
-      readonly normalized: PreparedIntent<CompatibilityConfig>['normalized']
+      readonly approvalInput: PreparedIntent<CompatibilityConfig>['intentInput']
       readonly intentInput: IntentInput<CompatibilityConfig>
     },
   ) => Promise<PreparedIntent<CompatibilityConfig>>

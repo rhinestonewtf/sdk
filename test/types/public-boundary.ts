@@ -1,4 +1,4 @@
-import type { Address, Chain, HashTypedDataParameters, Hex } from 'viem'
+import type { Address, HashTypedDataParameters, Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import * as ecdsaActions from '../../src/actions/ecdsa'
@@ -134,56 +134,42 @@ const ownerSigners = {
 } as const satisfies SignerSet
 
 const transaction = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
-  calls: [{ to: recipient, value: 1n }],
-  recipient: accountConfig,
+  source: { chain: mainnet, token: recipient },
+  destination: {
+    chain: mainnet,
+    calls: [{ to: recipient, value: 1n }],
+    recipient: accountConfig,
+  },
   signers: ownerSigners,
 } satisfies Transaction
 
-const dynamicSourceChains: Chain[] = [mainnet]
-const dynamicSourceTransaction = {
-  sourceChains: dynamicSourceChains,
-  targetChain: mainnet,
-  calls: [],
-} satisfies Transaction
-void dynamicSourceTransaction
-
 const sameChainTransaction = {
-  chain: mainnet,
-  calls: [],
+  source: { token: recipient },
+  destination: { chain: mainnet, calls: [] },
   customDeadline: 9_999_999_999,
 } satisfies Transaction
 
-const crossChainWithDeadline = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
-  calls: [],
-  // @ts-expect-error custom deadlines are same-chain only
-  customDeadline: 9_999_999_999,
-} as const satisfies Transaction
-
+// An EVM destination checks that `customDeadline` is same-chain at runtime;
+// every other destination refuses it in the type.
 const crossChainNonEvmWithDeadline = {
-  sourceChains: [mainnet],
-  targetChain: tronMainnet,
-  // @ts-expect-error custom deadlines are same-chain only
+  source: { chain: mainnet, token: recipient },
+  destination: { chain: tronMainnet, token: recipient, recipient },
   customDeadline: 9_999_999_999,
-} as const satisfies Transaction
+  // @ts-expect-error custom deadlines are same-chain only
+} satisfies Transaction
 
 // Stellar is the case where recipient and token addresses are different
 // shapes in the same namespace: a `G…` account receives an asset named by its
 // `C…` Soroban contract. Neither is hex, so this only compiles while both
 // fields stay widened past viem's `Address`.
 const stellarDelivery = {
-  sourceChains: [mainnet],
-  targetChain: stellarMainnet,
-  tokenRequests: [
-    {
-      address: 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75',
-      amount: 1_000_000n,
-    },
-  ],
-  recipient: 'GA2227KIWUQ4WBKNLR53PUFJFX6G5ERZQFMAQWS3FBERXB7QNUEOLCMO',
+  source: { chain: mainnet, token: recipient },
+  destination: {
+    chain: stellarMainnet,
+    token: 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75',
+    amount: 1_000_000n,
+    recipient: 'GA2227KIWUQ4WBKNLR53PUFJFX6G5ERZQFMAQWS3FBERXB7QNUEOLCMO',
+  },
 } as const satisfies Transaction
 
 // RHI-5510: the delivery venue is the destination, so a caller addresses it by
@@ -191,29 +177,40 @@ const stellarDelivery = {
 // HyperCore delivery without stating which account it credits — both venues
 // must therefore be publicly importable descriptors.
 const hyperCoreSpotDelivery = {
-  sourceChains: [mainnet],
-  targetChain: hyperCoreSpot,
-  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
-  calls: [],
+  source: { chain: mainnet, token: recipient },
+  destination: {
+    chain: hyperCoreSpot,
+    token: recipient,
+    amount: 1_000_000n,
+    calls: [],
+  },
 } as const satisfies Transaction
 
 const hyperCorePerpDelivery = {
-  sourceChains: [mainnet],
-  targetChain: hyperCorePerp,
-  tokenRequests: [{ address: recipient, amount: 1_000_000n }],
-  calls: [],
+  source: { chain: mainnet, token: recipient },
+  destination: {
+    chain: hyperCorePerp,
+    token: recipient,
+    amount: 1_000_000n,
+    calls: [],
+  },
 } as const satisfies Transaction
 // A sponsorship server types its request body with the serialized input and
 // reads it without casts; bigint fields arrive as decimal strings.
 declare const sponsorshipBody: SerializedIntentInput
-const sponsoredAccount: Address | string = sponsorshipBody.account.address
-const sponsoredChainId: number = sponsorshipBody.destinationChainId
-const sponsoredCallValue: string =
-  sponsorshipBody.destinationExecutions[0].value
+const sponsoredAccount: Address | string | undefined =
+  sponsorshipBody.account.evm?.address ?? sponsorshipBody.account.svm?.address
+const sponsoredChainId: string = sponsorshipBody.destination.chainId
+const sponsoredCallValue: string | undefined =
+  sponsorshipBody.destination.vm === 'evm'
+    ? sponsorshipBody.destination.execution?.calls[0]?.value
+    : undefined
 const sponsoredGasUnits: string | undefined =
-  sponsorshipBody.destinationGasUnits
+  sponsorshipBody.destination.vm === 'evm'
+    ? sponsorshipBody.destination.execution?.gasLimit
+    : undefined
 const sponsoredTokenAmount: string | undefined =
-  sponsorshipBody.tokenRequests[0].amount
+  sponsorshipBody.destination.amount
 const preparedIntentInput: SerializedIntentInput = prepared.intentInput
 // A Solana-origin binding is narrowed on `kind`, which keeps the base58 and hex
 // recipients apart.
@@ -231,7 +228,7 @@ new RhinestoneSDK({
     mode: 'experimental_jwt',
     accessToken: 'access-token',
     getIntentExtensionToken: async (intentInput: SerializedIntentInput) =>
-      `token-${intentInput.destinationChainId}`,
+      `token-${intentInput.destination.chainId}`,
   },
 })
 
@@ -275,7 +272,6 @@ void intentSignature
 void userOperation
 void sameChainTransaction
 void registryFreeMfaConfig
-void crossChainWithDeadline
 void crossChainNonEvmWithDeadline
 void stellarDelivery
 void hyperCoreSpotDelivery
@@ -350,9 +346,8 @@ async function crossVmAccountSurface() {
   const evmAddress: Address = managed.getAddress('evm')
   const nativeSolana: typeof solana = managed.getAddress('solana')
   managed.prepareTransaction({
-    sourceChains: [mainnet],
-    targetChain: solanaMainnet,
-    tokenRequests: [{ address: solana, amount: 1n }],
+    source: { chain: mainnet, token: recipient },
+    destination: { chain: solanaMainnet, token: solana, amount: 1n },
   })
 
   // @ts-expect-error an address-only Solana entry has no Swig to check
@@ -365,30 +360,26 @@ async function crossVmAccountSurface() {
   // @ts-expect-error nor has a receiver-only account
   receiver.getAuthorityStatus
   receiver.getAddress('solana')
-  // @ts-expect-error Solana destinations require branded Solana addresses
   managed.prepareTransaction({
-    sourceChains: [mainnet],
-    targetChain: solanaMainnet,
-    tokenRequests: [
-      {
-        address: recipient,
-        amount: 1n,
-      },
-    ],
+    source: { chain: mainnet, token: recipient },
+    // @ts-expect-error Solana destinations require branded Solana addresses
+    destination: { chain: solanaMainnet, token: recipient, amount: 1n },
   })
   managed.prepareTransaction({
     // @ts-expect-error managed EVM accounts cannot originate on Solana
-    chain: solanaMainnet,
-    tokenRequests: [{ address: solana, amount: 1n }],
+    source: { chain: solanaMainnet, token: solana },
+    destination: { chain: mainnet, token: recipient },
   })
   // @ts-expect-error receiver-only accounts cannot prepare transactions
   receiver.prepareTransaction({})
   // @ts-expect-error nor change a Swig's authorities
   receiver.prepareTransaction({
-    chain: solanaMainnet,
-    authority: {
-      action: 'remove',
-      key: { type: 'passkey', publicKey: `0x02${'11'.repeat(32)}` },
+    destination: {
+      chain: solanaMainnet,
+      authority: {
+        action: 'remove',
+        key: { type: 'passkey', publicKey: `0x02${'11'.repeat(32)}` },
+      },
     },
   })
   // @ts-expect-error EVM is not configured

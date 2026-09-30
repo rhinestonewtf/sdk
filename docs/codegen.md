@@ -117,8 +117,16 @@ module-relative, so generation does not depend on where you ran it from.
 is absent from the public `rhinestonewtf/openapi` repo. The generated document
 is therefore checked in at `scripts/openapi/caucasus.json`, with
 `scripts/openapi/provenance.json` recording the API version, the upstream
-repository and commit it was generated from, the artifact's SHA-256, and the
-command that produced it.
+repository, ref and commit it was generated from, the artifact's SHA-256, and
+the command that produced it. The orchestrator generates it with its opt-in
+`scripts/generateOpenApi.ts --version 2026-09.caucasus`.
+
+The pinned document is the dual-shape Caucasus contract: `POST /quotes` and
+`POST /quotes/estimate` accept both the legacy body and the singular one. The
+SDK sends only the singular branch, `WireSingularQuoteRequest` in `wire.ts`, and
+`mapIntentRequestToWire` returns that type, so a change to the singular schema
+is a typecheck error at the mapper. `provenance.test.ts` also asserts the
+singular branch's shape directly.
 
 Both are verified before generating: a snapshot whose bytes or declared version
 disagree with the manifest fails loudly rather than producing plausible types

@@ -24,21 +24,24 @@ import {
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
+  tronMainnet,
 } from '../chains/non-evm'
 import {
   parseErrorEnvelope,
   SolanaAccountAlreadyCreatedError,
 } from '../clients/orchestrator/errors'
-import type { NormalizedIntentInput } from '../clients/orchestrator/normalized'
-import { projectCompatibleIntentInput } from '../clients/orchestrator/normalized'
 import type {
   HyperCoreOrderAction,
   Quote,
+  SerializedIntentInput,
   SigningRequest,
   SwigAuthority,
 } from '../clients/orchestrator/public'
 import { serializeBigInts } from '../clients/orchestrator/serialization'
-import { projectSponsorshipApproval } from '../clients/orchestrator/sponsorship-approval'
+import {
+  projectSponsorshipApproval,
+  toSponsorshipApprovalInput,
+} from '../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorExecutionQuote,
@@ -46,11 +49,7 @@ import type {
   OrchestratorQuote,
   OrchestratorQuoteContext,
 } from '../clients/orchestrator/types'
-import type {
-  SolanaManagedAccountConfig,
-  SolanaOwner,
-  SolanaSourceAsset,
-} from '../config/account'
+import type { SolanaManagedAccountConfig, SolanaOwner } from '../config/account'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -85,6 +84,7 @@ import {
   type SolanaDeploymentInput,
   submitSolanaDeployment,
 } from '../transactions/intents/solana-deployment'
+import { submitIntent } from '../transactions/intents/submit'
 import type {
   PreparedTransactionData,
   SignedTransactionData,
@@ -93,10 +93,10 @@ import {
   adaptTransaction,
   createAccountFacade,
   createSolanaAccountFacade,
-  normalizeTransaction,
 } from './account'
 import type { CoreComposition } from './compose-types'
 import type { AdaptedSignerSelection } from './signer-selection'
+import { normalizeTransaction } from './transaction-input'
 
 const DEV_ORCHESTRATOR_URL = 'https://dev.v1.orchestrator.rhinestone.dev'
 const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
@@ -106,27 +106,27 @@ const managedSwigLocation = locateSwig(asSwigNamespace('dev-v1'), owner.address)
 const managedSwig = managedSwigLocation.swig
 const prodSwigLocation = locateSwig(asSwigNamespace('prod-v1'), owner.address)
 const recipientAddress = '0x0000000000000000000000000000000000000010' as const
-const normalizedIntentInput = {
-  account: { address: recipientAddress, accountType: 'ERC7579' },
-  destinationChainId: mainnet.id,
-  destinationExecutions: [],
-  tokenRequests: [],
-  options: {},
-} satisfies NormalizedIntentInput
-const serializedIntentInput = projectCompatibleIntentInput(
-  normalizedIntentInput,
-)
+const mainnetUsdc = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const
+const optimismUsdc = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' as const
 // The Caucasus request a prepared artifact carries. Only its round trip through
 // `PreparedTransactionData.request` matters here, so it stays minimal.
 const intentRequest = {
   account: { evm: { type: 'erc7579', address: recipientAddress } },
-  destination: {
-    vm: 'evm',
-    chainId: formatCaip2(mainnet.id),
-    tokenRequests: [],
-  },
+  destination: { vm: 'evm', chainId: formatCaip2(mainnet.id) },
 } satisfies OrchestratorIntentRequest
+// The approval input that request projects to.
+const serializedIntentInput = {
+  contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+  account: { evm: { type: 'erc7579', address: recipientAddress } },
+  destination: { vm: 'evm', chainId: formatCaip2(mainnet.id) },
+  options: {},
+} satisfies SerializedIntentInput
 const preparedRequest = projectPreparedBinding(intentRequest)
+// The simplest EVM transaction a prepared artifact can carry.
+const sameChainTransaction = {
+  source: { token: mainnetUsdc },
+  destination: { chain: mainnet },
+}
 
 /** Narrows a projected recipient to the configured-account arm. */
 function accountRecipient(recipient: IntentRecipientProjection | undefined) {
@@ -177,8 +177,11 @@ describe('account instance surface', () => {
     // must fail before any network call rather than produce a dead signature.
     await expect(
       account.prepareTransaction({
-        chain: mainnet,
-        calls: [{ to: guardian.address, value: 0n, data: '0x' }],
+        source: { token: mainnetUsdc },
+        destination: {
+          chain: mainnet,
+          calls: [{ to: guardian.address, value: 0n, data: '0x' }],
+        },
         signers,
       }),
     ).rejects.toThrow(SignerNotSupportedError)
@@ -221,10 +224,12 @@ describe('account instance surface', () => {
 
     account
       .prepareTransaction({
-        sourceChains: [mainnet],
-        targetChain: hyperCorePerp,
-        hyperCore: {
-          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: {
+          chain: hyperCorePerp,
+          hyperCore: {
+            openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+          },
         },
       })
       .catch(() => {})
@@ -448,11 +453,13 @@ describe('managed Solana account construction', () => {
       expect(Object.isFrozen(account.config.evm)).toBe(true)
       await expect(
         account.prepareTransaction({
-          sourceChains: [solanaDevnet],
-          sourceAssets: [{ chain: solanaDevnet, address: location.wallet }],
-          targetChain: optimism,
-          tokenRequests: [{ address: recipientAddress, amount: 1n }],
-          calls: [{ to: recipientAddress }],
+          source: { chain: solanaDevnet, token: location.wallet },
+          destination: {
+            chain: optimism,
+            token: recipientAddress,
+            amount: 1n,
+            calls: [{ to: recipientAddress }],
+          },
         } as never),
       ).rejects.toThrow(/managed EVM account/)
     })
@@ -582,15 +589,11 @@ describe('managed Solana account facade', () => {
       operations: [],
     }))
     const getAddress = vi.fn(() => owner.address)
-    const getEligibleEvmSourceChains = vi.fn(async () => {
-      throw new Error('catalog must not be read')
-    })
     const signIntentFromRequests = vi.fn(async () => {
       throw new Error('EVM signing must not run')
     })
     const workflows = {
       getAddress,
-      getEligibleEvmSourceChains,
       prepareSolanaIntent,
       signIntentFromRequests,
       reconstructSolanaIntent: reconstruct,
@@ -628,11 +631,13 @@ describe('managed Solana account facade', () => {
 
   function transaction() {
     return {
-      chain: solanaDevnet,
-      tokenRequests: [{ address: mint, amount: 100n }] as [
-        { address: typeof mint; amount: bigint },
-      ],
-      recipient,
+      source: { token: mint },
+      destination: {
+        chain: solanaDevnet,
+        token: mint,
+        amount: 100n,
+        recipient,
+      },
       sponsored: false as const,
     }
   }
@@ -642,7 +647,27 @@ describe('managed Solana account facade', () => {
     const prepared = await facade.prepareTransaction(transaction())
 
     expect(workflows.prepareSolanaIntent).toHaveBeenCalledOnce()
-    expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
+    expect(prepared.request.request).toEqual({
+      account: {
+        svm: {
+          type: 'swig',
+          address: swig.wallet,
+          swigAccount: swig.swig,
+          authorization: { kind: 'secp256k1', address: owner.address },
+        },
+      },
+      source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
+      destination: {
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: mint,
+        amount: '100',
+        recipient: { address: recipient },
+      },
+    })
+    expect(prepared.intentInput).toEqual(
+      toSponsorshipApprovalInput(prepared.request.request),
+    )
     expect(facade.getTransactionMessages(prepared)).toEqual([spendRequest()])
     const signed = await facade.signTransaction(prepared)
     expect(workflows.signSolanaIntent).toHaveBeenCalledOnce()
@@ -670,16 +695,15 @@ describe('managed Solana account facade', () => {
     async (targetChain) => {
       const { facade, workflows, recipient: managedWallet } = fixture()
       const request = {
-        sourceChains: [mainnet],
-        targetChain,
-        tokenRequests: [{ address: mint, amount: 100n }],
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: { chain: targetChain, token: mint, amount: 100n },
       }
       const evmQuote = quoteFixture('evm')
       const prepareIntent = vi.fn(async (_context, input) => ({
         traceId: 'evm-trace',
         input,
         request: intentRequest,
-        normalized: normalizedIntentInput,
+        intentInput: serializedIntentInput,
         quote: evmQuote,
         quotes: [evmQuote],
         signing: {} as never,
@@ -689,13 +713,17 @@ describe('managed Solana account facade', () => {
 
       const prepared = await facade.prepareTransaction(request)
 
-      expect(request).not.toHaveProperty('recipient')
-      expect(prepared.transaction).toMatchObject({ recipient: managedWallet })
+      expect(request.destination).not.toHaveProperty('recipient')
+      expect(prepared.transaction).toMatchObject({
+        destination: { recipient: managedWallet },
+      })
       expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
+        source: { chain: toEvmChainReference(mainnet.id), token: mainnetUsdc },
+        token: mint,
+        amount: 100n,
         recipient: { address: managedWallet },
       })
       expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
-      expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
     },
   )
 
@@ -708,7 +736,7 @@ describe('managed Solana account facade', () => {
         traceId: 'evm-trace',
         input,
         request: intentRequest,
-        normalized: normalizedIntentInput,
+        intentInput: serializedIntentInput,
         quote: evmQuote,
         quotes: [evmQuote],
         signing: {} as never,
@@ -717,10 +745,13 @@ describe('managed Solana account facade', () => {
       Object.assign(workflows, { prepareIntent })
 
       await facade.prepareTransaction({
-        sourceChains: [mainnet],
-        targetChain,
-        tokenRequests: [{ address: mint, amount: 100n }],
-        recipient,
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: {
+          chain: targetChain,
+          token: mint,
+          amount: 100n,
+          recipient,
+        },
       })
 
       expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
@@ -863,16 +894,17 @@ describe('managed Solana account facade', () => {
       protocolFees: { feeBps: 50 },
     }
     const preparing = facade.prepareTransaction(request)
-    request.tokenRequests[0]!.amount = 999n
-    request.recipient = solanaAddress('11111111111111111111111111111113')
+    request.destination.amount = 999n
+    request.destination.recipient = solanaAddress(
+      '11111111111111111111111111111113',
+    )
     request.appFees.feeBps = 75
     request.protocolFees.feeBps = 100
     release()
 
     const prepared = await preparing
     expect(prepared.transaction).toMatchObject({
-      recipient,
-      tokenRequests: [{ address: mint, amount: 100n }],
+      destination: { recipient, token: mint, amount: 100n },
       appFees: { feeBps: 25 },
       protocolFees: { feeBps: 50 },
     })
@@ -889,19 +921,31 @@ describe('managed Solana account facade', () => {
   })
 
   test.each([
-    ['calls', []],
-    ['sourceChains', [mainnet]],
-    ['targetChain', mainnet],
-    ['sourceAssets', { [mainnet.id]: [owner.address] }],
-    ['signers', { type: 'owner', accounts: [owner] }],
-    ['hyperCore', {}],
-    ['gasLimit', 1n],
-    ['nonce', 1n],
+    ['calls', { calls: [] }],
+    ['sourceChains', { sourceChains: [mainnet] }],
+    ['signers', { signers: { type: 'owner', accounts: [owner] } }],
+    ['customDeadline', { customDeadline: 1 }],
+    ['settlementLayers', { settlementLayers: { include: ['RELAY'] } }],
+    ['nonce', { nonce: 1n }],
+    ['source.auxiliaryFunds', { source: { token: mint, auxiliaryFunds: 1n } }],
+    ['source.calls', { source: { token: mint, calls: [] } }],
+    [
+      'destination.calls',
+      { destination: { ...transaction().destination, calls: [] } },
+    ],
+    [
+      'destination.gasLimit',
+      { destination: { ...transaction().destination, gasLimit: 1n } },
+    ],
+    [
+      'destination.hyperCore',
+      { destination: { ...transaction().destination, hyperCore: {} } },
+    ],
   ])(
     'rejects widened `%s` before quote, sign, or submit effects',
-    async (field, value) => {
+    async (_field, patch) => {
       const { facade, workflows } = fixture()
-      const widened = { ...transaction(), [field]: value }
+      const widened = { ...transaction(), ...patch }
 
       await expect(facade.prepareTransaction(widened as never)).rejects.toThrow(
         UnsupportedAccountCapabilityError,
@@ -929,9 +973,10 @@ describe('managed Solana account facade', () => {
 
   test.each([
     [
-      'token request',
-      { tokenRequests: [{ address: mint, amount: 100n, memo: 'x' }] },
+      'destination',
+      { destination: { ...transaction().destination, memo: 'x' } },
     ],
+    ['source', { source: { token: mint, memo: 'x' } }],
     ['app fee', { appFees: { feeBps: 25, recipient: owner.address } }],
     ['protocol fee', { protocolFees: { feeBps: 25, sponsor: true } }],
   ])(
@@ -947,83 +992,67 @@ describe('managed Solana account facade', () => {
   )
 
   describe('with a source amount cap', () => {
-    const cappedAsset = (amount?: bigint, overrides: object = {}) => ({
-      sourceAssets: [
-        {
-          chain: solanaDevnet,
-          address: mint,
-          ...(amount === undefined ? {} : { amount }),
-          ...overrides,
-        },
-      ] as [SolanaSourceAsset],
+    const capped = (maxAmount?: bigint, source: object = {}) => ({
+      source: {
+        token: mint,
+        ...(maxAmount === undefined ? {} : { maxAmount }),
+        ...source,
+      },
     })
 
-    test('caps the transfer with one limit and keeps it through signing', async () => {
+    test('caps the transfer with the source maxAmount and keeps it through signing', async () => {
       const { facade, workflows } = fixture()
       const prepared = await facade.prepareTransaction({
         ...transaction(),
-        ...cappedAsset(100n),
+        ...capped(100n),
       })
 
       expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
         action: { amount: 100n, sourceLimit: 100n },
       })
-      expect(prepared.request.request).toMatchObject({
-        source: {
-          limits: [
-            {
-              chainId: solanaDevnet.caip2,
-              tokenAddress: mint,
-              maxAmount: '100',
-            },
-          ],
-        },
-      })
-      expect(prepared.intentInput.accountAccessList).toEqual({
-        chainTokenAmounts: { 792703810: { [mint]: '100' } },
-      })
+      const source = {
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: mint,
+        maxAmount: '100',
+      }
+      expect(prepared.request.request).toMatchObject({ source })
+      expect(prepared.request.request).not.toHaveProperty('source.selection')
+      expect(prepared.request.request).not.toHaveProperty('source.limits')
+      expect(prepared.intentInput.source).toEqual(source)
       await facade.submitTransaction(await facade.signTransaction(prepared))
       expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
     })
 
-    test('treats a source asset without an amount as no source asset', async () => {
+    test('expands the same-chain shorthand exactly as naming the cluster', async () => {
       const { facade } = fixture()
-      const plain = await facade.prepareTransaction(transaction())
+      const shorthand = await facade.prepareTransaction(transaction())
       const named = await facade.prepareTransaction({
         ...transaction(),
-        ...cappedAsset(),
+        ...capped(undefined, { chain: solanaDevnet }),
       })
 
-      expect(named.request).toEqual(plain.request)
-      expect(named.intentInput).toEqual(plain.intentInput)
-      expect(named.execution).toEqual(plain.execution)
+      expect(named.request).toEqual(shorthand.request)
+      expect(named.intentInput).toEqual(shorthand.intentInput)
+      expect(named.execution).toEqual(shorthand.execution)
     })
 
     test.each([
-      ['a token amount above the cap', cappedAsset(99n), /exceeds/],
+      ['a token amount above the cap', capped(99n), /exceeds/],
       [
         'another mint',
-        cappedAsset(100n, {
-          address: solanaAddress('11111111111111111111111111111113'),
+        capped(100n, {
+          token: solanaAddress('11111111111111111111111111111113'),
         }),
         /mint the transfer sends/,
       ],
       [
         'another cluster',
-        cappedAsset(100n, { chain: solanaMainnet }),
-        /cluster the transaction spends from/,
+        capped(100n, { chain: solanaMainnet }),
+        /own cluster only/,
       ],
-      ['a zero cap', cappedAsset(0n), /positive bigint/],
-      [
-        'two source assets',
-        {
-          sourceAssets: [
-            { chain: solanaDevnet, address: mint },
-            { chain: solanaDevnet, address: mint },
-          ],
-        },
-        /exactly one source asset/,
-      ],
+      ['a zero cap', capped(0n), /positive bigint/],
+      ['a source list', { source: [{ token: mint }] }, /must be an object/],
     ])('refuses %s before quoting', async (_name, patch, reason) => {
       const { facade, workflows } = fixture()
       const refusal = facade.prepareTransaction({
@@ -1041,44 +1070,50 @@ describe('managed Solana account facade', () => {
 
   describe('with native SOL', () => {
     const sol = solanaAddress('11111111111111111111111111111111')
-    const solAsset = { chain: solanaDevnet, address: sol }
+    const nativeSolMessage =
+      'A same-chain Solana transfer cannot send native SOL; name an SPL mint.'
 
     test.each([
       [
-        'the token request',
-        { tokenRequests: [{ address: sol, amount: 100n }] },
-        'tokenRequests[0].address',
+        'the destination token',
+        { destination: { ...transaction().destination, token: sol } },
+        nativeSolMessage,
+        'destination.token',
       ],
       [
-        'the token request and the source asset',
+        'the destination and source token',
         {
-          tokenRequests: [{ address: sol, amount: 100n }],
-          sourceAssets: [{ ...solAsset, amount: 100n }],
+          source: { token: sol, maxAmount: 100n },
+          destination: { ...transaction().destination, token: sol },
         },
-        'tokenRequests[0].address',
+        nativeSolMessage,
+        'destination.token',
       ],
       [
-        'the source asset',
-        { sourceAssets: [{ ...solAsset, amount: 100n }] },
-        'sourceAssets[0].address',
+        'the source token',
+        { source: { token: sol, maxAmount: 100n } },
+        '`source.token` must be the mint the transfer sends, `destination.token`.',
+        'source.token',
       ],
-    ])('refuses it as %s before quoting', async (_name, patch, field) => {
-      const { facade, workflows } = fixture()
-      const refusal = facade.prepareTransaction({
-        ...transaction(),
-        ...patch,
-      } as never)
+    ])(
+      'refuses it as %s before quoting',
+      async (_name, patch, message, field) => {
+        const { facade, workflows } = fixture()
+        const refusal = facade.prepareTransaction({
+          ...transaction(),
+          ...patch,
+        } as never)
 
-      await expect(refusal).rejects.toBeInstanceOf(
-        UnsupportedAccountCapabilityError,
-      )
-      await expect(refusal).rejects.toMatchObject({
-        message:
-          'A same-chain Solana transfer cannot send native SOL; name an SPL mint.',
-        context: { vm: 'solana', field },
-      })
-      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
-    })
+        await expect(refusal).rejects.toBeInstanceOf(
+          UnsupportedAccountCapabilityError,
+        )
+        await expect(refusal).rejects.toMatchObject({
+          message,
+          context: { vm: 'solana', field },
+        })
+        expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+      },
+    )
 
     test('refuses a persisted artifact that sends it', async () => {
       const { facade, workflows } = fixture()
@@ -1087,7 +1122,8 @@ describe('managed Solana account facade', () => {
       workflows.signSolanaIntent.mockClear()
       const persisted = {
         ...prepared.transaction,
-        tokenRequests: [{ address: sol, amount: 100n }],
+        source: { token: sol },
+        destination: { ...transaction().destination, token: sol },
       } as never
 
       await expect(
@@ -1187,24 +1223,29 @@ describe('managed Solana account facade', () => {
         ...prepared,
         transaction: {
           ...prepared.transaction,
-          recipient: solanaAddress('11111111111111111111111111111113'),
+          destination: {
+            ...prepared.transaction.destination,
+            recipient: solanaAddress('11111111111111111111111111111113'),
+          },
         } as never,
       }),
     ],
     [
       'mint',
-      (prepared: PreparedTransactionData) => ({
-        ...prepared,
-        transaction: {
-          ...prepared.transaction,
-          tokenRequests: [
-            {
-              address: solanaAddress('11111111111111111111111111111113'),
-              amount: 100n,
-            },
-          ],
-        } as never,
-      }),
+      (prepared: PreparedTransactionData) => {
+        const other = solanaAddress('11111111111111111111111111111113')
+        const { source, destination } = prepared.transaction as ReturnType<
+          typeof transaction
+        >
+        return {
+          ...prepared,
+          transaction: {
+            ...prepared.transaction,
+            source: { ...source, token: other },
+            destination: { ...destination, token: other },
+          } as never,
+        }
+      },
     ],
   ])(
     'rejects %s binding tampering for cached prepared artifacts',
@@ -1222,19 +1263,61 @@ describe('managed Solana account facade', () => {
     },
   )
 
-  test('refuses a Solana prepared artifact from an earlier wire version', async () => {
-    const { facade, workflows } = fixture()
-    const prepared = await facade.prepareTransaction(transaction())
-    const { request: _binding, ...legacy } = prepared
+  // The binding version is checked before the transaction: a `caucasus-1`
+  // artifact still carries the flat shape, and must fail as an earlier wire
+  // version rather than as a malformed transaction.
+  test.each([
+    ['a caucasus-1 binding', { version: 'caucasus-1' }],
+    ['no binding', undefined],
+  ])(
+    'refuses a Solana prepared artifact with %s before any effect',
+    async (_name, binding) => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(transaction())
+      const signed = await facade.signTransaction(prepared)
+      vi.clearAllMocks()
+      const legacyFields = {
+        request: binding && { ...prepared.request, ...binding },
+        transaction: {
+          chain: solanaDevnet,
+          tokenRequests: [{ address: mint, amount: 100n }],
+          recipient,
+        },
+      }
+      const legacy = {
+        ...prepared,
+        ...legacyFields,
+      } as unknown as PreparedTransactionData
+      const legacySigned = {
+        ...signed,
+        ...legacyFields,
+      } as unknown as SignedTransactionData
 
-    expect(() =>
-      facade.getTransactionMessages(legacy as PreparedTransactionData),
-    ).toThrow(InvalidPreparedTransactionError)
-    await expect(
-      facade.signTransaction(legacy as PreparedTransactionData),
-    ).rejects.toThrow(InvalidPreparedTransactionError)
-    expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
-  })
+      expect(() => facade.getTransactionMessages(legacy)).toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.signTransaction(legacy)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.assembleTransaction(legacy, [])).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.signAuthorizations(legacy)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.submitTransaction(legacySigned)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      for (const workflow of [
+        workflows.reconstructSolanaIntent,
+        workflows.signSolanaIntent,
+        workflows.submitSolanaIntent,
+        workflows.signIntentFromRequests,
+      ]) {
+        expect(workflow).not.toHaveBeenCalled()
+      }
+    },
+  )
 
   test('rejects tampering on same-instance prepared and signed artifacts despite warm caches', async () => {
     const { facade, workflows } = fixture()
@@ -1264,6 +1347,28 @@ describe('managed Solana account facade', () => {
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
+  test('routes a stored shorthand transaction to the Solana binding check', async () => {
+    const { facade, workflows } = fixture()
+    const prepared = await facade.prepareTransaction(transaction())
+    const tampered = {
+      ...prepared,
+      transaction: {
+        ...transaction(),
+        destination: {
+          ...transaction().destination,
+          recipient: solanaAddress('11111111111111111111111111111113'),
+        },
+      },
+    } as unknown as PreparedTransactionData
+    expect(() => facade.getTransactionMessages(tampered)).toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    await expect(facade.signTransaction(tampered)).rejects.toThrow(
+      InvalidSolanaTransactionArtifactError,
+    )
+    expect(workflows.signSolanaIntent).not.toHaveBeenCalled()
+  })
+
   test('translates sponsorship exactly as an EVM transaction does', async () => {
     const { facade, workflows } = fixture()
     const sponsored = {
@@ -1278,8 +1383,7 @@ describe('managed Solana account facade', () => {
       workflows.prepareSolanaIntent.mock.calls[0]?.[0].sponsorSettings
     expect(sponsorSettings).toEqual(
       adaptTransaction(invocationContext(), {
-        chain: optimism,
-        calls: [],
+        destination: { chain: optimism },
         sponsored,
       }).options?.sponsorSettings,
     )
@@ -1351,11 +1455,14 @@ describe('managed Solana account facade', () => {
       ...signed,
       intentInput: {
         ...signed.intentInput,
-        recipient: {
-          address: solanaAddress('11111111111111111111111111111113'),
+        destination: {
+          ...signed.intentInput.destination,
+          recipient: {
+            address: solanaAddress('11111111111111111111111111111113'),
+          },
         },
       },
-    }
+    } as SignedTransactionData
     await expect(first.facade.submitTransaction(changedInput)).rejects.toThrow(
       InvalidSolanaTransactionArtifactError,
     )
@@ -1377,8 +1484,15 @@ describe('managed Solana account facade', () => {
 
   describe('instruction execution', () => {
     const program = solanaAddress('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4')
+    const normalized = [
+      {
+        programId: program,
+        accounts: [{ pubkey: mint, isSigner: false, isWritable: true }],
+        data: 'AQID',
+      },
+    ]
 
-    function instructionTransaction() {
+    function destination() {
       return {
         chain: solanaDevnet,
         instructions: [
@@ -1397,21 +1511,24 @@ describe('managed Solana account facade', () => {
       }
     }
 
-    test('routes instructions to the Solana workflow in the canonical wire shape', async () => {
+    function instructionTransaction() {
+      return { destination: destination(), sponsored: true }
+    }
+
+    test('routes a sponsored execution to the Solana workflow with no source', async () => {
       const { facade, workflows } = fixture()
       const prepared = await facade.prepareTransaction(instructionTransaction())
 
-      const normalized = [
-        {
-          programId: program,
-          accounts: [{ pubkey: mint, isSigner: false, isWritable: true }],
-          data: 'AQID',
-        },
-      ]
-      expect(prepared.transaction).toMatchObject({ instructions: normalized })
+      expect(prepared.transaction).toMatchObject({
+        destination: { instructions: normalized },
+      })
+      expect(prepared.transaction).not.toHaveProperty('source')
       expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
         action: { kind: 'instructions', instructions: normalized },
       })
+      expect(
+        workflows.prepareSolanaIntent.mock.calls[0]?.[0].action,
+      ).not.toHaveProperty('feeToken')
       expect(prepared.execution).toEqual({
         kind: 'solana-instructions',
         namespace: 'dev-v1',
@@ -1423,19 +1540,43 @@ describe('managed Solana account facade', () => {
         swigAddress: expect.any(String),
         walletAddress: expect.any(String),
       })
-      expect(prepared.intentInput).toMatchObject({
-        tokenRequests: [],
-        destinationInstructions: normalized,
+      expect(prepared.request.request).toEqual({
+        account: {
+          svm: {
+            type: 'swig',
+            address: swig.wallet,
+            swigAccount: swig.swig,
+            authorization: { kind: 'secp256k1', address: owner.address },
+          },
+        },
+        destination: {
+          vm: 'svm',
+          chainId: solanaDevnet.caip2,
+          execution: { instructions: normalized },
+        },
+        options: {
+          sponsorship: {
+            gas: true,
+            bridgeFees: true,
+            swapFees: true,
+            protocolFees: true,
+          },
+        },
       })
-      expect(prepared.intentInput).not.toHaveProperty('recipient')
+      expect(prepared.intentInput).not.toHaveProperty('source')
+      expect(prepared.intentInput.destination).toEqual({
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        execution: { instructions: normalized },
+      })
     })
 
-    test('accepts sponsorship on a tokenless execution', async () => {
+    test('accepts object sponsorship on a source-free execution', async () => {
       const { facade, workflows } = fixture()
       await facade.prepareTransaction({
-        ...instructionTransaction(),
+        destination: destination(),
         sponsored: { gas: true, bridging: false, swaps: false },
-      } as never)
+      })
 
       expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
         sponsorSettings: {
@@ -1448,24 +1589,99 @@ describe('managed Solana account facade', () => {
     })
 
     test.each([
-      ['a recipient', { recipient }],
-      ['token requests', { tokenRequests: [{ address: mint, amount: 1n }] }],
-      ['EVM calls', { calls: [] }],
-      ['app fees', { appFees: { feeBps: 10 } }],
-      ['protocol fees', { protocolFees: { feeBps: 10 } }],
+      ['no sponsorship', {}],
+      ['sponsorship without gas', { sponsored: false }],
       [
-        'a source asset',
-        { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1n }] },
+        'object sponsorship without gas',
+        { sponsored: { gas: false, bridging: true, swaps: true } },
       ],
-    ])('refuses instructions combined with %s', async (_name, patch) => {
-      const { facade, workflows } = fixture()
+    ])(
+      'refuses a source-free execution with %s before quoting',
+      async (_name, sponsorship) => {
+        const { facade, workflows } = fixture()
+        const refusal = facade.prepareTransaction({
+          destination: destination(),
+          ...sponsorship,
+        } as never)
 
-      await expect(
-        facade.prepareTransaction({
-          ...instructionTransaction(),
-          ...patch,
-        } as never),
-      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+        await expect(refusal).rejects.toBeInstanceOf(
+          UnsupportedAccountCapabilityError,
+        )
+        await expect(refusal).rejects.toMatchObject({
+          message: expect.stringMatching(
+            /not gas-sponsored needs `source.token`/,
+          ),
+          context: { vm: 'solana', field: 'source' },
+        })
+        expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+      },
+    )
+
+    test('pays an unsponsored execution in the source token', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction({
+        source: { token: mint },
+        destination: destination(),
+      })
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        action: { kind: 'instructions', feeToken: mint },
+      })
+      expect(
+        workflows.prepareSolanaIntent.mock.calls[0]?.[0],
+      ).not.toHaveProperty('sponsorSettings')
+      expect(prepared.request.request).toMatchObject({
+        source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
+        destination: {
+          vm: 'svm',
+          chainId: solanaDevnet.caip2,
+          execution: { instructions: normalized },
+        },
+      })
+      expect(prepared.request.request).not.toHaveProperty('options')
+      expect(prepared.intentInput.source).toEqual({
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: mint,
+      })
+      await facade.submitTransaction(await facade.signTransaction(prepared))
+      expect(workflows.submitSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      [
+        'a recipient',
+        { destination: { ...destination(), recipient } },
+        'destination.recipient',
+      ],
+      [
+        'a delivery token',
+        { destination: { ...destination(), token: mint } },
+        'destination.token',
+      ],
+      [
+        'EVM calls',
+        { destination: { ...destination(), calls: [] } },
+        'destination.calls',
+      ],
+      ['app fees', { appFees: { feeBps: 10 } }, 'appFees'],
+      ['protocol fees', { protocolFees: { feeBps: 10 } }, 'protocolFees'],
+      [
+        'a source cap',
+        { source: { token: mint, maxAmount: 1n } },
+        'source.maxAmount',
+      ],
+    ])('refuses instructions combined with %s', async (_name, patch, field) => {
+      const { facade, workflows } = fixture()
+      const refusal = facade.prepareTransaction({
+        ...instructionTransaction(),
+        ...patch,
+      } as never)
+
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toMatchObject({ context: { field } })
       expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
 
@@ -1474,14 +1690,17 @@ describe('managed Solana account facade', () => {
 
       await expect(
         facade.prepareTransaction({
-          chain: solanaDevnet,
-          instructions: [],
+          destination: { chain: solanaDevnet, instructions: [] },
+          sponsored: true,
         } as never),
       ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
       await expect(
         facade.prepareTransaction({
           ...instructionTransaction(),
-          addressLookupTables: ['not-base58'],
+          destination: {
+            ...destination(),
+            addressLookupTables: ['not-base58'],
+          },
         } as never),
       ).rejects.toThrow(InvalidSolanaTransactionArtifactError)
       expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
@@ -1493,9 +1712,87 @@ describe('managed Solana account facade', () => {
       await expect(
         facade.prepareTransaction({
           ...transaction(),
-          addressLookupTables: [mint],
+          destination: {
+            ...transaction().destination,
+            addressLookupTables: [mint],
+          },
         } as never),
       ).rejects.toThrow(UnsupportedAccountCapabilityError)
+    })
+  })
+
+  describe('authority change', () => {
+    const authority = {
+      action: 'add' as const,
+      key: { type: 'ecdsa' as const, publicKey: guardian.publicKey },
+      permission: 'all' as const,
+    }
+    const change = { destination: { chain: solanaDevnet, authority } }
+
+    test('sends a sponsored, source-free change of this Swig', async () => {
+      const { facade, workflows } = fixture()
+      const prepared = await facade.prepareTransaction(change)
+
+      expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
+        accountAddress: swig.wallet,
+        action: {
+          kind: 'authority',
+          change: { action: 'add', keyType: 'ecdsa', permission: 'all' },
+        },
+      })
+      expect(prepared.request.request).not.toHaveProperty('source')
+      expect(prepared.request.request).toMatchObject({
+        destination: {
+          vm: 'svm',
+          chainId: solanaDevnet.caip2,
+          execution: {
+            authority: { action: 'add', permission: 'all' },
+          },
+        },
+        options: {
+          sponsorship: { gas: true, bridgeFees: false, swapFees: false },
+        },
+      })
+      expect(prepared.intentInput).not.toHaveProperty('source')
+    })
+
+    test('reports its status from the same shape', async () => {
+      const { facade, workflows } = fixture()
+
+      await expect(facade.getAuthorityStatus(change)).resolves.toEqual({
+        status: 'notApplied',
+      })
+      expect(workflows.prepareSolanaIntent).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      ['the flat shape', { chain: solanaDevnet, authority }],
+      ['a transfer', transaction()],
+    ])('refuses %s as an authority status query', async (_name, query) => {
+      const { facade, workflows } = fixture()
+      const refusal = facade.getAuthorityStatus(query as never)
+
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toMatchObject({
+        context: { field: 'destination.authority' },
+      })
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    })
+
+    test.each([
+      ['a source', { source: { token: mint } }, 'source'],
+      ['sponsorship', { sponsored: true }, 'sponsored'],
+    ])('refuses a change with %s', async (_name, patch, field) => {
+      const { facade, workflows } = fixture()
+      const refusal = facade.prepareTransaction({
+        ...change,
+        ...patch,
+      } as never)
+
+      await expect(refusal).rejects.toMatchObject({ context: { field } })
+      expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
   })
 })
@@ -1674,9 +1971,6 @@ describe('managed Solana cross-chain delivery facade', () => {
     }))
     const workflows = {
       getAddress: vi.fn(() => owner.address),
-      getEligibleEvmSourceChains: vi.fn(async () => {
-        throw new Error('catalog must not be read')
-      }),
       prepareSolanaIntent,
       reconstructSolanaIntent: vi.fn(reconstructSolanaIntent),
       signIntentFromRequests: vi.fn(async () => {
@@ -1709,14 +2003,19 @@ describe('managed Solana cross-chain delivery facade', () => {
 
   function transaction() {
     return {
-      sourceChains: [solanaDevnet] as [typeof solanaDevnet],
-      sourceAssets: [{ chain: solanaDevnet, address: mint }] as [
-        SolanaSourceAsset,
-      ],
-      targetChain: optimism,
-      tokenRequests: [{ address: destinationToken, amount: 100n }] as [
-        { address: `0x${string}`; amount: bigint },
-      ],
+      source: { chain: solanaDevnet, token: mint },
+      destination: {
+        chain: optimism,
+        token: destinationToken as `0x${string}`,
+        amount: 100n,
+      },
+    }
+  }
+
+  function withDestination(patch: object) {
+    return {
+      ...transaction(),
+      destination: { ...transaction().destination, ...patch },
     }
   }
 
@@ -1724,7 +2023,6 @@ describe('managed Solana cross-chain delivery facade', () => {
     const { facade, workflows } = fixture()
     const prepared = await facade.prepareTransaction(transaction())
 
-    expect(workflows.getEligibleEvmSourceChains).not.toHaveBeenCalled()
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
       chain: solanaDevnet,
       action: {
@@ -1740,6 +2038,27 @@ describe('managed Solana cross-chain delivery facade', () => {
         },
       },
     })
+    expect(prepared.request.request).toEqual({
+      account: {
+        svm: {
+          type: 'swig',
+          address: swig.wallet,
+          swigAccount: swig.swig,
+          authorization: { kind: 'secp256k1', address: owner.address },
+        },
+      },
+      source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
+      destination: {
+        vm: 'evm',
+        chainId: formatCaip2(optimism.id),
+        token: destinationToken,
+        amount: '100',
+        recipient: { address: owner.address },
+      },
+    })
+    expect(prepared.intentInput).toEqual(
+      toSponsorshipApprovalInput(prepared.request.request),
+    )
     expect(prepared.execution).toMatchObject({
       kind: 'solana-cross-chain',
       chain: 792703810,
@@ -1803,8 +2122,7 @@ describe('managed Solana cross-chain delivery facade', () => {
 
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
       sponsorSettings: adaptTransaction(invocationContext(), {
-        chain: optimism,
-        calls: [],
+        destination: { chain: optimism },
         sponsored: true,
       }).options?.sponsorSettings,
     })
@@ -1812,14 +2130,12 @@ describe('managed Solana cross-chain delivery facade', () => {
 
   test('prefers an explicit recipient and does not mutate the caller request', async () => {
     const { facade, workflows } = fixture()
-    const request = {
-      ...transaction(),
-      recipient: guardian.address,
-    }
+    const request = withDestination({ recipient: guardian.address })
     const prepared = await facade.prepareTransaction(request)
 
-    expect(request.recipient).toBe(guardian.address)
+    expect(request.destination).toMatchObject({ recipient: guardian.address })
     expect(Object.isFrozen(request)).toBe(false)
+    expect(Object.isFrozen(request.destination)).toBe(false)
     expect(prepared.execution).toMatchObject({ recipient: guardian.address })
     expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
       action: { delivery: { recipient: guardian.address } },
@@ -1827,92 +2143,126 @@ describe('managed Solana cross-chain delivery facade', () => {
   })
 
   test.each([
-    ['source calls', { sourceCalls: {} }],
+    [
+      'source calls',
+      { source: { ...transaction().source, calls: [] } },
+      'source.calls',
+    ],
+    [
+      'source auxiliary funds',
+      { source: { ...transaction().source, auxiliaryFunds: 1n } },
+      'source.auxiliaryFunds',
+    ],
     [
       'calls with an explicit recipient',
-      { calls: [{ to: destinationToken }], recipient: guardian.address },
+      withDestination({
+        calls: [{ to: destinationToken }],
+        recipient: guardian.address,
+      }),
+      'destination.recipient',
     ],
-    ['a gas limit without calls', { gasLimit: 100_000n }],
+    [
+      'a gas limit without calls',
+      withDestination({ gasLimit: 100_000n }),
+      'destination.gasLimit',
+    ],
     [
       'an EIP-7702 init signature without calls',
-      { calls: [], eip7702InitSignature: '0x12' },
+      { ...withDestination({ calls: [] }), eip7702InitSignature: '0x12' },
+      'eip7702InitSignature',
     ],
-    ['instructions', { instructions: [] }],
-    ['hyperCore', { hyperCore: { closePerp: { asset: 'ETH' } } }],
-    ['a settlement layer filter', { settlementLayers: { include: ['RELAY'] } }],
-    ['two source clusters', { sourceChains: [solanaDevnet, solanaMainnet] }],
     [
-      'two source mints',
-      {
-        sourceAssets: [
-          { chain: solanaDevnet, address: mint },
-          { chain: solanaDevnet, address: mint },
-        ],
-      },
+      'instructions',
+      withDestination({ instructions: [] }),
+      'destination.instructions',
     ],
-    ['no source asset', { sourceAssets: [] }],
-    ['a missing source asset', { sourceAssets: undefined }],
     [
-      'two delivery tokens',
-      {
-        tokenRequests: [
-          { address: destinationToken, amount: 1n },
-          { address: destinationToken, amount: 1n },
-        ],
-      },
+      'hyperCore',
+      withDestination({ hyperCore: { closePerp: { asset: 'ETH' } } }),
+      'destination.hyperCore',
     ],
+    [
+      'a settlement layer filter',
+      { settlementLayers: { include: ['RELAY'] } },
+      'settlementLayers',
+    ],
+    [
+      'a flat source chain list',
+      { sourceChains: [solanaDevnet] },
+      'sourceChains',
+    ],
+    ['a source list', { source: [transaction().source] }, 'source'],
     [
       'a zero source cap',
-      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 0n }] },
+      { source: { ...transaction().source, maxAmount: 0n } },
+      'source.maxAmount',
     ],
     [
       'a negative source cap',
-      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: -1n }] },
+      { source: { ...transaction().source, maxAmount: -1n } },
+      'source.maxAmount',
     ],
     [
       'a numeric source cap',
-      { sourceAssets: [{ chain: solanaDevnet, address: mint, amount: 1 }] },
+      { source: { ...transaction().source, maxAmount: 1 } },
+      'source.maxAmount',
     ],
     [
-      'an extra source asset key',
+      'an earlier source spelling',
+      { source: { ...transaction().source, address: mint } },
+      'source.address',
+    ],
+    [
+      'a source on a forged cluster',
       {
-        sourceAssets: [
-          { chain: solanaDevnet, address: mint, amount: 1n, token: mint },
-        ],
+        source: {
+          chain: { ...solanaDevnet, name: 'Forged' },
+          token: mint,
+        },
       },
-    ],
-    [
-      'a source asset on another cluster',
-      { sourceAssets: [{ chain: solanaMainnet, address: mint }] },
-    ],
-    [
-      'a source asset on a forged cluster',
-      {
-        sourceAssets: [
-          { chain: { ...solanaDevnet, name: 'Forged' }, address: mint },
-        ],
-      },
+      'source.chain',
     ],
     [
       'an invalid source mint',
-      { sourceAssets: [{ chain: solanaDevnet, address: 'not-a-mint' }] },
+      { source: { chain: solanaDevnet, token: 'not-a-mint' } },
+      'source.token',
     ],
-    ['a non-EVM destination', { targetChain: solanaMainnet }],
-    ['a base58 recipient', { recipient: mint }],
+    [
+      'a Solana destination on another cluster',
+      { destination: { chain: solanaMainnet, token: mint, recipient: mint } },
+      'source.chain',
+    ],
+    [
+      'a base58 recipient',
+      withDestination({ recipient: mint }),
+      'destination.recipient',
+    ],
     [
       'a zero delivery amount',
-      { tokenRequests: [{ address: destinationToken, amount: 0n }] },
+      withDestination({ amount: 0n }),
+      'destination.amount',
     ],
     [
       'a base58 delivery token',
-      { tokenRequests: [{ address: mint, amount: 1n }] },
+      withDestination({ token: mint }),
+      'destination.token',
     ],
-  ])('refuses %s before quoting', async (_name, patch) => {
+    [
+      'no delivery token',
+      withDestination({ token: undefined, amount: undefined }),
+      'destination.token',
+    ],
+  ])('refuses %s before quoting', async (_name, patch, field) => {
     const { facade, workflows } = fixture()
+    const refusal = facade.prepareTransaction({
+      ...transaction(),
+      ...patch,
+    } as never)
 
-    await expect(
-      facade.prepareTransaction({ ...transaction(), ...patch } as never),
-    ).rejects.toThrow(UnsupportedAccountCapabilityError)
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toMatchObject({ context: { field } })
     expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
   })
 
@@ -1941,10 +2291,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     const prepared = await facade.prepareTransaction(transaction())
     const tampered = {
       ...prepared,
-      transaction: {
-        ...prepared.transaction,
-        recipient: guardian.address,
-      } as never,
+      transaction: withDestination({ recipient: guardian.address }),
     }
 
     await expect(facade.signTransaction(tampered)).rejects.toThrow(
@@ -2008,7 +2355,7 @@ describe('managed Solana cross-chain delivery facade', () => {
     }
 
     function callsTransaction() {
-      return { ...transaction(), calls: [call], gasLimit: 200_000n }
+      return withDestination({ calls: [call], gasLimit: 200_000n })
     }
 
     test('resolves the calls on the paired account and signs its requests before the spend', async () => {
@@ -2038,7 +2385,12 @@ describe('managed Solana cross-chain delivery facade', () => {
       })
       expect(prepared.request.request).toMatchObject({
         account: { evm: { initData: { setupOps: [setupOp] } } },
+        source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
         destination: {
+          vm: 'evm',
+          chainId: formatCaip2(optimism.id),
+          token: destinationToken,
+          amount: '100',
           execution: {
             calls: [{ to: call.to, value: '0', data: call.data }],
             gasLimit: '200000',
@@ -2080,16 +2432,16 @@ describe('managed Solana cross-chain delivery facade', () => {
       })
       expect(other.resolveSolanaEvmDestination).not.toHaveBeenCalled()
 
-      const {
-        calls: _calls,
-        gasLimit: _gasLimit,
-        ...withoutCalls
-      } = prepared.transaction as ReturnType<typeof callsTransaction>
+      const { execution: _execution, ...plainDestination } = prepared
+        .intentInput.destination as Record<string, unknown>
       for (const tampered of [
-        { ...prepared, transaction: withoutCalls as never },
+        { ...prepared, transaction: transaction() },
         {
           ...prepared,
-          intentInput: { ...prepared.intentInput, destinationExecutions: [] },
+          intentInput: {
+            ...prepared.intentInput,
+            destination: plainDestination,
+          } as never,
         },
       ]) {
         await expect(other.facade.signTransaction(tampered)).rejects.toThrow(
@@ -2115,7 +2467,7 @@ describe('managed Solana cross-chain delivery facade', () => {
       ).rejects.toThrow(/independently selected Swig/)
       const replayWithCalls = {
         ...prepared,
-        transaction: { ...prepared.transaction, calls: [call] } as never,
+        transaction: withDestination({ calls: [call] }),
       }
       expect(() => base.facade.getTransactionMessages(replayWithCalls)).toThrow(
         /independently selected Swig/,
@@ -2182,16 +2534,14 @@ describe('managed Solana cross-chain delivery facade', () => {
   describe('with a source amount cap', () => {
     const cap = 101n
     // `null` names no cap; `undefined` would take the default.
-    function cappedTransaction(amount: bigint | null = cap) {
+    function cappedTransaction(maxAmount: bigint | null = cap) {
       return {
         ...transaction(),
-        sourceAssets: [
-          {
-            chain: solanaDevnet,
-            address: mint,
-            ...(amount === null ? {} : { amount }),
-          },
-        ] as [SolanaSourceAsset],
+        source: {
+          chain: solanaDevnet,
+          token: mint,
+          ...(maxAmount === null ? {} : { maxAmount }),
+        },
       }
     }
     // Persisted artifacts carry bigints; callers round-trip them losslessly.
@@ -2207,29 +2557,24 @@ describe('managed Solana cross-chain delivery facade', () => {
       )
     }
 
-    test('sends the cap as one limit on the pinned pair and signs within it', async () => {
+    test('sends the cap as the source maxAmount and signs within it', async () => {
       const { facade, workflows } = fixture()
       const prepared = await facade.prepareTransaction(cappedTransaction())
 
       expect(workflows.prepareSolanaIntent.mock.calls[0]?.[0]).toMatchObject({
         action: { mint, amount: 100n, sourceLimit: cap },
       })
-      expect(prepared.request.request).toMatchObject({
-        source: {
-          selection: { tokens: { only: [mint] } },
-          limits: [
-            {
-              chainId: solanaDevnet.caip2,
-              tokenAddress: mint,
-              maxAmount: '101',
-            },
-          ],
-        },
-      })
-      expect(prepared.intentInput.accountAccessList).toEqual({
-        chainTokenAmounts: { 792703810: { [mint]: '101' } },
-      })
-      expect(Object.isFrozen(prepared.transaction.sourceAssets?.[0])).toBe(true)
+      const source = {
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: mint,
+        maxAmount: '101',
+      }
+      expect(prepared.request.request).toMatchObject({ source })
+      expect(prepared.intentInput.source).toEqual(source)
+      expect(
+        Object.isFrozen((prepared.transaction as { source?: object }).source),
+      ).toBe(true)
 
       const other = fixture()
       const signed = await other.facade.signTransaction(roundTrip(prepared))
@@ -2237,14 +2582,14 @@ describe('managed Solana cross-chain delivery facade', () => {
       expect(other.workflows.submitSolanaIntent).toHaveBeenCalledOnce()
     })
 
-    test('treats an absent cap exactly as before', async () => {
+    test('sends no maxAmount without a cap', async () => {
       const { facade } = fixture()
       const uncapped = await facade.prepareTransaction(transaction())
       const noAmount = await facade.prepareTransaction(cappedTransaction(null))
 
       expect(noAmount.request).toEqual(uncapped.request)
       expect(noAmount.intentInput).toEqual(uncapped.intentInput)
-      expect(uncapped.request.request).not.toHaveProperty('source.limits')
+      expect(uncapped.request.request).not.toHaveProperty('source.maxAmount')
     })
 
     test('refuses a quote debiting more than the cap before signing', async () => {
@@ -2278,7 +2623,7 @@ describe('managed Solana cross-chain delivery facade', () => {
           const request = prepared.request.request as {
             source: Record<string, unknown>
           }
-          const { limits: _limits, ...source } = request.source
+          const { maxAmount: _maxAmount, ...source } = request.source
           return {
             ...prepared,
             request: { ...prepared.request, request: { ...request, source } },
@@ -2291,9 +2636,7 @@ describe('managed Solana cross-chain delivery facade', () => {
           ...prepared,
           intentInput: {
             ...prepared.intentInput,
-            accountAccessList: {
-              chainTokenAmounts: { 792703810: { [mint]: '1000' } },
-            },
+            source: { ...prepared.intentInput.source!, maxAmount: '1000' },
           },
         }),
       ],
@@ -2349,16 +2692,14 @@ describe('managed Solana cross-chain delivery facade', () => {
         },
       }
     }
-    function solTransaction(amount?: bigint) {
+    function solTransaction(maxAmount?: bigint) {
       return {
         ...transaction(),
-        sourceAssets: [
-          {
-            chain: solanaDevnet,
-            address: sol,
-            ...(amount === undefined ? {} : { amount }),
-          },
-        ] as [SolanaSourceAsset],
+        source: {
+          chain: solanaDevnet,
+          token: sol,
+          ...(maxAmount === undefined ? {} : { maxAmount }),
+        },
       }
     }
 
@@ -2380,8 +2721,11 @@ describe('managed Solana cross-chain delivery facade', () => {
       expect(
         workflows.prepareSolanaIntent.mock.calls[0]?.[0].action.sourceLimit,
       ).toBe(cap)
-      expect(prepared.request.request).toMatchObject({
-        source: { selection: { tokens: { only: [sol] } } },
+      expect((prepared.request.request as { source: unknown }).source).toEqual({
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: sol,
+        ...(cap === undefined ? {} : { maxAmount: cap.toString() }),
       })
       expect(prepared.execution).toMatchObject({
         kind: 'solana-cross-chain',
@@ -2402,27 +2746,36 @@ describe('managed Solana cross-chain delivery facade', () => {
     })
   })
 
-  test('refuses a leftover `sourceTokens`, pointing at `sourceAssets`', async () => {
+  test.each([
+    [
+      'sourceTokens',
+      [{ address: mint }],
+      '`sourceTokens` was replaced by `source.token`.',
+    ],
+    [
+      'sourceAssets',
+      [{ chain: solanaDevnet, address: mint }],
+      '`sourceAssets` was replaced by `source.token` and `source.maxAmount`.',
+    ],
+  ])('refuses a leftover `%s` by name', async (field, value, message) => {
     const { facade, workflows } = fixture()
-    const { sourceAssets: _assets, ...rest } = transaction()
-    const legacy = { ...rest, sourceTokens: [{ address: mint }] }
+    const legacy = { ...transaction(), [field]: value }
 
     const refusal = facade.prepareTransaction(legacy as never)
     await expect(refusal).rejects.toBeInstanceOf(
       UnsupportedAccountCapabilityError,
     )
-    await expect(refusal).rejects.toThrow(
-      '`sourceTokens` was replaced by `sourceAssets: [{ chain, address, amount? }]`.',
-    )
-    // An artifact persisted with the old shape is refused, not reinterpreted.
+    await expect(refusal).rejects.toMatchObject({ message, context: { field } })
+    expect(workflows.prepareSolanaIntent).not.toHaveBeenCalled()
+    // An artifact persisted with the field is refused, not reinterpreted.
     const prepared = await facade.prepareTransaction(transaction())
     const signed = await facade.signTransaction(prepared)
     await expect(
       facade.signTransaction({ ...prepared, transaction: legacy as never }),
-    ).rejects.toThrow(/`sourceTokens` was replaced/)
+    ).rejects.toThrow(message)
     await expect(
       facade.submitTransaction({ ...signed, transaction: legacy as never }),
-    ).rejects.toThrow(/`sourceTokens` was replaced/)
+    ).rejects.toThrow(message)
     expect(workflows.submitSolanaIntent).not.toHaveBeenCalled()
   })
 
@@ -2442,9 +2795,7 @@ describe('managed Solana cross-chain delivery facade', () => {
       )
       const prepared = await facade.prepareTransaction({
         ...transaction(),
-        sourceAssets: [
-          { chain: solanaDevnet, address: mint, amount: 101n },
-        ] as [SolanaSourceAsset],
+        source: { chain: solanaDevnet, token: mint, maxAmount: 101n },
       })
 
       expect(prepared.execution).toMatchObject({
@@ -2631,24 +2982,31 @@ describe('standalone managed Solana account facade', () => {
 
   function transfer() {
     return {
-      chain: solanaDevnet,
-      tokenRequests: [{ address: mint, amount: 100n }] as [
-        { address: typeof mint; amount: bigint },
-      ],
-      recipient,
+      source: { token: mint },
+      destination: {
+        chain: solanaDevnet,
+        token: mint,
+        amount: 100n,
+        recipient,
+      },
     }
   }
 
   function delivery() {
     return {
-      sourceChains: [solanaDevnet] as [typeof solanaDevnet],
-      sourceAssets: [{ chain: solanaDevnet, address: mint }] as [
-        SolanaSourceAsset,
-      ],
-      targetChain: optimism,
-      tokenRequests: [{ address: destinationToken, amount: 100n }] as [
-        { address: `0x${string}`; amount: bigint },
-      ],
+      source: { chain: solanaDevnet, token: mint },
+      destination: {
+        chain: optimism,
+        token: destinationToken as `0x${string}`,
+        amount: 100n,
+      },
+    }
+  }
+
+  function deliveryTo(recipient: `0x${string}`) {
+    return {
+      ...delivery(),
+      destination: { ...delivery().destination, recipient },
     }
   }
 
@@ -2659,27 +3017,40 @@ describe('standalone managed Solana account facade', () => {
     const input = solana.prepareSolanaIntent.mock.calls[0]?.[0]
     expect(input).toMatchObject({ accountAddress: location.wallet })
     expect(input).not.toHaveProperty('accountType')
-    expect(prepared.request).toEqual({
-      version: expect.any(String),
-      request: expect.objectContaining({
-        account: {
-          svm: {
-            type: 'swig',
-            address: location.wallet,
-            swigAccount: location.swig,
-            authorization: { kind: 'secp256k1', address: owner.address },
-          },
-        },
-      }),
-    })
-    expect(prepared.intentInput.account).toEqual({
-      address: location.wallet,
+    const account = {
       svm: {
         type: 'swig',
         address: location.wallet,
         swigAccount: location.swig,
         authorization: { kind: 'secp256k1', address: owner.address },
       },
+    }
+    expect(prepared.request).toEqual({
+      version: 'caucasus-singular-1',
+      request: {
+        account,
+        source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
+        destination: {
+          vm: 'svm',
+          chainId: solanaDevnet.caip2,
+          token: mint,
+          amount: '100',
+          recipient: { address: recipient },
+        },
+      },
+    })
+    expect(prepared.intentInput).toEqual({
+      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      account,
+      source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
+      destination: {
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        token: mint,
+        amount: '100',
+        recipient: { address: recipient },
+      },
+      options: {},
     })
 
     expect(facade.getTransactionMessages(prepared)).toEqual(
@@ -2736,13 +3107,12 @@ describe('standalone managed Solana account facade', () => {
 
     await expect(
       facade.prepareTransaction(delivery() as never),
-    ).rejects.toThrow(/needs an explicit EVM `recipient`/)
+    ).rejects.toThrow(/needs an explicit EVM `destination.recipient`/)
     expect(solana.prepareSolanaIntent).not.toHaveBeenCalled()
 
-    const prepared = await facade.prepareTransaction({
-      ...delivery(),
-      recipient: guardian.address,
-    })
+    const prepared = await facade.prepareTransaction(
+      deliveryTo(guardian.address),
+    )
     expect(prepared.execution).toMatchObject({
       kind: 'solana-cross-chain',
       accountAddress: location.wallet,
@@ -2772,21 +3142,30 @@ describe('standalone managed Solana account facade', () => {
     await expect(
       facade.prepareTransaction({
         ...delivery(),
-        calls: [{ to: destinationToken, data: '0x' }],
+        destination: {
+          ...delivery().destination,
+          calls: [{ to: destinationToken, data: '0x' }],
+        },
       } as never),
     ).rejects.toThrow(/managed EVM account/)
     expect(solana.prepareSolanaIntent).not.toHaveBeenCalled()
   })
 
   test.each([
-    ['an EVM same-chain transaction', { chain: mainnet, calls: [] }],
+    [
+      'an EVM same-chain transaction',
+      { destination: { chain: mainnet, calls: [] }, sponsored: true },
+    ],
     [
       'an EVM → Solana delivery',
       {
-        sourceChains: [mainnet],
-        targetChain: solanaDevnet,
-        tokenRequests: [{ address: mint, amount: 1n }],
-        recipient,
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: {
+          chain: solanaDevnet,
+          token: mint,
+          amount: 1n,
+          recipient,
+        },
       },
     ],
   ])('refuses %s before quoting', async (_name, transaction) => {
@@ -2828,28 +3207,23 @@ describe('standalone managed Solana account facade', () => {
       ['a same-chain transfer', () => transfer()],
       [
         'a capped same-chain transfer',
-        () => ({
-          ...transfer(),
-          sourceAssets: [
-            { chain: solanaDevnet, address: mint, amount: 100n },
-          ] as [SolanaSourceAsset],
-        }),
+        () => ({ ...transfer(), source: { token: mint, maxAmount: 100n } }),
       ],
       [
-        'an instruction execution',
+        'a sponsored instruction execution',
         () => ({
-          chain: solanaDevnet,
-          instructions: [{ programId: program, accounts: [], data: 'AQID' }],
+          destination: {
+            chain: solanaDevnet,
+            instructions: [{ programId: program, accounts: [], data: 'AQID' }],
+          },
+          sponsored: true,
         }),
       ],
       [
         'a capped delivery',
         () => ({
-          ...delivery(),
-          recipient: guardian.address,
-          sourceAssets: [
-            { chain: solanaDevnet, address: mint, amount: 100n },
-          ] as [SolanaSourceAsset],
+          ...deliveryTo(guardian.address),
+          source: { chain: solanaDevnet, token: mint, maxAmount: 100n },
         }),
       ],
     ])('runs %s bound to prod-v1', async (_name, build) => {
@@ -3001,116 +3375,207 @@ describe('cross-VM transaction validation', () => {
     evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
     solana: { address: solana },
   } satisfies RhinestoneAccountConfig
+  const mainnetSource = { chain: mainnet, token: mainnetUsdc }
 
   test('defaults Solana delivery to the configured receiver', () => {
     const normalized = normalizeTransaction(
       {
-        sourceChains: [mainnet],
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
+        source: mainnetSource,
+        destination: { chain: solanaMainnet, token: solana, amount: 1n },
         sponsored: true,
       },
       config,
     )
-    expect(normalized.recipient).toBe(solana)
-    expect(normalized.sponsored).toBe(true)
+    expect(normalized).toEqual({
+      source: mainnetSource,
+      destination: {
+        chain: solanaMainnet,
+        token: solana,
+        amount: 1n,
+        recipient: solana,
+      },
+      sponsored: true,
+    })
+  })
+
+  test('expands the same-chain shorthand to the destination chain and nothing else', () => {
+    const normalized = normalizeTransaction(
+      {
+        source: { token: mainnetUsdc },
+        destination: { chain: mainnet, token: mainnetUsdc, amount: 1n },
+      },
+      config,
+    )
+    expect(normalized).toEqual({
+      source: { chain: mainnet, token: mainnetUsdc },
+      destination: { chain: mainnet, token: mainnetUsdc, amount: 1n },
+    })
+    expect(normalizeTransaction(normalized, config)).toEqual(normalized)
   })
 
   test.each([
     [
-      { sourceChains: [], targetChain: mainnet, calls: [] },
-      /at least one managed source/,
+      { destination: { chain: mainnet, calls: [] } },
+      /not gas-sponsored needs a `source`/,
+      'source',
     ],
     [
-      { sourceChains: null, targetChain: mainnet, calls: [] },
-      /must be an array/,
+      { destination: { chain: mainnet, token: mainnetUsdc }, sponsored: true },
+      /A delivery needs a `source`/,
+      'source',
     ],
     [
-      { sourceChains: [mainnet, mainnet], targetChain: mainnet, calls: [] },
-      /duplicate chains/,
+      { source: null, destination: { chain: mainnet } },
+      /`source` must be an object/,
+      'source',
+    ],
+    [
+      { sourceChains: [mainnet], destination: { chain: mainnet } },
+      /`sourceChains` was replaced by `source.chain`/,
+      'sourceChains',
+    ],
+    [
+      { chain: mainnet, calls: [] },
+      /`chain` was replaced by `destination.chain`/,
+      'chain',
     ],
     [
       {
-        sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
-        targetChain: mainnet,
-        sourceTokens: [],
-      },
-      /`sourceTokens` was replaced by `sourceAssets/,
-    ],
-    [
-      {
-        sourceChains: [{ id: 1, kind: 'svm', caip2: 'solana:forged' }],
-        sourceAssets: [{ chain: solanaMainnet, address: solana }],
-        targetChain: mainnet,
-        tokenRequests: [{ address: recipientAddress, amount: 1n }],
+        source: {
+          chain: { id: 1, kind: 'svm', caip2: 'solana:forged' },
+          token: solana,
+        },
+        destination: { chain: mainnet, token: recipientAddress, amount: 1n },
       },
       /managed Solana source is required/,
-    ],
-    [
-      { sourceChains: [{ id: 1500148 }], targetChain: mainnet, calls: [] },
-      /Only viem EVM chains/,
-    ],
-    [
-      { sourceChains: [mainnet], targetChain: solanaMainnet },
-      /at least one token request/,
+      undefined,
     ],
     [
       {
-        sourceChains: [mainnet],
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 0n }],
+        source: { chain: { id: 1500148 }, token: mainnetUsdc },
+        destination: { chain: mainnet },
       },
-      /amounts must be positive/,
+      /eip155 chain ID/,
+      'source.chain',
+    ],
+    [
+      { source: mainnetSource, destination: { chain: solanaMainnet } },
+      /only receives tokens/,
+      'destination.token',
     ],
     [
       {
-        sourceChains: [mainnet],
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-        instructions: [],
+        source: mainnetSource,
+        destination: { chain: solanaMainnet, token: solana, amount: 0n },
       },
-      /custom instructions and HyperCore actions are unavailable/,
+      /must be a positive bigint/,
+      'destination.amount',
     ],
     [
       {
-        sourceChains: [mainnet],
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-        hyperCore: { closePerp: { asset: 'ETH' } },
+        source: mainnetSource,
+        destination: { chain: mainnet, amount: 1n },
       },
-      /custom instructions and HyperCore actions are unavailable/,
+      /needs `destination.token`/,
+      'destination.amount',
     ],
     [
       {
-        sourceChains: [mainnet],
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-        recipient: null,
+        source: mainnetSource,
+        destination: { chain: solanaMainnet, token: solana, instructions: [] },
       },
-      /recipient must be a Solana address/,
+      /`destination.instructions` is not supported for a svm destination/,
+      'destination.instructions',
     ],
     [
       {
-        sourceChains: [mainnet],
-        targetChain: mainnet,
-        recipient: recipientAddress,
-        calls: [{ to: recipientAddress }],
+        source: mainnetSource,
+        destination: {
+          chain: solanaMainnet,
+          token: solana,
+          hyperCore: { closePerp: { asset: 'ETH' } },
+        },
+      },
+      /applies to a HyperCore destination/,
+      'destination.hyperCore',
+    ],
+    [
+      {
+        source: mainnetSource,
+        destination: { chain: solanaMainnet, token: solana, recipient: null },
+      },
+      /delivery recipient must be an address/,
+      'destination.recipient',
+    ],
+    [
+      {
+        source: mainnetSource,
+        destination: {
+          chain: mainnet,
+          token: mainnetUsdc,
+          recipient: recipientAddress,
+          calls: [{ to: recipientAddress }],
+        },
       },
       /recipient cannot execute destination calls/,
+      'destination.recipient',
     ],
-  ])('rejects unsupported dynamic transaction %#', (transaction, message) => {
-    expect(() => normalizeTransaction(transaction as never, config)).toThrow(
-      message,
-    )
-  })
+    [
+      {
+        source: { chain: optimism, token: optimismUsdc },
+        destination: { chain: mainnet },
+        customDeadline: 9_999_999_999,
+      },
+      /same-chain transactions only/,
+      'customDeadline',
+    ],
+    [
+      {
+        source: {
+          ...mainnetSource,
+          calls: [
+            {
+              to: recipientAddress,
+              provides: [{ token: recipientAddress, amount: 1n }],
+            },
+          ],
+        },
+        destination: { chain: mainnet },
+      },
+      /must be `source.token`/,
+      'source.calls.0.provides.0.token',
+    ],
+    [
+      {
+        source: { ...mainnetSource, auxiliaryFunds: 0n },
+        destination: { chain: mainnet },
+      },
+      /must be a positive bigint/,
+      'source.auxiliaryFunds',
+    ],
+  ])(
+    'rejects unsupported dynamic transaction %#',
+    (transaction, message, field) => {
+      let error: unknown
+      try {
+        normalizeTransaction(transaction as never, config)
+      } catch (caught) {
+        error = caught
+      }
+      expect(error).toBeInstanceOf(UnsupportedAccountCapabilityError)
+      expect((error as Error).message).toMatch(message)
+      if (field) {
+        expect(error).toMatchObject({ context: { field } })
+      }
+    },
+  )
 
   test('rejects a synthetic non-EVM ID disguised as a viem destination', () => {
     expect(() =>
       normalizeTransaction(
         {
-          sourceChains: [mainnet],
-          targetChain: { ...mainnet, id: 1500148 },
-          calls: [],
+          destination: { chain: { ...mainnet, id: 1500148 } },
+          sponsored: true,
         } as never,
         config,
       ),
@@ -3118,40 +3583,44 @@ describe('cross-VM transaction validation', () => {
   })
 
   test.each([
+    { destination: { chain: { ...mainnet, id: -1 } }, sponsored: true },
     {
-      sourceChains: [mainnet],
-      targetChain: { ...mainnet, id: -1 },
-      calls: [],
-    },
-    {
-      sourceChains: [{ ...mainnet, id: -1 }],
-      targetChain: mainnet,
-      calls: [],
+      source: { chain: { ...mainnet, id: -1 }, token: mainnetUsdc },
+      destination: { chain: mainnet },
     },
   ])('wraps invalid chain IDs in a capability error', (transaction) => {
     expect(() => normalizeTransaction(transaction as never, config)).toThrow(
       UnsupportedAccountCapabilityError,
     )
     expect(() => normalizeTransaction(transaction as never, config)).toThrow(
-      /Only viem EVM chains|eip155 chain ID/,
+      /eip155 chain ID/,
     )
   })
 
   test('reports non-EVM origins without calling them Solana', () => {
     expect(() =>
-      adaptTransaction(invocationContext(), {
-        chain: { id: 728126428, kind: 'tvm', caip2: 'tron:mainnet' },
-      } as never),
-    ).toThrow(/Non-EVM origin execution/)
+      normalizeTransaction(
+        {
+          source: { chain: tronMainnet, token: mainnetUsdc },
+          destination: { chain: mainnet },
+        } as never,
+        config,
+      ),
+    ).toThrow(
+      'A tvm chain cannot fund a transaction; `source.chain` must be an EVM chain.',
+    )
   })
 
   test('rejects a forged non-EVM descriptor', () => {
     expect(() =>
       normalizeTransaction(
         {
-          sourceChains: [mainnet],
-          targetChain: { ...solanaMainnet, caip2: 'tron:mainnet' },
-          tokenRequests: [{ address: solana, amount: 1n }],
+          source: mainnetSource,
+          destination: {
+            chain: { ...solanaMainnet, caip2: 'tron:mainnet' },
+            token: solana,
+            amount: 1n,
+          },
         } as never,
         config,
       ),
@@ -3159,192 +3628,247 @@ describe('cross-VM transaction validation', () => {
   })
 })
 
-describe('prepareTransaction automatic source selection', () => {
-  function fixture(eligibleChainIds: readonly number[] = [mainnet.id]) {
+describe('EVM prepare against the orchestrator', () => {
+  /** An orchestrator that records every non-RPC request and answers none. */
+  function stubOrchestrator() {
+    const requests: { url: string; body: Record<string, unknown> }[] = []
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined
+        if (body?.method === 'eth_getCode') {
+          return Response.json({ jsonrpc: '2.0', id: body.id, result: '0x' })
+        }
+        requests.push({ url, body })
+        return Response.json(
+          { error: { code: 'INTERNAL_ERROR', message: 'stop' } },
+          { status: 500 },
+        )
+      },
+    )
+    vi.stubGlobal('fetch', fetch)
+    return { fetch, requests }
+  }
+
+  function createAccount() {
+    return new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
+      evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+    })
+  }
+
+  test('sends a shorthand source on the destination chain', async () => {
+    const { requests } = stubOrchestrator()
+    try {
+      const account = await createAccount()
+      await account
+        .prepareTransaction({
+          source: { token: mainnetUsdc },
+          destination: { chain: mainnet, token: mainnetUsdc, amount: 1n },
+        })
+        .catch(() => {})
+
+      expect(requests.map(({ url }) => url)).toEqual([
+        `${PROD_ORCHESTRATOR_URL}/quotes`,
+      ])
+      const [{ body }] = requests as [(typeof requests)[number]]
+      expect(body.source).toEqual({
+        vm: 'evm',
+        chainId: formatCaip2(mainnet.id),
+        token: mainnetUsdc,
+      })
+      expect(body.destination).toEqual({
+        vm: 'evm',
+        chainId: formatCaip2(mainnet.id),
+        token: mainnetUsdc,
+        amount: '1',
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('quotes a cross-chain delivery from the named source without reading the chain catalog', async () => {
+    const { requests } = stubOrchestrator()
+    try {
+      const account = await createAccount()
+      await account
+        .prepareTransaction({
+          source: { chain: mainnet, token: mainnetUsdc, maxAmount: 2n },
+          destination: { chain: optimism, token: optimismUsdc, amount: 1n },
+        })
+        .catch(() => {})
+
+      expect(requests.map(({ url }) => url)).toEqual([
+        `${PROD_ORCHESTRATOR_URL}/quotes`,
+      ])
+      const [{ body }] = requests as [(typeof requests)[number]]
+      expect(Object.keys(body).sort()).toEqual([
+        'account',
+        'destination',
+        'source',
+      ])
+      expect(body.source).toEqual({
+        vm: 'evm',
+        chainId: formatCaip2(mainnet.id),
+        token: mainnetUsdc,
+        maxAmount: '2',
+      })
+      expect(body.destination).toEqual({
+        vm: 'evm',
+        chainId: formatCaip2(optimism.id),
+        token: optimismUsdc,
+        amount: '1',
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test.each([
+    [
+      'customDeadline on a cross-chain transaction',
+      {
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: { chain: optimism, calls: [] },
+        customDeadline: 9_999_999_999,
+      },
+      'customDeadline',
+    ],
+    [
+      'a delivery with no source',
+      {
+        destination: { chain: optimism, token: optimismUsdc, amount: 1n },
+        sponsored: true,
+      },
+      'source',
+    ],
+    [
+      'an unsponsored execution with no source',
+      { destination: { chain: optimism, calls: [] } },
+      'source',
+    ],
+  ])('refuses %s before any request', async (_name, transaction, field) => {
+    const { fetch } = stubOrchestrator()
+    try {
+      const account = await createAccount()
+      const refusal = account.prepareTransaction(transaction as never)
+
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toMatchObject({ context: { field } })
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('EVM prepared artifacts from an earlier wire version', () => {
+  function fixture() {
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
-    const quote = quoteFixture('best')
-    const getEligibleEvmSourceChains = vi.fn(async () =>
-      eligibleChainIds.map(toEvmChainReference),
-    )
-    const prepareIntent = vi.fn(async (_context, input) => ({
-      traceId: 'trace',
-      input,
-      request: intentRequest,
-      normalized: normalizedIntentInput,
-      quote,
-      quotes: [quote],
-      signing: {} as never,
-      accountChain: toEvmChainReference(mainnet.id),
-    }))
+    const workflows = {
+      getAddress: vi.fn(() => owner.address),
+      reconstructPreparedIntent: vi.fn(),
+      signIntent: vi.fn(),
+      signIntentAsOwner: vi.fn(),
+      assembleIntent: vi.fn(),
+      signRequestedDelegations: vi.fn(),
+      submitIntent: vi.fn(),
+    }
     const facade = createAccountFacade(
       compatibilityConfig,
-      {
-        evm: compatibilityConfig as EvmAccountConfig,
-        solana: { address: solanaAddress('11111111111111111111111111111111') },
-      },
+      { evm: compatibilityConfig as EvmAccountConfig },
       {
         config: resolveSdkConfig({ apiKey: 'offline' }),
         project: {} as never,
         createAccount: (context) => ({
           context,
-          workflows: {
-            getAddress: vi.fn(() => owner.address),
-            getEligibleEvmSourceChains,
-            prepareIntent,
-          } as never,
+          workflows: workflows as never,
         }),
       },
     )
-    return { facade, getEligibleEvmSourceChains, prepareIntent }
+    return { facade, workflows }
   }
 
-  test('resolves and propagates automatic EVM sources for Solana delivery', async () => {
-    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture([
-      mainnet.id,
-      optimism.id,
-    ])
-    const solana = solanaAddress('11111111111111111111111111111111')
+  const quote = quoteFixture('best')
+  const { signingRequests: _requests, ...withoutRequests } = quote
 
-    await facade.prepareTransaction({
-      targetChain: solanaMainnet,
-      tokenRequests: [{ address: solana, amount: 1n }],
-    })
-
-    expect(getEligibleEvmSourceChains).toHaveBeenCalledWith(
-      parseCaip2(solanaMainnet.caip2),
-    )
-    expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
-      destination: parseCaip2(solanaMainnet.caip2),
-      sourceChains: [
-        toEvmChainReference(mainnet.id),
-        toEvmChainReference(optimism.id),
-      ],
-      accountAccessList: { chainIds: [mainnet.id, optimism.id] },
-    })
-  })
-
+  // Both carry the flat transaction their generation used: the binding is
+  // checked first, so they fail as an earlier wire version and not as a
+  // malformed transaction.
   test.each([
-    {
-      sourceChains: [mainnet],
-      targetChain: optimism,
-      calls: [],
-    },
-    { chain: mainnet, calls: [] },
-  ])(
-    'does not read the catalog for explicit or same-chain sources',
-    async (transaction) => {
-      const { facade, getEligibleEvmSourceChains } = fixture()
-
-      await facade.prepareTransaction(transaction)
-
-      expect(getEligibleEvmSourceChains).not.toHaveBeenCalled()
-    },
-  )
-
-  test('fails before quoting when no automatic source is eligible', async () => {
-    const { facade, prepareIntent } = fixture([])
-    const solana = solanaAddress('11111111111111111111111111111111')
-
-    await expect(
-      facade.prepareTransaction({
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-      }),
-    ).rejects.toThrow(/No managed EVM source chains are eligible/)
-    expect(prepareIntent).not.toHaveBeenCalled()
-  })
-
-  test('propagates catalog read failures before quoting', async () => {
-    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture()
-    getEligibleEvmSourceChains.mockRejectedValueOnce(
-      new Error('catalog unavailable'),
-    )
-    const solana = solanaAddress('11111111111111111111111111111111')
-
-    await expect(
-      facade.prepareTransaction({
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-      }),
-    ).rejects.toThrow(/catalog unavailable/)
-    expect(prepareIntent).not.toHaveBeenCalled()
-  })
-
-  test('rejects source assets outside the automatic source scope', async () => {
-    const { facade, getEligibleEvmSourceChains, prepareIntent } = fixture([
-      mainnet.id,
-    ])
-    const solana = solanaAddress('11111111111111111111111111111111')
-
-    await expect(
-      facade.prepareTransaction({
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-        sourceAssets: { [optimism.id]: [recipientAddress] },
-      }),
-    ).rejects.toThrow(/outside the eligible source scope/)
-    expect(getEligibleEvmSourceChains).toHaveBeenCalledOnce()
-    expect(prepareIntent).not.toHaveBeenCalled()
-  })
-
-  // A Blanc-era artifact has role-keyed `signData` and no request binding.
-  // It has to be refused with the typed error before anything reads its
-  // quotes, so the caller is told to prepare afresh rather than tripping over
-  // a missing field.
-  test('refuses a prepared artifact from an earlier wire version', async () => {
-    const { facade } = fixture()
-    const prepared = await facade.prepareTransaction({
-      sourceChains: [mainnet],
-      targetChain: mainnet,
-      calls: [],
-      tokenRequests: [{ address: recipientAddress, amount: 1n }],
-    })
-    const { signingRequests: _requests, ...withoutRequests } =
-      prepared.quotes.best
-    const { request: _binding, ...withoutBinding } = prepared
-    const legacy = {
-      ...withoutBinding,
-      quotes: {
-        ...prepared.quotes,
-        best: { ...withoutRequests, signData: { origin: [] } },
+    [
+      'a caucasus-1 artifact',
+      {
+        quotes: { traceId: 'trace', best: quote, all: [quote] },
+        intentInput: serializedIntentInput,
+        request: {
+          version: 'caucasus-1',
+          request: {
+            account: intentRequest.account,
+            destination: {
+              vm: 'evm',
+              chainId: formatCaip2(mainnet.id),
+              tokenRequests: [],
+            },
+          },
+        },
+        transaction: { chain: mainnet, tokenRequests: [] },
       },
-    } as unknown as PreparedTransactionData
-
-    expect(() => facade.getTransactionMessages(legacy)).toThrow(
-      InvalidPreparedTransactionError,
-    )
-    await expect(facade.signTransaction(legacy)).rejects.toThrow(
-      InvalidPreparedTransactionError,
-    )
-    await expect(
-      facade.submitTransaction({
-        ...legacy,
-        quote: prepared.quotes.best,
+    ],
+    // A Blanc-era artifact has role-keyed `signData` and no request binding.
+    [
+      'a Blanc-era artifact',
+      {
+        quotes: {
+          traceId: 'trace',
+          best: { ...withoutRequests, signData: { origin: [] } },
+          all: [{ ...withoutRequests, signData: { origin: [] } }],
+        },
+        intentInput: serializedIntentInput,
+        transaction: sameChainTransaction,
+      },
+    ],
+  ])('refuses %s before any effect', async (_name, artifact) => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const { facade, workflows } = fixture()
+      const legacy = artifact as unknown as PreparedTransactionData
+      const signed = {
+        ...artifact,
+        quote,
         proofs: [],
-      } as unknown as SignedTransactionData),
-    ).rejects.toThrow(InvalidPreparedTransactionError)
-  })
+      } as unknown as SignedTransactionData
 
-  // Fails closed here, naming the caller's own input: sent on, an empty
-  // selection is a wire-schema rejection naming fields they never wrote.
-  test.each([
-    ['an empty list', [] as const],
-    ['an empty map', {} as const],
-    ['a chain with no tokens', { [mainnet.id]: [] } as const],
-  ])('rejects source assets given as %s', async (_label, sourceAssets) => {
-    const { facade, prepareIntent } = fixture([mainnet.id])
-    const solana = solanaAddress('11111111111111111111111111111111')
-
-    await expect(
-      facade.prepareTransaction({
-        targetChain: solanaMainnet,
-        tokenRequests: [{ address: solana, amount: 1n }],
-        sourceAssets: sourceAssets as never,
-      }),
-    ).rejects.toThrow(/sourceAssets/)
-    expect(prepareIntent).not.toHaveBeenCalled()
+      expect(() => facade.getTransactionMessages(legacy)).toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.signTransaction(legacy)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.signTransaction(legacy, { owner })).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.assembleTransaction(legacy, [])).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.signAuthorizations(legacy)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      await expect(facade.submitTransaction(signed)).rejects.toThrow(
+        InvalidPreparedTransactionError,
+      )
+      for (const workflow of Object.values(workflows)) {
+        expect(workflow).not.toHaveBeenCalled()
+      }
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 
@@ -3364,7 +3888,7 @@ describe('EVM → Solana delivery', () => {
       traceId: 'trace',
       input,
       request: intentRequest,
-      normalized: normalizedIntentInput,
+      intentInput: serializedIntentInput,
       quote,
       quotes: [quote],
       signing: {} as never,
@@ -3405,9 +3929,8 @@ describe('EVM → Solana delivery', () => {
     const { facade, prepareIntent } = fixture()
 
     const prepared = await facade.prepareTransaction({
-      sourceChains: [mainnet, optimism],
-      targetChain: solanaMainnet,
-      tokenRequests: [{ address: mint, amount: 50_000n }],
+      source: { chain: optimism, token: optimismUsdc },
+      destination: { chain: solanaMainnet, token: mint, amount: 50_000n },
       sponsored: true,
       appFees: { feeBps: 25 },
       protocolFees: { feeBps: 50 },
@@ -3415,13 +3938,11 @@ describe('EVM → Solana delivery', () => {
 
     expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
       destination: parseCaip2(solanaMainnet.caip2),
-      sourceChains: [
-        toEvmChainReference(mainnet.id),
-        toEvmChainReference(optimism.id),
-      ],
+      source: { chain: toEvmChainReference(optimism.id), token: optimismUsdc },
       calls: [],
       // Base58 is case-sensitive; the facade must not normalize either string.
-      tokenRequests: [{ token: mint, amount: 50_000n }],
+      token: mint,
+      amount: 50_000n,
       recipient: { address: receiver },
       options: {
         appFees: { feeBps: 25 },
@@ -3442,10 +3963,13 @@ describe('EVM → Solana delivery', () => {
     const { facade, prepareIntent } = fixture()
 
     await facade.prepareTransaction({
-      sourceChains: [mainnet],
-      targetChain: solanaDevnet,
-      tokenRequests: [{ address: mint, amount: 1n }],
-      recipient: explicitRecipient,
+      source: { chain: mainnet, token: mainnetUsdc },
+      destination: {
+        chain: solanaDevnet,
+        token: mint,
+        amount: 1n,
+        recipient: explicitRecipient,
+      },
     })
 
     expect(prepareIntent.mock.calls[0]?.[1]).toMatchObject({
@@ -3457,10 +3981,9 @@ describe('EVM → Solana delivery', () => {
     expect(() =>
       normalizeTransaction(
         {
-          sourceChains: [mainnet],
-          targetChain: solanaMainnet,
-          tokenRequests: [{ address: mint, amount: 1n }],
-        } as never,
+          source: { chain: mainnet, token: mainnetUsdc },
+          destination: { chain: solanaMainnet, token: mint, amount: 1n },
+        },
         { evm: { owners: { type: 'ecdsa', accounts: [owner] } } },
       ),
     ).toThrow(AccountVmNotConfiguredError)
@@ -3616,7 +4139,7 @@ describe('account boundary adapters', () => {
       },
       intentInput: serializedIntentInput,
       request: preparedRequest,
-      transaction: { chain: mainnet, calls: [] },
+      transaction: sameChainTransaction,
     } satisfies PreparedTransactionData
     await facade.signTransaction(prepared, {
       owner,
@@ -3676,7 +4199,7 @@ describe('account boundary adapters', () => {
       quotes: { traceId: 'trace', best: quote, all: [quote] },
       intentInput: serializedIntentInput,
       request: preparedRequest,
-      transaction: { chain: mainnet, calls: [] },
+      transaction: sameChainTransaction,
     } satisfies PreparedTransactionData
 
     expect(() =>
@@ -3712,7 +4235,7 @@ describe('account boundary adapters', () => {
       quotes: { traceId: 'trace', best: quote, all: [quote] },
       intentInput: serializedIntentInput,
       request: preparedRequest,
-      transaction: { chain: mainnet, calls: [] },
+      transaction: sameChainTransaction,
     } satisfies PreparedTransactionData
 
     let signing: Promise<unknown> | undefined
@@ -3757,7 +4280,7 @@ describe('account boundary adapters', () => {
       quotes: { traceId: 'trace', best, all: [best, alternate] },
       intentInput: serializedIntentInput,
       request: preparedRequest,
-      transaction: { chain: mainnet, calls: [] },
+      transaction: sameChainTransaction,
       quote: alternate,
       proofs: [{ kind: 'eip712', signature: '0x12' }],
     } satisfies SignedTransactionData
@@ -3925,10 +4448,12 @@ describe('account boundary adapters', () => {
     const transaction = adaptTransaction(
       invocationContext(),
       {
-        sourceChains: [mainnet],
-        targetChain: hyperCorePerp,
-        hyperCore: {
-          openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: {
+          chain: hyperCorePerp,
+          hyperCore: {
+            openPerp: { asset: 'BTC', direction: 'long', notionalUsd: 100 },
+          },
         },
       },
       action,
@@ -3938,10 +4463,10 @@ describe('account boundary adapters', () => {
   })
 
   test('leaves hyperCore off the options when nothing resolved', () => {
-    const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
-    })
+    const transaction = adaptTransaction(
+      invocationContext(),
+      sameChainTransaction,
+    )
 
     expect(transaction.options && 'hyperCore' in transaction.options).toBe(
       false,
@@ -3950,11 +4475,14 @@ describe('account boundary adapters', () => {
 
   test('projects smart-account recipients instead of dropping them', () => {
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
-      recipient: {
-        account: { type: 'nexus', version: '1.2.0' },
-        owners: { type: 'ecdsa', accounts: [owner] },
+      source: { token: mainnetUsdc },
+      destination: {
+        chain: mainnet,
+        token: mainnetUsdc,
+        recipient: {
+          account: { type: 'nexus', version: '1.2.0' },
+          owners: { type: 'ecdsa', accounts: [owner] },
+        },
       },
     })
 
@@ -3969,9 +4497,12 @@ describe('account boundary adapters', () => {
     // no setup ops, which on the wire would read as "this recipient executes".
     expect(
       adaptTransaction(invocationContext(), {
-        chain: mainnet,
-        calls: [],
-        recipient: recipientAddress,
+        source: { token: mainnetUsdc },
+        destination: {
+          chain: mainnet,
+          token: mainnetUsdc,
+          recipient: recipientAddress,
+        },
       }).recipient,
     ).toEqual({ kind: 'bare', address: recipientAddress })
   })
@@ -3984,9 +4515,8 @@ describe('account boundary adapters', () => {
     const project = (recipient: EvmAccountConfig) =>
       accountRecipient(
         adaptTransaction(invocationContext(), {
-          chain: mainnet,
-          calls: [],
-          recipient,
+          source: { token: mainnetUsdc },
+          destination: { chain: mainnet, token: mainnetUsdc, recipient },
         }).recipient,
       )
 
@@ -4069,9 +4599,8 @@ describe('account boundary adapters', () => {
       intentInput: serializedIntentInput,
       request: preparedRequest,
       transaction: {
-        sourceChains: [mainnet, optimism],
-        targetChain: optimism,
-        calls: [],
+        source: { chain: mainnet, token: mainnetUsdc },
+        destination: { chain: optimism },
       },
     } satisfies PreparedTransactionData
 
@@ -4086,8 +4615,7 @@ describe('account boundary adapters', () => {
   test('forwards customDeadline for same-chain intents', () => {
     const customDeadline = 9_999_999_999
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       customDeadline,
     })
 
@@ -4099,26 +4627,20 @@ describe('account boundary adapters', () => {
   // pins that no stray venue field is synthesised onto a request — the previous
   // `balance` flag was dropped by this very mapping, which is what silently
   // routed spot deliveries into perp margin.
-  test('synthesises no venue field onto token requests', () => {
+  test('synthesises no venue field onto the delivery', () => {
+    const token = '0x0000000000000000000000000000000000000020'
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
-      tokenRequests: [
-        {
-          address: '0x0000000000000000000000000000000000000020',
-          amount: 1_000_000n,
-        },
-      ],
+      source: { token },
+      destination: { chain: mainnet, token, amount: 1_000_000n },
     })
 
-    expect(transaction.tokenRequests?.[0]).toMatchObject({ amount: 1_000_000n })
-    expect(transaction.tokenRequests?.[0]).not.toHaveProperty('balance')
+    expect(transaction).toMatchObject({ token, amount: 1_000_000n })
+    expect(transaction).not.toHaveProperty('balance')
   })
 
   test('forwards protocolFees into intent options (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       protocolFees: { feeBps: 35 },
     })
 
@@ -4128,8 +4650,7 @@ describe('account boundary adapters', () => {
 
   test('maps sponsored.protocolFees onto sponsorSettings (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       sponsored: {
         gas: false,
         bridging: false,
@@ -4148,8 +4669,7 @@ describe('account boundary adapters', () => {
 
   test('sponsored object without protocolFees defaults it to false (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       sponsored: { gas: true, bridging: true, swaps: true },
     })
 
@@ -4163,8 +4683,7 @@ describe('account boundary adapters', () => {
   ])('ignores withdrawn runtime swapValue input: %j', (legacy) => {
     const sponsored = { gas: true, bridging: false, ...legacy }
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       sponsored,
     })
 
@@ -4179,8 +4698,7 @@ describe('account boundary adapters', () => {
 
   test('boolean sponsored: true enables protocolFees too (RHI-4904)', () => {
     const transaction = adaptTransaction(invocationContext(), {
-      chain: mainnet,
-      calls: [],
+      ...sameChainTransaction,
       sponsored: true,
     })
 
@@ -4190,6 +4708,163 @@ describe('account boundary adapters', () => {
       swapFees: true,
       protocolFees: true,
     })
+  })
+
+  test('adapts the one source, spending on the destination chain by default', () => {
+    const config = {
+      evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } },
+    }
+    const shorthand = adaptTransaction(
+      invocationContext(),
+      normalizeTransaction(
+        {
+          source: { token: mainnetUsdc, maxAmount: 5n, auxiliaryFunds: 1n },
+          destination: { chain: mainnet },
+        },
+        config,
+      ),
+    )
+    const crossChain = adaptTransaction(
+      invocationContext(),
+      normalizeTransaction(
+        {
+          source: { chain: optimism, token: optimismUsdc },
+          destination: { chain: mainnet, token: mainnetUsdc },
+        },
+        config,
+      ),
+    )
+
+    expect(shorthand.source).toEqual({
+      chain: toEvmChainReference(mainnet.id),
+      token: mainnetUsdc,
+      maxAmount: 5n,
+      auxiliaryFunds: 1n,
+    })
+    expect(crossChain.source).toEqual({
+      chain: toEvmChainReference(optimism.id),
+      token: optimismUsdc,
+    })
+    expect(crossChain).toMatchObject({
+      destination: toEvmChainReference(mainnet.id),
+      token: mainnetUsdc,
+    })
+    expect(
+      adaptTransaction(invocationContext(), {
+        destination: { chain: mainnet },
+        sponsored: true,
+      }),
+    ).not.toHaveProperty('source')
+  })
+
+  test.each([
+    [
+      'the source chain',
+      { source: { chain: optimism, token: optimismUsdc } },
+      { sourceChains: [optimism.id] },
+    ],
+    ['nothing for a source-free execution', { sponsored: true }, {}],
+  ])('reports %s on the submitted result', async (_name, patch, expected) => {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const reconstructPreparedIntent = vi.fn(async (_context, input) => ({
+      ...input,
+      input: input.intentInput,
+      accountChain: toEvmChainReference(1),
+      signing: {} as never,
+    }))
+    const submissionClient = {
+      submitIntent: vi.fn(async ({ intentId }: { intentId: string }) => ({
+        traceId: 'submit-trace',
+        intentId,
+      })),
+    }
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline' }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: {
+            reconstructPreparedIntent,
+            submitIntent: (_context: unknown, signed: never) =>
+              submitIntent({ submissionClient } as never, signed),
+          } as never,
+        }),
+      },
+    )
+    const quote = quoteFixture('best')
+    const signed = {
+      quotes: { traceId: 'trace', best: quote, all: [quote] },
+      intentInput: serializedIntentInput,
+      request: preparedRequest,
+      transaction: { destination: { chain: mainnet }, ...patch },
+      quote,
+      proofs: [{ kind: 'eip712', signature: '0x12' }],
+    } as SignedTransactionData
+
+    await expect(facade.submitTransaction(signed)).resolves.toEqual({
+      type: 'intent',
+      id: 'best',
+      traceId: 'submit-trace',
+      ...expected,
+      targetChain: mainnet.id,
+    })
+  })
+
+  test('forwards a deployment or setup source token and refuses a malformed one', async () => {
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const deploy = vi.fn(async () => true)
+    const setup = vi.fn(async () => true)
+    const facade = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      {
+        config: resolveSdkConfig({ apiKey: 'offline' }),
+        project: {} as never,
+        createAccount: (context) => ({
+          context,
+          workflows: { deploy, setup } as never,
+        }),
+      },
+    )
+
+    await facade.deploy('evm', mainnet, { source: { token: mainnetUsdc } })
+    await facade.setup(mainnet, { source: { token: mainnetUsdc } })
+    await facade.setup(mainnet)
+    expect(deploy).toHaveBeenCalledWith(
+      expect.anything(),
+      toEvmChainReference(mainnet.id),
+      { sourceToken: mainnetUsdc },
+    )
+    expect(setup.mock.calls.map((call) => call.slice(1))).toEqual([
+      [toEvmChainReference(mainnet.id), { sourceToken: mainnetUsdc }],
+      [toEvmChainReference(mainnet.id), {}],
+    ])
+
+    deploy.mockClear()
+    setup.mockClear()
+    for (const source of [
+      { token: 'USDC' },
+      { chain: optimism, token: mainnetUsdc },
+      null,
+    ]) {
+      await expect(
+        facade.deploy('evm', mainnet, { source } as never),
+      ).rejects.toMatchObject({
+        context: { field: 'source.token', chainId: mainnet.id },
+      })
+      expect(() => facade.setup(mainnet, { source } as never)).toThrow(
+        UnsupportedAccountCapabilityError,
+      )
+    }
+    expect(deploy).not.toHaveBeenCalled()
+    expect(setup).not.toHaveBeenCalled()
   })
 })
 
@@ -4818,11 +5493,13 @@ describe('quote-time sponsorship approval', () => {
 
   function transfer() {
     return {
-      chain: solanaDevnet,
-      tokenRequests: [{ address: mint, amount: 100n }] as [
-        { address: typeof mint; amount: bigint },
-      ],
-      recipient,
+      source: { token: mint },
+      destination: {
+        chain: solanaDevnet,
+        token: mint,
+        amount: 100n,
+        recipient,
+      },
       sponsored: { gas: true, bridging: false, swaps: false },
     }
   }
@@ -4924,8 +5601,10 @@ describe('quote-time sponsorship approval', () => {
       const approvals: unknown[] = []
       const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
       const transaction = {
-        chain: mainnet,
-        calls: [{ to: recipientAddress, data: '0x' as const }],
+        destination: {
+          chain: mainnet,
+          calls: [{ to: recipientAddress, data: '0x' as const }],
+        },
         sponsored: true,
       }
       const account = await sdk(async (input) => {
@@ -4971,19 +5650,23 @@ describe('quote-time sponsorship approval', () => {
       ).resolves.toBe(true)
 
       expect(server.events).toEqual(['approve', 'quote', 'submit'])
-      expect(approvals[0]).toMatchObject({
+      expect(approvals[0]).toEqual({
+        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
         account: {
-          address: swig.wallet,
           svm: {
+            type: 'swig',
+            address: swig.wallet,
             swigAccount: swig.swig,
+            authorization: { kind: 'secp256k1', address: owner.address },
             initData: {
               authority: { kind: 'secp256k1', publicKey: owner.publicKey },
               id: independentId,
             },
           },
         },
+        destination: { vm: 'svm', chainId: solanaDevnet.caip2 },
         options: {
-          sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
+          sponsorship: { gas: true, bridgeFees: false, swapFees: false },
         },
       })
       expect(projectSponsorshipApproval(server.quotes[0]?.body)).toEqual(

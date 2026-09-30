@@ -29,9 +29,8 @@ describe.sequential('SDK integration account kinds', () => {
         account,
         label: `accounts/${type}/same-chain/fresh`,
         transaction: {
-          chain: sourceChain,
+          destination: { chain: sourceChain, calls: [createNoopCall()] },
           sponsored: true,
-          calls: [createNoopCall()],
         },
       })
 
@@ -66,9 +65,8 @@ describe.sequential('SDK integration account kinds', () => {
       label: 'accounts/nexus-7702/same-chain/fresh',
       signAuthorizations: true,
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         eip7702InitSignature,
       },
     })

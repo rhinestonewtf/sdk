@@ -3,13 +3,14 @@ import { UnsupportedSponsorshipApprovalError } from '../../errors/execution'
 import type { SerializedIntentInput } from './public'
 import {
   assertSponsorshipApproval,
+  isSponsoredIntentInput,
   projectSponsorshipApproval,
+  toSponsorshipApprovalInput,
 } from './sponsorship-approval'
 
 const A = '0x00000000000000000000000000000000000000a1'
 const B = '0x00000000000000000000000000000000000000b2'
 const T1 = '0x0000000000000000000000000000000000000071'
-const T2 = '0x0000000000000000000000000000000000000072'
 const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
 const WALLET = 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2'
 const SWIG = '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs'
@@ -17,386 +18,206 @@ const MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
 const call = { to: B, value: '1', data: '0x12' }
 
 const evmAccount = { evm: { type: 'erc7579', address: A, signatureMode: 1 } }
-const evmDestination = { vm: 'evm', chainId: 'eip155:8453', tokenRequests: [] }
+const evmDestination = { vm: 'evm', chainId: 'eip155:8453' }
 
 function body(overrides: Record<string, unknown> = {}) {
   return { account: evmAccount, destination: evmDestination, ...overrides }
 }
 
+const CONTRACT_VERSION = 'sdk-caucasus-singular-2026-09-v1'
+
 describe('projectSponsorshipApproval', () => {
-  test('projects a minimal EVM body into the established spelling', () => {
+  test('projects a minimal EVM body into the envelope, with source omitted', () => {
     expect(projectSponsorshipApproval(body())).toEqual({
-      account: { address: A, accountType: 'ERC7579', setupOps: [] },
-      destinationChainId: 8453,
-      destinationExecutions: [],
-      tokenRequests: [],
-      options: { signatureMode: 1 },
-    })
-  })
-
-  test('maps an undeployed, delegated smart account with session mocks', () => {
-    const projected = projectSponsorshipApproval(
-      body({
-        account: {
-          evm: {
-            type: 'erc7579',
-            address: A,
-            initData: { setupOps: [{ to: B, data: '0xfa' }] },
-            signatureMode: 2,
-            delegations: { default: { contract: B } },
-            simulation: { mockSignaturesByChain: { 'eip155:10': '0xabcd' } },
-          },
-        },
-      }),
-    )
-    expect(projected.account).toEqual({
-      address: A,
-      accountType: 'ERC7579',
-      setupOps: [{ to: B, data: '0xfa' }],
-      delegations: { 0: { contract: B } },
-      mockSignatures: { 10: '0xabcd' },
-    })
-    expect(projected.options).toEqual({ signatureMode: 2 })
-  })
-
-  test('maps an EOA with no setup operations', () => {
-    expect(
-      projectSponsorshipApproval(
-        body({ account: { evm: { type: 'eoa', address: A } } }),
-      ),
-    ).toMatchObject({
-      account: { address: A, accountType: 'EOA', setupOps: [] },
+      contractVersion: CONTRACT_VERSION,
+      account: evmAccount,
+      destination: evmDestination,
       options: {},
     })
   })
 
-  test('names a standalone Swig verbatim, with no EVM-only fields', () => {
-    const svm = {
-      type: 'swig',
-      address: WALLET,
-      swigAccount: SWIG,
-      authorization: { kind: 'secp256k1', address: A },
-      initData: {
-        authority: { kind: 'secp256k1', publicKey: `0x02${'11'.repeat(32)}` },
-        id: `0x${'07'.repeat(32)}`,
+  test('accepts every field the SDK emits, verbatim', () => {
+    const account = {
+      evm: {
+        type: 'erc7579',
+        address: A,
+        initData: { setupOps: [{ to: B, data: '0xfa' }] },
+        signatureMode: 2,
+        delegations: {
+          default: { contract: B },
+          chains: { 'eip155:10': { contract: A } },
+        },
+        simulation: {
+          mockSignature: '0x01',
+          mockSignaturesByChain: { 'eip155:10': '0xabcd' },
+        },
+      },
+      svm: {
+        type: 'swig',
+        address: WALLET,
+        swigAccount: SWIG,
+        authorization: { kind: 'secp256k1', address: A },
+        initData: {
+          authority: { kind: 'secp256k1', publicKey: `0x02${'11'.repeat(32)}` },
+          id: `0x${'07'.repeat(32)}`,
+        },
       },
     }
-    expect(
-      projectSponsorshipApproval({
-        account: { svm },
-        destination: { vm: 'svm', chainId: DEVNET, tokenRequests: [] },
-        source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
-        options: { sponsorship: { gas: true, bridgeFees: false } },
-      }),
-    ).toEqual({
-      account: { address: WALLET, svm },
-      destinationChainId: 792703810,
-      destinationExecutions: [],
-      tokenRequests: [],
-      accountAccessList: { chainIds: [792703810] },
-      options: { sponsorSettings: { gas: true, bridgeFees: false } },
-    })
-  })
-
-  test('keeps the EVM executor fields beside the Swig it pairs with', () => {
-    const svm = {
-      type: 'swig',
-      address: WALLET,
-      authorization: { kind: 'secp256r1', publicKey: `0x03${'22'.repeat(32)}` },
+    const source = {
+      vm: 'evm',
+      chainId: 'eip155:1',
+      token: T1,
+      maxAmount: '100',
+      auxiliaryFunds: '5',
+      execution: { calls: [call] },
     }
-    expect(
-      projectSponsorshipApproval(body({ account: { ...evmAccount, svm } }))
-        .account,
-    ).toEqual({ address: A, accountType: 'ERC7579', setupOps: [], svm })
-  })
-
-  test.each([
-    [
-      'a bare EVM recipient and destination calls',
-      {
-        ...evmDestination,
-        recipient: { address: B },
-        execution: { calls: [call], gasLimit: '100' },
+    const destination = {
+      vm: 'evm',
+      chainId: 'eip155:8453',
+      token: T1,
+      amount: '10',
+      recipient: {
+        type: 'erc7579',
+        address: B,
+        initData: { setupOps: [{ to: A, data: '0x01' }] },
+        delegations: { default: { contract: A } },
+        simulation: { mockSignature: '0x02' },
       },
-      {
-        recipient: { address: B },
-        destinationExecutions: [call],
-        destinationGasUnits: '100',
-      },
-    ],
-    [
-      'a configured EVM recipient',
-      {
-        ...evmDestination,
-        recipient: {
-          type: 'erc7579',
-          address: B,
-          initData: { setupOps: [{ to: A, data: '0x01' }] },
-        },
-      },
-      {
-        recipient: {
-          address: B,
-          accountType: 'ERC7579',
-          setupOps: [{ to: A, data: '0x01' }],
-        },
-      },
-    ],
-    [
-      'Solana instructions and lookup tables',
-      {
-        vm: 'svm',
-        chainId: DEVNET,
-        tokenRequests: [],
-        execution: {
-          instructions: [{ programId: MINT, accounts: [], data: 'AQ' }],
-          addressLookupTables: [SWIG],
-        },
-      },
-      {
-        destinationChainId: 792703810,
-        destinationInstructions: [
-          { programId: MINT, accounts: [], data: 'AQ' },
-        ],
-        addressLookupTableAddresses: [SWIG],
-      },
-    ],
-    [
-      'a Tron delivery',
-      {
-        vm: 'tvm',
-        chainId: 'tron:mainnet',
-        recipient: { address: 'TXYZ' },
-        tokenRequests: [{ tokenAddress: 'TTOKEN', amount: '5' }],
-      },
-      {
-        destinationChainId: 728126428,
-        recipient: { address: 'TXYZ' },
-        tokenRequests: [{ tokenAddress: 'TTOKEN', amount: '5' }],
-        destinationExecutions: [],
-      },
-    ],
-    [
-      'a Stellar delivery',
-      {
-        vm: 'stellar',
-        chainId: 'stellar:pubnet',
-        recipient: { address: 'GABC' },
-        tokenRequests: [],
-      },
-      { destinationChainId: 1500148, recipient: { address: 'GABC' } },
-    ],
-  ])('maps %s', (_label, destination, expected) => {
-    expect(projectSponsorshipApproval(body({ destination }))).toMatchObject(
-      expected,
-    )
-  })
-
-  test('moves a HyperCore action into the options and its settlement into executions', () => {
-    const action = { type: 'order', orders: [] }
-    const projected = projectSponsorshipApproval(
-      body({
-        destination: {
-          vm: 'hypercore',
-          chainId: 'hypercore:perp',
-          tokenRequests: [],
-          execution: {
-            actions: [action],
-            settlement: { calls: [call], gasLimit: '9' },
-          },
-        },
-      }),
-    )
-    expect(projected).toMatchObject({
-      destinationChainId: 1337002,
-      destinationExecutions: [call],
-      destinationGasUnits: '9',
-      options: { signatureMode: 1, hyperCore: { action } },
-    })
-  })
-
-  describe('source', () => {
-    test.each([
-      ['no source', undefined, undefined],
-      [
-        'an unrestricted selection',
-        { selection: { chains: 'all', tokens: 'all' } },
-        undefined,
-      ],
-      [
-        'a chain allowlist',
-        {
-          selection: {
-            chains: { only: ['eip155:1', 'eip155:10'] },
-            tokens: 'all',
-          },
-        },
-        { chainIds: [1, 10] },
-      ],
-      [
-        'a chain and token allowlist',
-        {
-          selection: { chains: { only: ['eip155:1'] }, tokens: { only: [T1] } },
-        },
-        { chainIds: [1], tokens: [T1] },
-      ],
-      [
-        'a token allowlist on every chain',
-        { selection: { chains: 'all', tokens: { only: [T1] } } },
-        { tokens: [T1] },
-      ],
-      [
-        'per-chain assets, uncapped',
-        {
-          selection: {
-            chains: { only: ['eip155:1', 'eip155:10'] },
-            tokens: { only: [T1, T2] },
-            perChain: {
-              'eip155:1': { tokens: { only: [T1] } },
-              'eip155:10': { tokens: { only: [T2, T1] } },
-            },
-          },
-        },
-        { chainTokens: { 1: [T1], 10: [T2, T1] } },
-      ],
-      [
-        'per-chain assets, capped and uncapped on different tokens',
-        {
-          selection: {
-            chains: { only: ['eip155:1', 'eip155:10'] },
-            tokens: { only: [T1, T2] },
-            perChain: {
-              'eip155:1': { tokens: { only: [T1, T2] } },
-              'eip155:10': { tokens: { only: [T2] } },
-            },
-          },
-          limits: [
-            { chainId: 'eip155:1', tokenAddress: T2, maxAmount: '7' },
-            { chainId: 'eip155:10', tokenAddress: T2, maxAmount: '8' },
-          ],
-        },
-        {
-          chainTokens: { 1: [T1] },
-          chainTokenAmounts: { 1: { [T2]: '7' }, 10: { [T2]: '8' } },
-        },
-      ],
-      [
-        'a named chain with no tokens',
-        {
-          selection: {
-            chains: { only: ['eip155:1'] },
-            tokens: { only: [] },
-            perChain: { 'eip155:1': { tokens: { only: [] } } },
-          },
-        },
-        { chainTokens: { 1: [] } },
-      ],
-    ])('maps %s', (_label, source, accountAccessList) => {
-      const projected = projectSponsorshipApproval(
-        source === undefined ? body() : body({ source }),
-      )
-      if (accountAccessList === undefined) {
-        expect(projected).not.toHaveProperty('accountAccessList')
-      } else {
-        expect(projected.accountAccessList).toEqual(accountAccessList)
-      }
-    })
-
-    test('maps auxiliary funds and pre-claim executions by numeric chain', () => {
-      expect(
-        projectSponsorshipApproval(
-          body({
-            source: {
-              auxiliaryFunds: { 'eip155:1': { [T1]: '3' } },
-              executions: [{ vm: 'evm', chainId: 'eip155:10', calls: [call] }],
-            },
-          }),
-        ),
-      ).toMatchObject({
-        options: { signatureMode: 1, auxiliaryFunds: { 1: { [T1]: '3' } } },
-        preClaimExecutions: { 10: [call] },
-      })
-    })
-  })
-
-  test('copies options verbatim, renaming sponsorship and keeping explicit false', () => {
+      execution: { calls: [call], gasLimit: '100' },
+    }
     const options = {
       appFees: { feeBps: 10 },
       protocolFees: { feeBps: 5 },
       customDeadline: 1_900_000_000,
       settlementLayers: { include: ['ACROSS'] },
       quoters: { exclude: ['ZEROX'] },
+      sponsorship: { gas: true, bridgeFees: false, swapFees: false },
     }
-    expect(
-      projectSponsorshipApproval(
-        body({
-          options: {
-            ...options,
-            sponsorship: { gas: true, bridgeFees: false, swapFees: false },
-          },
-        }),
-      ).options,
-    ).toEqual({
-      ...options,
-      sponsorSettings: { gas: true, bridgeFees: false, swapFees: false },
-      signatureMode: 1,
+    const sent = { account, source, destination, options }
+    expect(projectSponsorshipApproval(sent)).toEqual({
+      contractVersion: CONTRACT_VERSION,
+      account,
+      source,
+      destination,
+      options,
     })
   })
 
-  const perChain = {
-    chains: { only: ['eip155:1'] },
-    tokens: { only: [T1] },
-    perChain: { 'eip155:1': { tokens: { only: [T1] } } },
-  }
+  test('drops undefined members via the JSON round trip', () => {
+    const sent = {
+      account: { evm: { type: 'erc7579', address: A }, svm: undefined },
+      destination: {
+        ...evmDestination,
+        token: undefined,
+        amount: undefined,
+        recipient: undefined,
+      },
+      options: undefined,
+    }
+    expect(projectSponsorshipApproval(sent)).toEqual({
+      contractVersion: CONTRACT_VERSION,
+      account: { evm: { type: 'erc7579', address: A } },
+      destination: evmDestination,
+      options: {},
+    })
+  })
+
+  test('maps Solana instructions and lookup tables', () => {
+    const destination = {
+      vm: 'svm',
+      chainId: DEVNET,
+      token: MINT,
+      execution: {
+        instructions: [{ programId: MINT, accounts: [], data: 'AQ' }],
+        addressLookupTables: [SWIG],
+      },
+    }
+    expect(
+      projectSponsorshipApproval(body({ destination })).destination,
+    ).toEqual(destination)
+  })
+
+  test('maps a Solana authority change destination', () => {
+    const destination = {
+      vm: 'svm',
+      chainId: DEVNET,
+      execution: {
+        authority: {
+          action: 'add',
+          key: { kind: 'secp256r1', publicKey: `0x03${'22'.repeat(32)}` },
+          permission: 'all',
+        },
+      },
+    }
+    expect(
+      projectSponsorshipApproval(body({ destination })).destination,
+    ).toEqual(destination)
+  })
+
+  test('maps a HyperCore action and settlement calls', () => {
+    const action = { type: 'order', orders: [] }
+    const destination = {
+      vm: 'hypercore',
+      chainId: 'hypercore:perp',
+      execution: { actions: [action], settlement: { calls: [call] } },
+    }
+    expect(
+      projectSponsorshipApproval(body({ destination })).destination,
+    ).toEqual(destination)
+  })
+
+  test('maps a Tron delivery', () => {
+    const destination = {
+      vm: 'tvm',
+      chainId: 'tron:mainnet',
+      token: 'TTOKEN',
+      amount: '5',
+      recipient: { address: 'TXYZ' },
+    }
+    expect(
+      projectSponsorshipApproval(body({ destination })).destination,
+    ).toEqual(destination)
+  })
+
+  describe('toSponsorshipApprovalInput', () => {
+    test('performs no validation, mirroring whatever body it is given', () => {
+      const garbage = {
+        account: { evm: { type: 'unknown-type', address: A } },
+        destination: { vm: 'move', tokenRequests: [] },
+        extraRootField: 'ignored by projection, not by validation',
+      }
+      expect(() => toSponsorshipApprovalInput(garbage)).not.toThrow()
+      expect(toSponsorshipApprovalInput(garbage)).toEqual({
+        contractVersion: CONTRACT_VERSION,
+        account: garbage.account,
+        destination: garbage.destination,
+        options: {},
+      })
+    })
+
+    test('omits source when absent, and keeps it when present', () => {
+      expect(toSponsorshipApprovalInput(body())).not.toHaveProperty('source')
+      const withSource = body({ source: { vm: 'evm', chainId: 'eip155:1' } })
+      expect(toSponsorshipApprovalInput(withSource)).toHaveProperty('source', {
+        vm: 'evm',
+        chainId: 'eip155:1',
+      })
+    })
+  })
 
   test.each([
     ['a non-object body', null, ''],
     ['an unknown root key', body({ intent: {} }), 'intent'],
     ['an account with no entry', body({ account: {} }), 'account'],
     [
+      'an unknown key on account.evm',
+      body({ account: { evm: { type: 'erc7579', address: A, foo: 1 } } }),
+      'account.evm.foo',
+    ],
+    [
       'an unknown EVM account type',
       body({ account: { evm: { type: 'safe', address: A } } }),
       'account.evm.type',
-    ],
-    [
-      'setup operations on an EOA',
-      body({
-        account: {
-          evm: { type: 'eoa', address: A, initData: { setupOps: [] } },
-        },
-      }),
-      'account.evm.initData',
-    ],
-    [
-      'per-chain delegations',
-      body({
-        account: {
-          evm: {
-            type: 'eoa',
-            address: A,
-            delegations: { chains: { 'eip155:1': { contract: B } } },
-          },
-        },
-      }),
-      'account.evm.delegations.chains',
-    ],
-    [
-      'delegations with no default',
-      body({ account: { evm: { type: 'eoa', address: A, delegations: {} } } }),
-      'account.evm.delegations.default',
-    ],
-    [
-      'a chain-agnostic mock signature',
-      body({
-        account: {
-          evm: {
-            type: 'erc7579',
-            address: A,
-            simulation: { mockSignature: '0x01' },
-          },
-        },
-      }),
-      'account.evm.simulation.mockSignature',
     ],
     [
       'a non-Swig SVM account',
@@ -404,60 +225,88 @@ describe('projectSponsorshipApproval', () => {
       'account.svm.type',
     ],
     [
-      'an unknown Swig authority',
+      'an unknown key on source',
       body({
-        account: {
-          svm: {
-            type: 'swig',
-            address: WALLET,
-            authorization: { kind: 'ed25519', publicKey: '0x01' },
-          },
+        source: { vm: 'evm', chainId: 'eip155:1', token: T1, foo: 1 },
+      }),
+      'source.foo',
+    ],
+    [
+      'legacy source.selection',
+      body({
+        source: { selection: { chains: 'all', tokens: 'all' } },
+      }),
+      'source.selection',
+    ],
+    [
+      'legacy source.limits',
+      body({
+        source: {
+          limits: [{ chainId: 'eip155:1', tokenAddress: T1, maxAmount: '1' }],
         },
       }),
-      'account.svm.authorization.kind',
+      'source.limits',
     ],
     [
-      'a signature mode on a recipient',
+      'legacy source.executions',
       body({
-        destination: {
-          ...evmDestination,
-          recipient: { type: 'eoa', address: B, signatureMode: 1 },
+        source: { executions: [{ vm: 'evm', chainId: 'eip155:1', calls: [] }] },
+      }),
+      'source.executions',
+    ],
+    [
+      'an SVM source with an execution',
+      body({
+        source: {
+          vm: 'svm',
+          chainId: DEVNET,
+          token: MINT,
+          execution: { calls: [] },
         },
       }),
-      'destination.recipient.signatureMode',
+      'source.execution',
     ],
     [
-      'an unknown destination VM',
-      body({ destination: { ...evmDestination, vm: 'move' } }),
-      'destination.vm',
+      'an unknown key on destination',
+      body({ destination: { ...evmDestination, foo: 1 } }),
+      'destination.foo',
     ],
     [
-      'an unknown CAIP-2 chain',
-      body({ destination: { ...evmDestination, chainId: 'cosmos:hub' } }),
-      'destination.chainId',
+      'legacy destination.tokenRequests',
+      body({ destination: { ...evmDestination, tokenRequests: [] } }),
+      'destination.tokenRequests',
     ],
     [
-      'executionTokensReceived',
+      'a non-string destination.amount',
+      body({ destination: { ...evmDestination, token: T1, amount: 1 } }),
+      'destination.amount',
+    ],
+    [
+      'destination.amount with no token',
+      body({ destination: { ...evmDestination, amount: '1' } }),
+      'destination.amount',
+    ],
+    [
+      'a null optional field',
+      body({ destination: { ...evmDestination, token: null } }),
+      'destination.token',
+    ],
+    [
+      'a null source.maxAmount',
       body({
-        destination: {
-          ...evmDestination,
-          execution: { calls: [], executionTokensReceived: [T1] },
+        source: {
+          vm: 'evm',
+          chainId: 'eip155:1',
+          token: T1,
+          maxAmount: null,
         },
       }),
-      'destination.execution.executionTokensReceived',
+      'source.maxAmount',
     ],
     [
-      'an execution on a Tron destination',
-      body({
-        destination: {
-          vm: 'tvm',
-          chainId: 'tron:mainnet',
-          recipient: { address: 'T' },
-          tokenRequests: [],
-          execution: {},
-        },
-      }),
-      'destination.execution',
+      'a null options.customDeadline',
+      body({ options: { customDeadline: null } }),
+      'options.customDeadline',
     ],
     [
       'two HyperCore actions',
@@ -465,134 +314,51 @@ describe('projectSponsorshipApproval', () => {
         destination: {
           vm: 'hypercore',
           chainId: 'hypercore:perp',
-          tokenRequests: [],
           execution: { actions: [{}, {}] },
         },
       }),
       'destination.execution.actions',
     ],
     [
-      'an excluded chain',
+      'no HyperCore actions',
       body({
-        source: {
-          selection: { chains: { except: ['eip155:1'] }, tokens: 'all' },
+        destination: {
+          vm: 'hypercore',
+          chainId: 'hypercore:perp',
+          execution: { actions: [] },
         },
       }),
-      'source.selection.chains.except',
+      'destination.execution.actions',
     ],
     [
-      'an excluded token',
+      'a Tron destination without a recipient',
       body({
-        source: { selection: { chains: 'all', tokens: { except: [T1] } } },
+        destination: { vm: 'tvm', chainId: 'tron:mainnet', token: 'T' },
       }),
-      'source.selection.tokens.except',
+      'destination.recipient',
     ],
     [
-      'a limit with no per-chain map',
+      'an SVM destination mixing authority and instructions',
       body({
-        source: {
-          selection: { chains: { only: ['eip155:1'] }, tokens: 'all' },
-          limits: [{ chainId: 'eip155:1', tokenAddress: T1, maxAmount: '1' }],
-        },
-      }),
-      'source.limits',
-    ],
-    [
-      'a limit with no selection',
-      body({
-        source: {
-          limits: [{ chainId: 'eip155:1', tokenAddress: T1, maxAmount: '1' }],
-        },
-      }),
-      'source.limits',
-    ],
-    [
-      'a limit on a token the per-chain map does not name',
-      body({
-        source: {
-          selection: perChain,
-          limits: [{ chainId: 'eip155:1', tokenAddress: T2, maxAmount: '1' }],
-        },
-      }),
-      'source.limits.0',
-    ],
-    [
-      'two limits on one pair',
-      body({
-        source: {
-          selection: perChain,
-          limits: [
-            { chainId: 'eip155:1', tokenAddress: T1, maxAmount: '1' },
-            { chainId: 'eip155:1', tokenAddress: T1, maxAmount: '2' },
-          ],
-        },
-      }),
-      'source.limits.1',
-    ],
-    [
-      'global tokens wider than the per-chain union',
-      body({
-        source: { selection: { ...perChain, tokens: { only: [T1, T2] } } },
-      }),
-      'source.selection.tokens',
-    ],
-    [
-      'global chains wider than the per-chain map',
-      body({
-        source: {
-          selection: {
-            ...perChain,
-            chains: { only: ['eip155:1', 'eip155:10'] },
+        destination: {
+          vm: 'svm',
+          chainId: DEVNET,
+          execution: {
+            authority: {
+              action: 'remove',
+              key: { kind: 'secp256r1', publicKey: `0x03${'22'.repeat(32)}` },
+            },
+            instructions: [],
           },
         },
       }),
-      'source.selection.chains',
+      'destination.execution.instructions',
     ],
+    ['an unknown key on options', body({ options: { foo: 1 } }), 'options.foo'],
     [
-      'an excluded per-chain token',
-      body({
-        source: {
-          selection: {
-            ...perChain,
-            perChain: { 'eip155:1': { tokens: { except: [T1] } } },
-          },
-        },
-      }),
-      'source.selection.perChain.eip155:1.tokens.except',
-    ],
-    [
-      'a non-EVM pre-claim execution',
-      body({
-        source: { executions: [{ vm: 'svm', chainId: DEVNET, calls: [] }] },
-      }),
-      'source.executions.0.vm',
-    ],
-    [
-      'two pre-claim executions on one chain',
-      body({
-        source: {
-          executions: [
-            { vm: 'evm', chainId: 'eip155:1', calls: [] },
-            { vm: 'evm', chainId: 'eip155:1', calls: [] },
-          ],
-        },
-      }),
-      'source.executions.1.chainId',
-    ],
-    [
-      'a selection strategy',
-      body({ options: { selectionStrategy: 'cheapest' } }),
-      'options.selectionStrategy',
-    ],
-    [
-      'an unknown option',
-      body({ options: { dryRun: true } }),
-      'options.dryRun',
-    ],
-    [
-      'an unknown sponsorship category',
-      body({ options: { sponsorship: { swapValue: true } } }),
-      'options.sponsorship.swapValue',
+      'a non-boolean sponsorship category',
+      body({ options: { sponsorship: { gas: 'yes' } } }),
+      'options.sponsorship.gas',
     ],
   ])('refuses %s', (_label, value, field) => {
     let error: unknown
@@ -609,67 +375,102 @@ describe('projectSponsorshipApproval', () => {
   })
 })
 
+describe('isSponsoredIntentInput', () => {
+  test('is true when options.sponsorship is present, including all-false', () => {
+    const input = projectSponsorshipApproval(
+      body({ options: { sponsorship: { gas: false } } }),
+    )
+    expect(isSponsoredIntentInput(input)).toBe(true)
+  })
+
+  test('is false when options carries no sponsorship', () => {
+    const input = projectSponsorshipApproval(body())
+    expect(isSponsoredIntentInput(input)).toBe(false)
+  })
+})
+
 describe('assertSponsorshipApproval', () => {
   const input = projectSponsorshipApproval(body())
 
   test('accepts an equal input regardless of key order or undefined members', () => {
     const reordered = {
-      options: { signatureMode: 1 },
-      tokenRequests: [],
-      destinationExecutions: [],
-      destinationChainId: 8453,
+      options: {},
+      destination: evmDestination,
       account: {
-        setupOps: [],
-        delegations: undefined,
-        accountType: 'ERC7579',
-        address: A,
+        evm: {
+          address: A,
+          signatureMode: 1,
+          type: 'erc7579',
+          delegations: undefined,
+        },
       },
-    } as SerializedIntentInput
+      contractVersion: CONTRACT_VERSION,
+    } as unknown as SerializedIntentInput
     expect(() => assertSponsorshipApproval(body(), reordered)).not.toThrow()
   })
 
   test.each([
     [
       'a changed value',
-      { ...input, destinationChainId: 1 },
-      'destinationChainId',
+      { ...input, destination: { ...input.destination, chainId: 'eip155:1' } },
+      'destination.chainId',
     ],
     [
-      'an extra constraint',
-      { ...input, accountAccessList: { chainIds: [1] } },
-      'accountAccessList',
+      'an extra field',
+      { ...input, source: { vm: 'evm', chainId: 'eip155:1', token: T1 } },
+      'source',
     ],
     [
-      'reordered executions',
-      { ...input, destinationExecutions: [call, { ...call, value: '2' }] },
-      'destinationExecutions',
+      'reordered array entries',
+      {
+        ...input,
+        account: {
+          evm: {
+            ...input.account.evm,
+            delegations: { default: { contract: B } },
+          },
+        },
+      },
+      'account.evm.delegations',
     ],
-  ])('refuses %s, naming the field', (_label, intentInput, field) => {
-    let error: unknown
-    try {
-      assertSponsorshipApproval(body(), intentInput as SerializedIntentInput)
-    } catch (caught) {
-      error = caught
-    }
-    expect(error).toBeInstanceOf(UnsupportedSponsorshipApprovalError)
-    expect((error as UnsupportedSponsorshipApprovalError).context).toEqual({
-      reason: 'mismatch',
-      field,
-    })
-  })
+  ])(
+    'refuses %s, naming the first differing field',
+    (_label, intentInput, field) => {
+      let error: unknown
+      try {
+        assertSponsorshipApproval(body(), intentInput as SerializedIntentInput)
+      } catch (caught) {
+        error = caught
+      }
+      expect(error).toBeInstanceOf(UnsupportedSponsorshipApprovalError)
+      expect((error as UnsupportedSponsorshipApprovalError).context).toEqual({
+        reason: 'mismatch',
+        field,
+      })
+    },
+  )
 
-  test('refuses an input whose array order differs from the body', () => {
+  test('refuses an input whose call order differs from the body', () => {
     const calls = [call, { ...call, value: '2' }]
     const sent = body({
-      destination: { ...evmDestination, execution: { calls } },
+      destination: { ...evmDestination, token: T1, execution: { calls } },
     })
     const approved = projectSponsorshipApproval(sent)
     expect(() => assertSponsorshipApproval(sent, approved)).not.toThrow()
+    const destination = approved.destination as {
+      execution?: { calls: unknown[] }
+    }
     expect(() =>
       assertSponsorshipApproval(sent, {
         ...approved,
-        destinationExecutions: [...approved.destinationExecutions].reverse(),
-      }),
+        destination: {
+          ...approved.destination,
+          execution: {
+            ...destination.execution,
+            calls: [...(destination.execution?.calls ?? [])].reverse(),
+          },
+        },
+      } as SerializedIntentInput),
     ).toThrow(UnsupportedSponsorshipApprovalError)
   })
 })

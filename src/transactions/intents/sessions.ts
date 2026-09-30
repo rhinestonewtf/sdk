@@ -15,7 +15,8 @@ export interface PreparedIntentSessions {
   readonly signatureMode: number
   readonly byChain: Readonly<Record<number, ResolvedSessionSignerSet>>
   readonly mockSignatures: Readonly<Record<string, Hex>>
-  readonly preClaimCalls: Readonly<Record<number, readonly Call[]>>
+  /** Session-enable pre-claim calls, run on the source chain before any others. */
+  readonly preClaimCalls: readonly Call[]
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -71,7 +72,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       buildSmartSessionMockSignature({
         session: resolved.session,
         environment: input.runtime.construction.sessions.environment,
-        chainCount: input.intent.sourceChains?.length ?? 1,
+        chainCount: 1,
         targetChainId: chainId,
         shape: !resolved.verifyExecutions
           ? 'erc1271'
@@ -81,25 +82,22 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       }),
     ]),
   )
-  const preClaimCalls = Object.fromEntries(
-    (input.intent.sourceChains ?? []).flatMap((chain) => {
-      const resolved = byChain[chain.id]
-      return resolved?.verifyExecutions && resolved.enableData
-        ? [
-            [
-              chain.id,
-              [
-                {
-                  target: DUMMY_PRECLAIMOP_TARGET,
-                  value: 0n,
-                  data: DUMMY_PRECLAIMOP_SELECTOR,
-                },
-              ],
-            ] as const,
-          ]
-        : []
-    }),
-  )
+  // The source chain carries the enablement. A source-free intent has no
+  // pre-claim slot, so a destination session that still needs enabling is
+  // reported for the caller to refuse.
+  const enablingChain = input.intent.source?.chain ?? input.intent.destination
+  const enabling =
+    enablingChain.kind === 'evm' ? byChain[enablingChain.id] : undefined
+  const preClaimCalls: readonly Call[] =
+    enabling?.verifyExecutions && enabling.enableData
+      ? [
+          {
+            target: DUMMY_PRECLAIMOP_TARGET,
+            value: 0n,
+            data: DUMMY_PRECLAIMOP_SELECTOR,
+          },
+        ]
+      : []
   return {
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
       ? 5
@@ -110,7 +108,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   }
 }
 
-// Chains a smart-session intent needs an enabled session on: every source, plus
+// Chains a smart-session intent needs an enabled session on: the source, plus
 // the destination when the user's own account executes there.
 //
 // A HyperCore venue is excluded for the same reason it cannot host the account
@@ -122,9 +120,8 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
 function sessionChains<CompatibilityConfig>(
   intent: IntentInput<CompatibilityConfig>,
 ): readonly EvmChainReference[] {
-  const chains = new Map(
-    (intent.sourceChains ?? []).map((chain) => [chain.id, chain]),
-  )
+  const chains = new Map<number, EvmChainReference>()
+  if (intent.source) chains.set(intent.source.chain.id, intent.source.chain)
   if (
     intent.destination.kind === 'evm' &&
     !isHyperCoreWireId(intent.destination.id)

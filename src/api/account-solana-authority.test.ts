@@ -197,8 +197,7 @@ describe('Swig authority changes on a standalone Solana account', () => {
     const { facade, createQuote, submitIntent, waitForIntentStatus } =
       standalone()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: add(),
+      destination: { chain: solanaDevnet, authority: add() },
     })
 
     const [request, quoteContext] = createQuote.mock.calls[0] as never as [
@@ -217,7 +216,6 @@ describe('Swig authority changes on a standalone Solana account', () => {
       destination: {
         vm: 'svm',
         chainId: solanaDevnet.caip2,
-        tokenRequests: [],
         execution: {
           authority: {
             action: 'add',
@@ -225,9 +223,6 @@ describe('Swig authority changes on a standalone Solana account', () => {
             permission: 'allButManageAuthority',
           },
         },
-      },
-      source: {
-        selection: { chains: { only: [solanaDevnet.caip2] }, tokens: 'all' },
       },
       options: {
         sponsorship: { gas: true, bridgeFees: false, swapFees: false },
@@ -250,11 +245,13 @@ describe('Swig authority changes on a standalone Solana account', () => {
       permission: 'allButManageAuthority',
     })
     expect(prepared.transaction).toStrictEqual({
-      chain: solanaDevnet,
-      authority: {
-        action: 'add',
-        key: { type: 'passkey', publicKey: added },
-        permission: 'allButManageAuthority',
+      destination: {
+        chain: solanaDevnet,
+        authority: {
+          action: 'add',
+          key: { type: 'passkey', publicKey: added },
+          permission: 'allButManageAuthority',
+        },
       },
     })
     expect(prepared.quotes.best.plan.destination.execution).toMatchObject({
@@ -277,7 +274,6 @@ describe('Swig authority changes on a standalone Solana account', () => {
       type: 'intent',
       id: 'authority-intent',
       traceId: 'submit-trace',
-      sourceChains: [DEVNET_ID],
       targetChain: DEVNET_ID,
     })
     await expect(facade.waitForExecution(result)).resolves.toMatchObject({
@@ -289,39 +285,61 @@ describe('Swig authority changes on a standalone Solana account', () => {
   test('omits the permission from a removal everywhere it persists', async () => {
     const { facade } = standalone()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: removePasskey(added),
+      destination: { chain: solanaDevnet, authority: removePasskey(added) },
     })
     expect(prepared.execution).not.toHaveProperty('permission')
     expect(prepared.transaction).toStrictEqual({
-      chain: solanaDevnet,
-      authority: {
-        action: 'remove',
-        key: { type: 'passkey', publicKey: added },
+      destination: {
+        chain: solanaDevnet,
+        authority: {
+          action: 'remove',
+          key: { type: 'passkey', publicKey: added },
+        },
       },
     })
-    expect(prepared.intentInput.destinationAuthority).toStrictEqual({
-      action: 'remove',
-      key: { kind: 'secp256r1', publicKey: added },
+    expect(prepared.intentInput).toStrictEqual({
+      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      account: {
+        svm: {
+          type: 'swig',
+          address: location.wallet,
+          swigAccount: location.swig,
+          authorization: ecdsaAuthority,
+        },
+      },
+      destination: {
+        vm: 'svm',
+        chainId: solanaDevnet.caip2,
+        execution: {
+          authority: {
+            action: 'remove',
+            key: { kind: 'secp256r1', publicKey: added },
+          },
+        },
+      },
+      options: {
+        sponsorship: { gas: true, bridgeFees: false, swapFees: false },
+      },
     })
   })
 
   test('canonicalizes a literal change the same as a built one', async () => {
     const { facade, createQuote } = standalone()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: {
-        action: 'add',
-        key: {
-          type: 'passkey',
-          publicKey: `0x${addedXy.slice(2).toUpperCase()}` as Hex,
+      destination: {
+        chain: solanaDevnet,
+        authority: {
+          action: 'add',
+          key: {
+            type: 'passkey',
+            publicKey: `0x${addedXy.slice(2).toUpperCase()}` as Hex,
+          },
+          permission: 'allButManageAuthority',
         },
-        permission: 'allButManageAuthority',
       },
     })
     expect(prepared.transaction).toStrictEqual({
-      chain: solanaDevnet,
-      authority: add(),
+      destination: { chain: solanaDevnet, authority: add() },
     })
     expect(
       (createQuote.mock.calls[0]?.[0] as OrchestratorIntentRequest).destination,
@@ -333,8 +351,7 @@ describe('Swig authority changes on a standalone Solana account', () => {
   test('survives a JSON round trip and a second instance', async () => {
     const first = standalone()
     const prepared = await first.facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: add(),
+      destination: { chain: solanaDevnet, authority: add() },
     })
     const revived = JSON.parse(
       JSON.stringify(prepared, (_key, value) =>
@@ -355,21 +372,21 @@ describe('Swig authority changes on a standalone Solana account', () => {
     [
       'a different key',
       (p: any) => {
-        p.transaction.authority.key.publicKey = `0x02${'11'.repeat(32)}`
+        p.transaction.destination.authority.key.publicKey = `0x02${'11'.repeat(32)}`
       },
     ],
     [
       'a different permission',
       (p: any) => {
-        p.transaction.authority.permission = 'all'
+        p.transaction.destination.authority.permission = 'all'
       },
     ],
     [
       'a different action',
       (p: any) => {
-        p.transaction.authority = {
+        p.transaction.destination.authority = {
           action: 'remove',
-          key: p.transaction.authority.key,
+          key: p.transaction.destination.authority.key,
         }
       },
     ],
@@ -388,21 +405,20 @@ describe('Swig authority changes on a standalone Solana account', () => {
     [
       'a tampered transaction key type',
       (p: any) => {
-        p.transaction.authority.key.type = 'ecdsa'
+        p.transaction.destination.authority.key.type = 'ecdsa'
       },
     ],
     [
       'a tampered intent input',
       (p: any) => {
-        p.intentInput.destinationAuthority.permission = 'all'
+        p.intentInput.destination.execution.authority.permission = 'all'
       },
     ],
   ])('refuses %s before signing', async (_name, tamper) => {
     const { facade } = standalone()
     const prepared = structuredClone(
       await facade.prepareTransaction({
-        chain: solanaDevnet,
-        authority: add(),
+        destination: { chain: solanaDevnet, authority: add() },
       }),
     )
     tamper(prepared)
@@ -412,56 +428,80 @@ describe('Swig authority changes on a standalone Solana account', () => {
   })
 
   test.each([
-    ['instructions', { instructions: [] }],
-    ['token requests', { tokenRequests: [] }],
-    ['a recipient', { recipient: location.wallet }],
-    ['sponsorship', { sponsored: true }],
-    ['app fees', { appFees: { feeBps: 1 } }],
-    ['protocol fees', { protocolFees: { feeBps: 1 } }],
-    ['address lookup tables', { addressLookupTables: [] }],
+    ['instructions', {}, { instructions: [] }, 'destination.instructions'],
+    ['a source', { source: { token: location.wallet } }, {}, 'source'],
+    ['a token', {}, { token: location.wallet }, 'destination.token'],
+    ['an amount', {}, { amount: 1n }, 'destination.amount'],
+    [
+      'a recipient',
+      {},
+      { recipient: location.wallet },
+      'destination.recipient',
+    ],
+    ['sponsorship', { sponsored: true }, {}, 'sponsored'],
+    ['app fees', { appFees: { feeBps: 1 } }, {}, 'appFees'],
+    ['protocol fees', { protocolFees: { feeBps: 1 } }, {}, 'protocolFees'],
+    [
+      'address lookup tables',
+      {},
+      { addressLookupTables: [] },
+      'destination.addressLookupTables',
+    ],
+    ['legacy token requests', { tokenRequests: [] }, {}, 'tokenRequests'],
   ])(
     'refuses an authority change with %s before quoting',
-    async (_name, patch) => {
+    async (_name, patch, destinationPatch, field) => {
       const { facade, createQuote } = standalone()
-      await expect(
-        facade.prepareTransaction({
+      const refused = facade.prepareTransaction({
+        destination: {
           chain: solanaDevnet,
           authority: add(),
-          ...patch,
-        } as never),
-      ).rejects.toThrow(UnsupportedAccountCapabilityError)
+          ...destinationPatch,
+        },
+        ...patch,
+      } as never)
+      await expect(refused).rejects.toThrow(UnsupportedAccountCapabilityError)
+      await expect(refused).rejects.toMatchObject({ context: { field } })
       expect(createQuote).not.toHaveBeenCalled()
     },
   )
 
   test.each([
-    ['not an object', 'add', 'authority'],
-    ['an unknown action', { action: 'replace' }, 'authority.action'],
-    ['an unknown field', { ...add(), roleId: 3 }, 'authority.roleId'],
+    ['not an object', 'add', 'destination.authority'],
+    [
+      'an unknown action',
+      { action: 'replace' },
+      'destination.authority.action',
+    ],
+    [
+      'an unknown field',
+      { ...add(), roleId: 3 },
+      'destination.authority.roleId',
+    ],
     [
       'a permission on a removal',
       { ...removePasskey(added), permission: 'all' },
-      'authority.permission',
+      'destination.authority.permission',
     ],
     [
       'no permission on an add',
       { action: 'add', key: add().key },
-      'authority.permission',
+      'destination.authority.permission',
     ],
     [
       'an unknown permission',
       { ...add(), permission: 'programAll' },
-      'authority.permission',
+      'destination.authority.permission',
     ],
     [
       'an unknown key type',
       { ...add(), key: { type: 'ed25519', publicKey: added } },
-      'authority.key.type',
+      'destination.authority.key.type',
     ],
     [
       'an EVM address as an ECDSA key',
       { ...add(), key: { type: 'ecdsa', publicKey: owner.address } },
-      'authority.key.publicKey',
+      'destination.authority.key.publicKey',
     ],
     [
       'an uncompressed P-256 key as an ECDSA key',
@@ -472,23 +512,22 @@ describe('Swig authority changes on a standalone Solana account', () => {
           publicKey: bytesToHex(p256.getPublicKey(secret, false)),
         },
       },
-      'authority.key.publicKey',
+      'destination.authority.key.publicKey',
     ],
     [
       'an extra key field',
       { ...add(), key: { ...add().key, kind: 'secp256r1' } },
-      'authority.key.kind',
+      'destination.authority.key.kind',
     ],
     [
       'a malformed key',
       { ...add(), key: { type: 'passkey', publicKey: '0x1234' } },
-      'authority.key.publicKey',
+      'destination.authority.key.publicKey',
     ],
   ])('refuses %s', async (_name, authority, field) => {
     const { facade, createQuote } = standalone()
     const refusal = facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority,
+      destination: { chain: solanaDevnet, authority },
     } as never)
     await expect(refusal).rejects.toBeInstanceOf(
       UnsupportedAccountCapabilityError,
@@ -506,8 +545,7 @@ describe('Swig authority changes on a standalone Solana account', () => {
     )
     const { facade } = standalone(fake)
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: add(),
+      destination: { chain: solanaDevnet, authority: add() },
     })
     const result = await facade.submitTransaction(
       await facade.signTransaction(prepared),
@@ -538,7 +576,9 @@ describe('Swig authority changes on a standalone Solana account', () => {
     const fake = workflows({ refuse: refusal })
     const { facade } = standalone(fake)
     await expect(
-      facade.prepareTransaction({ chain: solanaDevnet, authority: add() }),
+      facade.prepareTransaction({
+        destination: { chain: solanaDevnet, authority: add() },
+      }),
     ).rejects.toBeInstanceOf(ValidationError)
     expect(fake.createQuote).toHaveBeenCalledOnce()
   })
@@ -559,8 +599,7 @@ describe('Swig authority changes on a standalone Solana account', () => {
       owner: { type: 'passkey', account: { ...passkey, sign } },
     })
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: removePasskey(added),
+      destination: { chain: solanaDevnet, authority: removePasskey(added) },
     })
     expect(prepared.execution).toMatchObject({ authority: compressedPublicKey })
     const signed = await facade.signTransaction(prepared)
@@ -647,8 +686,13 @@ describe('a passkey added to a Swig', () => {
     )
     expect(facade.getAddress('solana')).toBe(location.wallet)
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      instructions: [{ programId: location.swig, accounts: [], data: 'AQID' }],
+      destination: {
+        chain: solanaDevnet,
+        instructions: [
+          { programId: location.swig, accounts: [], data: 'AQID' },
+        ],
+      },
+      sponsored: true,
     })
     const request = createQuote.mock.calls[0]?.[0] as OrchestratorIntentRequest
     expect(request.account.svm?.authorization).toEqual(acting)
@@ -694,8 +738,7 @@ describe('Swig authority changes on a composite account', () => {
   test('changes the Swig alone, never through the EVM account', async () => {
     const { facade, createQuote, submitIntent } = composite()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: add(),
+      destination: { chain: solanaDevnet, authority: add() },
     })
     const request = createQuote.mock.calls[0]?.[0] as OrchestratorIntentRequest
     expect(request.account).not.toHaveProperty('evm')
@@ -709,10 +752,8 @@ describe('Swig authority changes on a composite account', () => {
       await facade.signTransaction(prepared),
     )
     expect(submitIntent).toHaveBeenCalledOnce()
-    expect(result).toMatchObject({
-      sourceChains: [DEVNET_ID],
-      targetChain: DEVNET_ID,
-    })
+    expect(result).toMatchObject({ targetChain: DEVNET_ID })
+    expect(result).not.toHaveProperty('sourceChains')
   })
 
   test('checks authority status through the managed Solana entry', async () => {
@@ -726,7 +767,9 @@ describe('Swig authority changes on a composite account', () => {
       }),
     )
     await expect(
-      facade.getAuthorityStatus({ chain: solanaDevnet, authority: enroll() }),
+      facade.getAuthorityStatus({
+        destination: { chain: solanaDevnet, authority: enroll() },
+      }),
     ).resolves.toStrictEqual({ status: 'applied', roleId: 1 })
     expect(submitIntent).not.toHaveBeenCalled()
   })
@@ -753,14 +796,12 @@ describe('Swig authority changes on a composite account', () => {
     )
     await expect(
       facade.prepareTransaction({
-        chain: solanaDevnet,
-        authority: add(),
+        destination: { chain: solanaDevnet, authority: add() },
       } as never),
     ).rejects.toThrow(/managed Solana source is required/)
     await expect(
       (facade as never as SolanaStatusReader).getAuthorityStatus({
-        chain: solanaDevnet,
-        authority: add(),
+        destination: { chain: solanaDevnet, authority: add() },
       }),
     ).rejects.toThrow(/managed Solana source is not configured/)
   })
@@ -841,8 +882,7 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
   test('adds a manage-only secp256k1 key with one WebAuthn prompt', async () => {
     const { facade, createQuote, submitIntent, sign } = passkeyRoot()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: enroll(),
+      destination: { chain: solanaDevnet, authority: enroll() },
     })
     const request = createQuote.mock.calls[0]?.[0] as OrchestratorIntentRequest
     expect(request.destination).toMatchObject({
@@ -864,11 +904,13 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
       permission: 'manageAuthority',
     })
     expect(prepared.transaction).toStrictEqual({
-      chain: solanaDevnet,
-      authority: {
-        action: 'add',
-        key: { type: 'ecdsa', publicKey: recoveryKey },
-        permission: 'manageAuthority',
+      destination: {
+        chain: solanaDevnet,
+        authority: {
+          action: 'add',
+          key: { type: 'ecdsa', publicKey: recoveryKey },
+          permission: 'manageAuthority',
+        },
       },
     })
     const signed = await facade.signTransaction(prepared)
@@ -884,19 +926,20 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
   test('canonicalizes a literal ECDSA change the same as a built one', async () => {
     const { facade } = passkeyRoot()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: {
-        action: 'add',
-        key: {
-          type: 'ecdsa',
-          publicKey: `0x${recovery.publicKey.slice(4).toUpperCase()}` as Hex,
+      destination: {
+        chain: solanaDevnet,
+        authority: {
+          action: 'add',
+          key: {
+            type: 'ecdsa',
+            publicKey: `0x${recovery.publicKey.slice(4).toUpperCase()}` as Hex,
+          },
+          permission: 'manageAuthority',
         },
-        permission: 'manageAuthority',
       },
     })
     expect(prepared.transaction).toStrictEqual({
-      chain: solanaDevnet,
-      authority: enroll(),
+      destination: { chain: solanaDevnet, authority: enroll() },
     })
   })
 
@@ -905,8 +948,7 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
       expiresAt: 1_800_000_000,
     })
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: enroll(),
+      destination: { chain: solanaDevnet, authority: enroll() },
     })
     await expect(facade.signTransaction(prepared)).rejects.toBeInstanceOf(
       SolanaQuoteExpiredError,
@@ -918,13 +960,19 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
   test('removes the key by its public key', async () => {
     const { facade } = passkeyRoot()
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: removeEcdsaKey(recovery),
+      destination: { chain: solanaDevnet, authority: removeEcdsaKey(recovery) },
     })
-    expect(prepared.intentInput.destinationAuthority).toStrictEqual({
-      action: 'remove',
-      key: { kind: 'secp256k1', publicKey: recoveryKey },
+    expect(prepared.intentInput.destination).toStrictEqual({
+      vm: 'svm',
+      chainId: solanaDevnet.caip2,
+      execution: {
+        authority: {
+          action: 'remove',
+          key: { kind: 'secp256k1', publicKey: recoveryKey },
+        },
+      },
     })
+    expect(prepared.intentInput).not.toHaveProperty('source')
     expect(prepared.execution).toMatchObject({
       keyType: 'ecdsa',
       key: recoveryKey,
@@ -935,8 +983,7 @@ describe('enrolling a recovery key on a passkey-root Swig', () => {
   test('survives a JSON round trip and signs on a second instance', async () => {
     const first = passkeyRoot()
     const prepared = await first.facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: enroll(),
+      destination: { chain: solanaDevnet, authority: enroll() },
     })
     const second = passkeyRoot()
     const signed = await second.facade.signTransaction(
@@ -962,8 +1009,10 @@ describe('acting through a manage-only recovery key', () => {
     })
     expect(facade.getAddress('solana')).toBe(location.wallet)
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: addPasskey(addedXy, { permission: 'all' }),
+      destination: {
+        chain: solanaDevnet,
+        authority: addPasskey(addedXy, { permission: 'all' }),
+      },
     })
     const request = createQuote.mock.calls[0]?.[0] as OrchestratorIntentRequest
     expect(request.account.svm?.authorization).toEqual(managerAuthority)
@@ -1000,8 +1049,10 @@ describe('acting through a manage-only recovery key', () => {
       owner: { type: 'ecdsa', account },
     })
     const prepared = await facade.prepareTransaction({
-      chain: solanaDevnet,
-      authority: addPasskey(addedXy, { permission: 'all' }),
+      destination: {
+        chain: solanaDevnet,
+        authority: addPasskey(addedXy, { permission: 'all' }),
+      },
     })
     await expect(facade.signTransaction(prepared)).rejects.toBe(rejection)
     expect(submitIntent).not.toHaveBeenCalled()
@@ -1031,8 +1082,13 @@ describe('acting through a manage-only recovery key', () => {
       owner: { type: 'ecdsa', account },
     })
     const refused = facade.prepareTransaction({
-      chain: solanaDevnet,
-      instructions: [{ programId: location.swig, accounts: [], data: 'AQID' }],
+      destination: {
+        chain: solanaDevnet,
+        instructions: [
+          { programId: location.swig, accounts: [], data: 'AQID' },
+        ],
+      },
+      sponsored: true,
     })
     await expect(refused).rejects.toBeInstanceOf(ValidationError)
     await expect(refused).rejects.toMatchObject({
@@ -1070,8 +1126,10 @@ describe('getAuthorityStatus', () => {
       )
       await expect(
         facade.getAuthorityStatus({
-          chain: solanaDevnet,
-          authority: addEcdsaKey(recoveryKey, { permission }),
+          destination: {
+            chain: solanaDevnet,
+            authority: addEcdsaKey(recoveryKey, { permission }),
+          },
         }),
       ).resolves.toStrictEqual({ status: 'applied', roleId: 1 })
     },
@@ -1087,8 +1145,10 @@ describe('getAuthorityStatus', () => {
     )
     await expect(
       facade.getAuthorityStatus({
-        chain: solanaDevnet,
-        authority: addEcdsaKey(recoveryKey, { permission: 'all' }),
+        destination: {
+          chain: solanaDevnet,
+          authority: addEcdsaKey(recoveryKey, { permission: 'all' }),
+        },
       }),
     ).resolves.toStrictEqual({
       status: 'conflict',
@@ -1102,14 +1162,18 @@ describe('getAuthorityStatus', () => {
       refusal({ reason: 'authority_exists', roleId: 4 }),
     )
     await expect(
-      facade.getAuthorityStatus({ chain: solanaDevnet, authority: enroll() }),
+      facade.getAuthorityStatus({
+        destination: { chain: solanaDevnet, authority: enroll() },
+      }),
     ).resolves.toStrictEqual({ status: 'conflict', roleId: 4 })
   })
 
   test('reports a quotable change as not applied, without signing or submitting', async () => {
     const { facade, createQuote, submitIntent, signMessage } = withRefusal()
     await expect(
-      facade.getAuthorityStatus({ chain: solanaDevnet, authority: enroll() }),
+      facade.getAuthorityStatus({
+        destination: { chain: solanaDevnet, authority: enroll() },
+      }),
     ).resolves.toStrictEqual({ status: 'notApplied' })
     expect(createQuote).toHaveBeenCalledOnce()
     expect(signMessage).not.toHaveBeenCalled()
@@ -1120,8 +1184,10 @@ describe('getAuthorityStatus', () => {
     const { facade } = withRefusal(refusal({ reason: 'authority_not_found' }))
     await expect(
       facade.getAuthorityStatus({
-        chain: solanaDevnet,
-        authority: removeEcdsaKey(recoveryKey),
+        destination: {
+          chain: solanaDevnet,
+          authority: removeEcdsaKey(recoveryKey),
+        },
       }),
     ).resolves.toStrictEqual({ status: 'applied' })
   })
@@ -1130,8 +1196,7 @@ describe('getAuthorityStatus', () => {
     const { facade } = withRefusal()
     await expect(
       facade.getAuthorityStatus({
-        chain: solanaDevnet,
-        authority: removePasskey(added),
+        destination: { chain: solanaDevnet, authority: removePasskey(added) },
       }),
     ).resolves.toStrictEqual({ status: 'notApplied' })
   })
@@ -1169,7 +1234,9 @@ describe('getAuthorityStatus', () => {
   ])('rethrows %s', async (_name, error) => {
     const { facade } = withRefusal(error)
     await expect(
-      facade.getAuthorityStatus({ chain: solanaDevnet, authority: enroll() }),
+      facade.getAuthorityStatus({
+        destination: { chain: solanaDevnet, authority: enroll() },
+      }),
     ).rejects.toBe(error)
   })
 
@@ -1178,8 +1245,10 @@ describe('getAuthorityStatus', () => {
     const { facade } = withRefusal(error)
     await expect(
       facade.getAuthorityStatus({
-        chain: solanaDevnet,
-        authority: removeEcdsaKey(recoveryKey),
+        destination: {
+          chain: solanaDevnet,
+          authority: removeEcdsaKey(recoveryKey),
+        },
       }),
     ).rejects.toBe(error)
     expect(error).toBeInstanceOf(SolanaAuthorityChangeRefusedError)
@@ -1188,13 +1257,21 @@ describe('getAuthorityStatus', () => {
   test.each([
     [
       'a transfer',
-      { chain: solanaDevnet, tokenRequests: [], recipient: location.wallet },
+      {
+        source: { token: location.wallet },
+        destination: {
+          chain: solanaDevnet,
+          token: location.wallet,
+          recipient: location.wallet,
+        },
+      },
     ],
     ['nothing', undefined],
     [
       'a malformed change',
-      { chain: solanaDevnet, authority: { action: 'add' } },
+      { destination: { chain: solanaDevnet, authority: { action: 'add' } } },
     ],
+    ['a legacy flat change', { chain: solanaDevnet, authority: enroll() }],
   ])('refuses %s before quoting', async (_name, transaction) => {
     const { facade, createQuote } = withRefusal()
     await expect(
@@ -1207,7 +1284,7 @@ describe('getAuthorityStatus', () => {
     const fake = workflows()
     fake.submitIntent.mockRejectedValueOnce(new TypeError('socket hang up'))
     const { facade, submitIntent, createQuote } = standalone(fake)
-    const change = { chain: solanaDevnet, authority: enroll() }
+    const change = { destination: { chain: solanaDevnet, authority: enroll() } }
     const signed = await facade.signTransaction(
       await facade.prepareTransaction(change),
     )

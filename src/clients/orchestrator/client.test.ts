@@ -50,17 +50,14 @@ const request: OrchestratorIntentRequest = {
   destination: {
     vm: 'evm',
     chainId: 'eip155:10',
-    tokenRequests: [],
     execution: { calls: [{ to: address, value: 2n, data: '0x' }] },
   },
   source: {
-    selection: {
-      chains: { only: ['eip155:1'] },
-      tokens: { only: [address] },
-      perChain: { 'eip155:1': { tokens: { only: [address] } } },
-    },
-    limits: [{ chainId: 'eip155:1', tokenAddress: address, maxAmount: 4n }],
-    auxiliaryFunds: { 'eip155:1': { [address]: 3n } },
+    vm: 'evm',
+    chainId: 'eip155:1',
+    token: address,
+    maxAmount: 4n,
+    auxiliaryFunds: 3n,
   },
 }
 
@@ -82,19 +79,14 @@ describe('orchestrator client', () => {
           destination: {
             vm: 'evm',
             chainId: 'eip155:10',
-            tokenRequests: [],
             execution: { calls: [{ to: address, value: '2', data: '0x' }] },
           },
           source: {
-            selection: {
-              chains: { only: ['eip155:1'] },
-              tokens: { only: [address] },
-              perChain: { 'eip155:1': { tokens: { only: [address] } } },
-            },
-            limits: [
-              { chainId: 'eip155:1', tokenAddress: address, maxAmount: '4' },
-            ],
-            auxiliaryFunds: { 'eip155:1': { [address]: '3' } },
+            vm: 'evm',
+            chainId: 'eip155:1',
+            token: address,
+            maxAmount: '4',
+            auxiliaryFunds: '3',
           },
         })
         return quoted(
@@ -219,12 +211,21 @@ describe('orchestrator client', () => {
   describe('quote-time sponsorship approval', () => {
     // Exactly what `projectSponsorshipApproval` derives from `request`.
     const boundInput = {
-      account: { address, accountType: 'ERC7579', setupOps: [] },
-      destinationChainId: 10,
-      destinationExecutions: [{ to: address, value: '2', data: '0x' }],
-      tokenRequests: [],
-      accountAccessList: { chainTokenAmounts: { 1: { [address]: '4' } } },
-      options: { signatureMode: 1, auxiliaryFunds: { 1: { [address]: '3' } } },
+      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      account: { evm: { type: 'erc7579', address, signatureMode: 1 } },
+      source: {
+        vm: 'evm',
+        chainId: 'eip155:1',
+        token: address,
+        maxAmount: '4',
+        auxiliaryFunds: '3',
+      },
+      destination: {
+        vm: 'evm',
+        chainId: 'eip155:10',
+        execution: { calls: [{ to: address, value: '2', data: '0x' }] },
+      },
+      options: {},
     } satisfies SerializedIntentInput
 
     function jwtClient(getIntentExtensionToken?: () => Promise<string>) {
@@ -268,7 +269,10 @@ describe('orchestrator client', () => {
 
     test('neither checks nor presents a grant for an unsponsored quote or without a getter', async () => {
       // A mismatching input proves the guard does not run on these paths.
-      const unbound = { ...boundInput, destinationChainId: 1 }
+      const unbound = {
+        ...boundInput,
+        destination: { ...boundInput.destination, chainId: 'eip155:1' },
+      }
       const extension = vi.fn(async () => 'extension')
       const unsponsored = jwtClient(extension)
       await unsponsored.client.createQuote(request, {
@@ -300,8 +304,11 @@ describe('orchestrator client', () => {
       [
         'an approval input that differs from the body',
         request,
-        { ...boundInput, destinationChainId: 1 },
-        { reason: 'mismatch', field: 'destinationChainId' },
+        {
+          ...boundInput,
+          destination: { ...boundInput.destination, chainId: 'eip155:1' },
+        },
+        { reason: 'mismatch', field: 'destination.chainId' },
       ],
       [
         'a body the approval input cannot represent',

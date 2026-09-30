@@ -115,14 +115,16 @@ signature. The SDK derives only PDA relationships offline with the small
 `@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
 transaction stack and does not verify the account onchain.
 
-`deploy` names its VM first: `deploy('evm', chain, { sponsored })` runs the EVM
-deployment, and `deploy('solana', solanaChain, { swigId })` creates the Swig
+`deploy` names its VM first: `deploy('evm', chain, { sponsored, source })` runs
+the EVM deployment — a sponsored intent deployment is source-free, and an
+unsponsored one spends the same-chain `source.token` it then requires, as
+intent-path `setup(chain, { source })` does — and `deploy('solana', solanaChain, { swigId })` creates the Swig
 through a sponsored deployment intent (`transactions/intents/solana-deployment.ts`),
 on both the standalone facade and a composite account with a managed Solana
 entry. The standalone facade types `swigId` as required, because without managed
 EVM the Swig is always independent. It always
 sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
-and no `account.evm` — with a tokenless destination and
+and no `account.evm` — with no source, a tokenless destination and
 `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`.
 The id is computed for the Swig derived from the managed EVM account under the
 environment's namespace, and otherwise must be the caller's saved id from
@@ -151,12 +153,12 @@ assembly and `signAuthorizations` are rejected in every direction; EVM calls,
 and the EIP-7702 delegation they can need, only come with a delivery to an EVM
 chain.
 Address-only
-Solana branches remain receiver-only. For automatic EVM cross-chain sources,
-the composition reads the orchestrator chain catalog and sends only real
-`eip155:` chains matching the destination's network class; source-asset filters
-may narrow but never widen that set.
+Solana branches remain receiver-only. No transaction discovers its source: the
+SDK spends exactly the `source` the caller names and never reads the chain
+catalog to find one.
 
-A Solana **destination** is delivery-only and funded from EVM sources. The
+A Solana **destination** is delivery-only and funded from one explicit EVM
+`source`. The
 recipient resolves in order: an explicit `recipient`, the configured address-only
 receiver, then the managed branch's explicitly supplied Swig wallet; delivery is refused
 before quoting when none exists, and so are destination calls, instructions or
@@ -173,14 +175,16 @@ canonical intent input. Order, account metadata, signer flags and data bytes are
 preserved verbatim. The published request limits (32 instructions, 64 accounts
 each, 1232 bytes of data in total, 8 address lookup tables) are mirrored locally
 so an oversized request fails before a round trip. The request carries
-`tokenRequests: []`, `destinationInstructions`, and
-`addressLookupTableAddresses` only when non-empty. The orchestrator serves them on
+`destination.execution.instructions`, and `addressLookupTables` only when
+non-empty. A gas-sponsored execution sends no `source`; an unsponsored one
+names the token its charge is paid in (an SPL mint or native SOL) as
+`source.token`. The orchestrator serves them on
 its Solana same-chain route (`SAME_CHAIN`); every other route refuses them with
 `UNSUPPORTED_DESTINATION_INSTRUCTIONS`, which the SDK surfaces unchanged.
 
 A **Swig authority change** adds a passkey or secp256k1 key to the account's
 Swig, or removes one, through the ordinary prepare → sign → submit → wait
-lifecycle: `{ chain, authority: addPasskey(passkey, { permission }) }`,
+lifecycle: `{ destination: { chain, authority: addPasskey(passkey, { permission }) } }`,
 `addEcdsaKey(key, { permission })`, `removePasskey(passkey)` or
 `removeEcdsaKey(key)` (`actions/solana.ts`). `permission` is `all`,
 `allButManageAuthority` or `manageAuthority` for either kind. It has its own field rather
@@ -199,7 +203,7 @@ transaction, the request, the intent input and the execution metadata
 The request is Solana-only: `svm.swigAccount` with no `evm` and no `initData`,
 even on a composite account, and
 `destination.execution: { authority: { action, key: { kind: 'secp256r1' | 'secp256k1', publicKey }, permission? } }`.
-It is tokenless and names no recipient, and it's always sent with
+It names no source, token or recipient, and it's always sent with
 `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`, spelled out
 as a Swig creation spells it. There's no `sponsored` knob and fees are refused.
 The acting authority is always the configured owner, ECDSA or passkey. The SDK
@@ -230,7 +234,7 @@ that is not on the Swig is refused as `UNSUPPORTED_ACCOUNT_TYPE`, and
 `deploy('solana', …)` still resolves `true` on an existing Swig without
 checking which role the owner holds.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
-cross-chain path with the account hosted on the last EVM source. The
+cross-chain path with the account hosted on `source.chain`. The
 destination authorization is its own signing request; where its payload,
 account and authority match an earlier slot exactly, the same bytes satisfy
 both — but it stays a distinct slot with its own proof. Whether the destination wallet
@@ -241,25 +245,21 @@ that id is published on `quote.bridgeFill` as an opaque passthrough for the
 provider's status API; it never enters CAIP-2 formatting or chain comparisons.
 
 A Solana **origin** can also fund a delivery on an EVM chain. The source cluster
-(`sourceChains`) and the SPL mint to spend (`sourceAssets: [{ chain, address }]`)
-are both named explicitly — the route spends exactly one source token, and
-`source.selection` pins the cluster and narrows it to that single mint with
-`perChain`, because a chain selector alone would open every registry token on
-it.
+(`source.chain`) and the SPL mint or native SOL to spend (`source.token`) are
+both named explicitly — the route spends exactly one source token, sent as
+`source: { vm: 'svm', chainId, token }`.
 
 A Solana-origin transfer — the delivery, or a same-chain SPL transfer — can cap
-what the wallet debits with `sourceAssets[0].amount`, the EVM source-asset
-ceiling. It is distinct from the destination amount: with one the route is
+what the wallet debits with `source.maxAmount`, the same ceiling an EVM source
+takes. It is distinct from the destination amount: with one the route is
 exact-out and must fit under the cap, without one it spends up to the cap. The
-cap adds exactly one `source.limits` entry on the pinned pair and never widens
-the selection, and the normalized access list names that pair by its cap alone
-(`chainTokenAmounts`), as an EVM capped entry does. Without an amount the
-request and intent input are byte-identical to an uncapped transfer. Every
+cap is sent as `source.maxAmount` and bound verbatim in the approval input.
+Every
 quote whose `cost.input` exceeds the cap is refused at prepare and again on
 reconstruction, so before signing and submission. That check trusts the quote's
 accounting; the orchestrator enforces the limit authoritatively. Instruction
-executions take no `sourceAssets`: the orchestrator refuses source limits with
-destination instructions. The cap is not repeated in the execution metadata;
+executions take no `source.maxAmount`: the orchestrator refuses source limits
+with destination instructions. The cap is not repeated in the execution metadata;
 rebuilding `request` and `intentInput` from `transaction` covers it. The delivery recipient is an explicit
 EVM address or the configured managed EVM/receiver address, resolved before the
 quote so the authorization binds to it; an account with no EVM entry has no
@@ -290,6 +290,44 @@ because the spend's slot window is the one that runs out, and the proofs go out
 in request order. A replay rebuilds the resolved calls and account setup from
 the persisted `intentInput` instead of resolving them again, and compares the
 rebuilt wire request with the exact persisted request before any signature.
+
+## Transaction input
+
+An intent transaction names one `destination` and at most one `source`:
+`{ source?: { chain?, token, maxAmount?, auxiliaryFunds?, calls? }, destination: { chain, token?, amount?, recipient?, calls?, … } }`.
+`api/transaction-input.ts` validates it before anything is resolved or quoted
+and returns a frozen canonical copy, which is what `PreparedTransactionData`
+persists:
+
+- An omitted `source.chain` becomes `destination.chain`. That is the only
+  inference: no chain or token is ever discovered, and a cross-chain
+  transaction names its source chain.
+- `destination.token` with `amount` is exact output, `token` alone is max
+  output, and neither is an execution that delivers nothing. `amount` without
+  `token` is refused.
+- A delivery needs a `source`, and so does any execution that is not
+  gas-sponsored. Only a gas-sponsored execution that delivers nothing, on a
+  destination that hosts the account (an EVM chain, or a Solana instruction
+  execution or authority change), may omit it; the orchestrator decides what
+  it covers and nothing falls back to self-funding.
+- `source.calls` run on the source chain before the claim, and any `provides`
+  names `source.token`, adding to `source.auxiliaryFunds`. Enabling a smart
+  session puts its pre-claim call first on the same source, so a source-free
+  transaction whose session still needs enabling is refused before quoting.
+- The flat fields of the earlier shape (`chain`, `targetChain`,
+  `sourceChains`, `sourceAssets`, `tokenRequests`, …) are refused by name,
+  with what replaced each, and so is any unknown key.
+
+Routing is decided once from the canonical copy: an SVM `source` (or a
+source-free SVM destination) runs through the managed Solana account, and
+everything else through the EVM intent pipeline. The request carries the
+singular Caucasus body — `source { vm, chainId, token, maxAmount?,
+auxiliaryFunds?, execution? }` and `destination { vm, chainId, token?, amount?,
+recipient?, execution? }` — and never the legacy `tokenRequests`, selectors or
+chain-keyed maps. A prepared artifact is versioned (`caucasus-singular-1`);
+every restore path checks that version before it reads the persisted
+transaction, so an artifact from an earlier SDK generation fails with
+`InvalidPreparedTransactionError` instead of being reinterpreted.
 
 ## Execution paths
 
@@ -350,16 +388,16 @@ as `txHash`. Intents recorded before the chain registry knew a chain keep a
 numeric `chainId` and a `vm: 'unknown'` reference — an honest gap, not a chain
 identity to invent.
 
-`clients/orchestrator/normalized.ts` is deliberately not the wire. It is the
-SDK's sponsorship projection, keeping its numeric chain ids and original field
-names across API versions because integrator JWT policies digest it; both it and
-the Caucasus request are built from the same resolved transaction so they cannot
-drift.
+The sponsorship approval input (`PreparedTransactionData.intentInput`) is the
+quote body itself under a versioned contract,
+`sdk-caucasus-singular-2026-09-v1`: `clients/orchestrator/sponsorship-approval.ts`
+projects it from the request the builder produced, so the two cannot drift.
 
 A JWT intent-scoped sponsorship grant is requested when a sponsored quote is
 prepared, never at submission. Before `getIntentExtensionToken` runs,
-`clients/orchestrator/client.ts` checks that the normalized input is exactly
-what `sponsorship-approval.ts` derives from the body it is about to send. That
+`clients/orchestrator/client.ts` validates the body it is about to send
+against the contract's allowlist and checks the approval input is exactly
+what `sponsorship-approval.ts` derives from it. That
 derivation is the contract the orchestrator recomputes to bind the grant
 ([sponsorship approval](sponsorship-approval.md)). A request it cannot bind
 fails with `UnsupportedSponsorshipApprovalError` before anything is asked or

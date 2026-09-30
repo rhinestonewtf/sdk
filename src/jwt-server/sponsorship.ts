@@ -1,4 +1,5 @@
 import type { Address, Hex } from 'viem'
+import { chainIdFromCaip2 } from '../chains/caip2'
 
 export class SponsorshipDeniedError extends Error {
   constructor() {
@@ -9,9 +10,18 @@ export class SponsorshipDeniedError extends Error {
 
 type MaybeAsync<T> = T | Promise<T>
 
+/**
+ * Sponsorship policy checks over an intent's approval input. Every filter
+ * reads the same values from both approval formats: the singular
+ * `sdk-caucasus-singular-2026-09-v1` input current SDKs send, and the legacy
+ * input of older pinned clients.
+ */
 export interface SponsorshipFilter {
+  /** The destination chain, by the SDK's numeric chain id. */
   chain?: (chain: { id: number }) => MaybeAsync<boolean>
+  /** The account's EVM address, or its Swig wallet when it has no EVM entry. */
   account?: (address: Address) => MaybeAsync<boolean>
+  /** The destination calls: EVM `execution.calls`, or HyperCore `settlement.calls`. */
   calls?: (
     calls: { to: Address; value: bigint; data: Hex }[],
   ) => MaybeAsync<boolean>
@@ -23,45 +33,109 @@ interface ParsedIntentInput {
   calls: { to: Address; value: bigint; data: Hex }[]
 }
 
-function parseIntentInput(intentInput: unknown): ParsedIntentInput {
-  if (typeof intentInput !== 'object' || intentInput === null) {
-    throw new Error('intentInput must be a non-null object')
-  }
+const SINGULAR_CONTRACT = 'sdk-caucasus-singular-2026-09-v1'
 
-  const input = intentInput as Record<string, unknown>
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
-  const chainId = input.destinationChainId
-  if (typeof chainId !== 'number') {
-    throw new Error('intentInput.destinationChainId must be a number')
-  }
-
-  const account = input.account
-  if (typeof account !== 'object' || account === null) {
-    throw new Error('intentInput.account must be a non-null object')
-  }
-  const address = (account as Record<string, unknown>).address
-  if (typeof address !== 'string') {
-    throw new Error('intentInput.account.address must be a string')
-  }
-
-  const executions = input.destinationExecutions
+function parseCalls(
+  executions: unknown,
+  field: string,
+): ParsedIntentInput['calls'] {
   if (!Array.isArray(executions)) {
-    throw new Error('intentInput.destinationExecutions must be an array')
+    throw new Error(`intentInput.${field} must be an array`)
   }
-
-  const calls = executions.map(
+  return executions.map(
     (exec: { to: string; value: string | number; data: string }) => ({
       to: exec.to as Address,
       value: BigInt(exec.value),
       data: exec.data as Hex,
     }),
   )
+}
+
+function parseLegacyIntentInput(
+  input: Record<string, unknown>,
+): ParsedIntentInput {
+  const chainId = input.destinationChainId
+  if (typeof chainId !== 'number') {
+    throw new Error('intentInput.destinationChainId must be a number')
+  }
+
+  const account = input.account
+  if (!isRecord(account)) {
+    throw new Error('intentInput.account must be a non-null object')
+  }
+  const address = account.address
+  if (typeof address !== 'string') {
+    throw new Error('intentInput.account.address must be a string')
+  }
 
   return {
     chain: { id: chainId },
     account: address as Address,
-    calls,
+    calls: parseCalls(input.destinationExecutions, 'destinationExecutions'),
   }
+}
+
+function parseSingularIntentInput(
+  input: Record<string, unknown>,
+): ParsedIntentInput {
+  const destination = input.destination
+  if (!isRecord(destination)) {
+    throw new Error('intentInput.destination must be a non-null object')
+  }
+  const chainId =
+    typeof destination.chainId === 'string'
+      ? chainIdFromCaip2(destination.chainId)
+      : undefined
+  if (chainId === undefined) {
+    throw new Error('intentInput.destination.chainId must be a known CAIP-2 id')
+  }
+
+  const account = input.account
+  if (!isRecord(account)) {
+    throw new Error('intentInput.account must be a non-null object')
+  }
+  const entry = isRecord(account.evm)
+    ? account.evm
+    : isRecord(account.svm)
+      ? account.svm
+      : undefined
+  if (!entry || typeof entry.address !== 'string') {
+    throw new Error(
+      'intentInput.account must carry an evm or svm entry with an address',
+    )
+  }
+
+  const execution = isRecord(destination.execution)
+    ? destination.vm === 'hypercore'
+      ? destination.execution.settlement
+      : destination.vm === 'evm'
+        ? destination.execution
+        : undefined
+    : undefined
+  const calls = isRecord(execution)
+    ? parseCalls(execution.calls, 'destination.execution.calls')
+    : []
+
+  return { chain: { id: chainId }, account: entry.address as Address, calls }
+}
+
+function parseIntentInput(intentInput: unknown): ParsedIntentInput {
+  if (!isRecord(intentInput)) {
+    throw new Error('intentInput must be a non-null object')
+  }
+  if (!Object.hasOwn(intentInput, 'contractVersion')) {
+    return parseLegacyIntentInput(intentInput)
+  }
+  if (intentInput.contractVersion !== SINGULAR_CONTRACT) {
+    throw new Error(
+      `intentInput.contractVersion ${JSON.stringify(intentInput.contractVersion)} is not supported`,
+    )
+  }
+  return parseSingularIntentInput(intentInput)
 }
 
 export async function shouldSponsor(

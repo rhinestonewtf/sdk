@@ -10,11 +10,7 @@ import { createAccountConstruction } from '../accounts/construction'
 import { FactoryArgsNotAvailableError } from '../accounts/error'
 import { createAccountAdapter } from '../accounts/registry'
 import { resolveCalls } from '../calls/resolve'
-import {
-  chainIdFromCaip2,
-  formatCaip2,
-  toEvmChainReference,
-} from '../chains/caip2'
+import { toEvmChainReference } from '../chains/caip2'
 import { getChainById } from '../chains/catalog'
 import { createBundlerClient } from '../clients/bundler/client'
 import { createConfiguredOrchestratorClient } from '../clients/orchestrator/client'
@@ -277,30 +273,6 @@ function createAccountComposition<CompatibilityConfig>(
   dependencies: CoreDependencies,
 ): AccountComposition<CompatibilityConfig> {
   const workflows: AccountWorkflows<CompatibilityConfig> = {
-    getEligibleEvmSourceChains: async (destination) => {
-      const catalog = await dependencies.orchestrator.getChainCatalog()
-      const isHyperCore = destination.caip2.startsWith('hypercore:')
-      const destinationId = chainIdFromCaip2(destination.caip2)
-      const destinationInfo =
-        destinationId === undefined
-          ? undefined
-          : catalog.getChainInfo(destinationId)
-      if (!isHyperCore && !destinationInfo) {
-        throw new UnsupportedAccountCapabilityError(
-          `Destination chain ${destination.caip2} is missing from the orchestrator chain catalog.`,
-          { destination: destination.caip2 },
-        )
-      }
-      const testnet = isHyperCore ? false : destinationInfo?.testnet
-      return catalog
-        .getSupportedChainIds()
-        .filter(
-          (chainId) =>
-            formatCaip2(chainId).startsWith('eip155:') &&
-            catalog.isTestnet(chainId) === testnet,
-        )
-        .map(toEvmChainReference)
-    },
     getAddress: (context, chain) =>
       createStaticAccountRuntime(context.account, chain, false).identity
         .address,
@@ -460,7 +432,8 @@ function createAccountComposition<CompatibilityConfig>(
       isAccountDeployed(context.account, chain, dependencies),
     deploy: (context, chain, options) =>
       deployAccount(context, chain, options, dependencies),
-    setup: (context, chain) => setupAccount(context, chain, dependencies),
+    setup: (context, chain, options) =>
+      setupAccount(context, chain, options, dependencies),
     getTransactionMessages: (prepared) => intentMessages(prepared),
     reconstructPreparedIntent: (context, input) =>
       reconstructPreparedIntent(context, input, dependencies),
@@ -682,13 +655,16 @@ async function deployAccount<CompatibilityConfig>(
   context: AccountInvocationContext<CompatibilityConfig>,
   chain: import('../chains/types').EvmChainReference,
   options:
-    | { readonly sponsored?: boolean; readonly eip7702InitSignature?: Hex }
+    | {
+        readonly sponsored?: boolean
+        readonly sourceToken?: Address
+        readonly eip7702InitSignature?: Hex
+      }
     | undefined,
   dependencies: CoreDependencies,
 ): Promise<boolean> {
   const account = context.account
   if (account.account.kind === 'eoa') return false
-  if (await isAccountDeployed(account, chain, dependencies)) return false
   const runtime = createStaticAccountRuntime(account, chain, false)
   const adoption = account.eoa
     ? runtime.adapter.getEip7702AdoptionPlan?.(runtime.construction)
@@ -700,6 +676,12 @@ async function deployAccount<CompatibilityConfig>(
   const asUserOp = Boolean(account.initData) && !intentExecutorInstalled
   const useUserOperation =
     !adoption && (asUserOp || context.sdk.bundler?.kind === 'custom')
+  // Refused before any read: an unsponsored intent deployment has nothing to
+  // pay with unless the caller names the token.
+  if (!useUserOperation && !options?.sponsored && !options?.sourceToken) {
+    throw missingSetupSource('deploy', chain.id)
+  }
+  if (await isAccountDeployed(account, chain, dependencies)) return false
   let initSignature = options?.eip7702InitSignature
   if (adoption && !initSignature) {
     initSignature = (await signEip7702InitData(account, dependencies)).signature
@@ -719,9 +701,11 @@ async function deployAccount<CompatibilityConfig>(
     const workflowContext = intentContext(context, dependencies)
     const submitted = await sendIntent(workflowContext, {
       destination: chain,
-      sourceChains: [chain],
+      // Sponsored: source-free. Otherwise the named same-chain token pays.
+      ...(!options?.sponsored && options?.sourceToken
+        ? { source: { chain, token: options.sourceToken } }
+        : {}),
       calls: [],
-      tokenRequests: [],
       ...(initSignature ? { eip7702InitSignature: initSignature } : {}),
       options: options?.sponsored
         ? { sponsorSettings: { gas: true, bridgeFees: true, swapFees: true } }
@@ -732,9 +716,22 @@ async function deployAccount<CompatibilityConfig>(
   return true
 }
 
+function missingSetupSource(
+  method: 'deploy' | 'setup',
+  chainId: number,
+): UnsupportedAccountCapabilityError {
+  return new UnsupportedAccountCapabilityError(
+    method === 'deploy'
+      ? `An unsponsored deployment on chain ${chainId} runs as an intent and pays in a token on that chain. Pass \`{ source: { token } }\`, or \`{ sponsored: true }\`.`
+      : `Setup on chain ${chainId} runs as an intent and pays in a token on that chain. Pass \`{ source: { token } }\`.`,
+    { field: 'source.token', chainId },
+  )
+}
+
 async function setupAccount<CompatibilityConfig>(
   context: AccountInvocationContext<CompatibilityConfig>,
   chain: import('../chains/types').EvmChainReference,
+  options: { readonly sourceToken?: Address } | undefined,
   dependencies: CoreDependencies,
 ): Promise<boolean> {
   const account = context.account
@@ -777,11 +774,11 @@ async function setupAccount<CompatibilityConfig>(
     (module) => !isAddressEqual(module.address, intentExecutor.address),
   )
   if (usesIntent) {
+    if (!options?.sourceToken) throw missingSetupSource('setup', chain.id)
     const submitted = await sendIntent(intentContext(context, dependencies), {
       destination: chain,
-      sourceChains: [chain],
+      source: { chain, token: options.sourceToken },
       calls,
-      tokenRequests: [],
       options: {},
     })
     await waitForIntentStatus(
@@ -928,7 +925,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     readonly quote: PreparedIntent<CompatibilityConfig>['quote']
     readonly quotes: PreparedIntent<CompatibilityConfig>['quotes']
     readonly request: PreparedIntent<CompatibilityConfig>['request']
-    readonly normalized: PreparedIntent<CompatibilityConfig>['normalized']
+    readonly approvalInput: PreparedIntent<CompatibilityConfig>['intentInput']
     readonly intentInput: IntentInput<CompatibilityConfig>
   },
   dependencies: CoreDependencies,
@@ -964,7 +961,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     traceId: input.traceId,
     input: input.intentInput,
     request: input.request,
-    normalized: input.normalized,
+    intentInput: input.approvalInput,
     quote: input.quote,
     quotes: input.quotes,
     signing,
@@ -1000,7 +997,6 @@ async function signIntentFromRequests<CompatibilityConfig>(
       intent: {
         destination: input.targetChain,
         calls: [],
-        tokenRequests: [],
         signers: input.signers,
       },
       runtime,
@@ -1023,11 +1019,10 @@ async function signIntentFromRequests<CompatibilityConfig>(
     input: {
       destination: input.targetChain,
       calls: [],
-      tokenRequests: [],
       ...(input.signers ? { signers: input.signers } : {}),
     },
     request: {} as PreparedIntent<CompatibilityConfig>['request'],
-    normalized: {} as PreparedIntent<CompatibilityConfig>['normalized'],
+    intentInput: {} as PreparedIntent<CompatibilityConfig>['intentInput'],
     quote,
     quotes: [quote],
     signing,

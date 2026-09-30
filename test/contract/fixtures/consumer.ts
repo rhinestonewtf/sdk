@@ -2,7 +2,6 @@ import {
   type AccountProviderConfig,
   type CallInput,
   RhinestoneSDK,
-  type Transaction,
 } from '@rhinestone/sdk'
 import * as actions from '@rhinestone/sdk/actions'
 import * as ecdsaActions from '@rhinestone/sdk/actions/ecdsa'
@@ -13,7 +12,6 @@ import * as errors from '@rhinestone/sdk/errors'
 import * as jwtServer from '@rhinestone/sdk/jwt-server'
 import * as passkeySigning from '@rhinestone/sdk/signing/passkeys'
 import * as smartSessions from '@rhinestone/sdk/smart-sessions'
-import { mainnet } from 'viem/chains'
 
 const legacySdk = new RhinestoneSDK({ apiKey: 'legacy-api-key' })
 const apiKeySdk = new RhinestoneSDK({
@@ -32,6 +30,8 @@ const accountProviders: AccountProviderConfig[] = [
   { type: 'eoa' },
 ]
 
+// `Transaction` differs between base and current, so it is exercised in
+// legacy-consumer.ts and current-consumer.ts rather than here.
 const lazyCall: CallInput = {
   async resolve({ accountAddress, chain, config }) {
     void accountAddress
@@ -40,18 +40,12 @@ const lazyCall: CallInput = {
     return []
   },
 }
-
-const transaction: Transaction = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
-  calls: [lazyCall],
-}
+void lazyCall
 
 void accountProviders
 void legacySdk
 void apiKeySdk
 void jwtSdk
-void transaction
 void actions
 void ecdsaActions
 void mfaActions

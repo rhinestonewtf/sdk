@@ -22,6 +22,8 @@ import type {
 import { tronMainnet as releaseTronMainnet } from '@rhinestone/sdk-base'
 import { mainnet } from 'viem/chains'
 
+const usdcOnMainnet = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
+
 type Assignable<To, From extends To> = From
 
 type ReleaseToCurrent = [
@@ -52,9 +54,11 @@ const releaseAcceptedCrossChainLiteral = {
   customDeadline: 9_999_999_999,
 } as const satisfies ReleaseTransaction
 
+// The current nested `source`/`destination` shape; the release shape is
+// `releaseAcceptedCrossChainLiteral` above.
 const currentAcceptedCrossChainLiteral = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: { chain: mainnet, token: usdcOnMainnet },
   customDeadline: 9_999_999_999,
 } as const satisfies CurrentTransaction
 
@@ -65,9 +69,12 @@ const releaseAcceptedNonEvmLiteral = {
 } as const satisfies ReleaseTransaction
 
 const currentAcceptedNonEvmLiteral = {
-  sourceChains: [mainnet],
-  targetChain: currentTronMainnet,
-  customDeadline: 9_999_999_999,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: {
+    chain: currentTronMainnet,
+    token: usdcOnMainnet,
+    recipient: usdcOnMainnet,
+  },
 } as const satisfies CurrentTransaction
 
 declare const releaseToCurrent: ReleaseToCurrent

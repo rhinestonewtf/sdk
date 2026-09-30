@@ -4,15 +4,12 @@ import type { UnresolvedCall } from '../../calls/types'
 import type { SolanaAddress } from '../../chains/non-evm'
 import type { ChainReference, EvmChainReference } from '../../chains/types'
 import type {
-  NormalizedIntentInput,
-  NormalizedIntentOptions,
-} from '../../clients/orchestrator/normalized'
-import type {
   IntentQuotePort,
   IntentStatusPort,
   IntentSubmissionPort,
 } from '../../clients/orchestrator/port'
 import type {
+  HyperCoreAction,
   IntentOpStatus,
   Quote,
   SerializedIntentInput,
@@ -20,7 +17,9 @@ import type {
 } from '../../clients/orchestrator/public'
 import type {
   OrchestratorExecutionQuote,
+  OrchestratorIntentOptions,
   OrchestratorIntentRequest,
+  OrchestratorSponsorship,
 } from '../../clients/orchestrator/types'
 import type {
   SolanaAuthorityPermission,
@@ -40,12 +39,6 @@ import type {
 } from '../../signing/types'
 import type { IntentRecipientProjection } from './account'
 import type { PreparedIntentBinding } from './compatibility'
-import type { IntentSourcePolicy } from './source'
-
-export interface IntentTokenRequest {
-  readonly token: Address | string
-  readonly amount?: bigint
-}
 
 export interface IntentSourceCall<CompatibilityConfig> {
   readonly call: UnresolvedCall<CompatibilityConfig>
@@ -68,20 +61,41 @@ export interface IntentSessionSelection {
   >
 }
 
+/**
+ * The one EVM chain and token an intent spends. `auxiliaryFunds` is the extra
+ * balance the caller vouches for; `calls` run on this chain before the claim,
+ * and their `provides` add to it.
+ */
+export interface IntentSource<CompatibilityConfig = unknown> {
+  readonly chain: EvmChainReference
+  readonly token: Address
+  readonly maxAmount?: bigint
+  readonly auxiliaryFunds?: bigint
+  readonly calls?: readonly IntentSourceCall<CompatibilityConfig>[]
+}
+
+export interface IntentOptions
+  extends Omit<OrchestratorIntentOptions, 'sponsorship' | 'selectionStrategy'> {
+  readonly sponsorSettings?: Required<
+    Pick<OrchestratorSponsorship, 'gas' | 'bridgeFees' | 'swapFees'>
+  > &
+    Pick<OrchestratorSponsorship, 'protocolFees'>
+  readonly hyperCore?: { readonly action: HyperCoreAction }
+}
+
 export interface IntentInput<CompatibilityConfig = unknown> {
   readonly destination: ChainReference
-  readonly sourceChains?: readonly EvmChainReference[]
+  /** Omitted only for a sponsored execution that delivers nothing. */
+  readonly source?: IntentSource<CompatibilityConfig>
   readonly calls: readonly UnresolvedCall<CompatibilityConfig>[]
-  readonly tokenRequests: readonly IntentTokenRequest[]
+  /** Present for a delivery; with `amount` it is exact-output, alone max-output. */
+  readonly token?: Address | string
+  readonly amount?: bigint
   readonly recipient?: IntentRecipientProjection
   readonly gasLimit?: bigint
   readonly eip7702InitSignature?: Hex
-  readonly accountAccessList?: IntentSourcePolicy
-  readonly options?: Omit<NormalizedIntentOptions, 'signatureMode'>
+  readonly options?: IntentOptions
   readonly signatureMode?: number
-  readonly sourceCalls?: Readonly<
-    Record<number, readonly IntentSourceCall<CompatibilityConfig>[]>
-  >
   readonly accountSetupOverride?: readonly {
     readonly to: Address
     readonly data: Hex
@@ -94,8 +108,8 @@ export interface PreparedIntent<CompatibilityConfig = unknown> {
   readonly input: IntentInput<CompatibilityConfig>
   /** The Caucasus request this quote answers. */
   readonly request: OrchestratorIntentRequest
-  /** The normalized sponsorship projection of the same transaction. */
-  readonly normalized: NormalizedIntentInput
+  /** The sponsorship approval input: `request` under the approval contract. */
+  readonly intentInput: SerializedIntentInput
   readonly quote: OrchestratorExecutionQuote
   readonly quotes: readonly OrchestratorExecutionQuote[]
   readonly signing: IntentSigningInput

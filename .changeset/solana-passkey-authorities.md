@@ -2,7 +2,7 @@
 '@rhinestone/sdk': minor
 ---
 
-Add and remove passkeys on a managed Solana account's Swig. Pass `{ chain, authority: addPasskey(passkey, { permission }) }` or `{ chain, authority: removePasskey(passkey) }` to `prepareTransaction`, then sign, submit and wait as usual.
+Add and remove passkeys on a managed Solana account's Swig. Pass `{ destination: { chain, authority: addPasskey(passkey, { permission }) } }` or `{ destination: { chain, authority: removePasskey(passkey) } }` to `prepareTransaction`, then sign, submit and wait as usual.
 
 - `addPasskey` and `removePasskey` come from `@rhinestone/sdk/solana`. They take a viem `WebAuthnAccount` or a P-256 public key in any encoding, and compress it. `permission` is `'all'` or `'allButManageAuthority'`. It is required on an add and rejected on a remove.
 - The configured owner, ECDSA or passkey, signs the change with one prompt. Available on standalone and composite accounts with a managed Solana entry; address-only receivers can't use it.

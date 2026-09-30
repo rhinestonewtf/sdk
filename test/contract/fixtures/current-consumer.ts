@@ -95,6 +95,7 @@ const managedSolanaSwig = solanaAddress(
 const solanaRecipient = solanaAddress(
   'Vote111111111111111111111111111111111111111',
 )
+const usdcOnMainnet = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 const sdk = new RhinestoneSDK({ apiKey: 'contract' })
 
 async function useCurrentAccountApi() {
@@ -102,15 +103,18 @@ async function useCurrentAccountApi() {
   account.getAddress('evm')
   account.getAddress('solana')
   await account.prepareTransaction({
-    sourceChains: [mainnet],
-    targetChain: solanaMainnet,
-    tokenRequests: [{ address: solana, amount: 1n }],
+    source: { chain: mainnet, token: usdcOnMainnet },
+    destination: { chain: solanaMainnet, token: solana, amount: 1n },
   })
 
   const delivery = await account.prepareTransaction({
-    targetChain: solanaMainnet,
-    tokenRequests: [{ address: solanaMint, amount: 1n }],
-    recipient: solanaRecipient,
+    source: { chain: mainnet, token: usdcOnMainnet },
+    destination: {
+      chain: solanaMainnet,
+      token: solanaMint,
+      amount: 1n,
+      recipient: solanaRecipient,
+    },
     sponsored: true,
   })
   const deliveryFill: BridgeFill | undefined = delivery.quotes.best.bridgeFill
@@ -143,18 +147,23 @@ async function useManagedSolanaApi() {
     },
   })
   const transaction = {
-    chain: solanaDevnet,
-    tokenRequests: [{ address: solanaMint, amount: 1n }],
-    recipient: solanaRecipient,
+    source: { token: solanaMint, maxAmount: 1n },
+    destination: {
+      chain: solanaDevnet,
+      token: solanaMint,
+      amount: 1n,
+      recipient: solanaRecipient,
+    },
   } satisfies SameChainSolanaTransaction
   const prepared = await account.prepareTransaction(transaction)
   const metadata: SolanaExecutionMetadata | undefined =
     prepared.execution?.kind === 'solana' ? prepared.execution : undefined
   const delivery = {
-    sourceChains: [solanaDevnet],
-    sourceAssets: [{ chain: solanaDevnet, address: solanaMint, amount: 1n }],
-    targetChain: base,
-    tokenRequests: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }],
+    source: { chain: solanaDevnet, token: solanaMint, maxAmount: 1n },
+    destination: {
+      chain: base,
+      token: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+    },
   } satisfies CrossChainSolanaOriginTransaction
   const preparedDelivery = await account.prepareTransaction(delivery)
   const deliveryMetadata: SolanaCrossChainExecutionMetadata | undefined =
@@ -181,15 +190,16 @@ async function useManagedSolanaApi() {
   const change: SolanaAuthorityChange = addPasskey(passkey, { permission })
   const key: SolanaAuthorityKey = removePasskey(passkey).key
   const authorityChange = {
-    chain: solanaDevnet,
-    authority: change,
+    destination: { chain: solanaDevnet, authority: change },
   } satisfies SameChainSolanaAuthorityTransaction
   const preparedChange = await account.prepareTransaction(authorityChange)
   const recoveryPermission: SolanaAuthorityPermission = 'manageAuthority'
   const recoveryKey = `0x03${'22'.repeat(32)}` as const
   const enrollment = {
-    chain: solanaDevnet,
-    authority: addEcdsaKey(recoveryKey, { permission: recoveryPermission }),
+    destination: {
+      chain: solanaDevnet,
+      authority: addEcdsaKey(recoveryKey, { permission: recoveryPermission }),
+    },
   } satisfies SameChainSolanaAuthorityTransaction
   const enrolled: SolanaAuthorityStatus =
     await standalone.getAuthorityStatus(enrollment)

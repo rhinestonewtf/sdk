@@ -27,6 +27,16 @@ type JsonResponse<
 type Folded<Body> = Body & { readonly traceId?: string }
 
 export type WireQuoteRequest = JsonRequest<'createQuote'>
+/**
+ * The singular branch of the dual-shape quote body: one `source` with a `vm`,
+ * and a destination carrying `token`/`amount` instead of `tokenRequests`. The
+ * only branch this SDK sends.
+ */
+export type WireSingularQuoteRequest = Extract<
+  WireQuoteRequest,
+  { source?: { vm: string } }
+>
+export type WireEstimateRequest = JsonRequest<'createQuoteEstimate'>
 export type WireIntentRequest = JsonRequest<'createIntent'>
 export type WireSplitRequest = JsonRequest<'getSplit'>
 

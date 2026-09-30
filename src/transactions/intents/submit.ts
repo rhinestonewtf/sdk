@@ -21,10 +21,8 @@ export async function submitIntent<CompatibilityConfig>(
     type: 'intent',
     traceId: response.traceId,
     intentId: response.intentId,
-    ...(signed.prepared.input.sourceChains
-      ? {
-          sourceChains: signed.prepared.input.sourceChains.map(({ id }) => id),
-        }
+    ...(signed.prepared.input.source
+      ? { sourceChains: [signed.prepared.input.source.chain.id] }
       : {}),
     targetChain: chainIdFromReference(signed.prepared.input.destination),
   }

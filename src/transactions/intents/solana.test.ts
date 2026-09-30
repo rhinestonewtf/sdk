@@ -22,7 +22,6 @@ import {
   parseErrorEnvelope,
   ValidationError,
 } from '../../clients/orchestrator/errors'
-import { projectCompatibleIntentInput } from '../../clients/orchestrator/normalized'
 import type {
   IntentAccountView,
   QuotePlan,
@@ -30,6 +29,7 @@ import type {
   SigningRequest,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
+import { toSponsorshipApprovalInput } from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorDeploymentQuote,
   OrchestratorExecutionQuote,
@@ -215,30 +215,25 @@ describe('managed Solana intent workflow', () => {
             authorization: { kind: 'secp256k1', address: owner.address },
           },
         },
+        source: { vm: 'svm', chainId: DEVNET, token: mint },
         destination: {
           vm: 'svm',
           chainId: DEVNET,
+          token: mint,
+          amount: 100_000n,
           recipient: { address: recipient },
-          tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
-        },
-        source: {
-          selection: {
-            chains: { only: [DEVNET] },
-            tokens: { only: [mint] },
-            perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-          },
         },
       },
       {
-        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        intentInput: prepared.intentInput,
         sponsored: false,
       },
     )
-    // The sponsorship projection keeps its numeric chain ids and its original
-    // field names, and names the paying Swig and the spent mint.
-    expect(prepared.normalized).toEqual({
+    // The approval input is the request body verbatim, with decimal-string
+    // amounts, naming the paying Swig and the spent mint.
+    expect(prepared.intentInput).toStrictEqual({
+      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
       account: {
-        address: wallet,
         svm: {
           type: 'swig',
           address: wallet,
@@ -246,18 +241,21 @@ describe('managed Solana intent workflow', () => {
           authorization: { kind: 'secp256k1', address: owner.address },
         },
       },
-      destinationChainId: 792703810,
-      destinationExecutions: [],
-      tokenRequests: [{ tokenAddress: mint, amount: 100_000n }],
-      recipient: { address: recipient },
-      accountAccessList: { chainTokens: { 792703810: [mint] } },
+      source: { vm: 'svm', chainId: DEVNET, token: mint },
+      destination: {
+        vm: 'svm',
+        chainId: DEVNET,
+        token: mint,
+        amount: '100000',
+        recipient: { address: recipient },
+      },
       options: {},
     })
     expect(prepared.quote.cost.input[0]?.amount).toBe(100_100n)
   })
 
   test('names the Swig state account instead of an EVM entry for a standalone account', () => {
-    const { request, normalized } = buildSolanaIntentRequest(
+    const { request, intentInput } = buildSolanaIntentRequest(
       transfer({ accountAddress: wallet, accountType: undefined }),
     )
 
@@ -269,10 +267,7 @@ describe('managed Solana intent workflow', () => {
         authorization: { kind: 'secp256k1', address: owner.address },
       },
     })
-    expect(normalized.account).toEqual({
-      address: wallet,
-      svm: request.account.svm,
-    })
+    expect(intentInput.account).toEqual({ svm: request.account.svm })
   })
 
   test('signs the exact digest text and submits one recoverable origin signature', async () => {
@@ -324,9 +319,12 @@ describe('managed Solana intent workflow', () => {
         request: fresh.request,
         transfer: transfer(),
         intentInput: {
-          ...projectCompatibleIntentInput(fresh.normalized),
-          recipient: { address: wallet },
-        },
+          ...fresh.intentInput,
+          destination: {
+            ...fresh.intentInput.destination,
+            recipient: { address: wallet },
+          },
+        } as never,
         quote: fresh.quote,
         quotes: fresh.quotes,
       }),
@@ -391,24 +389,27 @@ describe('managed Solana intent workflow', () => {
         protocolFees: { feeBps: 2 },
       }),
     )
-    expect(built.request).toMatchObject({
+    expect(built.request).toStrictEqual({
+      account: built.request.account,
+      source: { vm: 'svm', chainId: MAINNET, token: mint },
+      // No `amount` at all: a max-out spends the whole balance.
       destination: {
+        vm: 'svm',
         chainId: MAINNET,
-        tokenRequests: [{ tokenAddress: mint }],
+        token: mint,
+        recipient: { address: recipient },
       },
-      source: { selection: { chains: { only: [MAINNET] } } },
       options: { appFees: { feeBps: 1 }, protocolFees: { feeBps: 2 } },
     })
-    // No `amount` at all: a max-out spends the whole balance.
-    expect(built.normalized.tokenRequests).toEqual([{ tokenAddress: mint }])
-    expect(built.normalized).toMatchObject({
-      destinationChainId: 792703809,
+    expect(built.intentInput).toMatchObject({
+      destination: { chainId: MAINNET },
       options: {
         appFees: { feeBps: 1 },
         protocolFees: { feeBps: 2 },
       },
     })
-    expect(built.normalized.options).not.toHaveProperty('signatureMode')
+    expect(built.intentInput.destination).not.toHaveProperty('amount')
+    expect(built.intentInput.options).not.toHaveProperty('signatureMode')
     expect(() =>
       solanaChainId({ ...solanaDevnet, caip2: 'solana:unknown' } as never),
     ).toThrow(/canonical Solana/)
@@ -666,7 +667,7 @@ describe('managed Solana intent workflow', () => {
       traceId: prepared.traceId,
       request: prepared.request,
       transfer: transfer(),
-      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      intentInput: prepared.intentInput,
       quote: prepared.quote,
       quotes: prepared.quotes,
     }
@@ -743,13 +744,13 @@ describe('sponsored Solana intents', () => {
   test('carries the requested sponsorship on the quote options', () => {
     const built = buildSolanaIntentRequest(transfer({ sponsorSettings }))
     expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
-    expect(built.normalized.options).toEqual({ sponsorSettings })
+    expect(built.intentInput.options).toEqual({ sponsorship: sponsorSettings })
   })
 
   test('leaves the options untouched when nothing is sponsored', () => {
     const built = buildSolanaIntentRequest(transfer())
     expect(built.request).not.toHaveProperty('options')
-    expect(built.normalized.options).toEqual({})
+    expect(built.intentInput.options).toEqual({})
   })
 
   test('asks for sponsorship approval with the quote and not on submit', async () => {
@@ -760,7 +761,7 @@ describe('sponsored Solana intents', () => {
     )
 
     expect(fixture.createQuote).toHaveBeenCalledWith(prepared.request, {
-      intentInput: projectCompatibleIntentInput(prepared.normalized),
+      intentInput: toSponsorshipApprovalInput(prepared.request),
       sponsored: true,
     })
     const signed = await signSolanaIntent({
@@ -788,7 +789,7 @@ describe('sponsored Solana intents', () => {
       fixture.workflow,
       transfer({ sponsorSettings }),
     )
-    const intentInput = projectCompatibleIntentInput(prepared.normalized)
+    const { intentInput } = prepared
 
     expect(() =>
       reconstructSolanaIntent({
@@ -879,26 +880,20 @@ describe('Solana-origin cross-chain delivery', () => {
             authorization: { kind: 'secp256k1', address: owner.address },
           },
         },
+        // The one cluster and mint the wallet spends.
+        source: { vm: 'svm', chainId: DEVNET, token: mint },
         destination: {
           vm: 'evm',
           chainId: BASE_SEPOLIA,
+          token: destinationToken,
+          amount: 100_000n,
           recipient: { address: destinationRecipient },
-          tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
-        },
-        // Naming the cluster without the mint would re-expand the source scope
-        // to every registry token on it.
-        source: {
-          selection: {
-            chains: { only: [DEVNET] },
-            tokens: { only: [mint] },
-            perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-          },
         },
         options: { appFees: { feeBps: 10 }, protocolFees: { feeBps: 5 } },
       },
-      normalized: {
+      intentInput: {
+        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
         account: {
-          address: wallet,
           svm: {
             type: 'swig',
             address: wallet,
@@ -906,16 +901,14 @@ describe('Solana-origin cross-chain delivery', () => {
             authorization: { kind: 'secp256k1', address: owner.address },
           },
         },
-        destinationChainId: baseSepoliaId,
-        destinationExecutions: [],
-        tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
-        recipient: {
-          address: destinationRecipient,
-          accountType: 'EOA',
-          setupOps: [],
+        source: { vm: 'svm', chainId: DEVNET, token: mint },
+        destination: {
+          vm: 'evm',
+          chainId: BASE_SEPOLIA,
+          token: destinationToken,
+          amount: '100000',
+          recipient: { address: destinationRecipient },
         },
-        // `chainIds` would union with this and re-expand the source scope.
-        accountAccessList: { chainTokens: { 792703810: [mint] } },
         options: {
           appFees: { feeBps: 10 },
           protocolFees: { feeBps: 5 },
@@ -935,7 +928,7 @@ describe('Solana-origin cross-chain delivery', () => {
       crossChainTransfer({ sponsorSettings }),
     )
     expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
-    expect(built.normalized.options).toMatchObject({ sponsorSettings })
+    expect(built.intentInput.options).toEqual({ sponsorship: sponsorSettings })
   })
 
   test('spends the whole balance when no delivery amount is given', () => {
@@ -943,10 +936,15 @@ describe('Solana-origin cross-chain delivery', () => {
       buildSolanaIntentRequest(crossChainTransfer({ amount: undefined })),
     ).toMatchObject({
       request: {
-        destination: { tokenRequests: [{ tokenAddress: destinationToken }] },
+        destination: { vm: 'evm', token: destinationToken },
       },
-      normalized: { tokenRequests: [{ tokenAddress: destinationToken }] },
+      intentInput: { destination: { vm: 'evm', token: destinationToken } },
     })
+    const built = buildSolanaIntentRequest(
+      crossChainTransfer({ amount: undefined }),
+    )
+    expect(built.request.destination).not.toHaveProperty('amount')
+    expect(built.intentInput.destination).not.toHaveProperty('amount')
   })
 
   test('accepts a vendor-settled route and reports the EVM target chain', async () => {
@@ -968,7 +966,10 @@ describe('Solana-origin cross-chain delivery', () => {
       now: fixture.workflow.now,
     })
     const submitted = await submitSolanaIntent(fixture.workflow, signed)
-    expect(submitted).toMatchObject({
+    expect(submitted).toEqual({
+      type: 'intent',
+      traceId: 'submit-trace',
+      intentId: 'solana-intent',
       sourceChains: [792703810],
       targetChain: baseSepoliaId,
     })
@@ -1148,27 +1149,19 @@ describe('Solana-origin cross-chain delivery', () => {
               authorization: { kind: 'secp256k1', address: owner.address },
             },
           },
+          source: { vm: 'svm', chainId: DEVNET, token: mint },
           destination: {
             vm: 'evm',
             chainId: BASE_SEPOLIA,
-            tokenRequests: [
-              { tokenAddress: destinationToken, amount: 100_000n },
-            ],
+            token: destinationToken,
+            amount: 100_000n,
             execution: { calls: [wireCall], gasLimit: 200_000n },
           },
-          source: {
-            selection: {
-              chains: { only: [DEVNET] },
-              tokens: { only: [mint] },
-              perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-            },
-          },
         },
-        normalized: {
+        intentInput: {
+          contractVersion: 'sdk-caucasus-singular-2026-09-v1',
           account: {
-            address: accountAddress,
-            accountType: 'ERC7579',
-            setupOps: [],
+            evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
             // The paying Swig, as the paired request names it.
             svm: {
               type: 'swig',
@@ -1176,18 +1169,24 @@ describe('Solana-origin cross-chain delivery', () => {
               authorization: { kind: 'secp256k1', address: owner.address },
             },
           },
-          destinationChainId: baseSepoliaId,
-          destinationExecutions: [wireCall],
-          destinationGasUnits: 200_000n,
-          tokenRequests: [{ tokenAddress: destinationToken, amount: 100_000n }],
-          accountAccessList: { chainTokens: { 792703810: [mint] } },
-          options: { signatureMode: 1 },
+          source: { vm: 'svm', chainId: DEVNET, token: mint },
+          destination: {
+            vm: 'evm',
+            chainId: BASE_SEPOLIA,
+            token: destinationToken,
+            amount: '100000',
+            execution: {
+              calls: [{ to: call.target, value: '0', data: call.data }],
+              gasLimit: '200000',
+            },
+          },
+          options: {},
         },
       })
     })
 
     test('sends an undeployed account’s setup ops with the calls', () => {
-      const { request, normalized } = buildSolanaIntentRequest(
+      const { request, intentInput } = buildSolanaIntentRequest(
         executing({ setupOps: [factoryOp] }),
       )
       expect(request.account.evm).toEqual({
@@ -1196,10 +1195,13 @@ describe('Solana-origin cross-chain delivery', () => {
         initData: { setupOps: [factoryOp] },
         signatureMode: 1,
       })
-      expect(normalized.account).toEqual({
-        address: accountAddress,
-        accountType: 'ERC7579',
-        setupOps: [factoryOp],
+      expect(intentInput.account).toEqual({
+        evm: {
+          type: 'erc7579',
+          address: accountAddress,
+          initData: { setupOps: [factoryOp] },
+          signatureMode: 1,
+        },
         svm: request.account.svm,
       })
     })
@@ -1209,7 +1211,7 @@ describe('Solana-origin cross-chain delivery', () => {
         setupOps: [{ to: accountAddress, data: '0x1234' }],
         delegationContract,
       })
-      const { request, normalized } = buildSolanaIntentRequest(input)
+      const { request, intentInput } = buildSolanaIntentRequest(input)
       expect(request.account.evm).toEqual({
         type: 'erc7579',
         address: accountAddress,
@@ -1217,8 +1219,8 @@ describe('Solana-origin cross-chain delivery', () => {
         signatureMode: 1,
         delegations: { default: { contract: delegationContract } },
       })
-      expect(normalized.account.delegations).toEqual({
-        0: { contract: delegationContract },
+      expect(intentInput.account.evm).toMatchObject({
+        delegations: { default: { contract: delegationContract } },
       })
 
       const fixture = context(
@@ -1423,9 +1425,7 @@ describe('Solana-origin cross-chain delivery', () => {
       const plain = {
         traceId: prepared.traceId,
         request: prepared.request,
-        intentInput: JSON.parse(
-          JSON.stringify(projectCompatibleIntentInput(prepared.normalized)),
-        ),
+        intentInput: JSON.parse(JSON.stringify(prepared.intentInput)),
         quote: prepared.quote,
         quotes: prepared.quotes,
       }
@@ -1475,40 +1475,52 @@ describe('Solana source amount cap', () => {
     })
   }
 
-  test('adds one limit to the pinned selection and names the pair by its cap', () => {
-    const { request, normalized } = buildSolanaIntentRequest(capped())
+  test('caps the one named source and leaves the delivery a max-out', () => {
+    const { request, intentInput } = buildSolanaIntentRequest(capped())
 
-    expect(request.source).toEqual({
-      selection: {
-        chains: { only: [DEVNET] },
-        tokens: { only: [mint] },
-        perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-      },
-      limits: [{ chainId: DEVNET, tokenAddress: mint, maxAmount: cap }],
+    expect(request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      maxAmount: cap,
     })
-    expect(normalized.accountAccessList).toEqual({
-      chainTokenAmounts: { 792703810: { [mint]: cap } },
+    expect(intentInput.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      maxAmount: '4000000',
     })
-    expect(request.destination.tokenRequests).toEqual([
-      { tokenAddress: destinationToken },
-    ])
+    expect(request.destination).toStrictEqual({
+      vm: 'evm',
+      chainId: BASE_SEPOLIA,
+      token: destinationToken,
+      recipient: { address: destinationRecipient },
+    })
   })
 
   test('caps a same-chain transfer the same way', () => {
-    const { request, normalized } = buildSolanaIntentRequest(
+    const { request, intentInput } = buildSolanaIntentRequest(
       capped({ delivery: { kind: 'same-chain', recipient }, amount: cap }),
     )
 
-    expect(request.source).toEqual({
-      selection: {
-        chains: { only: [DEVNET] },
-        tokens: { only: [mint] },
-        perChain: { [DEVNET]: { tokens: { only: [mint] } } },
-      },
-      limits: [{ chainId: DEVNET, tokenAddress: mint, maxAmount: cap }],
+    expect(request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      maxAmount: cap,
     })
-    expect(normalized.accountAccessList).toEqual({
-      chainTokenAmounts: { 792703810: { [mint]: cap } },
+    expect(request.destination).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      amount: cap,
+      recipient: { address: recipient },
+    })
+    expect(intentInput.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      maxAmount: '4000000',
     })
   })
 
@@ -1545,9 +1557,12 @@ describe('Solana source amount cap', () => {
     const sent = fixture.createQuote.mock.calls[0] as unknown as [
       OrchestratorIntentRequest,
     ]
-    expect(sent[0].source?.limits).toEqual([
-      { chainId: DEVNET, tokenAddress: mint, maxAmount: cap },
-    ])
+    expect(sent[0].source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+      maxAmount: cap,
+    })
     // The quote's spend still names a nonzero Swig role.
     expect(prepared.quote.signingRequests[0]?.authority).toMatchObject({
       kind: 'swigRole',
@@ -1583,7 +1598,7 @@ describe('Solana source amount cap', () => {
         traceId: prepared.traceId,
         request: prepared.request,
         transfer: capped(),
-        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        intentInput: prepared.intentInput,
         quote: prepared.quote,
         quotes: [...prepared.quotes, over],
       }),
@@ -1603,7 +1618,7 @@ describe('Solana source amount cap', () => {
       JSON.stringify(
         {
           request: prepared.request,
-          intentInput: projectCompatibleIntentInput(prepared.normalized),
+          intentInput: prepared.intentInput,
           quote: prepared.quote,
           quotes: prepared.quotes,
         },
@@ -1630,7 +1645,7 @@ describe('Solana source amount cap', () => {
     await submitSolanaIntent(fixture.workflow, signed)
     expect(fixture.submitIntent).toHaveBeenCalledOnce()
 
-    const { limits: _limits, ...uncappedSource } = restored.request.source
+    const { maxAmount: _maxAmount, ...uncappedSource } = restored.request.source
     const uncapped = buildSolanaIntentRequest(
       transfer({ delivery, amount: undefined }),
     )
@@ -1651,18 +1666,14 @@ describe('Solana source amount cap', () => {
             ...restored.request,
             source: {
               ...restored.request.source,
-              limits: [
-                { chainId: DEVNET, tokenAddress: mint, maxAmount: '4000001' },
-              ],
+              maxAmount: cap + 1n,
             },
           },
         },
       ],
       [
         'a cap removed from the intent input',
-        {
-          intentInput: projectCompatibleIntentInput(uncapped.normalized),
-        },
+        { intentInput: uncapped.intentInput },
       ],
     ] as const) {
       expect(() => reconstruct(patch as never), name).toThrow(
@@ -1675,7 +1686,7 @@ describe('Solana source amount cap', () => {
         traceId: prepared.traceId,
         transfer: transfer({ delivery, amount: undefined }),
         request: cappedAdded.request,
-        intentInput: projectCompatibleIntentInput(uncapped.normalized),
+        intentInput: uncapped.intentInput,
         quote: prepared.quote,
         quotes: prepared.quotes,
       }),
@@ -1721,36 +1732,37 @@ describe('native SOL Solana-origin delivery', () => {
     })
   }
 
-  test('pins the source to SOL on the cluster with no limit when uncapped', () => {
-    const { request, normalized } = buildSolanaIntentRequest(solTransfer())
+  test('names SOL on the cluster as the source with no cap when uncapped', () => {
+    const { request, intentInput } = buildSolanaIntentRequest(solTransfer())
 
-    expect(request.source).toEqual({
-      selection: {
-        chains: { only: [DEVNET] },
-        tokens: { only: [sol] },
-        perChain: { [DEVNET]: { tokens: { only: [sol] } } },
-      },
+    expect(request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
     })
-    expect(normalized.accountAccessList).toEqual({
-      chainTokens: { 792703810: [sol] },
+    expect(intentInput.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
     })
   })
 
-  test('adds exactly one limit on the SOL pair when capped', () => {
-    const { request, normalized } = buildSolanaIntentRequest(
+  test('caps the SOL source when capped', () => {
+    const { request, intentInput } = buildSolanaIntentRequest(
       solTransfer({ sourceLimit: cap }),
     )
 
-    expect(request.source).toEqual({
-      selection: {
-        chains: { only: [DEVNET] },
-        tokens: { only: [sol] },
-        perChain: { [DEVNET]: { tokens: { only: [sol] } } },
-      },
-      limits: [{ chainId: DEVNET, tokenAddress: sol, maxAmount: cap }],
+    expect(request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
+      maxAmount: cap,
     })
-    expect(normalized.accountAccessList).toEqual({
-      chainTokenAmounts: { 792703810: { [sol]: cap } },
+    expect(intentInput.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
+      maxAmount: '2000000000',
     })
   })
 
@@ -1764,9 +1776,12 @@ describe('native SOL Solana-origin delivery', () => {
     const sent = fixture.createQuote.mock.calls[0] as unknown as [
       OrchestratorIntentRequest,
     ]
-    expect(sent[0].source?.limits).toEqual([
-      { chainId: DEVNET, tokenAddress: sol, maxAmount: cap },
-    ])
+    expect(sent[0].source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
+      maxAmount: cap,
+    })
     const signed = await signSolanaIntent({
       prepared,
       owner,
@@ -1807,7 +1822,7 @@ describe('native SOL Solana-origin delivery', () => {
       JSON.stringify(
         {
           request: prepared.request,
-          intentInput: projectCompatibleIntentInput(prepared.normalized),
+          intentInput: prepared.intentInput,
           quote: prepared.quote,
           quotes: prepared.quotes,
         },
@@ -1908,11 +1923,36 @@ describe('same-chain Solana instruction execution', () => {
     action: Partial<Extract<SolanaAction, { kind: 'instructions' }>> = {},
   ): SolanaTransferInput {
     const { action: _action, ...binding } = transfer()
+    // Unsponsored by default, so it names the token its charge is paid in.
     return {
       ...binding,
-      action: { kind: 'instructions', instructions: [instruction], ...action },
+      action: {
+        kind: 'instructions',
+        instructions: [instruction],
+        feeToken: mint,
+        ...action,
+      },
       ...overrides,
     }
+  }
+
+  const gasOnly = {
+    gas: true,
+    bridgeFees: false,
+    swapFees: false,
+    protocolFees: false,
+  } as const
+
+  /** A gas-sponsored execution: source-free, naming no fee token. */
+  function sponsoredExecution(
+    overrides: Omit<Partial<SolanaTransferInput>, 'action'> = {},
+  ): SolanaTransferInput {
+    const input = execution({ sponsorSettings: gasOnly, ...overrides })
+    const { feeToken: _feeToken, ...action } = input.action as Extract<
+      SolanaAction,
+      { kind: 'instructions' }
+    >
+    return { ...input, action }
   }
 
   function svmExecution(request: OrchestratorIntentRequest) {
@@ -1934,77 +1974,129 @@ describe('same-chain Solana instruction execution', () => {
     }
   }
 
-  test('builds a tokenless, recipientless request', () => {
+  const svmAccount = {
+    svm: {
+      type: 'swig',
+      address: wallet,
+      swigAccount: swig,
+      authorization: { kind: 'secp256k1', address: owner.address },
+    },
+  } as const
+
+  test('builds a tokenless, recipientless request whose only source is its fee token', () => {
+    const destination = {
+      vm: 'svm',
+      chainId: DEVNET,
+      execution: {
+        instructions: [instruction],
+        addressLookupTables: [lookupTable],
+      },
+    } as const
+    // The instructions move whatever they move; the source names only the
+    // token the unsponsored charge is drafted from.
+    const source = { vm: 'svm', chainId: DEVNET, token: mint } as const
     expect(
       buildSolanaIntentRequest(
         execution({}, { addressLookupTables: [lookupTable] }),
       ),
-    ).toEqual({
-      request: {
-        account: {
-          svm: {
-            type: 'swig',
-            address: wallet,
-            swigAccount: swig,
-            authorization: { kind: 'secp256k1', address: owner.address },
-          },
-        },
-        destination: {
-          vm: 'svm',
-          chainId: DEVNET,
-          tokenRequests: [],
-          execution: {
-            instructions: [instruction],
-            addressLookupTables: [lookupTable],
-          },
-        },
-        // The instructions move whatever they move, so the source stays open
-        // on the cluster instead of acquiring a funding mint.
-        source: { selection: { chains: { only: [DEVNET] }, tokens: 'all' } },
-      },
-      normalized: {
-        account: {
-          address: wallet,
-          svm: {
-            type: 'swig',
-            address: wallet,
-            swigAccount: swig,
-            authorization: { kind: 'secp256k1', address: owner.address },
-          },
-        },
-        destinationChainId: 792703810,
-        destinationExecutions: [],
-        tokenRequests: [],
-        destinationInstructions: [instruction],
-        addressLookupTableAddresses: [lookupTable],
-        accountAccessList: { chainIds: [792703810] },
+    ).toStrictEqual({
+      request: { account: svmAccount, source, destination },
+      intentInput: {
+        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        account: svmAccount,
+        source,
+        destination,
         options: {},
       },
     })
   })
 
-  test('carries sponsorship on a tokenless execution', () => {
-    const sponsorSettings = {
-      gas: true,
-      bridgeFees: false,
-      swapFees: false,
-      protocolFees: false,
-    } as const
-    const built = buildSolanaIntentRequest(execution({ sponsorSettings }))
-    expect(built.request.options).toEqual({ sponsorship: sponsorSettings })
-    expect(built.normalized.options).toMatchObject({ sponsorSettings })
+  test('pays an unsponsored execution in native SOL', () => {
+    const sol = solanaAddress('11111111111111111111111111111111')
+    const { request } = buildSolanaIntentRequest(
+      execution({}, { feeToken: sol }),
+    )
+    expect(request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: sol,
+    })
   })
 
+  test('builds a gas-sponsored execution with no source', () => {
+    const destination = {
+      vm: 'svm',
+      chainId: DEVNET,
+      execution: { instructions: [instruction] },
+    } as const
+    expect(buildSolanaIntentRequest(sponsoredExecution())).toStrictEqual({
+      request: {
+        account: svmAccount,
+        destination,
+        options: { sponsorship: gasOnly },
+      },
+      intentInput: {
+        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        account: svmAccount,
+        destination,
+        options: { sponsorship: gasOnly },
+      },
+    })
+  })
+
+  test('keeps the fee token as the source on a sponsored execution that names one', () => {
+    const built = buildSolanaIntentRequest(
+      execution({ sponsorSettings: gasOnly }),
+    )
+    expect(built.request.source).toStrictEqual({
+      vm: 'svm',
+      chainId: DEVNET,
+      token: mint,
+    })
+    expect(built.request.options).toEqual({ sponsorship: gasOnly })
+    expect(built.intentInput.options).toEqual({ sponsorship: gasOnly })
+  })
+
+  test.each([
+    ['no sponsorship', undefined],
+    [
+      'a sponsorship without gas',
+      { gas: false, bridgeFees: true, swapFees: true },
+    ],
+  ])(
+    'refuses an execution with neither a fee token nor gas sponsorship: %s',
+    (_name, sponsorSettings) => {
+      const input = sponsoredExecution()
+      const { sponsorSettings: _sponsored, ...unsponsored } = input
+      expect(() =>
+        buildSolanaIntentRequest({
+          ...unsponsored,
+          ...(sponsorSettings ? { sponsorSettings } : {}),
+        }),
+      ).toThrow(InvalidSolanaTransactionArtifactError)
+      expect(() =>
+        buildSolanaIntentRequest({
+          ...unsponsored,
+          ...(sponsorSettings ? { sponsorSettings } : {}),
+        }),
+      ).toThrow(
+        'an unsponsored Solana instruction execution names the token it pays in',
+      )
+    },
+  )
+
   test('omits the lookup tables when there are none', () => {
-    const { request, normalized } = buildSolanaIntentRequest(execution())
+    const { request, intentInput } = buildSolanaIntentRequest(execution())
     expect(svmExecution(request)).not.toHaveProperty('addressLookupTables')
     expect(request.destination).not.toHaveProperty('recipient')
-    expect(normalized).not.toHaveProperty('addressLookupTableAddresses')
-    expect(normalized).not.toHaveProperty('recipient')
+    expect(intentInput.destination).not.toHaveProperty('recipient')
+    expect(
+      (intentInput.destination as { execution: object }).execution,
+    ).not.toHaveProperty('addressLookupTables')
   })
 
   test('normalizes web3.js instructions into the request', () => {
-    const { request, normalized } = buildSolanaIntentRequest(
+    const { request, intentInput } = buildSolanaIntentRequest(
       execution(
         {},
         {
@@ -2032,7 +2124,9 @@ describe('same-chain Solana instruction execution', () => {
       },
     ]
     expect(svmExecution(request)).toMatchObject({ instructions: wire })
-    expect(normalized.destinationInstructions).toEqual(wire)
+    expect(intentInput.destination).toMatchObject({
+      execution: { instructions: wire },
+    })
   })
 
   test.each([
@@ -2055,9 +2149,33 @@ describe('same-chain Solana instruction execution', () => {
   test('accepts a same-chain quote whose cost legs stay on the cluster', async () => {
     const fixture = context(instructionQuote())
     const prepared = await prepareSolanaIntent(fixture.workflow, execution())
-    expect(prepared.request.destination.tokenRequests).toEqual([])
+    expect(prepared.request.destination).not.toHaveProperty('token')
     expect(prepared.quote.intentId).toBe('solana-intent')
   })
+
+  test.each([
+    ['a fee-token execution', execution(), [792703810]],
+    ['a sponsored execution', sponsoredExecution(), undefined],
+  ])(
+    'reports the source chain of %s only when it has a source',
+    async (_name, input, sourceChains) => {
+      const fixture = context(instructionQuote())
+      const prepared = await prepareSolanaIntent(fixture.workflow, input)
+      const signed = await signSolanaIntent({
+        prepared,
+        owner,
+        now: fixture.workflow.now,
+      })
+      const submitted = await submitSolanaIntent(fixture.workflow, signed)
+      expect(submitted).toStrictEqual({
+        type: 'intent',
+        traceId: 'submit-trace',
+        intentId: 'solana-intent',
+        ...(sourceChains ? { sourceChains } : {}),
+        targetChain: 792703810,
+      })
+    },
+  )
 
   test('rejects a quote with a cost leg off the requested cluster', async () => {
     const offCluster = quote()
@@ -2081,7 +2199,7 @@ describe('same-chain Solana instruction execution', () => {
     const restored = JSON.parse(
       JSON.stringify({
         traceId: prepared.traceId,
-        intentInput: projectCompatibleIntentInput(prepared.normalized),
+        intentInput: prepared.intentInput,
       }),
     )
     expect(() =>
@@ -2109,6 +2227,33 @@ describe('same-chain Solana instruction execution', () => {
         quotes: prepared.quotes,
       }),
     ).toThrow(/canonical intent input|persisted request/)
+    for (const transfer of [
+      execution({}, { feeToken: solanaAddress(recipient) }),
+      sponsoredExecution(),
+    ]) {
+      expect(() =>
+        reconstructSolanaIntent({
+          traceId: restored.traceId,
+          request: prepared.request,
+          transfer,
+          intentInput: restored.intentInput,
+          quote: prepared.quote,
+          quotes: prepared.quotes,
+        }),
+      ).toThrow(/persisted request/)
+    }
+    const tampered = structuredClone(restored.intentInput)
+    tampered.source.token = recipient
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: restored.traceId,
+        request: prepared.request,
+        transfer: input,
+        intentInput: tampered,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(/canonical intent input/)
   })
 
   test('surfaces the orchestrator refusal while no route serves instructions', async () => {
