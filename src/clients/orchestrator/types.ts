@@ -15,7 +15,7 @@ import type {
   SettlementLayer,
   SigningProof,
   SigningRequest,
-  SolanaAuthorityKeyView,
+  SolanaAuthorityChangeRequest,
   SwigAuthority,
 } from './public'
 
@@ -130,19 +130,6 @@ export interface OrchestratorSolanaInstruction {
   readonly data: string
 }
 
-/** A Swig passkey add or remove, as the quote request carries it. */
-export type OrchestratorSwigAuthorityChange = Readonly<
-  | {
-      readonly action: 'add'
-      readonly key: Readonly<SolanaAuthorityKeyView>
-      readonly permission: 'all' | 'allButManageAuthority'
-    }
-  | {
-      readonly action: 'remove'
-      readonly key: Readonly<SolanaAuthorityKeyView>
-    }
->
-
 export interface OrchestratorEvmDestinationExecution {
   readonly calls: readonly OrchestratorExecution[]
   readonly gasLimit?: bigint
@@ -167,7 +154,7 @@ export type OrchestratorDestination =
             readonly instructions: readonly OrchestratorSolanaInstruction[]
             readonly addressLookupTables?: readonly string[]
           }
-        | { readonly authority: OrchestratorSwigAuthorityChange }
+        | { readonly authority: Readonly<SolanaAuthorityChangeRequest> }
     }
   | {
       readonly vm: 'tvm' | 'stellar'

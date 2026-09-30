@@ -139,8 +139,9 @@ deployment route at `normalizeIntentQuote`, and public quotes stay execution-onl
 
 A managed Solana origin accepts one same-chain SPL transfer with an explicit
 recipient, one same-chain instruction execution, one Swig authority change, or
-one cross-chain delivery to an EVM chain. `sponsored` is translated with the same helper EVM uses and passed
-through for the orchestrator to decide on: it serves the categories a Solana
+one cross-chain delivery to an EVM chain. `sponsored` is translated with the
+same helper EVM uses and passed through for the orchestrator to decide on: it
+serves the categories a Solana
 route can bill and refuses the rest by name. A cross-chain delivery may spend
 native SOL (`11111111111111111111111111111111`) exactly like an SPL mint:
 pinned as the single source token and optionally capped, with the rent-exempt
@@ -198,21 +199,12 @@ It is tokenless and names no recipient, and it's always sent with
 as a Swig creation spells it. There's no `sponsored` knob and fees are refused.
 The acting authority is always the configured owner, ECDSA or passkey. The SDK
 never picks another role, and leaves refusing self-removal or re-adding a
-present key to the orchestrator. Every quoted route must:
-
-- be `SAME_CHAIN`, with empty `plan.source`, `plan.deployments`,
-  `requirements`, `cost.input` and `cost.output`, and no `bridgeFill`;
-- carry exactly one `originAuthorization` request by a `swigRole`, with a
-  `manageAuthority` scope naming the state account on the cluster;
-- have a scope `authority` that matches the requested action, key and
-  permission (present on an add only), with an integer `roleId` and a decimal
-  rent;
-- have a plan destination naming the same wallet, state account and acting
-  authority, run by the state account, and disclosing a byte-identical change.
-
-A spend scope on an authority quote is refused, and so is the reverse. Rebuilding
-from the persisted `transaction` refuses a tampered key, permission or action
-before signing and before submission.
+present key to the orchestrator. Every quoted route must be a `SAME_CHAIN`
+route that moves nothing, with one `manageAuthority` signing request whose
+scope and plan disclose exactly the requested change; a spend scope on an
+authority quote is refused, and so is the reverse. Rebuilding from the persisted
+`transaction` refuses a tampered key, permission or action before signing and
+before submission.
 
 The orchestrator refuses a change the Swig as read doesn't allow with
 `SWIG_AUTHORITY_CHANGE_REFUSED`, typed as `SolanaAuthorityChangeRefusedError`.

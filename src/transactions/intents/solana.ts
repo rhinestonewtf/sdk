@@ -46,6 +46,7 @@ import type {
   SigningProof,
   SigningRequest,
   SigningScope,
+  SolanaAuthorityChangeRequest,
   SwigAuthority,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
@@ -53,7 +54,6 @@ import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
   OrchestratorSponsorship,
-  OrchestratorSwigAuthorityChange,
 } from '../../clients/orchestrator/types'
 import {
   InvalidSolanaTransactionArtifactError,
@@ -556,7 +556,7 @@ export function buildSolanaIntentRequest(
 
 function wireAuthorityChange(
   change: SolanaAuthorityChangeInput,
-): OrchestratorSwigAuthorityChange {
+): SolanaAuthorityChangeRequest {
   const key = { kind: 'secp256r1', publicKey: change.key } as const
   return change.action === 'add'
     ? { action: 'add', key, permission: change.permission! }
@@ -709,8 +709,8 @@ function spendPayload(
   if (!request || (!executing && destinationRequests.length > 0)) {
     refuse('the quote must carry exactly one signing request')
   }
-  const changing = input.action.kind === 'authority'
-  const authorizes = changing ? 'authority change' : 'spend'
+  const authorizes =
+    input.action.kind === 'authority' ? 'authority change' : 'spend'
   const expected = input.authority
   let signed:
     | { readonly kind: 'personalSign'; readonly message: string }

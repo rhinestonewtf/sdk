@@ -1544,7 +1544,7 @@ function createSolanaOrigin(
           kind: 'authority',
           change: {
             action,
-            key: canonicalP256PublicKey(key.publicKey)!,
+            key: key.publicKey,
             ...(action === 'add' ? { permission } : {}),
           },
         },
