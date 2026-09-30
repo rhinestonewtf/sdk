@@ -48,6 +48,7 @@ import type {
   SigningScope,
   SolanaAuthorityChangeRequest,
   SolanaAuthorityKeyView,
+  SolanaAuthorityRolePermission,
   SwigAuthority,
   WebAuthnAssertion,
 } from '../../clients/orchestrator/public'
@@ -129,11 +130,6 @@ export type SolanaAction =
     }
   | { readonly kind: 'authority'; readonly change: SolanaAuthorityChangeInput }
 
-type SolanaAuthorityPermission = Extract<
-  SolanaAuthorityChangeRequest,
-  { action: 'add' }
->['permission']
-
 /**
  * A Swig authority add or remove. `key` is the compressed P-256 (`passkey`) or
  * secp256k1 (`ecdsa`) key in lowercase hex; `permission` is present on an add
@@ -143,14 +139,14 @@ export interface SolanaAuthorityChangeInput {
   readonly action: 'add' | 'remove'
   readonly keyType: 'passkey' | 'ecdsa'
   readonly key: Hex
-  readonly permission?: SolanaAuthorityPermission
+  readonly permission?: SolanaAuthorityRolePermission
 }
 
 const AUTHORITY_PERMISSIONS: readonly unknown[] = [
   'all',
   'allButManageAuthority',
   'manageAuthority',
-] satisfies readonly SolanaAuthorityPermission[]
+] satisfies readonly SolanaAuthorityRolePermission[]
 
 function wireKeyKind(
   keyType: SolanaAuthorityChangeInput['keyType'],
