@@ -13,7 +13,10 @@ import {
 } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
-import { satisfiesRules } from '../../../../../test/utils/policy-rules'
+import {
+  type RuleUsage,
+  satisfiesRules,
+} from '../../../../../test/utils/policy-rules'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
 import {
   resolveSessionData,
@@ -217,6 +220,12 @@ describe('settlement-scoped crossChainPermits', () => {
     const delegate = LZ_MULTICALL[base.id].transferDelegate
     expect(satisfiesRules(action, approve(delegate))).toBe(true)
     expect(satisfiesRules(action, approve(delegate, 101n))).toBe(false)
+    // The burning transaction admits every later op, so the cap is a total across
+    // approves, not a per-call bound.
+    const usage: RuleUsage = new Map()
+    expect(satisfiesRules(action, approve(delegate, 60n), usage)).toBe(true)
+    expect(satisfiesRules(action, approve(delegate, 60n), usage)).toBe(false)
+    expect(satisfiesRules(action, approve(delegate, 40n), usage)).toBe(true)
     // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
     expect(
       satisfiesRules(action, approve(LZ_MULTICALL[base.id].multiCall)),

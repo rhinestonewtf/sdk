@@ -6,13 +6,21 @@ import {
   pad,
   toFunctionSelector,
 } from 'viem'
-import { cumulativeCap, pin, pinValue, pinWord } from '../swap/rules'
+import {
+  allOf,
+  anyOf,
+  cumulativeCap,
+  pin,
+  pinValue,
+  pinWord,
+} from '../swap/rules'
 import type {
   ArgPolicyExpression,
   ScopedAction,
   UniversalActionPolicyParamRule,
 } from '../types'
 import { CCTP_CHAINS, CCTP_TOKEN_MESSENGER_MAINNET } from './cctp'
+import { OFT_SEND_SELECTOR, SEND } from './oft'
 import type { SettlementContext } from './types'
 
 /**
@@ -115,13 +123,13 @@ export const STARGATE_USDC: Readonly<
   },
 }
 
-/** CCTP chains the API routes USDC between: `CCTP_CHAINS` plus Plasma. */
+/** CCTP chains the API routes USDC between: the LZ chains CCTP knows, plus Plasma. */
 const LZ_CCTP_CHAINS: Readonly<
   Record<number, { readonly domain: number; readonly usdc: Address }>
 > = {
   ...Object.fromEntries(
-    [1, 10, 130, 137, 143, 146, 999, 8453, 42161, 43114, 57073].map(
-      (chainId) => [chainId, CCTP_CHAINS[chainId]],
+    Object.keys(LZ_MULTICALL).flatMap((id) =>
+      CCTP_CHAINS[Number(id)] ? [[id, CCTP_CHAINS[Number(id)]]] : [],
     ),
   ),
   9745: { domain: 33, usdc: '0x2d661C89D812261039AF9764eceaAee884f5F67F' },
@@ -134,6 +142,12 @@ export const LZ_CCTP_FEE_RECEIVER: Address =
 /** Destinations the API delivers CCTP to without a relay fee. */
 const LZ_CCTP_FEELESS_DESTINATIONS: ReadonlySet<number> = new Set([9745])
 
+/**
+ * The most relay fee the key may send LayerZero's receiver, in USDC units: ~10x
+ * the live fee into Ethereum (0.098 USDC), the dearest destination.
+ */
+export const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
+
 export const LZ_EXECUTE_SELECTOR = toFunctionSelector(
   'execute((address,uint256,bytes)[],bytes32)',
 )
@@ -142,17 +156,14 @@ const DELEGATE_TRANSFER_FROM = toFunctionSelector(
 )
 const APPROVE = toFunctionSelector('approve(address,uint256)')
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
-const SEND = toFunctionSelector(
-  'send((uint32,bytes32,uint256,uint256,bytes,bytes,bytes),(uint256,uint256),address)',
-)
 const DEPOSIT_FOR_BURN = toFunctionSelector(
   'depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
 )
 const SWEEP = toFunctionSelector('sweep(address[],address)')
 
 type Rule = UniversalActionPolicyParamRule
-/** Rules on a nested call's arguments, given the offset of argument word 0. */
-type ArgRules = (at: (offset: bigint) => bigint) => Rule[]
+/** Offset of a nested call's argument word, from the start of `execute`'s args. */
+type At = (offset: bigint) => bigint
 
 interface NestedCall {
   readonly target: Address
@@ -160,27 +171,27 @@ interface NestedCall {
   /** Calldata length, selector included. */
   readonly length: number
   /** The send carries the messaging fee; every other call carries none. */
-  readonly payable?: true
-  readonly args: ArgRules
+  readonly payable?: boolean
+  readonly args: (at: At) => Rule[]
 }
 
 const ceil32 = (n: number) => BigInt(Math.ceil(n / 32) * 32)
 
 /**
- * `execute`'s layout pins, one call site per nested call, under the canonical
- * encoding, below the `calls` pointer every route shares. Returns the layout
- * rules and, per call, where its arguments start.
+ * The pins of an `execute` batch under the canonical encoding, below the
+ * `calls` pointer every route shares, and each call's argument accessor.
  */
-function layout(calls: readonly NestedCall[]): {
+function batch(calls: readonly NestedCall[]): {
   readonly rules: Rule[]
-  readonly argsAt: bigint[]
+  readonly args: At[]
 } {
-  const rules: Rule[] = [pinValue(0x40n, BigInt(calls.length))]
-  const argsAt: bigint[] = []
+  const rules: Rule[] = []
+  const args: At[] = []
   let relative = BigInt(calls.length) * 32n
   calls.forEach((call, i) => {
     const start = 0x60n + relative
     const data = start + 128n
+    const at: At = (offset) => data + 4n + offset
     rules.push(
       pinValue(0x60n + BigInt(i) * 32n, relative),
       pin(start, call.target),
@@ -192,38 +203,29 @@ function layout(calls: readonly NestedCall[]): {
         data - 28n,
         (BigInt(call.length) << 32n) | BigInt(call.selector),
       ),
+      ...call.args(at),
     )
-    argsAt.push(data + 4n)
+    args.push(at)
     relative += 128n + ceil32(call.length)
   })
-  return { rules, argsAt }
+  return { rules, args }
 }
 
-const and = (nodes: ArgPolicyExpression[]): ArgPolicyExpression =>
-  nodes.reduceRight((right, left) => ({ type: 'and', left, right }))
-const or = (nodes: ArgPolicyExpression[]): ArgPolicyExpression =>
-  nodes.reduce((left, right) => ({ type: 'or', left, right }))
-const all = (rules: Rule[]): ArgPolicyExpression =>
-  and(rules.map((rule): ArgPolicyExpression => ({ type: 'rule', rule })))
-
-/** Leaves the on-chain ArgPolicy accepts (`ArgPolicyTreeLib.MAX_RULES`). */
-const ARG_POLICY_MAX_RULES = 128
-
-function countRules(e: ArgPolicyExpression): number {
-  if (e.type === 'rule') return 1
-  if (e.type === 'not') return countRules(e.child)
-  return countRules(e.left) + countRules(e.right)
-}
+type Leg = SettlementContext['destinations'][number]
 
 interface Route {
-  /** Rules that pick the layout; evaluated first. */
-  readonly layout: ArgPolicyExpression
-  /** Pins one `to` leg into this route's calldata, or undefined if it cannot deliver it. */
-  readonly leg: (
-    leg: SettlementContext['destinations'][number],
-  ) => Rule[] | undefined
-  /** Cumulative caps, last: a passing limited rule counts even if its branch fails. */
-  readonly caps: Rule[]
+  readonly rules: Rule[]
+  /** Only for Stargate: TAXI or BUS. */
+  readonly modes?: Rule[][]
+  /** Pins a leg this route delivers; undefined for one it cannot. */
+  readonly leg: (leg: Leg) => Rule[] | undefined
+  /** Whether this route reaches the leg's chain at all, whatever its token. */
+  readonly reaches: (leg: Leg) => boolean
+  /**
+   * Usage-limited rules, evaluated last: a passing limited rule counts even if
+   * its branch then fails.
+   */
+  readonly limits: Rule[]
 }
 
 function lzChain(chainId: number) {
@@ -261,6 +263,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   const { multiCall, transferDelegate } = lzChain(ctx.chainId)
   const cap = (offset: bigint) =>
     ctx.cap === undefined ? [] : [cumulativeCap(offset, ctx.cap)]
+  const crossChain = (leg: Leg) => leg.chainId !== ctx.chainId
+  const recipient = (offset: bigint, leg: Leg) =>
+    leg.recipient === undefined ? [] : [pinWord(offset, pad(leg.recipient))]
 
   const pull: NestedCall = {
     target: transferDelegate,
@@ -290,83 +295,76 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     length: 68,
     args: (at) => [pin(at(0n), spender)],
   })
-  /** The layout and argument pins of `calls`, and where each call's args start. */
-  const nested = (calls: NestedCall[]) => {
-    const { rules, argsAt } = layout(calls)
-    return {
-      rules: [
-        ...rules,
-        ...calls.flatMap((call, i) =>
-          call.args((offset) => argsAt[i] + offset),
-        ),
-      ],
-      argsAt,
-    }
-  }
-  const crossChain = (leg: { chainId: number }) => leg.chainId !== ctx.chainId
+  /**
+   * One execute per route: the calls-length pin counts its own value against a
+   * limit of that value, so the burning transaction cannot repeat the route
+   * (each Stargate send costs a native fee no pin bounds).
+   */
+  const once = (calls: readonly NestedCall[]): Rule => ({
+    ...pinValue(0x40n, BigInt(calls.length)),
+    usageLimit: BigInt(calls.length),
+  })
 
   const routes: Route[] = []
   const stargate = STARGATE_USDC[ctx.chainId]
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
       target: stargate.pool,
-      selector: SEND,
+      selector: OFT_SEND_SELECTOR,
       length: 484,
       payable: true,
       args: (at) => [
-        pinValue(at(0n), 0x80n),
+        pinValue(at(SEND.sendParamPointer), 0x80n),
         // The fee is native only; the refund returns to LZMultiCall, whose
         // sweep forwards it to the account.
-        pinValue(at(0x40n), 0n),
-        pin(at(0x60n), multiCall),
+        pinValue(at(SEND.lzTokenFee), 0n),
+        pin(at(SEND.refundAddress), multiCall),
         // A zero-amount send still costs the account the LayerZero fee.
         {
           condition: 'greaterThan',
-          calldataOffset: at(0xc0n),
+          calldataOffset: at(SEND.amountLD),
           referenceValue: 0n,
         },
-        pinValue(at(0x100n), 0xe0n),
+        pinValue(at(SEND.extraOptionsPointer), 0xe0n),
       ],
     }
-    const { rules, argsAt } = nested([
-      pull,
-      approve(stargate.pool),
-      send,
-      sweep,
-    ])
-    const s = (offset: bigint) => argsAt[2] + offset
+    const calls = [pull, approve(stargate.pool), send, sweep]
+    const { rules, args } = batch(calls)
+    const s = args[2]
     // TAXI: extraOptions 0x0003, composeMsg and oftCmd empty. BUS: extraOptions
     // and composeMsg empty, oftCmd 0x01. No native drop, no compose.
     const taxi = [
-      pinValue(s(0x120n), 0x120n),
-      pinValue(s(0x140n), 0x140n),
+      pinValue(s(SEND.composeMsgPointer), 0x120n),
+      pinValue(s(SEND.oftCmdPointer), 0x140n),
       pinValue(s(0x160n), 2n),
       pinValue(s(0x180n), 0x0003n << 240n),
       pinValue(s(0x1a0n), 0n),
       pinValue(s(0x1c0n), 0n),
     ]
     const bus = [
-      pinValue(s(0x120n), 0x100n),
-      pinValue(s(0x140n), 0x120n),
+      pinValue(s(SEND.composeMsgPointer), 0x100n),
+      pinValue(s(SEND.oftCmdPointer), 0x120n),
       pinValue(s(0x160n), 0n),
       pinValue(s(0x180n), 0n),
       pinValue(s(0x1a0n), 1n),
       pinValue(s(0x1c0n), 0x01n << 248n),
     ]
+    const reaches = (leg: Leg) =>
+      crossChain(leg) && STARGATE_USDC[leg.chainId] !== undefined
     routes.push({
-      layout: and([all(rules), or([all(taxi), all(bus)])]),
+      rules,
+      modes: [taxi, bus],
+      reaches,
       leg: (leg) => {
         const dst = STARGATE_USDC[leg.chainId]
-        if (!dst || !crossChain(leg) || !isAddressEqual(leg.token, dst.token))
+        if (!reaches(leg) || !isAddressEqual(leg.token, dst.token))
           return undefined
         return [
-          pinValue(s(0x80n), BigInt(dst.eid)),
-          ...(leg.recipient === undefined
-            ? []
-            : [pinWord(s(0xa0n), pad(leg.recipient))]),
+          pinValue(s(SEND.dstEid), BigInt(dst.eid)),
+          ...recipient(s(SEND.to), leg),
         ]
       },
-      caps: cap(argsAt[0] + 96n),
+      limits: [...cap(args[0](96n)), once(calls)],
     })
   }
   const cctp = LZ_CCTP_CHAINS[ctx.chainId]
@@ -388,35 +386,38 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       length: 68,
       args: (at) => [pin(at(0n), LZ_CCTP_FEE_RECEIVER)],
     }
+    const maxFee =
+      ctx.cap !== undefined && ctx.cap < LZ_CCTP_MAX_RELAY_FEE
+        ? ctx.cap
+        : LZ_CCTP_MAX_RELAY_FEE
     for (const feeless of [false, true]) {
       const calls = feeless
         ? [pull, approve(CCTP_TOKEN_MESSENGER_MAINNET), burn, sweep]
         : [pull, fee, approve(CCTP_TOKEN_MESSENGER_MAINNET), burn, sweep]
-      const { rules, argsAt } = nested(calls)
-      const b = (offset: bigint) => argsAt[calls.indexOf(burn)] + offset
+      const { rules, args } = batch(calls)
+      const b = args[calls.indexOf(burn)]
+      const reaches = (leg: Leg) =>
+        crossChain(leg) &&
+        LZ_CCTP_CHAINS[leg.chainId] !== undefined &&
+        LZ_CCTP_FEELESS_DESTINATIONS.has(leg.chainId) === feeless
       routes.push({
-        layout: all(rules),
+        rules,
+        reaches,
         leg: (leg) => {
           const dst = LZ_CCTP_CHAINS[leg.chainId]
-          if (
-            !dst ||
-            !crossChain(leg) ||
-            !isAddressEqual(leg.token, dst.usdc) ||
-            LZ_CCTP_FEELESS_DESTINATIONS.has(leg.chainId) !== feeless
-          )
+          if (!reaches(leg) || !isAddressEqual(leg.token, dst.usdc))
             return undefined
           return [
             pinValue(b(32n), BigInt(dst.domain)),
-            ...(leg.recipient === undefined
-              ? []
-              : [pinWord(b(64n), pad(leg.recipient))]),
+            ...recipient(b(64n), leg),
           ]
         },
-        // The fee goes to the API's receiver, so the key cannot keep it; the
-        // cap bounds how much of the pull it can divert there.
-        caps: [
-          ...cap(argsAt[0] + 96n),
-          ...(feeless ? [] : cap(argsAt[1] + 32n)),
+        limits: [
+          ...cap(args[0](96n)),
+          // The fee goes to LayerZero's receiver, so the key cannot keep it;
+          // the ceiling bounds how much of the pull it can waste there.
+          ...(feeless ? [] : [cumulativeCap(args[1](32n), maxFee)]),
+          once(calls),
         ],
       })
     }
@@ -427,43 +428,53 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     )
   }
 
-  const branches: ArgPolicyExpression[] = []
-  const legRules = ctx.destinations.map((leg) =>
-    routes.map((route) => route.leg(leg)),
+  // A leg no route from this chain reaches is another chain's business in a
+  // multi-chain permit; one it reaches with a token no route delivers is an error.
+  const legs = ctx.destinations.filter((leg) =>
+    routes.some((route) => route.reaches(leg)),
   )
-  ctx.destinations.forEach((leg, i) => {
-    if (legRules[i].every((rules) => rules === undefined)) {
+  for (const leg of legs) {
+    if (routes.every((route) => route.leg(leg) === undefined)) {
       throw new Error(
-        `crossChainPermits: LZ has no route from ${token} on chain ${ctx.chainId} to ${leg.token} on chain ${leg.chainId}`,
+        `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
       )
     }
+  }
+  const branches = routes.flatMap((route): ArgPolicyExpression[] => {
+    const pinned = legs.flatMap((leg) => {
+      const rules = route.leg(leg)
+      return rules ? [rules] : []
+    })
+    if (pinned.length === 0) return []
+    return [
+      [
+        allOf(route.rules),
+        ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
+        anyOf(pinned.map(allOf)),
+        allOf(route.limits),
+      ].reduceRight((right, left) => ({ type: 'and', left, right })),
+    ]
   })
-  routes.forEach((route, r) => {
-    const legs = legRules.flatMap((rules) =>
-      rules[r] === undefined ? [] : [rules[r]],
-    )
-    if (legs.length === 0) return
-    branches.push(
-      and([
-        route.layout,
-        or(legs.map(all)),
-        ...(route.caps.length ? [all(route.caps)] : []),
-      ]),
-    )
-  })
-  const expression = and([all([pinValue(0n, 0x40n)]), or(branches)])
-  if (countRules(expression) > ARG_POLICY_MAX_RULES) {
+  if (branches.length === 0) {
     throw new Error(
-      `crossChainPermits: this LZ permit needs more than ${ARG_POLICY_MAX_RULES} pins; name fewer \`to\` legs`,
+      `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
     )
   }
   return {
     target: multiCall,
     selector: LZ_EXECUTE_SELECTOR,
     policies: [
-      // `msg.value` carries the Stargate messaging fee; the sweep returns any
-      // overpayment to the account.
-      { type: 'arg-policy', valueLimitPerUse: maxUint256, expression },
+      {
+        type: 'arg-policy',
+        // `msg.value` carries the Stargate messaging fee; the sweep returns any
+        // overpayment to the account.
+        valueLimitPerUse: maxUint256,
+        expression: {
+          type: 'and',
+          left: allOf([pinValue(0n, 0x40n)]),
+          right: anyOf(branches),
+        },
+      },
       ...ctx.timeFrame,
     ],
   }

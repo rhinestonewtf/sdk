@@ -3,16 +3,21 @@ import {
   decodeFunctionData,
   encodeFunctionData,
   type Hex,
+  maxUint256,
   pad,
   parseAbi,
   toHex,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
-import type { ArgPolicyExpression, ScopedAction } from '../types'
+import {
+  satisfiesRules as holds,
+  type RuleUsage,
+} from '../../../../../test/utils/policy-rules'
+import { encodeSessionPolicy } from '../policies/encode'
 import { CCTP_TOKEN_MESSENGER_MAINNET } from './cctp'
 import {
   LZ_CCTP_FEE_RECEIVER,
+  LZ_CCTP_MAX_RELAY_FEE,
   LZ_EXECUTE_SELECTOR,
   LZ_MULTICALL,
   lzMultiCall,
@@ -88,13 +93,14 @@ function stargate(
 
 /** The API's CCTP calls; to Plasma it charges no relay fee. */
 function cctp(
-  o: Partial<{ domain: number; to: Address; fee: bigint }> = {},
+  o: Partial<{ domain: number; to: Address; fee: bigint; pull: bigint }> = {},
   feeless = false,
 ): Call[] {
+  const pull = o.pull ?? CAP
   const fee = o.fee ?? 14_061n
-  const burned = feeless || fee >= CAP ? CAP : CAP - fee
+  const burned = feeless || fee >= pull ? pull : pull - fee
   return [
-    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, CAP])),
+    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, pull])),
     ...(feeless
       ? []
       : [call(USDC_BASE, fn('transfer', [LZ_CCTP_FEE_RECEIVER, fee]))]),
@@ -128,17 +134,6 @@ function context(
     timeFrame: [],
     ...overrides,
   }
-}
-
-function countRules(e: ArgPolicyExpression): number {
-  if (e.type === 'rule') return 1
-  if (e.type === 'not') return countRules(e.child)
-  return countRules(e.left) + countRules(e.right)
-}
-const expressionOf = (action: ScopedAction) => {
-  const policy = action.policies?.[0]
-  if (policy?.type !== 'arg-policy') throw new Error('expected an arg-policy')
-  return policy.expression
 }
 
 /** Fields the key may choose: the quote id, fees, and amounts under the cap. */
@@ -196,9 +191,9 @@ describe('scopeLz', () => {
     expect(action.selector).toBe(LZ_EXECUTE_SELECTOR)
     const policy = action.policies?.[0]
     expect(policy?.type).toBe('arg-policy')
-    expect(
-      policy?.type === 'arg-policy' && policy.valueLimitPerUse,
-    ).toBeGreaterThan(0n)
+    expect(policy?.type === 'arg-policy' && policy.valueLimitPerUse).toBe(
+      maxUint256,
+    )
   })
 
   test.each([
@@ -226,13 +221,49 @@ describe('scopeLz', () => {
   test.each([
     ['taxi', (a: bigint) => execute(stargate('taxi', { amount: a }))],
     ['bus', (a: bigint) => execute(stargate('bus', { amount: a }))],
+    ['cctp', (a: bigint) => execute(cctp({ pull: a }))],
   ])('caps the %s pull at maxAmount', (_, data) => {
+    expect(holds(action, data(CAP))).toBe(true)
     expect(holds(action, data(CAP + 1n))).toBe(false)
-    expect(holds(action, data(CAP), CAP)).toBe(false)
   })
 
-  test('caps the CCTP relay fee at maxAmount', () => {
-    expect(holds(action, execute(cctp({ fee: CAP + 1n })))).toBe(false)
+  test('caps the feeless CCTP pull at maxAmount', () => {
+    const toPlasma = scopeLz(
+      context({
+        destinations: [
+          { chainId: PLASMA, token: USDC_PLASMA, recipient: ACCOUNT },
+        ],
+      }),
+    )
+    expect(holds(toPlasma, execute(cctp({ pull: CAP }, true)))).toBe(true)
+    expect(holds(toPlasma, execute(cctp({ pull: CAP + 1n }, true)))).toBe(false)
+  })
+
+  test('caps the CCTP relay fee at maxAmount and the fixed ceiling', () => {
+    expect(holds(action, execute(cctp({ fee: CAP })))).toBe(false)
+    const large = scopeLz(context({ cap: 10n * LZ_CCTP_MAX_RELAY_FEE }))
+    const fee = (f: bigint) =>
+      execute(cctp({ pull: 5n * LZ_CCTP_MAX_RELAY_FEE, fee: f }))
+    expect(holds(large, fee(LZ_CCTP_MAX_RELAY_FEE))).toBe(true)
+    expect(holds(large, fee(LZ_CCTP_MAX_RELAY_FEE + 1n))).toBe(false)
+    const uncapped = scopeLz(context({ cap: undefined }))
+    expect(holds(uncapped, fee(LZ_CCTP_MAX_RELAY_FEE + 1n))).toBe(false)
+  })
+
+  test('admits each route once per session, so a Stargate send cannot repeat', () => {
+    const usage: RuleUsage = new Map()
+    expect(
+      holds(action, execute(stargate('taxi', { amount: 1n })), usage),
+    ).toBe(true)
+    expect(holds(action, execute(stargate('bus', { amount: 1n })), usage)).toBe(
+      false,
+    )
+    expect(holds(action, execute(cctp({ pull: 1n, fee: 0n })), usage)).toBe(
+      true,
+    )
+    expect(holds(action, execute(cctp({ pull: 1n, fee: 0n })), usage)).toBe(
+      false,
+    )
   })
 
   test('refuses a zero-amount Stargate send', () => {
@@ -307,7 +338,7 @@ describe('scopeLz', () => {
       }),
     )
     expect(holds(both, execute(stargate('taxi')))).toBe(true)
-    expect(holds(both, execute(cctp({}, true).map((c) => c)))).toBe(false)
+    expect(holds(both, execute(cctp({}, true)))).toBe(false)
     expect(holds(both, execute(cctp({ to: OTHER }, true)))).toBe(true)
     // Plasma has no Stargate pool, so its recipient does not open a send.
     expect(holds(both, execute(stargate('taxi', { to: OTHER })))).toBe(false)
@@ -333,10 +364,6 @@ describe('scopeLz', () => {
     )
   })
 
-  test('stays within the ArgPolicy rule limit for a typical permit', () => {
-    expect(countRules(expressionOf(action))).toBeLessThanOrEqual(128)
-  })
-
   test('refuses a permit that would exceed the ArgPolicy rule limit', () => {
     const destinations = [1, 10, 130, 137, 143, 146, 999, 42161, 43114].map(
       (chainId, i) => ({
@@ -352,19 +379,27 @@ describe('scopeLz', () => {
         recipient: `0x${(i + 1).toString(16).padStart(40, '0')}` as Address,
       }),
     )
-    expect(() =>
-      scopeLz(
-        context({
-          destinations: [
-            ...destinations,
-            { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
-          ],
-        }),
-      ),
-    ).toThrow(/more than 128 pins/)
+    const policy = (legs: SettlementContext['destinations']) => {
+      const p = scopeLz(context({ destinations: legs })).policies?.[0]
+      if (!p) throw new Error('no policy')
+      return () => encodeSessionPolicy(p, 'production')
+    }
+    // A Stargate leg and a feeless CCTP leg: all three layouts, and it fits.
+    expect(
+      policy([
+        { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
+      ]),
+    ).not.toThrow()
+    expect(
+      policy([
+        ...destinations,
+        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
+      ]),
+    ).toThrow(/max is 128/)
   })
 
-  test('refuses a token LZ does not move, or a leg no route delivers', () => {
+  test('refuses a token LZ does not move', () => {
     expect(() => scopeLz(context({ sourceTokens: [OTHER] }))).toThrow(
       /moves only USDC/,
     )
@@ -374,17 +409,31 @@ describe('scopeLz', () => {
           destinations: [{ chainId: ARB, token: OTHER, recipient: ACCOUNT }],
         }),
       ),
-    ).toThrow(/no route/)
+    ).toThrow(/delivers only USDC/)
+    expect(() => scopeLz(context({ chainId: 56 }))).toThrow(
+      /does not route from chain 56/,
+    )
+  })
+
+  test('skips legs no route from this chain reaches', () => {
+    // A multi-chain permit names legs for other chains' sessions too.
+    const mixed = scopeLz(
+      context({
+        destinations: [
+          { chainId: BASE, token: USDC_BASE, recipient: OTHER },
+          { chainId: 56, token: OTHER, recipient: OTHER },
+          { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+        ],
+      }),
+    )
+    expect(holds(mixed, execute(stargate('taxi')))).toBe(true)
     expect(() =>
       scopeLz(
         context({
           destinations: [{ chainId: BASE, token: USDC_BASE, recipient: OTHER }],
         }),
       ),
-    ).toThrow(/no route/)
-    expect(() => scopeLz(context({ chainId: 56 }))).toThrow(
-      /does not route from chain 56/,
-    )
+    ).toThrow(/no route from chain 8453/)
   })
 
   test('refuses Ink USDC.e, which the orchestrator does not quote', () => {

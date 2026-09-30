@@ -1,6 +1,6 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
 import { FAR_FUTURE_MS } from '../../permissions'
-import { pin, swapAction } from '../swap/rules'
+import { cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -281,16 +281,9 @@ export function resolveSettlementScope(
     withTimeFrame(
       swapAction(token, APPROVE_SELECTOR, [
         pin(0n, spender),
-        // No allowance beyond the cap outlives the session.
-        ...(cap === undefined
-          ? []
-          : [
-              {
-                condition: 'lessThanOrEqual' as const,
-                calldataOffset: 32n,
-                referenceValue: cap,
-              },
-            ]),
+        // Cumulative: the burning transaction admits every op after the burn, so a
+        // per-call bound would let repeated approves grant the cap many times.
+        ...(cap === undefined ? [] : [cumulativeCap(32n, cap)]),
       ]),
     ),
   )

@@ -77,10 +77,17 @@ export function cumulativeCap(
  * through the router.
  */
 /** Every rule must hold, as a right-folded AND over the expression tree. */
-function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
+export function allOf(
+  rules: UniversalActionPolicyParamRule[],
+): ArgPolicyExpression {
   return rules
     .map((rule): ArgPolicyExpression => ({ type: 'rule', rule }))
     .reduceRight((right, left) => ({ type: 'and', left, right }))
+}
+
+/** At least one branch must hold. */
+export function anyOf(branches: ArgPolicyExpression[]): ArgPolicyExpression {
+  return branches.reduce((left, right) => ({ type: 'or', left, right }))
 }
 
 /**
