@@ -13,18 +13,10 @@ import {
   satisfiesRules as holds,
   type RuleUsage,
 } from '../../../../../test/utils/policy-rules'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { encodeSessionPolicy } from '../policies/encode'
-import { CCTP_TOKEN_MESSENGER_MAINNET } from './cctp'
-import {
-  LZ_CCTP_FEE_RECEIVER,
-  LZ_CCTP_MAX_RELAY_FEE,
-  LZ_EXECUTE_SELECTOR,
-  LZ_MULTICALL,
-  lzMultiCall,
-  STARGATE_USDC,
-  scopeLz,
-} from './lz'
-import type { SettlementContext } from './types'
+import { LZ_CCTP_MAX_RELAY_FEE, LZ_EXECUTE_SELECTOR, scopeLz } from './lz'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 const abi = parseAbi([
   'function execute((address target,uint256 value,bytes data)[] calls, bytes32 quoteId)',
@@ -41,12 +33,15 @@ const OTHER = '0x2222222222222222222222222222222222222222' as Address
 const BASE = 8453
 const ARB = 42161
 const PLASMA = 9745
-const USDC_BASE = STARGATE_USDC[BASE].token
-const USDC_ARB = STARGATE_USDC[ARB].token
+const lz = (chainId: number) => SETTLEMENT_CATALOG[chainId].lz!
+const USDC_BASE = lz(BASE).stargateUsdc!.token
+const USDC_ARB = lz(ARB).stargateUsdc!.token
 const USDC_PLASMA = '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
-const MC = LZ_MULTICALL[BASE].multiCall
-const TD = LZ_MULTICALL[BASE].transferDelegate
-const POOL = STARGATE_USDC[BASE].pool
+const MC = lz(BASE).multiCall
+const TD = lz(BASE).transferDelegate
+const POOL = lz(BASE).stargateUsdc!.pool
+const FEE_RECEIVER = lz(BASE).cctp!.feeReceiver
+const TOKEN_MESSENGER = '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d' as Address
 const QUOTE_ID = `0x${'00'.repeat(16)}01a0efa5cb93751ca4a9d25a2a4d407c` as Hex
 const CAP = 10_000_000n
 
@@ -93,7 +88,13 @@ function stargate(
 
 /** The API's CCTP calls; to Plasma it charges no relay fee. */
 function cctp(
-  o: Partial<{ domain: number; to: Address; fee: bigint; pull: bigint }> = {},
+  o: Partial<{
+    domain: number
+    to: Address
+    fee: bigint
+    pull: bigint
+    receiver: Address
+  }> = {},
   feeless = false,
 ): Call[] {
   const pull = o.pull ?? CAP
@@ -103,10 +104,10 @@ function cctp(
     call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, pull])),
     ...(feeless
       ? []
-      : [call(USDC_BASE, fn('transfer', [LZ_CCTP_FEE_RECEIVER, fee]))]),
-    call(USDC_BASE, fn('approve', [CCTP_TOKEN_MESSENGER_MAINNET, burned])),
+      : [call(USDC_BASE, fn('transfer', [o.receiver ?? FEE_RECEIVER, fee]))]),
+    call(USDC_BASE, fn('approve', [TOKEN_MESSENGER, burned])),
     call(
-      CCTP_TOKEN_MESSENGER_MAINNET,
+      TOKEN_MESSENGER,
       fn('depositForBurn', [
         burned,
         o.domain ?? (feeless ? 33 : 3),
@@ -126,7 +127,8 @@ function context(
 ): SettlementContext {
   return {
     chainId: BASE,
-    target: lzMultiCall(BASE),
+    settlement: SETTLEMENT_CATALOG,
+    target: MC,
     account: ACCOUNT,
     sourceTokens: [USDC_BASE],
     destinations: [{ chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }],
@@ -387,7 +389,7 @@ describe('scopeLz', () => {
               ? ('0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as Address)
               : chainId === 999
                 ? ('0xb88339CB7199b77E23DB6E890353E22632Ba630f' as Address)
-                : STARGATE_USDC[chainId].token,
+                : lz(chainId).stargateUsdc!.token,
         recipient: `0x${(i + 1).toString(16).padStart(40, '0')}` as Address,
       }),
     )
@@ -453,11 +455,56 @@ describe('scopeLz', () => {
       scopeLz(
         context({
           chainId: 57073,
-          target: lzMultiCall(57073),
+          target: lz(57073).multiCall,
           sourceTokens: ['0xF1815bd50389c46847f0Bda824eC8da914045D14'],
         }),
       ),
     ).toThrow(/moves only USDC/)
+  })
+
+  /** The fixture with one chain's `lz` block replaced (undefined drops it). */
+  const withLz = (
+    chainId: number,
+    block: NonNullable<SettlementCatalog[number]['lz']> | undefined,
+  ): SettlementCatalog => {
+    const { lz: _, ...rest } = SETTLEMENT_CATALOG[chainId]
+    return {
+      ...SETTLEMENT_CATALOG,
+      [chainId]: block ? { ...rest, lz: block } : rest,
+    }
+  }
+
+  test('pins the relay fee to the source chain served receiver', () => {
+    const settlement = withLz(BASE, {
+      ...lz(BASE),
+      cctp: { ...lz(BASE).cctp!, feeReceiver: OTHER },
+    })
+    const moved = scopeLz(context({ settlement }))
+    expect(holds(moved, execute(cctp({ receiver: OTHER })))).toBe(true)
+    expect(holds(moved, execute(cctp()))).toBe(false)
+  })
+
+  test('drops the fee transfer where the destination is served feeless', () => {
+    const settlement = withLz(ARB, {
+      ...lz(ARB),
+      cctp: { ...lz(ARB).cctp!, feeless: true },
+    })
+    const feeless = scopeLz(context({ settlement }))
+    expect(holds(feeless, execute(cctp({ domain: 3 }, true)))).toBe(true)
+    expect(holds(feeless, execute(cctp()))).toBe(false)
+  })
+
+  test('routes only through the blocks the orchestrator serves', () => {
+    const { stargateUsdc: _, ...noPool } = lz(ARB)
+    const cctpOnly = scopeLz(context({ settlement: withLz(ARB, noPool) }))
+    expect(holds(cctpOnly, execute(cctp()))).toBe(true)
+    expect(holds(cctpOnly, execute(stargate('taxi')))).toBe(false)
+    expect(() =>
+      scopeLz(context({ settlement: withLz(ARB, undefined) })),
+    ).toThrow(/no route from chain 8453/)
+    expect(() =>
+      scopeLz(context({ settlement: withLz(BASE, undefined) })),
+    ).toThrow(/does not route from chain 8453/)
   })
 
   test('needs the account and exactly one source token', () => {

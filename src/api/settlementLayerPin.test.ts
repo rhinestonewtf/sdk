@@ -1,6 +1,7 @@
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { adaptTransaction } from './account'
 
@@ -15,18 +16,21 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
  * the session would refuse on-chain.
  */
 function session(settlementLayers: readonly string[]) {
-  return toSession({
-    chain: base,
-    owners: { type: 'ecdsa', accounts: [accountA] },
-    account: ACCOUNT,
-    crossChainPermits: [
-      {
-        from: { chain: base, token: USDC },
-        to: { chain: arbitrum, token: USDC_ARB },
-        settlementLayers,
-      },
-    ],
-  } as never)
+  return toSession(
+    {
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      account: ACCOUNT,
+      crossChainPermits: [
+        {
+          from: { chain: base, token: USDC },
+          to: { chain: arbitrum, token: USDC_ARB },
+          settlementLayers,
+        },
+      ],
+    } as never,
+    { settlement: SETTLEMENT_CATALOG },
+  )
 }
 
 function layersFor(layers: readonly string[], explicit?: unknown): unknown {
@@ -48,24 +52,27 @@ describe('settlement layer pin', () => {
   })
 
   test("an ECO_IE session limits the intent to the orchestrator's ECO", () => {
-    const eco = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      account: ACCOUNT,
-      oneTimeUse: { id: 7n },
-      policyAddresses: {
-        oneTimeUseId: '0x3333333333333333333333333333333333333333',
-      },
-      crossChainPermits: [
-        {
-          from: { chain: base, token: USDC, maxAmount: 100n },
-          to: { chain: arbitrum, token: USDC_ARB },
-          settlementLayers: ['ECO_IE'],
-          maxFeeBps: 50,
-          validUntil: new Date(2_000_000_000_000),
+    const eco = toSession(
+      {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        account: ACCOUNT,
+        oneTimeUse: { id: 7n },
+        policyAddresses: {
+          oneTimeUseId: '0x3333333333333333333333333333333333333333',
         },
-      ],
-    } as never)
+        crossChainPermits: [
+          {
+            from: { chain: base, token: USDC, maxAmount: 100n },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ECO_IE'],
+            maxFeeBps: 50,
+            validUntil: new Date(2_000_000_000_000),
+          },
+        ],
+      } as never,
+      { settlement: SETTLEMENT_CATALOG },
+    )
     const intent = adaptTransaction(
       { account: {} } as never,
       {

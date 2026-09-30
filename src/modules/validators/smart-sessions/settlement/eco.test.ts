@@ -13,25 +13,25 @@ import {
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import type {
   ArgPolicyExpression,
   UniversalActionPolicyParamRule,
 } from '../types'
 import {
-  ECO_PORTAL,
-  ECO_PROVERS,
-  ECO_STABLECOINS,
-  ecoPortal,
   ecoPortalAbi,
   PUBLISH,
   PUBLISH_AND_FUND_SELECTOR,
   scopeEco,
 } from './eco'
 
-const USDC_BASE = ECO_STABLECOINS[8453][0]
-const USDC_ARB = ECO_STABLECOINS[42161][0]
-const USDT0_ARB = ECO_STABLECOINS[42161][1]
-const USDC_OP = ECO_STABLECOINS[10][0]
+const stablecoins = (chainId: number) =>
+  SETTLEMENT_CATALOG[chainId].eco!.stablecoins
+const ECO_PORTAL = SETTLEMENT_CATALOG[8453].eco!.portal
+const USDC_BASE = stablecoins(8453)[0]
+const USDC_ARB = stablecoins(42161)[0]
+const USDT0_ARB = stablecoins(42161)[1]
+const USDC_OP = stablecoins(10)[0]
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
 const HYPER_PROVER = '0xec004Ab4870c4e177c66949329dCdb503CE41022' as Address
@@ -136,7 +136,8 @@ const word = (calldata: Hex, offset: bigint) =>
 
 const base = {
   chainId: 8453,
-  target: ecoPortal(8453),
+  settlement: SETTLEMENT_CATALOG,
+  target: ECO_PORTAL,
   account: ACCOUNT,
   sourceTokens: [USDC_BASE],
   destinations: [{ chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }],
@@ -350,8 +351,8 @@ describe('scopeEco', () => {
       'a leg with no prover on both chains',
       {
         chainId: 2020,
-        target: ecoPortal(2020),
-        sourceTokens: [ECO_STABLECOINS[2020][0]],
+        target: SETTLEMENT_CATALOG[2020].eco!.portal,
+        sourceTokens: [stablecoins(2020)[0]],
       },
       'no Eco prover is deployed on both chain 2020 and chain 42161',
     ],
@@ -363,15 +364,15 @@ describe('scopeEco', () => {
     const ronin = scopeEco({
       ...base,
       chainId: 2020,
-      target: ecoPortal(2020),
-      sourceTokens: [ECO_STABLECOINS[2020][0]],
+      target: SETTLEMENT_CATALOG[2020].eco!.portal,
+      sourceTokens: [stablecoins(2020)[0]],
       destinations: [{ chainId: 8453, token: USDC_BASE, recipient: ACCOUNT }],
     })
     const toBase = (prover: Address) =>
       publish({
         destination: 8453n,
         routeToken: USDC_BASE,
-        rewardToken: ECO_STABLECOINS[2020][0],
+        rewardToken: stablecoins(2020)[0],
         prover,
       })
     expect(holds(ronin, toBase(CCIP_PROVER))).toBe(true)
@@ -412,7 +413,7 @@ describe('scopeEco', () => {
       ...base,
       destinations: chains.map((chainId) => ({
         chainId,
-        token: ECO_STABLECOINS[chainId][0],
+        token: stablecoins(chainId)[0],
         recipient: ACCOUNT,
       })),
     })
@@ -421,13 +422,45 @@ describe('scopeEco', () => {
     expect(rulesOf(policy.expression).length).toBeLessThanOrEqual(128)
   })
 
-  test('every bundled address is valid', () => {
-    expect(isAddress(ECO_PORTAL)).toBe(true)
-    for (const prover of Object.keys(ECO_PROVERS)) {
-      expect(isAddress(prover)).toBe(true)
+  test('a leg admits only the provers served on both of its chains', () => {
+    // Base serves Hyper and CCIP (lowercased), Arbitrum CCIP and Polymer.
+    const settlement = {
+      ...SETTLEMENT_CATALOG,
+      8453: {
+        eco: {
+          ...SETTLEMENT_CATALOG[8453].eco!,
+          provers: [HYPER_PROVER, CCIP_PROVER.toLowerCase() as Address],
+        },
+      },
+      42161: {
+        eco: {
+          ...SETTLEMENT_CATALOG[42161].eco!,
+          provers: [CCIP_PROVER, POLYMER_PROVER],
+        },
+      },
     }
-    for (const tokens of Object.values(ECO_STABLECOINS)) {
-      for (const token of tokens) expect(isAddress(token)).toBe(true)
+    const narrowed = scopeEco({ ...base, settlement })
+    expect(holds(narrowed, publish({ prover: CCIP_PROVER }))).toBe(true)
+    expect(holds(narrowed, publish({ prover: HYPER_PROVER }))).toBe(false)
+    expect(holds(narrowed, publish({ prover: POLYMER_PROVER }))).toBe(false)
+  })
+
+  test('refuses a chain the orchestrator serves no ECO block for', () => {
+    const { eco: _, ...arbitrum } = SETTLEMENT_CATALOG[42161]
+    expect(() =>
+      scopeEco({
+        ...base,
+        settlement: { ...SETTLEMENT_CATALOG, 42161: arbitrum },
+      }),
+    ).toThrow('ECO_IE does not route to chain 42161')
+  })
+
+  test('every fixture address is valid', () => {
+    for (const { eco } of Object.values(SETTLEMENT_CATALOG)) {
+      if (!eco) continue
+      expect(isAddress(eco.portal)).toBe(true)
+      for (const prover of eco.provers) expect(isAddress(prover)).toBe(true)
+      for (const token of eco.stablecoins) expect(isAddress(token)).toBe(true)
     }
   })
 })

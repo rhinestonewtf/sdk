@@ -35,6 +35,7 @@ import {
   isSettlementScopedPermit,
   resolveSettlementScope,
 } from './settlement/scope'
+import type { SettlementCatalog } from './settlement/types'
 import { resolveSessionSigning } from './signing'
 import { resolveSwapScope } from './swap/scope'
 import type {
@@ -70,6 +71,9 @@ export interface ResolveSessionOptions {
   // The chain's wrapped-native token address. Provide it to permit the
   // native-wrap `deposit()` action; omit for a fully offline, pure build.
   readonly wrappedNativeToken?: Address
+  // The orchestrator's `/chains` settlement addresses. IntentExecutor-layer
+  // permits (other than SAME_CHAIN_IE) need them; `createSession` passes them.
+  readonly settlement?: SettlementCatalog
 }
 
 export function resolveSessionData(
@@ -111,6 +115,7 @@ export function resolveSessionData(
     environment,
     account: definition.account,
     oneTimeUse: Boolean(definition.oneTimeUse),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
   // none of the calldata pins ever see.
@@ -674,6 +679,7 @@ export function toSession(
     ...(options.wrappedNativeToken
       ? { wrappedNativeToken: options.wrappedNativeToken }
       : {}),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
   })
   const resolvedPermits = (definition.crossChainPermits ?? []).map(
     resolveCrossChainPermission,

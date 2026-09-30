@@ -17,19 +17,39 @@ import {
   type RuleUsage,
   satisfiesRules,
 } from '../../../../../test/utils/policy-rules'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
 import {
-  resolveSessionData,
+  type ResolveSessionOptions,
+  resolveSessionData as resolveBare,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-  toSession,
+  toSession as toSessionBare,
 } from '../resolve'
 import { swapperAddresses } from '../swap/rhinestone'
 import type { CrossChainPermissionInput, SessionDefinition } from '../types'
-import { CCTP_CHAINS, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
-import { ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR } from './eco'
-import { LZ_EXECUTE_SELECTOR, LZ_MULTICALL } from './lz'
-import { OFT_CHAINS, OFT_SEND_SELECTOR } from './oft'
+import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { PUBLISH_AND_FUND_SELECTOR } from './eco'
+import { LZ_EXECUTE_SELECTOR } from './lz'
+import { OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
+
+const withSettlement = (options: ResolveSessionOptions = {}) => ({
+  settlement: SETTLEMENT_CATALOG,
+  ...options,
+})
+const resolveSessionData = (
+  definition: SessionDefinition,
+  options?: ResolveSessionOptions,
+) => resolveBare(definition, withSettlement(options))
+const toSession = (
+  definition: SessionDefinition,
+  options?: ResolveSessionOptions,
+) => toSessionBare(definition, withSettlement(options))
+
+const OFT_ARB = SETTLEMENT_CATALOG[42161].oft!
+const OFT_PLASMA = SETTLEMENT_CATALOG[9745].oft!
+const LZ_BASE = SETTLEMENT_CATALOG[base.id].lz!
+const ECO_PORTAL = SETTLEMENT_CATALOG[base.id].eco!.portal
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -70,7 +90,7 @@ describe('settlement-scoped crossChainPermits', () => {
       data.actions.map((a) => [a.actionTarget, a.actionTargetSelector]),
     ).toEqual([
       [
-        '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d',
+        '0x28b5a0e9c621a5badaa536219b3a228c8168cf5d',
         DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
       ],
       [USDC, APPROVE],
@@ -89,15 +109,56 @@ describe('settlement-scoped crossChainPermits', () => {
     const data = resolveSessionData(
       definition(
         {
-          from: { chain: baseSepolia, token: CCTP_CHAINS[84532].usdc },
-          to: { chain: arbitrumSepolia, token: CCTP_CHAINS[421614].usdc },
+          from: {
+            chain: baseSepolia,
+            token: SETTLEMENT_CATALOG[84532].cctp!.usdc,
+          },
+          to: {
+            chain: arbitrumSepolia,
+            token: SETTLEMENT_CATALOG[421614].cctp!.usdc,
+          },
         },
         { chain: baseSepolia },
       ),
     )
     expect(data.actions[0].actionTarget).toBe(
-      '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
+      '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa',
     )
+  })
+
+  test('refuses an IntentExecutor-layer permit without served settlement addresses', () => {
+    const message =
+      "IntentExecutor-layer permits need the orchestrator's settlement addresses"
+    expect(() => resolveBare(definition())).toThrow(message)
+    expect(() => toSessionBare(definition())).toThrow(message)
+    expect(() =>
+      resolveBare(definition({ settlementLayers: ['LZ'] }, withOnce)),
+    ).toThrow(message)
+  })
+
+  test('a SAME_CHAIN_IE transfer pins no served address, so needs none', () => {
+    const data = resolveBare(
+      definition({
+        to: { chain: base, token: USDC, recipient: OTHER },
+        settlementLayers: ['SAME_CHAIN_IE'],
+        allowRecipientNotAccount: true,
+      }),
+    )
+    expect(data.actions[0].actionTarget).toBe(USDC)
+  })
+
+  test('refuses a layer the orchestrator serves no block for on a chain', () => {
+    const { cctp: _, ...arbitrumServed } = SETTLEMENT_CATALOG[arbitrum.id]
+    const settlement = { ...SETTLEMENT_CATALOG, [arbitrum.id]: arbitrumServed }
+    expect(() => resolveSessionData(definition(), { settlement })).toThrow(
+      'CCTP does not route to chain 42161',
+    )
+    const { cctp: __, ...baseServed } = SETTLEMENT_CATALOG[base.id]
+    expect(() =>
+      resolveSessionData(definition(), {
+        settlement: { ...SETTLEMENT_CATALOG, [base.id]: baseServed },
+      }),
+    ).toThrow('CCTP does not route to chain 8453')
   })
 
   test('the session is action-checked and limits intents to its layers', () => {
@@ -123,8 +184,8 @@ describe('settlement-scoped crossChainPermits', () => {
   test('an OFT permit restricts the session to the adapter send and approve', () => {
     const oft = definition(
       {
-        from: { chain: arbitrum, token: OFT_CHAINS[42161].token },
-        to: { chain: plasma, token: OFT_CHAINS[9745].token },
+        from: { chain: arbitrum, token: OFT_ARB.token },
+        to: { chain: plasma, token: OFT_PLASMA.token },
         settlementLayers: ['OFT'],
       },
       { chain: arbitrum, ...withOnce },
@@ -135,8 +196,8 @@ describe('settlement-scoped crossChainPermits', () => {
         .slice(0, 2)
         .map((a) => [a.actionTarget, a.actionTargetSelector]),
     ).toEqual([
-      [OFT_CHAINS[42161].adapter, OFT_SEND_SELECTOR],
-      [OFT_CHAINS[42161].token, APPROVE],
+      [OFT_ARB.adapter, OFT_SEND_SELECTOR],
+      [OFT_ARB.token, APPROVE],
     ])
     expect(toSession(oft).settlementLayers).toEqual(['OFT'])
     // Without oneTimeUse, repeated dust sends would each burn a LayerZero fee.
@@ -149,8 +210,8 @@ describe('settlement-scoped crossChainPermits', () => {
     const resolved = resolveSettlementScope(
       [
         resolveCrossChainPermission({
-          from: { chain: arbitrum, token: OFT_CHAINS[42161].token },
-          to: { chain: plasma, token: OFT_CHAINS[9745].token },
+          from: { chain: arbitrum, token: OFT_ARB.token },
+          to: { chain: plasma, token: OFT_PLASMA.token },
           settlementLayers: ['OFT'],
         }),
       ],
@@ -159,6 +220,7 @@ describe('settlement-scoped crossChainPermits', () => {
         environment: 'production',
         account: ACCOUNT,
         oneTimeUse: true,
+        settlement: SETTLEMENT_CATALOG,
       },
     )
     const action = resolved?.actions.find((a) => a.selector === APPROVE)
@@ -169,9 +231,7 @@ describe('settlement-scoped crossChainPermits', () => {
         functionName: 'approve',
         args: [spender, 100n],
       })
-    expect(satisfiesRules(action, approve(OFT_CHAINS[42161].adapter))).toBe(
-      true,
-    )
+    expect(satisfiesRules(action, approve(OFT_ARB.adapter))).toBe(true)
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
   })
 
@@ -183,7 +243,7 @@ describe('settlement-scoped crossChainPermits', () => {
         .slice(0, 2)
         .map((a) => [a.actionTarget, a.actionTargetSelector]),
     ).toEqual([
-      [LZ_MULTICALL[base.id].multiCall, LZ_EXECUTE_SELECTOR],
+      [LZ_BASE.multiCall, LZ_EXECUTE_SELECTOR],
       [USDC, APPROVE],
     ])
     expect(toSession(lz).settlementLayers).toEqual(['LZ'])
@@ -207,6 +267,7 @@ describe('settlement-scoped crossChainPermits', () => {
         environment: 'production',
         account: ACCOUNT,
         oneTimeUse: true,
+        settlement: SETTLEMENT_CATALOG,
       },
     )
     const action = resolved?.actions.find((a) => a.selector === APPROVE)
@@ -217,7 +278,7 @@ describe('settlement-scoped crossChainPermits', () => {
         functionName: 'approve',
         args: [spender, amount],
       })
-    const delegate = LZ_MULTICALL[base.id].transferDelegate
+    const delegate = LZ_BASE.transferDelegate
     expect(satisfiesRules(action, approve(delegate))).toBe(true)
     expect(satisfiesRules(action, approve(delegate, 101n))).toBe(false)
     // The burning transaction admits every later op, so the cap is a total across
@@ -227,9 +288,7 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(satisfiesRules(action, approve(delegate, 60n), usage)).toBe(false)
     expect(satisfiesRules(action, approve(delegate, 40n), usage)).toBe(true)
     // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
-    expect(
-      satisfiesRules(action, approve(LZ_MULTICALL[base.id].multiCall)),
-    ).toBe(false)
+    expect(satisfiesRules(action, approve(LZ_BASE.multiCall))).toBe(false)
   })
 
   describe('SAME_CHAIN_IE', () => {
@@ -342,6 +401,7 @@ describe('settlement-scoped crossChainPermits', () => {
           environment: 'production',
           account: ACCOUNT,
           oneTimeUse: true,
+          settlement: SETTLEMENT_CATALOG,
         },
       )
       const action = resolved?.actions.find((a) => a.selector === APPROVE)
@@ -583,6 +643,7 @@ describe('resolveSettlementScope', () => {
         environment: 'production',
         account: ACCOUNT,
         oneTimeUse: false,
+        settlement: SETTLEMENT_CATALOG,
       },
     )
     if (!resolved) throw new Error('expected a settlement scope')
@@ -659,6 +720,7 @@ describe('resolveSettlementScope', () => {
           environment: 'production',
           account: undefined,
           oneTimeUse: false,
+          settlement: SETTLEMENT_CATALOG,
         },
       )
     expect(resolve).toThrow('needs `account` on the session definition')

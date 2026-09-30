@@ -7,9 +7,8 @@ import {
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import {
-  CCTP_CHAINS,
-  cctpTokenMessenger,
   DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
   scopeCctp,
   tokenMessengerAbi,
@@ -46,12 +45,13 @@ function burn(
   })
 }
 
-const USDC_ARB = CCTP_CHAINS[42161].usdc
-const USDC_OP = CCTP_CHAINS[10].usdc
+const USDC_ARB = SETTLEMENT_CATALOG[42161].cctp!.usdc
+const USDC_OP = SETTLEMENT_CATALOG[10].cctp!.usdc
 
 const base = {
   chainId: 8453,
-  target: cctpTokenMessenger(8453),
+  settlement: SETTLEMENT_CATALOG,
+  target: SETTLEMENT_CATALOG[8453].cctp!.tokenMessenger,
   sourceTokens: [USDC],
   timeFrame: [],
 } as const
@@ -64,7 +64,7 @@ describe('scopeCctp', () => {
   })
 
   test('targets TokenMessengerV2 depositForBurnWithHook', () => {
-    expect(action.target).toBe('0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d')
+    expect(action.target).toBe('0x28b5a0e9c621a5badaa536219b3a228c8168cf5d')
     expect(action.selector).toBe(DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR)
     expect(DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR).toBe('0x779b432d')
   })
@@ -118,6 +118,27 @@ describe('scopeCctp', () => {
     ).toThrow('CCTP does not route to chain 56')
   })
 
+  test('refuses a chain the orchestrator serves no CCTP block for', () => {
+    const { cctp: _, ...arbitrum } = SETTLEMENT_CATALOG[42161]
+    const settlement = { ...SETTLEMENT_CATALOG, 42161: arbitrum }
+    expect(() =>
+      scopeCctp({
+        ...base,
+        settlement,
+        destinations: [{ chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }],
+      }),
+    ).toThrow('CCTP does not route to chain 42161')
+    expect(() =>
+      scopeCctp({
+        ...base,
+        settlement,
+        chainId: 42161,
+        sourceTokens: [USDC_ARB],
+        destinations: [{ chainId: 10, token: USDC_OP, recipient: ACCOUNT }],
+      }),
+    ).toThrow('CCTP does not route to chain 42161')
+  })
+
   test('refuses more than one source token', () => {
     expect(() =>
       scopeCctp({
@@ -150,9 +171,9 @@ describe('scopeCctp', () => {
     },
   )
 
-  test('every bundled USDC address is valid', () => {
-    for (const { usdc } of Object.values(CCTP_CHAINS)) {
-      expect(isAddress(usdc)).toBe(true)
+  test('every fixture USDC address is valid', () => {
+    for (const { cctp } of Object.values(SETTLEMENT_CATALOG)) {
+      if (cctp) expect(isAddress(cctp.usdc)).toBe(true)
     }
   })
 })

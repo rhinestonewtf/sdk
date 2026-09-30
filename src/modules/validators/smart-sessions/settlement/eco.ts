@@ -14,7 +14,7 @@ import type {
   ScopedAction,
   UniversalActionPolicyParamRule,
 } from '../types'
-import type { SettlementContext } from './types'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
  * ECO — Eco Routes, `Portal.publishAndFund` with Eco's quoted route bytes
@@ -25,66 +25,6 @@ import type { SettlementContext } from './types'
  * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
  * Every pointer and length word is pinned so no field can alias another.
  */
-
-/** Eco deploys its Portal at one CREATE2 address on every mainnet. */
-export const ECO_PORTAL: Address = '0xEC000064576f9C95a8623Bc0eff3db6d296ea6df'
-
-/**
- * Eco's provers and the chains each is deployed on, checked on-chain (code
- * present, `PORTAL()` is the Portal). An unlisted prover could attest a fill
- * that never happened; a listed one with no code on the source chain makes
- * `refund` revert and locks the reward, so a leg may only name a prover that
- * exists on both of its chains.
- */
-export const ECO_PROVERS: Readonly<Record<Address, readonly number[]>> = {
-  // HyperProver
-  '0xec004Ab4870c4e177c66949329dCdb503CE41022': [
-    1, 10, 130, 137, 999, 8453, 9745, 42161,
-  ],
-  // CCIPProver
-  '0xceBB7cDDBA4734C7130BF114a37C2dA4C5f3c473': [1, 2020, 8453],
-  // PolymerProver
-  '0xE3e4e6F284f1c8E17bafE4268EB98c36886B4d8B': [1, 10, 137, 8453, 42161],
-}
-
-/**
- * USD stablecoins per chain Eco routes between, all 6 decimals. The delivery
- * floor compares reward and delivery in raw units 1:1, which only holds
- * between USD stablecoins of equal decimals.
- */
-export const ECO_STABLECOINS: Readonly<Record<number, readonly Address[]>> = {
-  1: [
-    '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-    '0xdac17f958d2ee523a2206206994597c13d831ec7',
-  ],
-  10: [
-    '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
-    '0x01bFF41798a0BcF287b996046Ca68b395DbC1071',
-    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
-  ],
-  130: [
-    '0x078d782b760474a361dda0af3839290b0ef57ad6',
-    '0x9151434b16b9763660705744891fA906F660EcC5',
-  ],
-  137: [
-    '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
-    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-  ],
-  999: [
-    '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
-    '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb',
-  ],
-  2020: ['0x0b7007c13325c48911f73a2dad5fa5dcbf808adc'],
-  8453: ['0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'],
-  9745: [
-    '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb',
-    '0x2d661C89D812261039AF9764eceaAee884f5F67F',
-  ],
-  42161: [
-    '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
-  ],
-}
 
 export const ecoPortalAbi = parseAbi([
   'function publishAndFund(uint64 destination, bytes route, (uint64 deadline,address creator,address prover,uint256 nativeAmount,(address token,uint256 amount)[] tokens) reward, bool allowPartial) payable returns (bytes32 intentHash, address vault)',
@@ -135,40 +75,51 @@ export const PUBLISH = {
 
 const BPS = 10_000n
 
-function requireStablecoin(
-  chainId: number,
-  token: Address,
-  leg: 'from' | 'to',
-) {
-  const tokens = ECO_STABLECOINS[chainId]
-  if (tokens === undefined) {
+export function ecoChain(settlement: SettlementCatalog, chainId: number) {
+  const chain = settlement[chainId]?.eco
+  if (chain === undefined) {
     throw new Error(
       `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
     )
   }
-  if (!tokens.some((t) => isAddressEqual(t, token))) {
+  return chain
+}
+
+/**
+ * The delivery floor compares reward and delivery in raw units 1:1, which only
+ * holds between the served USD stablecoins (all 6 decimals).
+ */
+function requireStablecoin(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+  leg: 'from' | 'to',
+) {
+  if (
+    !ecoChain(settlement, chainId).stablecoins.some((t) =>
+      isAddressEqual(t, token),
+    )
+  ) {
     throw new Error(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
 }
 
-/** Provers deployed on both chains of a leg. */
-function proversBetween(source: number, destination: number): Address[] {
-  return (Object.keys(ECO_PROVERS) as Address[]).filter(
-    (prover) =>
-      ECO_PROVERS[prover].includes(source) &&
-      ECO_PROVERS[prover].includes(destination),
+/**
+ * Provers served on both chains of a leg. An unlisted prover could attest a
+ * fill that never happened; one with no code on the source chain makes
+ * `refund` revert and locks the reward.
+ */
+export function proversBetween(
+  settlement: SettlementCatalog,
+  source: number,
+  destination: number,
+): Address[] {
+  const there = ecoChain(settlement, destination).provers
+  return ecoChain(settlement, source).provers.filter((prover) =>
+    there.some((p) => isAddressEqual(p, prover)),
   )
-}
-
-export function ecoPortal(chainId: number): Address {
-  if (ECO_STABLECOINS[chainId] === undefined) {
-    throw new Error(
-      `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
-    )
-  }
-  return ECO_PORTAL
 }
 
 /** The word holding `transfer`'s selector and the head of its recipient. */
@@ -191,7 +142,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
     )
   }
-  requireStablecoin(ctx.chainId, ctx.sourceTokens[0], 'from')
+  requireStablecoin(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new Error(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
@@ -259,13 +210,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     },
   ]
   const legs = ctx.destinations.map((leg): ArgPolicyExpression => {
-    requireStablecoin(leg.chainId, leg.token, 'to')
+    requireStablecoin(ctx.settlement, leg.chainId, leg.token, 'to')
     if (leg.recipient === undefined) {
       throw new Error(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
       )
     }
-    const provers = proversBetween(ctx.chainId, leg.chainId)
+    const provers = proversBetween(ctx.settlement, ctx.chainId, leg.chainId)
     if (provers.length === 0) {
       throw new Error(
         `crossChainPermits: no Eco prover is deployed on both chain ${ctx.chainId} and chain ${leg.chainId}`,
@@ -273,7 +224,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     }
     const legRules: UniversalActionPolicyParamRule[] = [
       pinValue(PUBLISH.destination, BigInt(leg.chainId)),
-      pin(PUBLISH.routePortal, ECO_PORTAL),
+      pin(PUBLISH.routePortal, ecoChain(ctx.settlement, leg.chainId).portal),
       pin(PUBLISH.routeToken, leg.token),
       pin(PUBLISH.callTarget, leg.token),
       pinWord(PUBLISH.callDataHead, transferHead(leg.recipient)),

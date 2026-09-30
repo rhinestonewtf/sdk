@@ -1,6 +1,7 @@
-import { base } from 'viem/chains'
+import { arbitrum, base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import {
   getSessionDetails,
   isSessionEnabled,
@@ -65,5 +66,34 @@ describe('Smart Sessions compatibility facade', () => {
         args: [account, session.permissionId],
       }),
     )
+  })
+
+  test('forwards the served settlement addresses to an IntentExecutor-layer permit', () => {
+    const make = (options?: Parameters<typeof toSession>[1]) =>
+      toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          account,
+          crossChainPermits: [
+            {
+              from: {
+                chain: base,
+                token: SETTLEMENT_CATALOG[base.id].cctp!.usdc,
+              },
+              to: {
+                chain: arbitrum,
+                token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+              },
+              settlementLayers: ['CCTP'],
+            },
+          ],
+        },
+        options,
+      )
+    expect(() => make()).toThrow("need the orchestrator's settlement addresses")
+    expect(
+      make({ settlement: SETTLEMENT_CATALOG }).actions[0].actionTarget,
+    ).toBe(SETTLEMENT_CATALOG[base.id].cctp!.tokenMessenger)
   })
 })

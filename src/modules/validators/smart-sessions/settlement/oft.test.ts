@@ -12,18 +12,12 @@ import {
 } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
-import {
-  OFT_CHAINS,
-  OFT_SEND_SELECTOR,
-  oftAbi,
-  oftAdapter,
-  SEND,
-  scopeOft,
-} from './oft'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
+import { OFT_SEND_SELECTOR, oftAbi, SEND, scopeOft } from './oft'
 
-const USDT0_ARB = OFT_CHAINS[42161].token
-const USDT0_OP = OFT_CHAINS[10].token
-const USDT0_PLASMA = OFT_CHAINS[9745].token
+const USDT0_ARB = SETTLEMENT_CATALOG[42161].oft!.token
+const USDT0_OP = SETTLEMENT_CATALOG[10].oft!.token
+const USDT0_PLASMA = SETTLEMENT_CATALOG[9745].oft!.token
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
 
@@ -63,7 +57,8 @@ const word = (calldata: Hex, offset: bigint) =>
 
 const base = {
   chainId: 42161,
-  target: oftAdapter(42161),
+  settlement: SETTLEMENT_CATALOG,
+  target: SETTLEMENT_CATALOG[42161].oft!.adapter,
   account: ACCOUNT,
   sourceTokens: [USDT0_ARB],
   timeFrame: [],
@@ -270,10 +265,24 @@ describe('scopeOft', () => {
     ).toThrow(message)
   })
 
-  test('every bundled address is valid', () => {
-    for (const { adapter, token } of Object.values(OFT_CHAINS)) {
-      expect(isAddress(adapter)).toBe(true)
-      expect(isAddress(token)).toBe(true)
+  test('refuses a chain the orchestrator serves no OFT block for', () => {
+    const { oft: _, ...plasma } = SETTLEMENT_CATALOG[9745]
+    expect(() =>
+      scopeOft({
+        ...base,
+        settlement: { ...SETTLEMENT_CATALOG, 9745: plasma },
+        destinations: [
+          { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+        ],
+      }),
+    ).toThrow('OFT does not route to chain 9745')
+  })
+
+  test('every fixture address is valid', () => {
+    for (const { oft } of Object.values(SETTLEMENT_CATALOG)) {
+      if (!oft) continue
+      expect(isAddress(oft.adapter)).toBe(true)
+      expect(isAddress(oft.token)).toBe(true)
     }
   })
 })

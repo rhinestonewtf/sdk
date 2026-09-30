@@ -9,12 +9,12 @@ import type {
   ScopedAction,
   SessionPolicy,
 } from '../types'
-import { cctpTokenMessenger, scopeCctp } from './cctp'
-import { ecoPortal, scopeEco } from './eco'
-import { lzMultiCall, lzTransferDelegate, scopeLz } from './lz'
-import { oftAdapter, scopeOft } from './oft'
+import { cctpChain, scopeCctp } from './cctp'
+import { ecoChain, scopeEco } from './eco'
+import { lzChain, scopeLz } from './lz'
+import { oftChain, scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
-import type { SettlementContext } from './types'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
  * Settlement-scoped cross-chain permits (RHI-7826).
@@ -32,9 +32,12 @@ import type { SettlementContext } from './types'
 const LAYERS: Record<
   Exclude<IntentExecutorSettlementLayer, 'SAME_CHAIN_IE'>,
   {
-    readonly target: (chainId: number) => Address
+    readonly target: (settlement: SettlementCatalog, chainId: number) => Address
     /** Who the account approves, when not the target (LZ's TransferDelegate). */
-    readonly spender?: (chainId: number) => Address
+    readonly spender?: (
+      settlement: SettlementCatalog,
+      chainId: number,
+    ) => Address
     readonly scope: (ctx: SettlementContext) => ScopedAction
     /**
      * Each call costs the account a native messaging fee no pin can bound, so
@@ -43,12 +46,24 @@ const LAYERS: Record<
     readonly requiresOneTimeUse?: true
   }
 > = {
-  CCTP: { target: cctpTokenMessenger, scope: scopeCctp },
-  OFT: { target: oftAdapter, scope: scopeOft, requiresOneTimeUse: true },
-  ECO_IE: { target: ecoPortal, scope: scopeEco },
+  CCTP: {
+    target: (settlement, chainId) =>
+      cctpChain(settlement, chainId).tokenMessenger,
+    scope: scopeCctp,
+  },
+  OFT: {
+    target: (settlement, chainId) => oftChain(settlement, chainId).adapter,
+    scope: scopeOft,
+    requiresOneTimeUse: true,
+  },
+  ECO_IE: {
+    target: (settlement, chainId) => ecoChain(settlement, chainId).portal,
+    scope: scopeEco,
+  },
   LZ: {
-    target: lzMultiCall,
-    spender: lzTransferDelegate,
+    target: (settlement, chainId) => lzChain(settlement, chainId).multiCall,
+    spender: (settlement, chainId) =>
+      lzChain(settlement, chainId).transferDelegate,
     scope: scopeLz,
     requiresOneTimeUse: true,
   },
@@ -81,6 +96,8 @@ export interface SettlementScopeOptions {
   readonly environment: 'production' | 'development'
   readonly account: Address | undefined
   readonly oneTimeUse: boolean
+  /** The orchestrator's `/chains` settlement addresses; IntentExecutor layers need them. */
+  readonly settlement?: SettlementCatalog
 }
 
 export interface ResolvedSettlementScope {
@@ -255,13 +272,22 @@ export function resolveSettlementScope(
     })
     return { ...sameChain, settlementLayers }
   }
+  // No bundled fallback: the orchestrator is the one source for these addresses.
+  // SAME_CHAIN_IE pins none of them, so only the layers below need it.
+  const settlement = options.settlement
+  if (settlement === undefined) {
+    throw new Error(
+      "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession or pass options.settlement",
+    )
+  }
   if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
     throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
   }
-  const target = LAYERS[layer].target(options.chainId)
-  const spender = LAYERS[layer].spender?.(options.chainId) ?? target
+  const target = LAYERS[layer].target(settlement, options.chainId)
+  const spender = LAYERS[layer].spender?.(settlement, options.chainId) ?? target
   const layerAction = LAYERS[layer].scope({
     chainId: options.chainId,
+    settlement,
     target,
     account: options.account,
     sourceTokens,

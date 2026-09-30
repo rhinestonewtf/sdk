@@ -1,9 +1,57 @@
 import type { Address } from 'viem'
 import type { SessionPolicy } from '../types'
 
+/**
+ * The per-chain addresses a settlement-scoped session pins, as the
+ * orchestrator's `GET /chains` serves them. A missing block means that layer
+ * does not route on the chain.
+ */
+export interface SettlementAddresses {
+  readonly cctp?: {
+    readonly domain: number
+    readonly tokenMessenger: Address
+    readonly usdc: Address
+  }
+  readonly oft?: {
+    readonly adapter: Address
+    readonly eid: number
+    readonly token: Address
+  }
+  readonly eco?: {
+    readonly portal: Address
+    readonly provers: readonly Address[]
+    readonly stablecoins: readonly Address[]
+  }
+  readonly lz?: {
+    readonly multiCall: Address
+    readonly transferDelegate: Address
+    readonly stargateUsdc?: {
+      readonly pool: Address
+      readonly token: Address
+      readonly eid: number
+    }
+    readonly cctp?: {
+      readonly domain: number
+      readonly token: Address
+      readonly feeReceiver: Address
+      readonly feeless?: true
+    }
+  }
+  readonly swapper?: { readonly swapper: Address; readonly proxy: Address }
+  readonly fees?: {
+    readonly appFeeCollector: Address
+    readonly paymaster: Address
+  }
+}
+
+/** Served settlement addresses by chain id. */
+export type SettlementCatalog = Readonly<Record<number, SettlementAddresses>>
+
 /** Everything a layer module needs to scope its settlement call on one chain. */
 export interface SettlementContext {
   readonly chainId: number
+  /** The orchestrator's settlement addresses, trusted as served. */
+  readonly settlement: SettlementCatalog
   /** The layer's settlement contract on this chain. */
   readonly target: Address
   /** The account the session is for, when the definition names it. */

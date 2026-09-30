@@ -19,9 +19,8 @@ import type {
   ScopedAction,
   UniversalActionPolicyParamRule,
 } from '../types'
-import { CCTP_CHAINS, CCTP_TOKEN_MESSENGER_MAINNET } from './cctp'
 import { OFT_SEND_SELECTOR, SEND } from './oft'
-import type { SettlementContext } from './types'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
  * LZ — USDC over the LayerZero Value Transfer API. The orchestrator forwards the
@@ -37,110 +36,13 @@ import type { SettlementContext } from './types'
  *   depositForBurn, sweep; to Plasma without the fee transfer.
  */
 
-/** Per chain: the API's LZMultiCall (the `execute` target) and its TransferDelegate. */
-export const LZ_MULTICALL: Readonly<
-  Record<
-    number,
-    { readonly multiCall: Address; readonly transferDelegate: Address }
-  >
-> = {
-  1: {
-    multiCall: '0xAcdDAC6C77318B615f7F6fB9bb67c6833e9c05f1',
-    transferDelegate: '0x72fAEbF58A62e33C044c37D8D973a961633ea294',
-  },
-  10: {
-    multiCall: '0x5528Cf58fEB8fbfcE94f43B33240FFFB1312bDe3',
-    transferDelegate: '0xFBea79D13E6F795a0e1E4B99090f1165a01C7B03',
-  },
-  146: {
-    multiCall: '0x6336eD39c2Eb15a8cFea73542600eFf31EA83353',
-    transferDelegate: '0x420C2efa26c972308A543305217399ff65CbDb13',
-  },
-  8453: {
-    multiCall: '0x7e07A9148E9149e430C6412b79A675028595Ff1f',
-    transferDelegate: '0x8EcA03175fd5aC62fb6F4EcbB9A95D13dCDCB4F8',
-  },
-  ...Object.fromEntries(
-    [130, 137, 143, 999, 1868, 9745, 42161, 43114, 57073].map((chainId) => [
-      chainId,
-      {
-        multiCall: '0x8E60b7b64b63cD56b18ebcECADcb79B04919286e',
-        transferDelegate: '0x60FccB9b58d5E806ca5Cb8BFCe721c2274609dE4',
-      },
-    ]),
-  ),
-}
-
 /**
- * Stargate V2 USDC pools on chains whose registry USDC is the pool's token.
- * (Ink's pool moves USDC.e, which the orchestrator does not quote.)
+ * Circle's TokenMessengerV2, which the API's CCTP route approves and burns
+ * through on every mainnet. `/chains` does not serve it inside `lz.cctp`, and
+ * Plasma has no `cctp` block to borrow it from.
  */
-export const STARGATE_USDC: Readonly<
-  Record<
-    number,
-    { readonly pool: Address; readonly token: Address; readonly eid: number }
-  >
-> = {
-  1: {
-    pool: '0xc026395860Db2d07ee33e05fE50ed7bD583189C7',
-    token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-    eid: 30101,
-  },
-  10: {
-    pool: '0xcE8CcA271Ebc0533920C83d39F417ED6A0abB7D0',
-    token: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-    eid: 30111,
-  },
-  137: {
-    pool: '0x9Aa02D4Fae7F58b8E8f34c66E756cC734DAc7fe4',
-    token: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
-    eid: 30109,
-  },
-  146: {
-    pool: '0xA272fFe20cFfe769CdFc4b63088DCD2C82a2D8F9',
-    token: '0x29219dd400f2Bf60E5a23d13Be72B486D4038894',
-    eid: 30332,
-  },
-  1868: {
-    pool: '0x45f1A95A4D3f3836523F5c83673c797f4d4d263B',
-    token: '0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369',
-    eid: 30340,
-  },
-  8453: {
-    pool: '0x27a16dc786820B16E5c9028b75B99F6f604b5d26',
-    token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    eid: 30184,
-  },
-  42161: {
-    pool: '0xe8CDF27AcD73a434D661C84887215F7598e7d0d3',
-    token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    eid: 30110,
-  },
-  43114: {
-    pool: '0x5634c4a5FEd09819E3c46D86A965Dd9447d86e47',
-    token: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
-    eid: 30106,
-  },
-}
-
-/** CCTP chains the API routes USDC between: the LZ chains CCTP knows, plus Plasma. */
-const LZ_CCTP_CHAINS: Readonly<
-  Record<number, { readonly domain: number; readonly usdc: Address }>
-> = {
-  ...Object.fromEntries(
-    Object.keys(LZ_MULTICALL).flatMap((id) =>
-      CCTP_CHAINS[Number(id)] ? [[id, CCTP_CHAINS[Number(id)]]] : [],
-    ),
-  ),
-  9745: { domain: 33, usdc: '0x2d661C89D812261039AF9764eceaAee884f5F67F' },
-}
-
-/** Receives the API's CCTP relay fee on every source chain. */
-export const LZ_CCTP_FEE_RECEIVER: Address =
-  '0xB324De4ADd083B74856082Ed2EA0B8b6F3864827'
-
-/** Destinations the API delivers CCTP to without a relay fee. */
-const LZ_CCTP_FEELESS_DESTINATIONS: ReadonlySet<number> = new Set([9745])
+const LZ_CCTP_TOKEN_MESSENGER: Address =
+  '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'
 
 /**
  * The most relay fee the key may send LayerZero's receiver, in USDC units: ~10x
@@ -228,22 +130,14 @@ interface Route {
   readonly limits: Rule[]
 }
 
-function lzChain(chainId: number) {
-  const chain = LZ_MULTICALL[chainId]
+export function lzChain(settlement: SettlementCatalog, chainId: number) {
+  const chain = settlement[chainId]?.lz
   if (chain === undefined) {
     throw new Error(
       `crossChainPermits: LZ does not route from chain ${chainId}`,
     )
   }
   return chain
-}
-
-export function lzMultiCall(chainId: number): Address {
-  return lzChain(chainId).multiCall
-}
-
-export function lzTransferDelegate(chainId: number): Address {
-  return lzChain(chainId).transferDelegate
 }
 
 /** The execute call, pinned to the permit's destinations, recipients and cap. */
@@ -260,7 +154,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     )
   }
   const [token] = ctx.sourceTokens
-  const { multiCall, transferDelegate } = lzChain(ctx.chainId)
+  const source = lzChain(ctx.settlement, ctx.chainId)
+  const { multiCall, transferDelegate } = source
+  const served = (leg: Leg) => ctx.settlement[leg.chainId]?.lz
   const cap = (offset: bigint) =>
     ctx.cap === undefined ? [] : [cumulativeCap(offset, ctx.cap)]
   const crossChain = (leg: Leg) => leg.chainId !== ctx.chainId
@@ -296,7 +192,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     args: (at) => [pin(at(0n), spender)],
   })
   const routes: Route[] = []
-  const stargate = STARGATE_USDC[ctx.chainId]
+  const stargate = source.stargateUsdc
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
       target: stargate.pool,
@@ -340,14 +236,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       pinValue(s(0x1c0n), 0x01n << 248n),
     ]
     const reaches = (leg: Leg) =>
-      crossChain(leg) && STARGATE_USDC[leg.chainId] !== undefined
+      crossChain(leg) && served(leg)?.stargateUsdc !== undefined
     routes.push({
       rules,
       modes: [taxi, bus],
       reaches,
       leg: (leg) => {
-        const dst = STARGATE_USDC[leg.chainId]
-        if (!reaches(leg) || !isAddressEqual(leg.token, dst.token))
+        const dst = served(leg)?.stargateUsdc
+        if (!reaches(leg) || !dst || !isAddressEqual(leg.token, dst.token))
           return undefined
         return [
           pinValue(s(SEND.dstEid), BigInt(dst.eid)),
@@ -357,10 +253,10 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       limits: cap(args[0](96n)),
     })
   }
-  const cctp = LZ_CCTP_CHAINS[ctx.chainId]
-  if (cctp !== undefined && isAddressEqual(token, cctp.usdc)) {
+  const cctp = source.cctp
+  if (cctp !== undefined && isAddressEqual(token, cctp.token)) {
     const burn: NestedCall = {
-      target: CCTP_TOKEN_MESSENGER_MAINNET,
+      target: LZ_CCTP_TOKEN_MESSENGER,
       selector: DEPOSIT_FOR_BURN,
       length: 228,
       args: (at) => [
@@ -374,7 +270,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       target: token,
       selector: TRANSFER,
       length: 68,
-      args: (at) => [pin(at(0n), LZ_CCTP_FEE_RECEIVER)],
+      args: (at) => [pin(at(0n), cctp.feeReceiver)],
     }
     const maxFee =
       ctx.cap !== undefined && ctx.cap < LZ_CCTP_MAX_RELAY_FEE
@@ -382,20 +278,20 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         : LZ_CCTP_MAX_RELAY_FEE
     for (const feeless of [false, true]) {
       const calls = feeless
-        ? [pull, approve(CCTP_TOKEN_MESSENGER_MAINNET), burn, sweep]
-        : [pull, fee, approve(CCTP_TOKEN_MESSENGER_MAINNET), burn, sweep]
+        ? [pull, approve(LZ_CCTP_TOKEN_MESSENGER), burn, sweep]
+        : [pull, fee, approve(LZ_CCTP_TOKEN_MESSENGER), burn, sweep]
       const { rules, args } = batch(calls)
       const b = args[calls.indexOf(burn)]
       const reaches = (leg: Leg) =>
         crossChain(leg) &&
-        LZ_CCTP_CHAINS[leg.chainId] !== undefined &&
-        LZ_CCTP_FEELESS_DESTINATIONS.has(leg.chainId) === feeless
+        served(leg)?.cctp !== undefined &&
+        (served(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
         reaches,
         leg: (leg) => {
-          const dst = LZ_CCTP_CHAINS[leg.chainId]
-          if (!reaches(leg) || !isAddressEqual(leg.token, dst.usdc))
+          const dst = served(leg)?.cctp
+          if (!reaches(leg) || !dst || !isAddressEqual(leg.token, dst.token))
             return undefined
           return [
             pinValue(b(32n), BigInt(dst.domain)),
