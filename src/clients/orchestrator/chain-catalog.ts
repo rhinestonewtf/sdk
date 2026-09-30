@@ -105,7 +105,7 @@ function parseSettlement(value: unknown): SettlementAddresses | undefined {
   const out: {
     -readonly [K in keyof SettlementAddresses]: SettlementAddresses[K]
   } = {}
-  const { cctp, oft, eco, lz } = value
+  const { cctp, oft, eco, lz, fees } = value
   if (
     isObject(cctp) &&
     isIndex(cctp.domain) &&
@@ -159,6 +159,16 @@ function parseSettlement(value: unknown): SettlementAddresses | undefined {
             },
           }
         : {}),
+    }
+  }
+  if (
+    isObject(fees) &&
+    isAddr(fees.appFeeCollector) &&
+    isAddr(fees.paymaster)
+  ) {
+    out.fees = {
+      appFeeCollector: fees.appFeeCollector,
+      paymaster: fees.paymaster,
     }
   }
   return Object.keys(out).length > 0 ? out : undefined

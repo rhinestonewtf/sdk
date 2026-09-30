@@ -289,8 +289,9 @@ interface Permit2ClaimPolicy {
  *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
- *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`;
- *   `OFT` and `LZ` require `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
+ *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
+ *   `maxAmount`, `maxFeeBps` and `validUntil`; `OFT` and `LZ` require
+ *   `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
  */
@@ -357,6 +358,17 @@ interface CrossChainPermit {
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number
+  /**
+   * IntentExecutor layers only: also let the session pay the intent's app fee
+   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
+   * approve and call its paymaster for unsponsored gas. Each of those calls is
+   * capped at 5 USD, cumulatively per `from` token, so every `from` token on the
+   * session's chain must be a 6-decimal USD stablecoin the orchestrator serves.
+   * The fee addresses come from the orchestrator's `GET /chains`, so create the
+   * session with `sdk.createSession`. Defaults to `false`: only sponsored intents
+   * without an app fee settle.
+   */
+  allowFees?: boolean
 }
 
 interface FromLeg {
@@ -429,6 +441,17 @@ interface CrossChainPermissionInput {
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number
+  /**
+   * IntentExecutor layers only: also let the session pay the intent's app fee
+   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
+   * approve and call its paymaster for unsponsored gas. Each of those calls is
+   * capped at 5 USD, cumulatively per `from` token, so every `from` token on the
+   * session's chain must be a 6-decimal USD stablecoin the orchestrator serves.
+   * The fee addresses come from the orchestrator's `GET /chains`, so create the
+   * session with `sdk.createSession`. Defaults to `false`: only sponsored intents
+   * without an app fee settle.
+   */
+  allowFees?: boolean
 }
 
 type Policy =
