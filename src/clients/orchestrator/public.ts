@@ -593,22 +593,34 @@ type SigningAuthority =
       authority: SwigAuthority
     }
 
-/** A passkey a Swig authority change adds or removes, as the orchestrator names it. */
-interface SolanaAuthorityKeyView {
-  kind: 'secp256r1'
-  /** SEC1-compressed P-256 public key, 33 bytes of hex. */
-  publicKey: Hex
-}
+/** A key a Swig authority change adds or removes, as the orchestrator names it. */
+type SolanaAuthorityKeyView =
+  | {
+      kind: 'secp256r1'
+      /** SEC1-compressed P-256 (passkey) public key, 33 bytes of hex. */
+      publicKey: Hex
+    }
+  | {
+      kind: 'secp256k1'
+      /** SEC1-compressed secp256k1 public key, 33 bytes of hex. */
+      publicKey: Hex
+    }
+
+/** What a Swig role a change adds may do. */
+type SolanaAuthorityRolePermission =
+  | 'all'
+  | 'allButManageAuthority'
+  | 'manageAuthority'
 
 /**
- * A Swig authority change as a quote request carries it: add a passkey with a
- * permission, or remove one by its key.
+ * A Swig authority change as a quote request carries it: add a passkey or
+ * secp256k1 key with a permission, or remove one by its key.
  */
 type SolanaAuthorityChangeRequest =
   | {
       action: 'add'
       key: SolanaAuthorityKeyView
-      permission: 'all' | 'allButManageAuthority'
+      permission: SolanaAuthorityRolePermission
     }
   | { action: 'remove'; key: SolanaAuthorityKeyView }
 
@@ -619,9 +631,9 @@ type SolanaAuthorityChangeRequest =
 interface SolanaAuthorityDisclosure {
   action: 'add' | 'remove'
   key: SolanaAuthorityKeyView
-  /** The added passkey's permission. Absent on a removal. */
-  permission?: 'all' | 'allButManageAuthority'
-  /** The role id the added passkey gets, or the id of the role removed. */
+  /** The added role's permission. Absent on a removal. */
+  permission?: SolanaAuthorityRolePermission
+  /** The role id the added key gets, or the id of the role removed. */
   roleId: number
   /**
    * Rent for the role: locked in the Swig state account on an add (the sponsor
@@ -677,8 +689,9 @@ type SigningScope =
       /** The change the signature authorizes, exactly as the plan discloses it. */
       authority: SolanaAuthorityDisclosure
       /**
-       * The sealed instructions the signature authorizes: a passkey signer's
-       * secp256r1 precompile, then the Swig add or remove instruction.
+       * The sealed instructions the signature authorizes: the secp256r1
+       * precompile when a passkey signs, then the Swig add or remove
+       * instruction.
        */
       instructions: SolanaWireInstruction[]
       feePayer: { kind: 'role'; role: 'relayer' }
@@ -1214,6 +1227,7 @@ export type {
   SolanaAuthorityChangeRequest,
   SolanaAuthorityDisclosure,
   SolanaAuthorityKeyView,
+  SolanaAuthorityRolePermission,
   SigningScope,
   SigningValidity,
   SigningPayload,

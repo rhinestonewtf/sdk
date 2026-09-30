@@ -178,22 +178,27 @@ so an oversized request fails before a round trip. The request carries
 its Solana same-chain route (`SAME_CHAIN`); every other route refuses them with
 `UNSUPPORTED_DESTINATION_INSTRUCTIONS`, which the SDK surfaces unchanged.
 
-A **Swig authority change** adds a passkey to the account's Swig, or removes
-one, through the ordinary prepare → sign → submit → wait lifecycle:
-`{ chain, authority: addPasskey(passkey, { permission }) }` or
-`removePasskey(passkey)` (`actions/solana.ts`). It has its own field rather
+A **Swig authority change** adds a passkey or secp256k1 key to the account's
+Swig, or removes one, through the ordinary prepare → sign → submit → wait
+lifecycle: `{ chain, authority: addPasskey(passkey, { permission }) }`,
+`addEcdsaKey(key, { permission })`, `removePasskey(passkey)` or
+`removeEcdsaKey(key)` (`actions/solana.ts`). `permission` is `all`,
+`allButManageAuthority` or `manageAuthority` for either kind. It has its own field rather
 than riding `instructions`. The Swig authenticates the add or remove with its
 own separately signed payload, and the orchestrator seals the slot, the
 counter and the one-off payer, so a caller-written instruction couldn't express
-it. The builders compress any P-256 encoding (`accounts/solana/passkey.ts`),
-and `normalizeTransaction` canonicalizes a literal the same way, so the
-persisted transaction, the request, the intent input and the execution metadata
-(`kind: 'solana-authority'`, with `action`, `key` and, on an add, `permission`)
-name one lowercase compressed key.
+it. The builders compress any P-256 encoding (`accounts/solana/passkey.ts`) or
+secp256k1 encoding (`accounts/solana/keys.ts`, which also checks an uncompressed
+secp256k1 key is on the curve and refuses a 20-byte address), and
+`normalizeTransaction` canonicalizes a literal the same way. The persisted
+transaction, the request, the intent input and the execution metadata
+(`kind: 'solana-authority'`, with `action`, `keyType`, `key` and, on an add,
+`permission`) name one lowercase compressed key of one kind: `passkey` maps to
+`secp256r1` and `ecdsa` to `secp256k1` on the wire.
 
 The request is Solana-only: `svm.swigAccount` with no `evm` and no `initData`,
 even on a composite account, and
-`destination.execution: { authority: { action, key: { kind: 'secp256r1', publicKey }, permission? } }`.
+`destination.execution: { authority: { action, key: { kind: 'secp256r1' | 'secp256k1', publicKey }, permission? } }`.
 It is tokenless and names no recipient, and it's always sent with
 `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`, spelled out
 as a Swig creation spells it. There's no `sponsored` knob and fees are refused.
@@ -201,21 +206,26 @@ The acting authority is always the configured owner, ECDSA or passkey. The SDK
 never picks another role, and leaves refusing self-removal or re-adding a
 present key to the orchestrator. Every quoted route must be a `SAME_CHAIN`
 route that moves nothing, with one `manageAuthority` signing request whose
-scope and plan disclose exactly the requested change; a spend scope on an
-authority quote is refused, and so is the reverse. Rebuilding from the persisted
-`transaction` refuses a tampered key, permission or action before signing and
-before submission.
+scope and plan disclose exactly the requested change, curve included; a spend
+scope on an authority quote is refused, and so is the reverse. Rebuilding from
+the persisted `transaction` refuses a tampered key, key kind, permission or
+action before signing and before submission.
 
 The orchestrator refuses a change the Swig as read doesn't allow with
 `SWIG_AUTHORITY_CHANGE_REFUSED`, typed as `SolanaAuthorityChangeRefusedError`.
-Nothing retries automatically. After an uncertain outcome the caller prepares
-the same change again: `authority_exists` with the same permission, or
-`authority_not_found` on a remove, is the answer that it already landed.
+Nothing retries automatically. `getAuthorityStatus` reads that refusal for the
+caller: it runs the same prepare path, discards the quote, and maps
+`authority_exists` with the same permission (or `authority_not_found` on a
+remove) to `applied`, `authority_exists` with another or no permission to
+`conflict`, and a successful quote to `notApplied`. It never signs or submits,
+and rethrows every other error.
 
 Configuring the same `swig` with an added passkey as owner derives the same
 wallet, and its transfers, deliveries and instructions name that key in
 `authorization`. The orchestrator selects the one role carrying it, which must
-hold `All` or `AllButManageAuthority`. Configuration grants nothing: an owner
+hold `All` or `AllButManageAuthority`; a manage-only owner's spends are refused
+as `UNSUPPORTED_ACCOUNT_TYPE`, though it can still change authorities.
+Configuration grants nothing: an owner
 that is not on the Swig is refused as `UNSUPPORTED_ACCOUNT_TYPE`, and
 `deploy('solana', …)` still resolves `true` on an existing Swig without
 checking which role the owner holds.

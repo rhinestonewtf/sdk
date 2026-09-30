@@ -22,7 +22,10 @@ import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
 } from '../../clients/orchestrator/types'
-import type { Transaction } from '../../config/account'
+import type {
+  SolanaAuthorityPermission,
+  Transaction,
+} from '../../config/account'
 import type {
   ResolvedSessionSignerSet,
   Session,
@@ -252,8 +255,9 @@ export interface SolanaInstructionsExecutionMetadata {
 }
 
 /**
- * Binds a prepared Swig passkey add or remove to the account that prepared it,
- * and to the exact change: action, key and, on an add, permission.
+ * Binds a prepared Swig authority add or remove to the account that prepared
+ * it, and to the exact change: action, key kind, key and, on an add,
+ * permission.
  */
 export interface SolanaAuthorityExecutionMetadata {
   kind: 'solana-authority'
@@ -269,10 +273,12 @@ export interface SolanaAuthorityExecutionMetadata {
   swigAddress: SolanaAddress
   walletAddress: SolanaAddress
   action: 'add' | 'remove'
-  /** The compressed P-256 key added or removed, lowercase hex. */
+  /** The kind of key added or removed. */
+  keyType: 'passkey' | 'ecdsa'
+  /** The compressed P-256 (`passkey`) or secp256k1 (`ecdsa`) key, lowercase hex. */
   key: Hex
   /** The added role's permission. Absent on a removal. */
-  permission?: 'all' | 'allButManageAuthority'
+  permission?: SolanaAuthorityPermission
 }
 
 export interface PreparedTransactionData {

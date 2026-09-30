@@ -523,6 +523,18 @@ describe('parseErrorEnvelope Swig authority change refusals', () => {
       { reason: 'authority_exists', roleId: 3, permission: 'all' },
       { roleId: 3, permission: 'all' },
     ],
+    [
+      { reason: 'authority_exists', roleId: 1, permission: 'manageAuthority' },
+      { roleId: 1, permission: 'manageAuthority' },
+    ],
+    [
+      {
+        reason: 'authority_exists',
+        roleId: 2,
+        permission: 'allButManageAuthority',
+      },
+      { roleId: 2, permission: 'allButManageAuthority' },
+    ],
     [{ reason: 'authority_exists', roleId: 3 }, { roleId: 3 }],
     [{ reason: 'authority_not_found' }, {}],
     [{ reason: 'authority_ambiguous', roleIds: [2, 4] }, { roleIds: [2, 4] }],
@@ -569,7 +581,7 @@ describe('parseErrorEnvelope Swig authority change refusals', () => {
       reason: 'authority_exists',
       roleId: -1,
       roleIds: [1, 'two'],
-      permission: 'manageAuthority',
+      permission: 'programAll',
     }) as SolanaAuthorityChangeRefusedError
     expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
     expect(error.reason).toBe('authority_exists')

@@ -1,4 +1,5 @@
 import { p256 } from '@noble/curves/nist'
+import { secp256k1 } from '@noble/curves/secp256k1'
 import { bytesToHex, type Hex, hexToBytes } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
@@ -46,10 +47,31 @@ const sponsorSettings = { gas: true, bridgeFees: false, swapFees: false }
 
 const add: SolanaAuthorityChangeInput = {
   action: 'add',
+  keyType: 'passkey',
   key: added,
   permission: 'allButManageAuthority',
 }
-const remove: SolanaAuthorityChangeInput = { action: 'remove', key: added }
+const remove: SolanaAuthorityChangeInput = {
+  action: 'remove',
+  keyType: 'passkey',
+  key: added,
+}
+// A recovery key: secp256k1, compressed by noble.
+const manager = privateKeyToAccount(`0x${'34'.repeat(32)}`)
+const managerKey = bytesToHex(
+  secp256k1.getPublicKey(hexToBytes(`0x${'34'.repeat(32)}`), true),
+) as Hex
+const addManager: SolanaAuthorityChangeInput = {
+  action: 'add',
+  keyType: 'ecdsa',
+  key: managerKey,
+  permission: 'manageAuthority',
+}
+const removeManager: SolanaAuthorityChangeInput = {
+  action: 'remove',
+  keyType: 'ecdsa',
+  key: managerKey,
+}
 
 function authorityInput(
   change: SolanaAuthorityChangeInput = add,
@@ -75,7 +97,10 @@ function disclosureOf(
 ): SolanaAuthorityDisclosure {
   return {
     action: change.action,
-    key: { kind: 'secp256r1', publicKey: change.key },
+    key: {
+      kind: change.keyType === 'ecdsa' ? 'secp256k1' : 'secp256r1',
+      publicKey: change.key,
+    },
     ...(change.permission ? { permission: change.permission } : {}),
     roleId: 2,
     rent: { amount: '325120', usd: 0.05 },
@@ -94,6 +119,7 @@ function routeFor(
     readonly acting?: SwigAuthority
     readonly payload?: SigningPayload
     readonly disclosure?: SolanaAuthorityDisclosure
+    readonly roleId?: number
   } = {},
 ): OrchestratorExecutionQuote {
   return authorityQuote({
@@ -103,6 +129,7 @@ function routeFor(
     acting: options.acting ?? ecdsaOwner,
     disclosure: options.disclosure ?? disclosureOf(change),
     payload: options.payload ?? personalSign,
+    ...(options.roleId === undefined ? {} : { roleId: options.roleId }),
   })
 }
 
@@ -187,6 +214,31 @@ describe('Swig authority change requests', () => {
     },
   )
 
+  test.each([
+    ['add', addManager],
+    ['remove', removeManager],
+  ] as const)('names a secp256k1 key on an %s', (_name, change) => {
+    const { request, normalized } = buildSolanaIntentRequest(
+      authorityInput(change),
+    )
+    const authority =
+      change.action === 'add'
+        ? {
+            action: 'add',
+            key: { kind: 'secp256k1', publicKey: managerKey },
+            permission: 'manageAuthority',
+          }
+        : {
+            action: 'remove',
+            key: { kind: 'secp256k1', publicKey: managerKey },
+          }
+    expect(request.destination).toMatchObject({ execution: { authority } })
+    expect(normalized.destinationAuthority).toStrictEqual(authority)
+    expect(projectSponsorshipApproval(request)).toStrictEqual(
+      projectCompatibleIntentInput(normalized),
+    )
+  })
+
   test('names a passkey owner by its compressed key', () => {
     const { compressedPublicKey } = signingPasskey()
     const acting: SwigAuthority = {
@@ -242,8 +294,28 @@ describe('Swig authority change requests', () => {
     ],
     [
       'an add without a permission',
-      authorityInput({ action: 'add', key: added }),
+      authorityInput({ action: 'add', keyType: 'passkey', key: added }),
       /compressed passkey/,
+    ],
+    [
+      'an unknown permission',
+      authorityInput({ ...add, permission: 'programAll' as never }),
+      /compressed passkey/,
+    ],
+    [
+      'an unknown key type',
+      authorityInput({ ...add, keyType: 'ed25519' as never }),
+      /compressed passkey/,
+    ],
+    [
+      'an uncompressed secp256k1 key',
+      authorityInput({
+        ...addManager,
+        key: bytesToHex(
+          secp256k1.getPublicKey(hexToBytes(`0x${'34'.repeat(32)}`), false),
+        ) as Hex,
+      }),
+      /secp256k1 key/,
     ],
     [
       'a remove with a permission',
@@ -550,6 +622,55 @@ describe('Swig authority change quotes', () => {
     await expect(refusal).rejects.toThrow(matcher)
   })
 
+  test('refuses a disclosure naming the same bytes on the other curve', async () => {
+    for (const [change, kind] of [
+      [add, 'secp256k1'],
+      [addManager, 'secp256r1'],
+      [removeManager, 'secp256r1'],
+    ] as const) {
+      const disclosure = disclosureOf(change, {
+        key: { kind, publicKey: change.key },
+      })
+      await expect(
+        prepareSolanaIntent(
+          context(routeFor(change, { disclosure })).workflow,
+          authorityInput(change),
+        ),
+      ).rejects.toThrow(/disclose the requested authority change/)
+    }
+  })
+
+  test.each([
+    ['manageAuthority', 'all'],
+    ['all', 'manageAuthority'],
+    ['manageAuthority', 'allButManageAuthority'],
+  ] as const)(
+    'refuses a %s add disclosed as %s',
+    async (requested, disclosed) => {
+      const change = { ...addManager, permission: requested }
+      const disclosure = disclosureOf(change, { permission: disclosed })
+      await expect(
+        prepareSolanaIntent(
+          context(routeFor(change, { disclosure })).workflow,
+          authorityInput(change),
+        ),
+      ).rejects.toThrow(/disclose the requested authority change/)
+    },
+  )
+
+  test('accepts a secp256k1 manager acting on role 1', async () => {
+    const acting: SwigAuthority = {
+      kind: 'secp256k1',
+      address: manager.address,
+    }
+    await expect(
+      prepareSolanaIntent(
+        context(routeFor(add, { acting, roleId: 1 })).workflow,
+        authorityInput(add, { authority: acting }),
+      ),
+    ).resolves.toBeDefined()
+  })
+
   test('refuses a permission on a removal disclosure', async () => {
     const disclosure = disclosureOf(remove, { permission: 'all' })
     await expect(
@@ -715,6 +836,24 @@ describe('signing and submitting a Swig authority change', () => {
     function passkeyRoute() {
       return routeFor(remove, { acting, payload: webauthn })
     }
+
+    test('enrolls a secp256k1 manager with one WebAuthn prompt', async () => {
+      const fixture = context(
+        routeFor(addManager, { acting, payload: webauthn }),
+      )
+      const prepared = await prepareSolanaIntent(
+        fixture.workflow,
+        authorityInput(addManager, { authority: acting }),
+      )
+      const sign = vi.fn(passkey.sign)
+      const signed = await signSolanaIntent({
+        prepared,
+        owner: { ...passkey, sign },
+        now,
+      })
+      expect(sign).toHaveBeenCalledOnce()
+      expect(signed.proofs.map(({ kind }) => kind)).toEqual(['webauthn'])
+    })
 
     test('prompts once for the scope challenge and submits the assertion', async () => {
       const fixture = context(passkeyRoute())

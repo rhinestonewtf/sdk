@@ -2310,6 +2310,250 @@
       "digest": "b03445fdd09399f5f7c25c5e288ca279f73e8b377e70e63cffbc6f3f6ad3c97e"
     },
     {
+      "id": "solana-authority-add-ecdsa-manage",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": [],
+          "execution": {
+            "authority": {
+              "action": "add",
+              "key": {
+                "kind": "secp256k1",
+                "publicKey": "0x025e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+              },
+              "permission": "manageAuthority"
+            }
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destinationChainId": 792703810,
+        "destinationExecutions": [],
+        "tokenRequests": [],
+        "destinationAuthority": {
+          "action": "add",
+          "key": {
+            "kind": "secp256k1",
+            "publicKey": "0x025e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+          },
+          "permission": "manageAuthority"
+        },
+        "accountAccessList": {
+          "chainIds": [792703810]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "e265cc9f684abd0c9096496b7be4ae63574202eb5f53b4c9c79cda06d540b503"
+    },
+    {
+      "id": "solana-authority-remove-ecdsa",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": [],
+          "execution": {
+            "authority": {
+              "action": "remove",
+              "key": {
+                "kind": "secp256k1",
+                "publicKey": "0x025e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+              }
+            }
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x023c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destinationChainId": 792703810,
+        "destinationExecutions": [],
+        "tokenRequests": [],
+        "destinationAuthority": {
+          "action": "remove",
+          "key": {
+            "kind": "secp256k1",
+            "publicKey": "0x025e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+          }
+        },
+        "accountAccessList": {
+          "chainIds": [792703810]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "790bdbebef39b296b3389491f9f02cec4b4b56399f8d2b8aa5cc63e09763b7e9"
+    },
+    {
+      "id": "solana-authority-add-passkey-manage",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+          "tokenRequests": [],
+          "execution": {
+            "authority": {
+              "action": "add",
+              "key": {
+                "kind": "secp256r1",
+                "publicKey": "0x034d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+              },
+              "permission": "manageAuthority"
+            }
+          }
+        },
+        "source": {
+          "selection": {
+            "chains": {
+              "only": ["solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"]
+            },
+            "tokens": "all"
+          }
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "account": {
+          "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+          "svm": {
+            "type": "swig",
+            "address": "C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "swigAccount": "3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B"
+          }
+        },
+        "destinationChainId": 792703810,
+        "destinationExecutions": [],
+        "tokenRequests": [],
+        "destinationAuthority": {
+          "action": "add",
+          "key": {
+            "kind": "secp256r1",
+            "publicKey": "0x034d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+          },
+          "permission": "manageAuthority"
+        },
+        "accountAccessList": {
+          "chainIds": [792703810]
+        },
+        "options": {
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "cf72142639dd45945ff65e78d12bc6958633e5ebe6ceb32f70ecbd3f5809328f"
+    },
+    {
       "id": "swig-creation-secp256k1",
       "body": {
         "account": {
@@ -3221,7 +3465,7 @@
                 "kind": "secp256r1",
                 "publicKey": "0x034d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
               },
-              "permission": "manageAuthority"
+              "permission": "programAll"
             }
           }
         },
@@ -3245,7 +3489,7 @@
       "field": "destination.execution.authority.permission"
     },
     {
-      "id": "authority-secp256k1-key",
+      "id": "authority-unknown-key-kind",
       "body": {
         "account": {
           "svm": {
@@ -3266,7 +3510,7 @@
             "authority": {
               "action": "add",
               "key": {
-                "kind": "secp256k1",
+                "kind": "ed25519",
                 "publicKey": "0x034d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
               },
               "permission": "allButManageAuthority"

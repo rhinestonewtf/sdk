@@ -110,9 +110,9 @@ Rules for each VM:
   - `execution.addressLookupTables` becomes `addressLookupTableAddresses`.
   - `execution.authority` becomes `destinationAuthority`, verbatim. When
     present it must be the only key in `execution`. An add holds exactly
-    `action`, `key` and `permission` (`'all'` or `'allButManageAuthority'`),
-    and a remove exactly `action` and `key`. `key` holds exactly
-    `kind: 'secp256r1'` and a string `publicKey`. Anything else is refused at
+    `action`, `key` and `permission` (`'all'`, `'allButManageAuthority'` or
+    `'manageAuthority'`), and a remove exactly `action` and `key`. `key` holds
+    exactly `kind` (`'secp256r1'` or `'secp256k1'`) and a string `publicKey`. Anything else is refused at
     the offending field, including `authority` beside `instructions`.
 - **`tvm` and `stellar`**
   - `recipient { address }` is required and copied as is.

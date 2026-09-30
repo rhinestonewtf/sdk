@@ -1500,46 +1500,87 @@ interface SameChainSolanaInstructionsTransaction {
 }
 
 /**
- * What a Swig passkey role may do:
+ * What a Swig authority role may do:
  *
- * - `all` — every action, including adding and removing the Swig's non-root
- *   authorities.
+ * - `all` — every action: spend, run instructions, and add or remove the
+ *   Swig's non-root authorities.
  * - `allButManageAuthority` — spend and run instructions, but never add or
  *   remove an authority.
+ * - `manageAuthority` — add and remove the Swig's non-root authorities, but
+ *   never spend or run instructions. It can grant `all` to any key, so treat
+ *   it as takeover power over the wallet, not as a limited or add-only right.
  */
-type SolanaPasskeyPermission = 'all' | 'allButManageAuthority'
+type SolanaAuthorityPermission =
+  | 'all'
+  | 'allButManageAuthority'
+  | 'manageAuthority'
 
 /**
- * A passkey on a Swig, named by its SEC1-compressed P-256 public key (33 bytes,
- * lowercase hex). `addPasskey` and `removePasskey` build it from a viem
- * WebAuthn account or any P-256 key encoding.
+ * What a Swig passkey role may do.
+ * @deprecated Use `SolanaAuthorityPermission`, which covers every key kind.
  */
-interface SolanaAuthorityKey {
-  type: 'passkey'
-  publicKey: Hex
-}
+type SolanaPasskeyPermission = SolanaAuthorityPermission
 
 /**
- * A change to a managed Solana account's Swig authorities: add a passkey with a
- * permission, or remove one by its key. Build it with `addPasskey` or
- * `removePasskey` from `@rhinestone/sdk/solana`.
+ * A key on a Swig role, named by its SEC1-compressed public key (33 bytes,
+ * lowercase hex):
+ *
+ * - `passkey` — a P-256 key. `addPasskey` and `removePasskey` build it from a
+ *   viem WebAuthn account or any P-256 key encoding.
+ * - `ecdsa` — a secp256k1 public key, never an EVM address. An account acting
+ *   through it is configured with `{ type: 'ecdsa', account }` whose address
+ *   derives from this key. `addEcdsaKey` and `removeEcdsaKey` build it.
+ */
+type SolanaAuthorityKey =
+  | { type: 'passkey'; publicKey: Hex }
+  | { type: 'ecdsa'; publicKey: Hex }
+
+/**
+ * A change to a managed Solana account's Swig authorities: add a passkey or
+ * ECDSA key with a permission, or remove one by its key. Build it with
+ * `addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey` from
+ * `@rhinestone/sdk/solana`.
  */
 type SolanaAuthorityChange =
   | {
       action: 'add'
       key: SolanaAuthorityKey
-      permission: SolanaPasskeyPermission
+      permission: SolanaAuthorityPermission
     }
   | { action: 'remove'; key: SolanaAuthorityKey; permission?: never }
 
 /**
- * Adds or removes a passkey on a managed Solana account's Swig, on the cluster
- * the Swig lives on. One change per transaction.
+ * Whether a Swig authority change is already in place, from
+ * `getAuthorityStatus`:
+ *
+ * - `applied` — an add: a role carries the key with exactly the requested
+ *   permission, on `roleId`. A remove: no role carries the key.
+ * - `notApplied` — an add: no role carries the key. A remove: a removable role
+ *   still carries it.
+ * - `conflict` — an add only: a role (`roleId`) carries the key with another
+ *   permission, or one the orchestrator could not read (`permission` absent).
+ *   Never treat it as ready.
+ */
+type SolanaAuthorityStatus =
+  | { status: 'applied'; roleId?: number }
+  | { status: 'notApplied' }
+  | {
+      status: 'conflict'
+      roleId: number
+      permission?: SolanaAuthorityPermission
+    }
+
+/**
+ * Adds or removes a passkey or ECDSA key on a managed Solana account's Swig, on
+ * the cluster the Swig lives on. One change per transaction.
  *
  * The configured owner signs the change, and must sit on a role holding `All`
  * or `ManageAuthority`. The change is always gas-sponsored and billed to the
  * integrator's sponsorship, like `deploy('solana', …)`; the sponsor also funds
- * the rent a new role locks.
+ * the rent a new role locks, and a removal returns it to the wallet.
+ *
+ * Granting `manageAuthority` or `all` hands over control of the wallet: either
+ * can add a key with `all`.
  *
  * The orchestrator refuses a change the Swig's current roles do not allow —
  * adding a key already present, removing a missing key, the root role, or the
@@ -1548,7 +1589,7 @@ type SolanaAuthorityChange =
  */
 interface SameChainSolanaAuthorityTransaction {
   chain: SolanaChain
-  /** The change to make, from `addPasskey` or `removePasskey`. */
+  /** The change to make, from `addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey`. */
   authority: SolanaAuthorityChange
   sponsored?: never
   tokenRequests?: never
@@ -1713,6 +1754,8 @@ export type {
   SolanaAccountConfig,
   SolanaAuthorityChange,
   SolanaAuthorityKey,
+  SolanaAuthorityPermission,
+  SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaPasskeyPermission,

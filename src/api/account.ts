@@ -18,6 +18,10 @@ import {
   MANAGED_SWIG_NAMESPACES,
 } from '../accounts/solana/address'
 import {
+  canonicalSecp256k1PublicKey,
+  isEvmAddressLength,
+} from '../accounts/solana/keys'
+import {
   canonicalP256PublicKey,
   compressP256PublicKey,
 } from '../accounts/solana/passkey'
@@ -31,7 +35,10 @@ import {
   solanaAddress,
 } from '../chains/non-evm'
 import { normalizeTokenAddress, validateTokenAddresses } from '../chains/tokens'
-import { isSolanaAccountAlreadyCreated } from '../clients/orchestrator/errors'
+import {
+  isSolanaAccountAlreadyCreated,
+  isSolanaAuthorityChangeRefused,
+} from '../clients/orchestrator/errors'
 import type {
   NormalizedAccessList,
   NormalizedIntentOptions,
@@ -59,6 +66,7 @@ import type {
   SameChainSolanaInstructionsTransaction,
   Session,
   SignerSet,
+  SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaStandaloneAccountConfig,
@@ -220,8 +228,9 @@ export interface ManagedTransactionAccount<
    * Prepare an intent transaction for signing.
    *
    * On an account with a managed Solana entry, `{ chain, authority }` adds or
-   * removes a passkey on its Swig (see `addPasskey`). That change is always
-   * gas-sponsored and billed to the integrator's sponsorship.
+   * removes a passkey or ECDSA key on its Swig (see `addPasskey` and
+   * `addEcdsaKey`). That change is always gas-sponsored and billed to the
+   * integrator's sponsorship.
    * @param transaction Transaction to prepare
    * @returns The prepared transaction data
    * @see {@link signTransaction} to sign the prepared transaction
@@ -329,9 +338,9 @@ export interface SolanaStandaloneAccount<
   /**
    * Prepare a Solana-origin transaction for signing.
    *
-   * `{ chain, authority }` adds or removes a passkey on the account's Swig
-   * (see `addPasskey`). That change is always gas-sponsored and billed to the
-   * integrator's sponsorship.
+   * `{ chain, authority }` adds or removes a passkey or ECDSA key on the
+   * account's Swig (see `addPasskey` and `addEcdsaKey`). That change is always
+   * gas-sponsored and billed to the integrator's sponsorship.
    * @param transaction Transaction to prepare
    * @returns The prepared transaction data
    */
@@ -368,6 +377,44 @@ export interface SolanaStandaloneAccount<
   ): Promise<TransactionResult>
   /** Wait for a submitted intent to reach a terminal state. */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+  /**
+   * Check whether a Swig authority change is already in place, without
+   * signing or submitting anything.
+   *
+   * Quotes the change as `prepareTransaction` would, discards the quote, and
+   * reads the orchestrator's answer: `applied` when the key is present with
+   * exactly the requested permission (or gone, for a removal), `notApplied`
+   * when the change is still to make, and `conflict` when the key is present
+   * with another or unreadable permission. Only `applied` means ready.
+   *
+   * The quote needs a configured owner able to manage authorities (`All` or
+   * `ManageAuthority`). Under JWT auth it mints one sponsorship grant that is
+   * never used. `notApplied` says nothing about an intent still in flight:
+   * settle the original with `waitForExecution` or `getIntentStatus` first,
+   * and never resubmit a change that may have landed.
+   * @param transaction The `{ chain, authority }` change to check
+   * @returns The change's status on the Swig
+   * @throws SolanaAuthorityChangeRefusedError when the orchestrator refuses the change for any other reason, such as `acting_permission` or `root_role`
+   * @throws SolanaAccountNotCreatedError when the Swig does not exist yet
+   * @throws UnsupportedAccountCapabilityError when `transaction` is not a Solana authority change
+   * @example
+   * ```ts
+   * import { addEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
+   *
+   * const enroll = {
+   *   chain: solanaDevnet,
+   *   authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   * }
+   * const { status } = await account.getAuthorityStatus(enroll)
+   * if (status === 'notApplied') {
+   *   const signed = await account.signTransaction(await account.prepareTransaction(enroll))
+   *   await account.waitForExecution(await account.submitTransaction(signed))
+   * }
+   * ```
+   */
+  getAuthorityStatus(
+    transaction: SameChainSolanaAuthorityTransaction,
+  ): Promise<SolanaAuthorityStatus>
   /**
    * Create the account's Swig on a Solana cluster and wait for it to complete.
    *
@@ -427,8 +474,8 @@ export interface SolanaDeployOptions {
 }
 
 /**
- * Swig creation on an account that manages both EVM and Solana, alongside its
- * EVM `deploy`.
+ * Swig creation and authority checks on an account that manages both EVM and
+ * Solana, alongside its EVM `deploy`.
  */
 interface ManagedSolanaDeployment {
   /**
@@ -469,6 +516,44 @@ interface ManagedSolanaDeployment {
     chain: SolanaChain,
     options?: SolanaDeployOptions,
   ): Promise<boolean>
+  /**
+   * Check whether a Swig authority change is already in place, without
+   * signing or submitting anything.
+   *
+   * Quotes the change as `prepareTransaction` would, discards the quote, and
+   * reads the orchestrator's answer: `applied` when the key is present with
+   * exactly the requested permission (or gone, for a removal), `notApplied`
+   * when the change is still to make, and `conflict` when the key is present
+   * with another or unreadable permission. Only `applied` means ready.
+   *
+   * The quote needs a configured owner able to manage authorities (`All` or
+   * `ManageAuthority`). Under JWT auth it mints one sponsorship grant that is
+   * never used. `notApplied` says nothing about an intent still in flight:
+   * settle the original with `waitForExecution` or `getIntentStatus` first,
+   * and never resubmit a change that may have landed.
+   * @param transaction The `{ chain, authority }` change to check
+   * @returns The change's status on the Swig
+   * @throws SolanaAuthorityChangeRefusedError when the orchestrator refuses the change for any other reason, such as `acting_permission` or `root_role`
+   * @throws SolanaAccountNotCreatedError when the Swig does not exist yet
+   * @throws UnsupportedAccountCapabilityError when `transaction` is not a Solana authority change
+   * @example
+   * ```ts
+   * import { addEcdsaKey, solanaDevnet } from '@rhinestone/sdk/solana'
+   *
+   * const enroll = {
+   *   chain: solanaDevnet,
+   *   authority: addEcdsaKey(recoveryPublicKey, { permission: 'manageAuthority' }),
+   * }
+   * const { status } = await account.getAuthorityStatus(enroll)
+   * if (status === 'notApplied') {
+   *   const signed = await account.signTransaction(await account.prepareTransaction(enroll))
+   *   await account.waitForExecution(await account.submitTransaction(signed))
+   * }
+   * ```
+   */
+  getAuthorityStatus(
+    transaction: SameChainSolanaAuthorityTransaction,
+  ): Promise<SolanaAuthorityStatus>
 }
 
 /** Full EVM management, signing, UserOperation and account-read capabilities. */
@@ -765,6 +850,7 @@ function solanaMetadata(
       ...binding,
       accountAddress: input.walletAddress,
       action: change.action,
+      keyType: change.keyType,
       key: change.key,
       ...(change.permission ? { permission: change.permission } : {}),
     }
@@ -978,6 +1064,15 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         { ...(sponsored !== undefined ? { sponsored } : {}) },
       )
     }) as ManagedEvmAccount<C>['deploy'] & ManagedSolanaDeployment['deploy'],
+    async getAuthorityStatus(transaction) {
+      const origin = requireSolana()
+      const ctx = context('prepare-intent')
+      return origin.authorityStatus(
+        ctx.sdk,
+        workflowsFor(ctx),
+        normalizeAuthorityChange(transaction, publicConfig),
+      )
+    },
     isDeployed(chain) {
       const ctx = context('is-deployed')
       return workflowsFor(ctx).isDeployed(ctx, toEvmChainReference(chain.id))
@@ -1544,6 +1639,7 @@ function createSolanaOrigin(
           kind: 'authority',
           change: {
             action,
+            keyType: key.type,
             key: key.publicKey,
             ...(action === 'add' ? { permission } : {}),
           },
@@ -1802,9 +1898,51 @@ function createSolanaOrigin(
     return true
   }
 
+  const authorityStatus = async (
+    sdk: ResolvedSdkConfig,
+    workflows: SolanaWorkflows,
+    transaction: SameChainSolanaAuthorityTransaction,
+  ): Promise<SolanaAuthorityStatus> => {
+    const change = transaction.authority
+    try {
+      await workflows.prepareSolanaIntent(transfer(sdk, transaction))
+      return { status: 'notApplied' }
+    } catch (error) {
+      if (
+        !isSolanaAuthorityChangeRefused(error) ||
+        (error.swigAddress !== undefined &&
+          error.swigAddress !== source.swigAddress)
+      ) {
+        throw error
+      }
+      if (
+        change.action === 'add' &&
+        error.reason === 'authority_exists' &&
+        error.roleId !== undefined
+      ) {
+        if (error.permission === change.permission) {
+          return { status: 'applied', roleId: error.roleId }
+        }
+        return {
+          status: 'conflict',
+          roleId: error.roleId,
+          ...(error.permission ? { permission: error.permission } : {}),
+        }
+      }
+      if (
+        change.action === 'remove' &&
+        error.reason === 'authority_not_found'
+      ) {
+        return { status: 'applied' }
+      }
+      throw error
+    }
+  }
+
   return {
     walletAddress: source.walletAddress,
     assertDestinationCallsSupported,
+    authorityStatus,
     deploy,
     resolve,
     async prepare(
@@ -1941,6 +2079,12 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
       composition.project
         .waitForIntentStatus(result.id)
         .then(toPublicTransactionStatus),
+    getAuthorityStatus: async (transaction) =>
+      solana.authorityStatus(
+        sdk,
+        workflows,
+        normalizeAuthorityChange(transaction, publicConfig),
+      ),
     deploy: async (vm, chain, options) => {
       if (vm !== 'solana') {
         throw new UnsupportedAccountCapabilityError(
@@ -2245,25 +2389,28 @@ function assertSolanaSourceAsset(
 
 /**
  * Checks an authority change's shape, and returns its key in canonical form.
- * A literal is held to the same rules `addPasskey` and `removePasskey` apply.
+ * A literal is held to the same rules the `addPasskey`, `addEcdsaKey`,
+ * `removePasskey` and `removeEcdsaKey` builders apply.
  */
-function assertSolanaAuthorityChange(value: unknown): Hex {
+function assertSolanaAuthorityChange(value: unknown): {
+  readonly keyType: 'passkey' | 'ecdsa'
+  readonly publicKey: Hex
+} {
   const refuse = (message: string, field: string): never => {
     throw new UnsupportedAccountCapabilityError(message, {
       vm: 'solana',
       field,
     })
   }
+  const builders =
+    '`addPasskey`, `addEcdsaKey`, `removePasskey` or `removeEcdsaKey`'
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    refuse(
-      '`authority` must be a change from `addPasskey` or `removePasskey`.',
-      'authority',
-    )
+    refuse(`\`authority\` must be a change from ${builders}.`, 'authority')
   }
   const change = value as Record<string, unknown>
   if (change.action !== 'add' && change.action !== 'remove') {
     refuse(
-      "`authority.action` must be 'add' or 'remove'; build it with `addPasskey` or `removePasskey`.",
+      `\`authority.action\` must be 'add' or 'remove'; build it with ${builders}.`,
       'authority.action',
     )
   }
@@ -2277,29 +2424,70 @@ function assertSolanaAuthorityChange(value: unknown): Hex {
   if (
     change.action === 'add' &&
     change.permission !== 'all' &&
-    change.permission !== 'allButManageAuthority'
+    change.permission !== 'allButManageAuthority' &&
+    change.permission !== 'manageAuthority'
   ) {
     refuse(
-      "Adding a passkey needs `authority.permission`: 'all' or 'allButManageAuthority'.",
+      "Adding a key needs `authority.permission`: 'all', 'allButManageAuthority' or 'manageAuthority'.",
       'authority.permission',
     )
   }
   assertSolanaObjectKeys(change.key, ['type', 'publicKey'], 'authority.key')
   const key = change.key as Record<string, unknown>
-  if (key.type !== 'passkey') {
-    refuse(
-      "Only passkeys can be added or removed: `authority.key.type` must be 'passkey'.",
-      'authority.key.type',
+  if (key.type === 'passkey') {
+    const publicKey = canonicalP256PublicKey(key.publicKey)
+    if (!publicKey) {
+      refuse(
+        '`authority.key.publicKey` must be a P-256 public key as 64-byte x‖y, 65-byte uncompressed or 33-byte compressed hex.',
+        'authority.key.publicKey',
+      )
+    }
+    return { keyType: 'passkey', publicKey: publicKey! }
+  }
+  if (key.type === 'ecdsa') {
+    if (isEvmAddressLength(key.publicKey)) {
+      refuse(
+        '`authority.key.publicKey` is an EVM address, not a public key; pass the secp256k1 public key the address derives from.',
+        'authority.key.publicKey',
+      )
+    }
+    const publicKey = canonicalSecp256k1PublicKey(key.publicKey)
+    if (!publicKey) {
+      refuse(
+        '`authority.key.publicKey` must be a secp256k1 public key as 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex, on the secp256k1 curve.',
+        'authority.key.publicKey',
+      )
+    }
+    return { keyType: 'ecdsa', publicKey: publicKey! }
+  }
+  return refuse(
+    "`authority.key.type` must be 'passkey' or 'ecdsa'.",
+    'authority.key.type',
+  )
+}
+
+/**
+ * The canonical form of a `getAuthorityStatus` argument, refusing anything
+ * that is not a Solana authority change.
+ */
+function normalizeAuthorityChange(
+  transaction: unknown,
+  config: Readonly<RhinestoneAccountConfig>,
+): SameChainSolanaAuthorityTransaction {
+  if (
+    !transaction ||
+    typeof transaction !== 'object' ||
+    !isSolanaAuthorityChange(transaction as Transaction)
+  ) {
+    throw new UnsupportedAccountCapabilityError(
+      '`getAuthorityStatus` takes a `{ chain, authority }` Solana authority change.',
+      { vm: 'solana', field: 'authority' },
     )
   }
-  const publicKey = canonicalP256PublicKey(key.publicKey)
-  if (!publicKey) {
-    refuse(
-      '`authority.key.publicKey` must be a P-256 public key as 64-byte x‖y, 65-byte uncompressed or 33-byte compressed hex.',
-      'authority.key.publicKey',
-    )
-  }
-  return publicKey!
+  return normalizeTransaction(
+    transaction as Transaction,
+    config,
+  ) as SameChainSolanaAuthorityTransaction
 }
 
 function assertSupportedSolanaTransaction(
@@ -2775,10 +2963,10 @@ export function normalizeTransaction(
   }
   if (isSolanaAuthorityChange(transaction)) {
     const { action, permission } = transaction.authority
-    const key = Object.freeze({
-      type: 'passkey' as const,
-      publicKey: assertSolanaAuthorityChange(transaction.authority),
-    })
+    const { keyType, publicKey } = assertSolanaAuthorityChange(
+      transaction.authority,
+    )
+    const key = Object.freeze({ type: keyType, publicKey })
     return Object.freeze({
       chain: Object.freeze({ ...transaction.chain }),
       authority: Object.freeze(

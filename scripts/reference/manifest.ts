@@ -341,6 +341,25 @@ export const manifest: Group[] = [
         source: './solana',
         callStyle: 'function',
       },
+      {
+        kind: 'symbol',
+        symbol: 'addEcdsaKey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'removeEcdsaKey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'getAuthorityStatus',
+        source: './solana',
+        container: 'SolanaStandaloneAccount',
+        callStyle: 'accountMethod',
+      },
     ],
   },
   {

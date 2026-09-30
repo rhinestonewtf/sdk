@@ -20,9 +20,11 @@ import type { EvmAccountConfig } from '@rhinestone/sdk/evm'
 import * as evmExports from '@rhinestone/sdk/evm'
 import * as solanaExports from '@rhinestone/sdk/solana'
 import {
+  addEcdsaKey,
   addPasskey,
   type CrossChainSolanaOriginTransaction,
   createSolanaSwigId,
+  removeEcdsaKey,
   removePasskey,
   type SameChainSolanaAuthorityTransaction,
   type SameChainSolanaTransaction,
@@ -30,6 +32,8 @@ import {
   type SolanaAuthorityDisclosure,
   type SolanaAuthorityExecutionMetadata,
   type SolanaAuthorityKey,
+  type SolanaAuthorityPermission,
+  type SolanaAuthorityStatus,
   type SolanaCrossChainExecutionMetadata,
   type SolanaDeployOptions,
   type SolanaExecutionMetadata,
@@ -181,6 +185,15 @@ async function useManagedSolanaApi() {
     authority: change,
   } satisfies SameChainSolanaAuthorityTransaction
   const preparedChange = await account.prepareTransaction(authorityChange)
+  const recoveryPermission: SolanaAuthorityPermission = 'manageAuthority'
+  const recoveryKey = `0x03${'22'.repeat(32)}` as const
+  const enrollment = {
+    chain: solanaDevnet,
+    authority: addEcdsaKey(recoveryKey, { permission: recoveryPermission }),
+  } satisfies SameChainSolanaAuthorityTransaction
+  const enrolled: SolanaAuthorityStatus =
+    await standalone.getAuthorityStatus(enrollment)
+  const removal: SolanaAuthorityChange = removeEcdsaKey(recoveryKey)
   const authorityMetadata: SolanaAuthorityExecutionMetadata | undefined =
     preparedChange.execution?.kind === 'solana-authority'
       ? preparedChange.execution
@@ -196,6 +209,8 @@ async function useManagedSolanaApi() {
 
   void metadata
   void key
+  void enrolled
+  void removal
   void authorityMetadata
   void disclosed
   void deliveryMetadata

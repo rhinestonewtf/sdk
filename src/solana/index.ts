@@ -4,7 +4,12 @@
  */
 // biome-ignore lint/performance/noBarrelFile: published solana subpath
 export { createSolanaSwigId } from '../accounts/solana/address'
-export { addPasskey, removePasskey } from '../actions/solana'
+export {
+  addEcdsaKey,
+  addPasskey,
+  removeEcdsaKey,
+  removePasskey,
+} from '../actions/solana'
 export type {
   SolanaDeployOptions,
   SolanaStandaloneAccount,
@@ -27,6 +32,8 @@ export type {
   SolanaAccountConfig,
   SolanaAuthorityChange,
   SolanaAuthorityKey,
+  SolanaAuthorityPermission,
+  SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
   SolanaPasskeyPermission,
