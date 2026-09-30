@@ -8,6 +8,7 @@ import {
   slice,
   toFunctionSelector,
 } from 'viem'
+import { compareHexValues } from '../../ordering'
 import { cumulativeCap, pin, pinValue, pinWord } from '../swap/rules'
 import type {
   ArgPolicyExpression,
@@ -112,7 +113,7 @@ export function proversBetween(
   return served(settlement, source, 'eco')
     .provers.filter((prover) => there.some((p) => isAddressEqual(p, prover)))
     .map((prover) => prover.toLowerCase() as Address)
-    .sort()
+    .sort(compareHexValues)
 }
 
 /** The word holding `transfer`'s selector and the head of its recipient. */
