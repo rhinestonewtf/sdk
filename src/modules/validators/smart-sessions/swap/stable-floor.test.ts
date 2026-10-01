@@ -303,7 +303,7 @@ describe('stableFloor — refusals', () => {
 
   test('no catalog at all', () => {
     expect(() => resolveSwapScope(scope(), PLASMA)).toThrow(
-      /needs the orchestrator’s stablecoins/,
+      /needs the orchestrator's stablecoins/,
     )
     expect(() =>
       toSession({
@@ -311,7 +311,7 @@ describe('stableFloor — refusals', () => {
         owners: { type: 'ecdsa', accounts: [accountA] },
         swap: scope(),
       }),
-    ).toThrow(/needs the orchestrator’s stablecoins/)
+    ).toThrow(/needs the orchestrator's stablecoins/)
   })
 
   test('an aggregator venue, alone or beside the Swapper', () => {

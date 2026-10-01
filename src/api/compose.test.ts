@@ -888,6 +888,6 @@ describe('internal core composition', () => {
     expect(exactIn?.actionPolicies[0]?.initData).toContain(floorRule)
     await expect(
       withServed().project.createSession(definition),
-    ).rejects.toThrow('needs the orchestrator’s stablecoins')
+    ).rejects.toThrow("needs the orchestrator's stablecoins")
   })
 })

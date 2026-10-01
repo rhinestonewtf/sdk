@@ -43,7 +43,7 @@ export function resolveStableFloor(
   if (sellTokens.length !== 1) {
     throw new Error(
       'swap.stableFloor needs exactly one sell token — the floor is derived ' +
-        'from one token’s cap and decimals',
+        "from one token's cap and decimals",
     )
   }
   if (scope.sell.maxTotal === undefined) {
@@ -62,7 +62,7 @@ export function resolveStableFloor(
   }
   if (stablecoins === undefined) {
     throw new Error(
-      'swap.stableFloor needs the orchestrator’s stablecoins for this chain to ' +
+      "swap.stableFloor needs the orchestrator's stablecoins for this chain to " +
         'confirm both tokens are USD stablecoins — create the session with ' +
         'sdk.createSession on a chain that serves them',
     )
