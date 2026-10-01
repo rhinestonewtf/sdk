@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import type { SessionTokenInfo, SwapScopeInput } from '../types'
+import type { ServedStablecoin, SwapScopeInput } from '../types'
 
 /**
  * Opt-in stable-swap floor (RHI-7883).
@@ -12,7 +12,6 @@ import type { SessionTokenInfo, SwapScopeInput } from '../types'
 
 const DEFAULT_MAX_SLIPPAGE_BPS = 100
 const BPS = 10_000n
-const USD_STABLE_SYMBOLS = new Set(['USDC', 'USDC.E', 'USDT', 'USDT0'])
 const STABLE_DECIMALS = new Set([6, 18])
 
 export interface StableFloorParams {
@@ -25,7 +24,7 @@ export interface StableFloorParams {
 export function resolveStableFloor(
   scope: SwapScopeInput,
   sellTokens: readonly Address[],
-  supportedTokens: 'all' | readonly SessionTokenInfo[] | undefined,
+  stablecoins: readonly ServedStablecoin[] | undefined,
 ): StableFloorParams | undefined {
   const option = scope.stableFloor
   if (option === undefined) return undefined
@@ -61,46 +60,35 @@ export function resolveStableFloor(
         'a direct aggregator call has no output bound for the floor to pin',
     )
   }
-  if (supportedTokens === undefined) {
+  if (stablecoins === undefined) {
     throw new Error(
-      'swap.stableFloor needs the chain’s token catalog to confirm both tokens ' +
-        'are USD stablecoins — create the session with sdk.createSession',
+      'swap.stableFloor needs the orchestrator’s stablecoins for this chain to ' +
+        'confirm both tokens are USD stablecoins — create the session with ' +
+        'sdk.createSession on a chain that serves them',
     )
   }
-  if (supportedTokens === 'all') {
-    throw new Error(
-      'swap.stableFloor cannot confirm stablecoins on this chain: its catalog ' +
-        'lists all tokens rather than their symbols and decimals',
-    )
-  }
-  const stable = (token: Address, side: 'sell' | 'buy'): SessionTokenInfo => {
-    const matches = supportedTokens.filter(
+  const stable = (token: Address, side: 'sell' | 'buy'): ServedStablecoin => {
+    const matches = stablecoins.filter(
       (t) => t.address.toLowerCase() === token.toLowerCase(),
     )
     if (matches.length === 0) {
       throw new Error(
-        `swap.stableFloor: ${side} token ${token} is not in the chain’s token catalog`,
+        `swap.stableFloor: ${side} token ${token} is not a USD stablecoin the orchestrator serves for this chain`,
       )
     }
     // Two entries could disagree on decimals, and the floor would silently
     // take whichever came first.
     if (matches.length > 1) {
       throw new Error(
-        `swap.stableFloor: ${side} token ${token} appears ${matches.length} times in the chain’s token catalog`,
+        `swap.stableFloor: ${side} token ${token} appears ${matches.length} times in the served stablecoins`,
       )
     }
     const info = matches[0]
-    if (!USD_STABLE_SYMBOLS.has(info.symbol.toUpperCase())) {
-      throw new Error(
-        `swap.stableFloor: ${side} token ${token} (${info.symbol}) is not a USD ` +
-          `stablecoin — supported: ${[...USD_STABLE_SYMBOLS].join(', ')}`,
-      )
-    }
-    // Every USD stable the catalog lists is 6 or 18; anything else is a bad
-    // entry, and a wrong scale moves the floor by orders of magnitude.
+    // Every served USD stable is 6 or 18; anything else is a bad entry, and a
+    // wrong scale moves the floor by orders of magnitude.
     if (!STABLE_DECIMALS.has(info.decimals)) {
       throw new Error(
-        `swap.stableFloor: ${side} token ${token} (${info.symbol}) has ${info.decimals} decimals in the catalog; expected 6 or 18`,
+        `swap.stableFloor: ${side} token ${token} (${info.symbol}) has ${info.decimals} decimals; expected 6 or 18`,
       )
     }
     return info

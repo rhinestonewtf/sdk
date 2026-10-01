@@ -23,10 +23,9 @@ export async function createSession(input: {
       `createSession: the orchestrator's /chains has no wrapped-native token for chain ${input.definition.chain.id}. The chain must be supported and advertise its wrappedNativeToken.`,
     )
   }
-  const supportedTokens = catalog.getSupportedTokens(input.definition.chain.id)
   return toSession(input.definition, {
     wrappedNativeToken,
-    ...(supportedTokens ? { supportedTokens } : {}),
     environment: input.environment,
+    settlement: catalog.getSettlementCatalog(),
   })
 }

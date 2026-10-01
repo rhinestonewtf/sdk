@@ -159,12 +159,9 @@ export interface SwapScopeInput {
 /** `true` for the default 100 bps slippage, or an explicit tolerance. */
 export type StableSwapFloor = true | { readonly maxSlippageBps: number }
 
-/**
- * Token metadata from the orchestrator's chain catalog (`GET /chains`). Mirrors
- * `CatalogToken` because modules may not import from `clients/`.
- */
-export interface SessionTokenInfo {
-  readonly address: string
+/** A USD stablecoin the orchestrator serves as 1:1 (`/chains` `settlement.stablecoins`). */
+export interface ServedStablecoin {
+  readonly address: Address
   readonly symbol: string
   readonly decimals: number
 }
@@ -217,16 +214,39 @@ export interface SessionPolicyAddresses {
   readonly oneTimeUseId?: Address
 }
 
-export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+/** Layers a permit settles through the Permit2 claim path (arbiter allowlist). */
+export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+
+/**
+ * Layers the account settles by executing the bridge call itself. Naming one
+ * compiles the permit to scoped, argument-pinned actions and restricts the
+ * session to them.
+ */
+export type IntentExecutorSettlementLayer =
+  | 'CCTP'
+  | 'OFT'
+  | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
+  | 'LZ'
+
+export type CrossChainSettlementLayer =
+  | Permit2SettlementLayer
+  | IntentExecutorSettlementLayer
 
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  to?: {
+    chain: Chain
+    token: Address
+    recipient?: Address | 'any'
+    minAmount?: bigint
+  }[]
   validUntil?: bigint
   validAfter?: bigint
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   recipientIsAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
+  maxFeeBps?: number
 }
 
 export interface FromLeg {
@@ -239,6 +259,7 @@ export interface ToLeg {
   chain: Chain
   token: Address
   recipient?: Address | 'any'
+  minAmount?: bigint
 }
 
 export interface CrossChainPermissionInput {
@@ -249,6 +270,7 @@ export interface CrossChainPermissionInput {
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   allowRecipientNotAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
+  maxFeeBps?: number
 }
 
 export interface Permit2ClaimPolicy {
@@ -333,6 +355,9 @@ export interface SessionDefinition {
   // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
   // config/account.ts for the full contract.
   oneTimeUse?: OneTimeUseSessionConfig
+  // The account the session is for. Required when an IntentExecutor-layer
+  // `crossChainPermits` entry pins its recipient to the account (the default).
+  account?: Address
 }
 
 export interface OneTimeUseSessionConfig {
@@ -378,6 +403,9 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
+  /** The IntentExecutor layers the session's permit was scoped to, so a caller
+   *  can restrict an intent to them. Metadata only, like `swap`. */
+  settlementLayers?: readonly IntentExecutorSettlementLayer[]
   // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
   // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
   // onto the on-chain claim (lockTag) surface. They stay on the high-level

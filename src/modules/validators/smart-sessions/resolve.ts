@@ -30,6 +30,12 @@ import {
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
+import {
+  isIntentExecutorLayer,
+  isSettlementScopedPermit,
+  resolveSettlementScope,
+} from './settlement/scope'
+import type { SettlementCatalog } from './settlement/types'
 import { resolveSessionSigning } from './signing'
 import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
@@ -43,7 +49,6 @@ import type {
   SessionAction,
   SessionData,
   SessionDefinition,
-  SessionTokenInfo,
 } from './types'
 
 export const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
@@ -68,9 +73,10 @@ export interface ResolveSessionOptions {
   // The chain's wrapped-native token address. Provide it to permit the
   // native-wrap `deposit()` action; omit for a fully offline, pure build.
   readonly wrappedNativeToken?: Address
-  // The chain's catalog tokens. Required only by a `swap.stableFloor` scope,
-  // which reads stablecoin symbols and decimals from it.
-  readonly supportedTokens?: 'all' | readonly SessionTokenInfo[]
+  // The orchestrator's `/chains` settlement addresses. IntentExecutor-layer
+  // permits (other than SAME_CHAIN_IE) and `swap.stableFloor` need them;
+  // `createSession` passes them.
+  readonly settlement?: SettlementCatalog
 }
 
 export function resolveSessionData(
@@ -99,7 +105,7 @@ export function resolveSessionData(
         definition.swap,
         definition.chain.id,
         environment,
-        options.supportedTokens,
+        options.settlement?.[definition.chain.id]?.usdStablecoins,
       )
     : undefined
   const stableFloor = definition.swap?.stableFloor !== undefined
@@ -125,11 +131,37 @@ export function resolveSessionData(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
+  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+    resolveCrossChainPermission,
+  )
+  // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
+  // actions, which only bind with the fallback gone — so it restricts too.
+  const settlementScope = resolveSettlementScope(resolvedPermits, {
+    chainId: definition.chain.id,
+    environment,
+    account: definition.account,
+    oneTimeUse: Boolean(definition.oneTimeUse),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
+  })
+  // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
+  // none of the calldata pins ever see.
+  if (
+    settlementScope !== undefined &&
+    definition.signing !== undefined &&
+    definition.signing.mode !== 'disabled'
+  ) {
+    throw new Error(
+      'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+    )
+  }
   const restricted =
-    definition.restrictToActions === true || swapScope !== undefined
+    definition.restrictToActions === true ||
+    swapScope !== undefined ||
+    settlementScope !== undefined
   const permissions = [
     ...(definition.permissions ?? []),
     ...(swapScope?.permissions ?? []),
+    ...(settlementScope?.permissions ?? []),
   ]
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be
@@ -138,15 +170,19 @@ export function resolveSessionData(
   const rawActions = [
     ...(definition.actions ?? []),
     ...(swapScope?.actions ?? []),
+    ...(settlementScope?.actions ?? []),
   ]
   // A restricted session drops the fallback action, which is also where a
   // cross-chain permit's spending-limit / time-frame guardrails live — so a
   // restricted session combined with a permit would keep claim signing but lose
   // maxAmount/deadline enforcement. These are different authorization surfaces;
   // reject the combination rather than silently drop the guardrails.
+  // A settlement-scoped permit carries its guardrails on its own actions, so it
+  // is the one permit shape a restricted session can hold.
   if (
     restricted &&
-    (definition.crossChainPermits?.length || definition.claimPolicies?.length)
+    ((definition.crossChainPermits?.length && settlementScope === undefined) ||
+      definition.claimPolicies?.length)
   ) {
     throw new Error(
       'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
@@ -183,9 +219,9 @@ export function resolveSessionData(
       )
     }
   }
-  const expandedPermits = (definition.crossChainPermits ?? []).map((input) =>
-    expandCrossChainPermit(resolveCrossChainPermission(input), environment),
-  )
+  const expandedPermits = resolvedPermits
+    .filter((permit) => !isSettlementScopedPermit(permit))
+    .map((permit) => expandCrossChainPermit(permit, environment))
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -432,6 +468,20 @@ export function resolveSessionData(
       claimPolicies = []
     }
   }
+  // Enabling keeps one config per policy contract and action, so a second
+  // entry for the same policy would overwrite the first instead of ANDing.
+  for (const action of actions) {
+    const seen = new Set<string>()
+    for (const { policy } of action.actionPolicies) {
+      const key = policy.toLowerCase()
+      if (seen.has(key)) {
+        throw new Error(
+          `Action (${action.actionTarget}, ${action.actionTargetSelector}) carries policy ${policy} twice; the second config would overwrite the first on-chain`,
+        )
+      }
+      seen.add(key)
+    }
+  }
   const enabledErc7739Policies = { ...erc7739Policies, erc1271Policies }
   return {
     sessionValidator: validator.address,
@@ -656,15 +706,23 @@ export function toSession(
     ...(options.wrappedNativeToken
       ? { wrappedNativeToken: options.wrappedNativeToken }
       : {}),
-    ...(options.supportedTokens
-      ? { supportedTokens: options.supportedTokens }
-      : {}),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
   })
-  const expandedClaims = (definition.crossChainPermits ?? []).map(
-    (input) =>
-      expandCrossChainPermit(resolveCrossChainPermission(input), environment)
-        .claim,
+  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+    resolveCrossChainPermission,
   )
+  const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
+  const expandedClaims = resolvedPermits
+    .filter((permit) => !isSettlementScopedPermit(permit))
+    .map((permit) => expandCrossChainPermit(permit, environment).claim)
+  const settlementLayers = [
+    ...new Set(
+      scopedPermits.flatMap(
+        (permit) =>
+          permit.settlementLayers?.filter(isIntentExecutorLayer) ?? [],
+      ),
+    ),
+  ]
   return {
     chain: definition.chain,
     owners: definition.owners,
@@ -677,7 +735,8 @@ export function toSession(
     hasExplicitPermissions: Boolean(
       definition.permissions?.length ||
         definition.actions?.length ||
-        definition.swap,
+        definition.swap ||
+        scopedPermits.length,
     ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
@@ -693,6 +752,7 @@ export function toSession(
     // (lockTag) surface — otherwise they'd settle on both surfaces.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     ...(definition.swap ? { swap: definition.swap } : {}),
+    ...(settlementLayers.length ? { settlementLayers } : {}),
     ...(definition.oneTimeUse && {
       claimPoliciesEnforcedVia1271:
         (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,

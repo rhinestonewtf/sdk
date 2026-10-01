@@ -11,6 +11,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
+import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toEvmChainReference } from '../chains/caip2'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
@@ -749,6 +750,59 @@ describe('internal core composition', () => {
     ).toBe(true)
   })
 
+  test("createSession scopes an IntentExecutor-layer permit with /chains' settlement addresses", async () => {
+    const base = fixture()
+    const served = (id: number) => ({
+      name: String(id),
+      testnet: false,
+      supportedTokens: 'all' as const,
+      settlement: SETTLEMENT_CATALOG[id],
+    })
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                ...served(baseChain.id),
+                wrappedNativeToken: {
+                  symbol: 'WETH',
+                  address: '0x4200000000000000000000000000000000000006',
+                  decimals: 18,
+                },
+              },
+              [arbitrum.id]: served(arbitrum.id),
+            }),
+        ),
+      },
+    })
+
+    const session = await composition.project.createSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      account: '0x1111111111111111111111111111111111111111',
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP'],
+        },
+      ],
+    })
+
+    expect(session.actions[0].actionTarget).toBe(
+      SETTLEMENT_CATALOG[baseChain.id].cctp!.tokenMessenger,
+    )
+  })
+
   test('createSession fails fast when the chain has no wrapped-native token', async () => {
     const base = fixture()
     const composition = createCoreComposition(base.context.sdk, {
@@ -776,14 +830,13 @@ describe('internal core composition', () => {
     ).rejects.toThrow('no wrapped-native token')
   })
 
-  test('createSession hands the catalog tokens to a stableFloor swap scope', async () => {
+  test('createSession hands the served USD stablecoins to a stableFloor swap scope', async () => {
     const usdc: Address = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
     const usdt: Address = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'
     const account: Address = '0x1111111111111111111111111111111111111111'
-    const withTokens = (
-      supportedTokens:
-        | 'all'
-        | { symbol: string; address: string; decimals: number }[],
+    // A swap chain: its catalog is 'all', so the floor must read the served list.
+    const withServed = (
+      usdStablecoins?: { symbol: string; address: Address; decimals: number }[],
     ) => {
       const base = fixture()
       return createCoreComposition(base.context.sdk, {
@@ -796,12 +849,13 @@ describe('internal core composition', () => {
                 [baseChain.id]: {
                   name: 'Base',
                   testnet: false,
-                  supportedTokens,
+                  supportedTokens: 'all',
                   wrappedNativeToken: {
                     symbol: 'WETH',
                     address: '0x4200000000000000000000000000000000000006',
                     decimals: 18,
                   },
+                  ...(usdStablecoins ? { settlement: { usdStablecoins } } : {}),
                 },
               }),
           ),
@@ -819,7 +873,7 @@ describe('internal core composition', () => {
       },
     }
 
-    const session = await withTokens([
+    const session = await withServed([
       { symbol: 'USDC', address: usdc, decimals: 6 },
       { symbol: 'USDT', address: usdt, decimals: 6 },
     ]).project.createSession(definition)
@@ -833,7 +887,7 @@ describe('internal core composition', () => {
     ).slice(2)
     expect(exactIn?.actionPolicies[0]?.initData).toContain(floorRule)
     await expect(
-      withTokens('all').project.createSession(definition),
-    ).rejects.toThrow('lists all tokens')
+      withServed().project.createSession(definition),
+    ).rejects.toThrow('needs the orchestrator’s stablecoins')
   })
 })

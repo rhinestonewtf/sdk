@@ -17,7 +17,7 @@ import { getPermissionId, getSessionData } from '../digest'
 import { toSession } from '../resolve'
 import type {
   ScopedAction,
-  SessionTokenInfo,
+  ServedStablecoin,
   SwapScopeInput,
   UniversalActionPolicyParamRule,
 } from '../types'
@@ -42,13 +42,14 @@ const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
 const PLASMA = 9745
 const plasma = { id: PLASMA, name: 'Plasma' } as unknown as Chain
 
-const CATALOG: SessionTokenInfo[] = [
-  { address: USDT0.toLowerCase(), symbol: 'USDT0', decimals: 6 },
+const CATALOG: ServedStablecoin[] = [
+  { address: USDT0.toLowerCase() as Address, symbol: 'USDT0', decimals: 6 },
   { address: USDC, symbol: 'USDC', decimals: 6 },
   // Synthetic 18-decimal stable, as BSC's USDC/USDT are.
   { address: USDC_E18, symbol: 'USDC.e', decimals: 18 },
-  { address: DAI, symbol: 'DAI', decimals: 18 },
 ]
+
+const SERVED = { [PLASMA]: { usdStablecoins: CATALOG } }
 
 const CAP = 1_000_000n
 
@@ -289,31 +290,20 @@ describe('stableFloor — refusals', () => {
     refuses(scope({ sell: { token: USDT0 } }), /needs swap\.sell\.maxTotal/)
   })
 
-  test('a non-stable token on either side', () => {
+  test('a token the orchestrator does not serve as a stablecoin, on either side', () => {
     refuses(
       scope({ buy: { token: DAI } }),
-      /buy token .* \(DAI\) is not a USD stablecoin/,
+      /buy token .* is not a USD stablecoin the orchestrator serves/,
     )
     refuses(
-      scope({ sell: { token: DAI, maxTotal: CAP } }),
-      /sell token .* \(DAI\) is not a USD stablecoin/,
+      scope({ sell: { token: ATTACKER, maxTotal: CAP } }),
+      /sell token .* is not a USD stablecoin the orchestrator serves/,
     )
-  })
-
-  test('a token the catalog does not list', () => {
-    refuses(
-      scope({ buy: { token: ATTACKER } }),
-      /buy token .* is not in the chain’s token catalog/,
-    )
-  })
-
-  test('a catalog that lists all tokens', () => {
-    refuses(scope(), /lists all tokens/, 'all' as never)
   })
 
   test('no catalog at all', () => {
     expect(() => resolveSwapScope(scope(), PLASMA)).toThrow(
-      /needs the chain’s token catalog/,
+      /needs the orchestrator’s stablecoins/,
     )
     expect(() =>
       toSession({
@@ -321,7 +311,7 @@ describe('stableFloor — refusals', () => {
         owners: { type: 'ecdsa', accounts: [accountA] },
         swap: scope(),
       }),
-    ).toThrow(/needs the chain’s token catalog/)
+    ).toThrow(/needs the orchestrator’s stablecoins/)
   })
 
   test('an aggregator venue, alone or beside the Swapper', () => {
@@ -343,21 +333,25 @@ describe('stableFloor — refusals', () => {
 })
 
 describe('stableFloor — catalog integrity', () => {
-  const withCatalog = (catalog: SessionTokenInfo[]) => () =>
+  const withCatalog = (catalog: ServedStablecoin[]) => () =>
     resolveSwapScope(scope(), PLASMA, 'production', catalog)
   const others = CATALOG.filter((t) => t.symbol !== 'USDC')
 
   test.each([0, 8, 24])('refuses a stable with %i decimals', (decimals) => {
     expect(
       withCatalog([...others, { address: USDC, symbol: 'USDC', decimals }]),
-    ).toThrow(/has \d+ decimals in the catalog; expected 6 or 18/)
+    ).toThrow(/has \d+ decimals; expected 6 or 18/)
   })
 
   test('refuses a token listed twice, even with equal metadata', () => {
     const usdc = { address: USDC, symbol: 'USDC', decimals: 6 }
     expect(
-      withCatalog([...others, usdc, { ...usdc, address: USDC.toLowerCase() }]),
-    ).toThrow(/appears 2 times in the chain’s token catalog/)
+      withCatalog([
+        ...others,
+        usdc,
+        { ...usdc, address: USDC.toLowerCase() as Address },
+      ]),
+    ).toThrow(/appears 2 times in the served stablecoins/)
   })
 })
 
@@ -370,7 +364,7 @@ describe('stableFloor — side doors', () => {
         swap: scope(),
         ...extra,
       },
-      { supportedTokens: CATALOG },
+      { settlement: SERVED },
     )
 
   test('builds with no other grant and signing left unset or disabled', () => {
@@ -437,7 +431,7 @@ describe('stableFloor — salt', () => {
         swap,
         ...extra,
       },
-      { supportedTokens: CATALOG },
+      { settlement: SERVED },
     )
 
   test('never shares a permissionId with the same scope unfloored', () => {
@@ -457,15 +451,15 @@ describe('stableFloor — salt', () => {
 })
 
 describe('stableFloor off', () => {
-  const build = (swap: SwapScopeInput, supportedTokens?: SessionTokenInfo[]) =>
+  const build = (swap: SwapScopeInput, served?: boolean) =>
     toSession(
       { chain: plasma, owners: { type: 'ecdsa', accounts: [accountA] }, swap },
-      supportedTokens ? { supportedTokens } : {},
+      served ? { settlement: SERVED } : {},
     )
-  const digest = (swap: SwapScopeInput, supportedTokens?: SessionTokenInfo[]) =>
+  const digest = (swap: SwapScopeInput, served?: boolean) =>
     keccak256(
       toHex(
-        JSON.stringify(getSessionData(build(swap, supportedTokens)), (_k, v) =>
+        JSON.stringify(getSessionData(build(swap, served)), (_k, v) =>
           typeof v === 'bigint' ? v.toString() : v,
         ),
       ),
@@ -498,10 +492,10 @@ describe('stableFloor off', () => {
       '0x2cca6ce8fa8c9068f1751e53e249307000672255c568d5be5207c6f0f69423c9',
     ],
   ] as [string, SwapScopeInput, Hex][])(
-    '%s: session data unchanged, with or without a catalog',
+    '%s: session data unchanged, with or without served stablecoins',
     (_name, swap, expected) => {
       expect(digest(swap)).toBe(expected)
-      expect(digest(swap, CATALOG)).toBe(expected)
+      expect(digest(swap, true)).toBe(expected)
     },
   )
 })

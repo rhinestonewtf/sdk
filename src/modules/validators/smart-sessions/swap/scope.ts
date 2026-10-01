@@ -5,7 +5,7 @@ import type {
   RhinestoneSwapVenue,
   RoutedRhinestoneSwapVenue,
   ScopedAction,
-  SessionTokenInfo,
+  ServedStablecoin,
   SwapScopeInput,
   SwapVenue,
   ZeroExVenue,
@@ -116,7 +116,7 @@ export function resolveSwapScope(
   scope: SwapScopeInput,
   chainId: number,
   environment: 'production' | 'development' = 'production',
-  supportedTokens?: 'all' | readonly SessionTokenInfo[],
+  stablecoins?: readonly ServedStablecoin[],
 ): ResolvedSwapScope {
   // Default to the Swapper: it is the route the orchestrator emits for
   // same-chain smart-account swaps, so a caller who just says "let this key
@@ -167,7 +167,7 @@ export function resolveSwapScope(
     )
   }
 
-  const stableFloor = resolveStableFloor(scope, sellTokens, supportedTokens)
+  const stableFloor = resolveStableFloor(scope, sellTokens, stablecoins)
 
   const ctxFor = (venue: { maxSpend?: bigint }) => {
     // A venue-level cap wins over the scope-level one: `anySettler` demands its
