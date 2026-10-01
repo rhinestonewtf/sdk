@@ -119,6 +119,10 @@ export function resolveSessionData(
         ...(definition.actions ?? []).map((a) => a.target),
       ],
       signingMode: definition.signing?.mode,
+      hasCrossChainGrants: Boolean(
+        definition.crossChainPermits?.length ||
+          definition.claimPolicies?.length,
+      ),
     })
     if (definition.saltMode === 'v1') {
       throw new Error(

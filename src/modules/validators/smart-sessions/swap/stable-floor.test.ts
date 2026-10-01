@@ -411,6 +411,29 @@ describe('stableFloor — side doors', () => {
     )
   })
 
+  // A SAME_CHAIN_IE permit compiles to a `transfer` on its source token, a
+  // different selector from the swap's approve, so no duplicate guard sees it.
+  test('refuses a cross-chain permit that transfers the sell token', () => {
+    expect(
+      session({
+        crossChainPermits: [
+          {
+            from: { chain: plasma, token: USDT0 },
+            to: { chain: plasma, token: USDT0, recipient: ATTACKER },
+            settlementLayers: ['SAME_CHAIN_IE'],
+            allowRecipientNotAccount: true,
+          },
+        ],
+      }),
+    ).toThrow(/cannot be combined with `crossChainPermits`/)
+  })
+
+  test('refuses claim policies', () => {
+    expect(
+      session({ claimPolicies: [{ policy: ATTACKER, initData: '0x' }] }),
+    ).toThrow(/cannot be combined with `crossChainPermits` or `claimPolicies`/)
+  })
+
   test('allows an unrelated user permission', () => {
     expect(
       session({

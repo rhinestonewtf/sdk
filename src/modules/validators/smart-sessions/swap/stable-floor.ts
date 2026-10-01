@@ -129,7 +129,17 @@ export function assertStableFloorIsolated(input: {
   readonly swapper: Address
   readonly userTargets: readonly Address[]
   readonly signingMode: 'disabled' | 'unrestricted' | 'scoped' | undefined
+  readonly hasCrossChainGrants: boolean
 }): void {
+  // A permit or claim policy compiles to its own actions (a SAME_CHAIN_IE permit
+  // is a `transfer` on the source token), which the target check below never sees.
+  if (input.hasCrossChainGrants) {
+    throw new Error(
+      'swap.stableFloor cannot be combined with `crossChainPermits` or ' +
+        '`claimPolicies`: their actions could move the sell token without ' +
+        'meeting the floor',
+    )
+  }
   if (input.signingMode !== undefined && input.signingMode !== 'disabled') {
     throw new Error(
       'swap.stableFloor cannot enable `signing`: an ERC-1271 signature could ' +

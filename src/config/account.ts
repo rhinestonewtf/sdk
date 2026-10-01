@@ -801,9 +801,11 @@ interface SwapScope<TChainId extends number = number> {
    * stablecoins the orchestrator serves for the chain (`/chains`
    * `settlement.usdStablecoins`, so create the session with
    * `sdk.createSession`), and the Rhinestone Swapper as the only venue — a
-   * direct aggregator call would bypass the floor. It also refuses `signing`
-   * and any other action on the sell token, Permit2 or the Swapper, and salts
-   * the session so it never shares a permissionId with an unfloored one.
+   * direct aggregator call would bypass the floor. It also refuses `signing`,
+   * `crossChainPermits`, `claimPolicies` and any other action on the sell
+   * token, Permit2 or the Swapper, and salts the session so it never shares a
+   * permissionId with an unfloored one. An action on another contract that
+   * already holds an allowance on the sell token is not checked.
    *
    * The floor is absolute, not proportional: a swap much smaller than
    * `maxTotal` cannot meet it. In practice the session is single-use — after

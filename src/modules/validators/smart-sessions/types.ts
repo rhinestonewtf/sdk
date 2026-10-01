@@ -159,7 +159,7 @@ export interface SwapScopeInput {
 /** `true` for the default 100 bps slippage, or an explicit tolerance. */
 export type StableSwapFloor = true | { readonly maxSlippageBps: number }
 
-/** A USD stablecoin the orchestrator serves as 1:1 (`/chains` `settlement.stablecoins`). */
+/** A USD stablecoin the orchestrator serves as 1:1 (`/chains` `settlement.usdStablecoins`). */
 export interface ServedStablecoin {
   readonly address: Address
   readonly symbol: string
