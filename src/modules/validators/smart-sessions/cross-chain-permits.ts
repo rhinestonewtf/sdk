@@ -26,6 +26,7 @@ export function resolveCrossChainPermission(
     chain: leg.chain,
     token: leg.token,
     ...(leg.recipient === undefined ? {} : { recipient: leg.recipient }),
+    ...(leg.minAmount === undefined ? {} : { minAmount: leg.minAmount }),
   }))
   const validUntil = input.validUntil ? seconds(input.validUntil) : undefined
   const validAfter = input.validAfter ? seconds(input.validAfter) : undefined
@@ -56,6 +57,8 @@ export function resolveCrossChainPermission(
     ...(input.settlementLayers
       ? { settlementLayers: input.settlementLayers }
       : {}),
+    ...(input.maxFeeBps === undefined ? {} : { maxFeeBps: input.maxFeeBps }),
+    ...(input.allowFees === undefined ? {} : { allowFees: input.allowFees }),
   }
 }
 
@@ -87,5 +90,7 @@ export function toCrossChainPermissionInput(
     ...(permit.settlementLayers
       ? { settlementLayers: permit.settlementLayers }
       : {}),
+    ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
+    ...(permit.allowFees === undefined ? {} : { allowFees: permit.allowFees }),
   }
 }

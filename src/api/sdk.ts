@@ -122,7 +122,9 @@ class RhinestoneSDK {
    * Create a smart session, resolving the chain's wrapped-native token from the
    * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
    * permitted automatically. Project-scoped — needs the API key but no account.
-   * For a fully offline build, use the standalone `toSession` and pass
+   * Required for IntentExecutor-layer permits (`CCTP`, `OFT`, `ECO_IE`, `LZ`),
+   * whose pinned addresses also come from `/chains`. For any other fully
+   * offline build, use the standalone `toSession` and pass
    * `wrappedNativeToken` yourself.
    * @param definition The session definition
    * @returns The resolved session

@@ -221,6 +221,14 @@ const accountVariants: VectorCase[] = [
     account: { type: 'kernel', salt: keccak256(toHex('vector:salt')) },
     owners: ecdsa,
   }),
+  deployment('startale-version-1-0-0', {
+    account: { type: 'startale', version: '1.0.0' },
+    owners: ecdsa,
+  }),
+  deployment('startale-version-1-0-1', {
+    account: { type: 'startale', version: '1.0.1' },
+    owners: ecdsa,
+  }),
   deployment('startale-salt', {
     account: { type: 'startale', salt: keccak256(toHex('vector:salt')) },
     owners: ecdsa,

@@ -428,38 +428,70 @@
     },
     {
       "id": "startale-ecdsa",
+      "address": "0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "minor",
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
+      }
+    },
+    {
+      "id": "startale-multi-factor",
+      "address": "0x02533b084d1beae51076e13bd81f84b10207aed1",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x135700ffe5408b799828478da57311427753c7ff5fd2155a9f6ca09168dcc929",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "minor",
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address; also multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
+      }
+    },
+    {
+      "id": "startale-passkey-single",
+      "address": "0x81ee09ada0db875f570ebd9a7d3db841f1dd1848",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x8a9f6c7aa75df743aa30b2e2953a806c3fec530cbcab971e417010df679dc8b5",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "minor",
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
+      }
+    },
+    {
+      "id": "startale-salt",
+      "address": "0xbb4245a7bbc24ea8c4b6090f40af0b523f8b4138",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x546f81c39f96072b72b0f458615ae80f81f8f53d88ab1d4bd45c51003f9560e8",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "minor",
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
+      }
+    },
+    {
+      "id": "startale-sessions",
+      "address": "0xc20d391c3ca5e4dc41b5db9c21dfa267ea98d698",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x90952b55a4a32b8cef7fc5a1f9538c720182d50b75bc3e5b418b6da16b44e9bb",
+      "deliberateChange": {
+        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
+        "bump": "minor",
+        "reason": "Startale defaults to v1.0.1 (new implementation + factory); pin `version: '1.0.0'` for the previous address"
+      }
+    },
+    {
+      "id": "startale-version-1-0-0",
       "address": "0x8cdf27ccdec0ae54029a67b2edb5391e438aa023",
       "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
       "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
     },
     {
-      "id": "startale-multi-factor",
-      "address": "0xb054f4797f2b998157388307ea30622449360795",
-      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x135700ffe5408b799828478da57311427753c7ff5fd2155a9f6ca09168dcc929",
-      "deliberateChange": {
-        "sinceSha": "afb934d220e1638c849ab5b716e72153cfa54dbe",
-        "bump": "patch",
-        "reason": "multi-factor factor slots hold the sub-validator stateless configuration, so a nested passkey factor is configured (and ordered) the way its stateless validation path requires"
-      }
-    },
-    {
-      "id": "startale-passkey-single",
-      "address": "0x4d78f6b273d07f2fd24433ebc7a90d89f0d061ae",
-      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x8a9f6c7aa75df743aa30b2e2953a806c3fec530cbcab971e417010df679dc8b5"
-    },
-    {
-      "id": "startale-salt",
-      "address": "0x7666393b510f88c0f299333fcf976f044a2ccbe4",
-      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x546f81c39f96072b72b0f458615ae80f81f8f53d88ab1d4bd45c51003f9560e8"
-    },
-    {
-      "id": "startale-sessions",
-      "address": "0x788116dfeef726b9270f70062151642430994e7d",
-      "factory": "0x0000003b3e7b530b4f981ae80d9350392defef90",
-      "factoryDataHash": "0x90952b55a4a32b8cef7fc5a1f9538c720182d50b75bc3e5b418b6da16b44e9bb"
+      "id": "startale-version-1-0-1",
+      "address": "0x63ade81e8e3aa4aed3094c4bf8a42bdfb60e4799",
+      "factory": "0x00000be75c267efe9ddd7044d1f236959af4c15f",
+      "factoryDataHash": "0x7c9f074a6ec654084f91cd2f6a8cd84efa6337716f5921b8085c576c87fc6173"
     },
     {
       "id": "v0-safe-ecdsa",
