@@ -2,7 +2,8 @@ import type { SettlementCatalog } from '../../src/modules/validators/smart-sessi
 
 // source: the SDK's bundled tables before RHI-7826 PR 4 (CCTP_CHAINS, OFT_CHAINS,
 // ECO_PORTAL/ECO_PROVERS/ECO_STABLECOINS, LZ_MULTICALL/STARGATE_USDC/LZ_CCTP_*),
-// lowercased as the orchestrator's /chains serves them.
+// lowercased as the orchestrator's /chains serves them. `usdStablecoins` lists
+// each chain's Eco stablecoins at their on-chain 6 decimals.
 export const SETTLEMENT_CATALOG: SettlementCatalog = {
   1: {
     cctp: {
@@ -27,6 +28,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0xdac17f958d2ee523a2206206994597c13d831ec7',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+        symbol: 'USDT',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0xacddac6c77318b615f7f6fb9bb67c6833e9c05f1',
       transferDelegate: '0x72faebf58a62e33c044c37d8d973a961633ea294',
@@ -65,6 +78,23 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0x01bff41798a0bcf287b996046ca68b395dbc1071',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+      {
+        address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
+        symbol: 'USDT',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x5528cf58feb8fbfce94f43b33240fffb1312bde3',
       transferDelegate: '0xfbea79d13e6f795a0e1e4b99090f1165a01c7b03',
@@ -99,6 +129,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0x9151434b16b9763660705744891fa906f660ecc5',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0x078d782b760474a361dda0af3839290b0ef57ad6',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0x9151434b16b9763660705744891fa906f660ecc5',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x8e60b7b64b63cd56b18ebcecadcb79b04919286e',
       transferDelegate: '0x60fccb9b58d5e806ca5cb8bfce721c2274609de4',
@@ -131,6 +173,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x8e60b7b64b63cd56b18ebcecadcb79b04919286e',
       transferDelegate: '0x60fccb9b58d5e806ca5cb8bfce721c2274609de4',
@@ -204,6 +258,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0xb88339cb7199b77e23db6e890353e22632ba630f',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x8e60b7b64b63cd56b18ebcecadcb79b04919286e',
       transferDelegate: '0x60fccb9b58d5e806ca5cb8bfce721c2274609de4',
@@ -231,6 +297,13 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
       provers: ['0xcebb7cddba4734c7130bf114a37c2da4c5f3c473'],
       stablecoins: ['0x0b7007c13325c48911f73a2dad5fa5dcbf808adc'],
     },
+    usdStablecoins: [
+      {
+        address: '0x0b7007c13325c48911f73a2dad5fa5dcbf808adc',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+    ],
   },
   5042: {
     cctp: {
@@ -254,6 +327,13 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
       ],
       stablecoins: ['0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'],
     },
+    usdStablecoins: [
+      {
+        address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x7e07a9148e9149e430c6412b79a675028595ff1f',
       transferDelegate: '0x8eca03175fd5ac62fb6f4ecbb9a95d13dcdcb4f8',
@@ -283,6 +363,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0x2d661c89d812261039af9764eceaaee884f5f67f',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+      {
+        address: '0x2d661c89d812261039af9764eceaaee884f5f67f',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x8e60b7b64b63cd56b18ebcecadcb79b04919286e',
       transferDelegate: '0x60fccb9b58d5e806ca5cb8bfce721c2274609de4',
@@ -316,6 +408,18 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
       ],
     },
+    usdStablecoins: [
+      {
+        address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+        symbol: 'USDT0',
+        decimals: 6,
+      },
+    ],
     lz: {
       multiCall: '0x8e60b7b64b63cd56b18ebcecadcb79b04919286e',
       transferDelegate: '0x60fccb9b58d5e806ca5cb8bfce721c2274609de4',

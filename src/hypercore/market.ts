@@ -223,5 +223,5 @@ async function getPerpPosition(
   return positions.find((position) => position.asset === asset) ?? null
 }
 
-export { getPerpMarket, getPerpMarkets, getPerpPosition, getPerpPositions }
 export type { HyperliquidConfig, PerpMarket, PerpPosition }
+export { getPerpMarket, getPerpMarkets, getPerpPosition, getPerpPositions }

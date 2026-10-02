@@ -554,4 +554,4 @@ function resolvePermissions(
   })
 }
 
-export { resolvePermissions, resolvePermission }
+export { resolvePermission, resolvePermissions }

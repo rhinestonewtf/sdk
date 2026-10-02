@@ -77,9 +77,18 @@ export const PUBLISH = {
 
 const BPS = 10_000n
 
+const ECO_DECIMALS = 6
+
+/**
+ * How far ahead `validUntil` must reach: the session pins Eco's reward deadline
+ * under it, and the orchestrator publishes Eco's quoted deadline about 7 days out.
+ */
+export const ECO_MIN_VALIDITY_SECONDS = 7n * 24n * 60n * 60n
+
 /**
  * The delivery floor compares reward and delivery in raw units 1:1, which only
- * holds between the served USD stablecoins (all 6 decimals).
+ * holds between USD stablecoins of the same decimals. Eco's bare address list
+ * carries none, so the served `usdStablecoins` must vouch for 6.
  */
 function requireStablecoin(
   settlement: SettlementCatalog,
@@ -94,6 +103,14 @@ function requireStablecoin(
   ) {
     throw new Error(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
+    )
+  }
+  const usd = settlement[chainId]?.usdStablecoins?.find((t) =>
+    isAddressEqual(t.address, token),
+  )
+  if (usd?.decimals !== ECO_DECIMALS) {
+    throw new Error(
+      `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served ${ECO_DECIMALS}-decimal USD stablecoin; ${usd === undefined ? 'the orchestrator serves no usdStablecoins entry for it' : `it has ${usd.decimals} decimals`}`,
     )
   }
 }
@@ -163,6 +180,12 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.validUntil === undefined) {
     throw new Error(
       'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
+    )
+  }
+  const now = BigInt(Math.floor(Date.now() / 1000))
+  if (ctx.validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
+    throw new Error(
+      "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
     )
   }
   const cap = ctx.cap

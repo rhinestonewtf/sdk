@@ -41,6 +41,6 @@ export {
   accountD,
   collationAccountHigh,
   collationAccountLow,
-  passkeyAccount,
   MOCK_API_KEY,
+  passkeyAccount,
 }

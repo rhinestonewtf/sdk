@@ -73,4 +73,4 @@ function changeThreshold(newThreshold: number): CalldataInput {
   return changeOwnableThreshold(OWNABLE_VALIDATOR_ADDRESS, newThreshold)
 }
 
-export { addOwner, removeOwner, changeThreshold, disable, enable }
+export { addOwner, changeThreshold, disable, enable, removeOwner }
