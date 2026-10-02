@@ -133,8 +133,6 @@ export type {
   ChainDigest,
   FyndChainId,
   FyndVenue,
-  OneTimeUseBurnOp,
-  OneTimeUseSettlementRoute,
   RhinestoneSwapVenue,
   SessionDetails,
   SwapVenue,
@@ -145,9 +143,6 @@ export type {
 }
 export {
   ARG_POLICY_ADDRESS,
-  // One-time-use sessions (RHI-5798)
-  buildOneTimeUseBurnOp,
-  encodeOneTimeUseIdInitData,
   FYND_CHAIN_IDS,
   fynd,
   getPermissionId,
@@ -155,7 +150,6 @@ export {
   getSessionDetails,
   INTENT_EXECUTION_POLICY_ADDRESS,
   isSessionEnabled,
-  oneTimeUseIdErc1271Policy,
   resolveZeroExSettler,
   rhinestoneSwap,
   SMART_SESSION_EMISSARY_ADDRESS,
@@ -173,4 +167,9 @@ export {
   // Venue-scoped swap sessions (RHI-6286)
   ZEROX_CHAIN_IDS,
   zeroEx,
+  // One-time-use sessions (RHI-5798)
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
 }
+export type { OneTimeUseSettlementRoute, OneTimeUseBurnOp }

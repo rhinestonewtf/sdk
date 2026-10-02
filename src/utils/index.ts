@@ -154,9 +154,9 @@ function getSetup(config: RhinestoneConfig) {
 }
 
 export {
-  experimental_getRhinestoneInitData,
   experimental_getV0InitData,
   getSetup as experimental_getModuleSetup,
+  experimental_getRhinestoneInitData,
   toViewOnlyAccount,
   walletClientToAccount,
   wrapParaAccount,

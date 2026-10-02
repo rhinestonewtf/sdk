@@ -217,4 +217,4 @@ function removeSubValidator(
   }
 }
 
-export { changeThreshold, disable, enable, removeSubValidator, setSubValidator }
+export { enable, changeThreshold, disable, setSubValidator, removeSubValidator }

@@ -217,14 +217,14 @@ function isExecutionError(error: Error): error is ExecutionError {
 }
 
 export {
-  Eip7702InitSignatureRequiredError,
+  isExecutionError,
   ExecutionError,
+  Eip7702InitSignatureRequiredError,
   IndependentSigningNotSupportedError,
   InsufficientOwnerSignaturesError,
   IntentFailedError,
   InvalidOwnerSigningOptionsError,
   InvalidSourceCallsError,
-  isExecutionError,
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,

@@ -238,20 +238,20 @@ function getAccountName(account: AccountType) {
 }
 
 export {
-  AccountConfigurationNotSupportedError,
+  isAccountError,
   AccountError,
-  DefaultValidatorAlreadyInitializedError,
   Eip712DomainNotAvailableError,
   Eip7702AccountMustHaveEoaError,
-  Eip7702NotSupportedForAccountError,
   EoaAccountMustHaveAccountError,
-  EoaSigningMethodNotConfiguredError,
-  EoaSigningNotSupportedError,
   FactoryArgsNotAvailableError,
-  isAccountError,
+  DefaultValidatorAlreadyInitializedError,
+  SigningNotSupportedForAccountError,
+  Eip7702NotSupportedForAccountError,
+  AccountConfigurationNotSupportedError,
+  WalletClientNoConnectedAccountError,
   ModuleInstallationNotSupportedError,
+  EoaSigningNotSupportedError,
+  EoaSigningMethodNotConfiguredError,
   OwnersFieldRequiredError,
   PasskeyConfigurationNotInstallableError,
-  SigningNotSupportedForAccountError,
-  WalletClientNoConnectedAccountError,
 }
