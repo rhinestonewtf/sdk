@@ -247,6 +247,7 @@ export interface CrossChainPermit {
   recipientIsAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
   maxFeeBps?: number
+  allowFees?: boolean
 }
 
 export interface FromLeg {
@@ -271,6 +272,7 @@ export interface CrossChainPermissionInput {
   allowRecipientNotAccount?: boolean
   settlementLayers?: CrossChainSettlementLayer[]
   maxFeeBps?: number
+  allowFees?: boolean
 }
 
 export interface Permit2ClaimPolicy {

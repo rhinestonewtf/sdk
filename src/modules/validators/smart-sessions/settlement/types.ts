@@ -37,6 +37,11 @@ export interface SettlementAddresses {
       readonly feeless?: true
     }
   }
+  /** Where an intent's app fee goes and who fronts unsponsored gas. */
+  readonly fees?: {
+    readonly appFeeCollector: Address
+    readonly paymaster: Address
+  }
   /** The USD stablecoins a `swap.stableFloor` session may treat as 1:1. */
   readonly usdStablecoins?: readonly ServedStablecoin[]
 }

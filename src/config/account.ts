@@ -292,8 +292,9 @@ interface Permit2ClaimPolicy {
  *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
- *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`;
- *   `OFT` and `LZ` require `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
+ *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
+ *   `maxAmount`, `maxFeeBps` and `validUntil`; `OFT` and `LZ` require
+ *   `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
  */
@@ -360,6 +361,26 @@ interface CrossChainPermit {
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number
+  /**
+   * IntentExecutor layers only: also let the session pay the intent's app fee
+   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
+   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
+   * only sponsored intents without an app fee settle.
+   *
+   * - The collector transfer and the paymaster approve are each capped at 5 USD
+   *   cumulative per `from` token, so up to 10 USD per token including gas. The
+   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Every `from` token on the session's chain must be one the orchestrator
+   *   serves for these layers (USD stablecoins today).
+   * - The fee addresses come from the orchestrator's `GET /chains`, so create
+   *   the session with `sdk.createSession`.
+   * - The orchestrator sizes the paymaster approve and callback at the refund
+   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
+   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
+   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   session that has used its budget) is refused: it fails closed.
+   */
+  allowFees?: boolean
 }
 
 interface FromLeg {
@@ -432,6 +453,26 @@ interface CrossChainPermissionInput {
    * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
    */
   maxFeeBps?: number
+  /**
+   * IntentExecutor layers only: also let the session pay the intent's app fee
+   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
+   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
+   * only sponsored intents without an app fee settle.
+   *
+   * - The collector transfer and the paymaster approve are each capped at 5 USD
+   *   cumulative per `from` token, so up to 10 USD per token including gas. The
+   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Every `from` token on the session's chain must be one the orchestrator
+   *   serves for these layers (USD stablecoins today).
+   * - The fee addresses come from the orchestrator's `GET /chains`, so create
+   *   the session with `sdk.createSession`.
+   * - The orchestrator sizes the paymaster approve and callback at the refund
+   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
+   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
+   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   session that has used its budget) is refused: it fails closed.
+   */
+  allowFees?: boolean
 }
 
 type Policy =
