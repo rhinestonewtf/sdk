@@ -293,7 +293,7 @@ interface Permit2ClaimPolicy {
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
  *   `maxAmount`, `maxFeeBps` and `validUntil`; `validUntil` at least 7 days
- *   ahead, since the session pins Eco's reward deadline under it and Eco
+ *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
  *   quotes that ~7 days out; and `from` and `to` tokens the orchestrator
  *   serves as 6-decimal USD stablecoins. `OFT` and `LZ` require `oneTimeUse`.
  *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin

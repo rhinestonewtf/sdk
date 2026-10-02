@@ -182,10 +182,14 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
     )
   }
+  // Measured from when the session can first act: a later validAfter moves
+  // the first quote, and its ~7-day reward deadline, with it.
   const now = BigInt(Math.floor(Date.now() / 1000))
-  if (ctx.validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
+  const firstUse =
+    ctx.validAfter !== undefined && ctx.validAfter > now ? ctx.validAfter : now
+  if (ctx.validUntil < firstUse + ECO_MIN_VALIDITY_SECONDS) {
     throw new Error(
-      "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
+      "crossChainPermits: ECO_IE needs validUntil at least 7 days after it can first act (now or validAfter): Eco's reward deadline is ~7 days out and the session pins it",
     )
   }
   const cap = ctx.cap

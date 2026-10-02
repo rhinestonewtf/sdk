@@ -75,6 +75,8 @@ export interface SettlementContext {
   readonly timeFrame: readonly SessionPolicy[]
   /** `ECO_IE` only: the solver's maximum cut, in basis points of the cap. */
   readonly maxFeeBps?: number
+  /** The permit's `validAfter`, in seconds. */
+  readonly validAfter?: bigint
   /** The permit's `validUntil`, in seconds. */
   readonly validUntil?: bigint
 }

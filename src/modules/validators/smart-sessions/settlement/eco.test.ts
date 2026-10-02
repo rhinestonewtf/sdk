@@ -482,8 +482,20 @@ describe('scopeEco', () => {
     const at = (validUntil: bigint) => () => scopeEco({ ...base, validUntil })
     expect(at(NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
     expect(at(NOW + ECO_MIN_VALIDITY_SECONDS - 1n)).toThrow(
-      'ECO_IE needs validUntil at least 7 days ahead',
+      'ECO_IE needs validUntil at least 7 days after it can first act',
     )
+  })
+
+  test('a later validAfter moves the 7 days with it', () => {
+    const DAY = 86_400n
+    const from = (validAfter: bigint, validUntil: bigint) => () =>
+      scopeEco({ ...base, validAfter, validUntil })
+    expect(from(NOW + 30n * DAY, NOW + 31n * DAY)).toThrow(
+      'ECO_IE needs validUntil at least 7 days after it can first act',
+    )
+    expect(from(NOW + 30n * DAY, NOW + 37n * DAY)).not.toThrow()
+    // A validAfter already past changes nothing.
+    expect(from(NOW - DAY, NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
   })
 
   describe('the 1:1 floor needs every token served at 6 decimals', () => {
