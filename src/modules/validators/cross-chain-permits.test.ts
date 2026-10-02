@@ -214,8 +214,10 @@ describe('toCrossChainPermissionInput', () => {
       validUntil: new Date('2030-01-01T00:00:00Z'),
       settlementLayers: ['ECO'],
       maxFeeBps: 50,
+      allowFees: true,
     })
     expect(resolved.maxFeeBps).toBe(50)
+    expect(resolved.allowFees).toBe(true)
     expect(
       resolveCrossChainPermission(toCrossChainPermissionInput(resolved)),
     ).toEqual(resolved)
