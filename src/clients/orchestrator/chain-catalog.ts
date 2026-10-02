@@ -161,6 +161,23 @@ function parseSettlement(value: unknown): SettlementAddresses | undefined {
         : {}),
     }
   }
+  const { usdStablecoins: stablecoins } = value
+  if (Array.isArray(stablecoins) && stablecoins.length > 0) {
+    const tokens = stablecoins.filter(
+      (t): t is { address: Address; symbol: string; decimals: number } =>
+        isObject(t) &&
+        isAddr(t.address) &&
+        typeof t.symbol === 'string' &&
+        isIndex(t.decimals),
+    )
+    if (tokens.length === stablecoins.length) {
+      out.usdStablecoins = tokens.map(({ address, symbol, decimals }) => ({
+        address,
+        symbol,
+        decimals,
+      }))
+    }
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 

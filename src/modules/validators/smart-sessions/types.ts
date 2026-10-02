@@ -154,6 +154,13 @@ export interface SwapScopeInput {
   readonly via?: readonly SwapVenue[]
 }
 
+/** A USD stablecoin the orchestrator serves as 1:1 (`/chains` `settlement.usdStablecoins`). */
+export interface ServedStablecoin {
+  readonly address: Address
+  readonly symbol: string
+  readonly decimals: number
+}
+
 export interface FallbackAction {
   readonly policies?: SessionPolicy[]
 }
