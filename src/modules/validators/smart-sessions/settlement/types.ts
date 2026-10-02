@@ -42,7 +42,7 @@ export interface SettlementAddresses {
     readonly appFeeCollector: Address
     readonly paymaster: Address
   }
-  /** The USD stablecoins the orchestrator serves as 1:1, with their decimals. */
+  /** The USD stablecoins the orchestrator serves as 1:1, with their decimals: the ECO_IE floor and `swap.stableFloor` read them. */
   readonly usdStablecoins?: readonly ServedStablecoin[]
 }
 
