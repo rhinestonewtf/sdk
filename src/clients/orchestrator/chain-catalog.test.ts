@@ -27,6 +27,7 @@ describe('parseChains settlement', () => {
         stargateUsdc: { pool: A, token: B, eid: 30184 },
         cctp: { domain: 6, token: B, feeReceiver: A, feeless: true },
       },
+      fees: { appFeeCollector: A, paymaster: B },
     }
     expect(
       parse({ 'eip155:8453': chain(settlement) })[8453].settlement,
@@ -46,6 +47,7 @@ describe('parseChains settlement', () => {
           cctp: { domain: '6', token: B, feeReceiver: A },
         },
         swapper: { swapper: A, proxy: B },
+        fees: { appFeeCollector: A, paymaster: 'nope' },
       }),
     })
     // swapper is not a layer block the SDK reads, so it is not kept either.
@@ -114,6 +116,23 @@ test('drops a mixed-case address with a bad checksum, keeps lowercase', () => {
   expect(parsed[8453].settlement).toBeUndefined()
   expect(parsed[10].settlement?.oft?.token).toBe(usdc.toLowerCase())
   expect(parsed[1].settlement?.oft?.token).toBe(usdc)
+})
+
+test('drops a fees block with a bad checksum or a missing address', () => {
+  const good = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const badChecksum = '0x833589FCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const parsed = parse({
+    'eip155:8453': chain({
+      fees: { appFeeCollector: badChecksum, paymaster: A },
+    }),
+    'eip155:10': chain({ fees: { appFeeCollector: A } }),
+    'eip155:1': chain({ fees: { appFeeCollector: good, paymaster: A } }),
+  })
+  expect(parsed[8453].settlement).toBeUndefined()
+  expect(parsed[10].settlement).toBeUndefined()
+  expect(parsed[1].settlement).toEqual({
+    fees: { appFeeCollector: good, paymaster: A },
+  })
 })
 
 describe('ChainCatalog.getSettlementCatalog', () => {
