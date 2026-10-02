@@ -831,8 +831,9 @@ interface SwapScope<TChainId extends number = number> {
    * that bound to zero and route the input away.
    *
    * On, every Swapper call must deliver at least
-   * `ceil(maxTotal × (1 − slippage))` of the buy token (converted between the
-   * tokens' decimals) while selling at most `maxTotal`, so no call executes
+   * `ceil(maxTotal × (1 − slippage))` of the buy token on exact-in, and
+   * `ceil(maxTotal ÷ (1 + slippage))` on exact-out (converted between the
+   * tokens' decimals), while selling at most `maxTotal`, so no call executes
    * below floor/cap. `true` means 100 bps; pass `{ maxSlippageBps }` to choose.
    * Total sell is bounded by the approve's cumulative spending limit
    * (`maxTotal`) plus any allowance to the Swapper proxy that existed before

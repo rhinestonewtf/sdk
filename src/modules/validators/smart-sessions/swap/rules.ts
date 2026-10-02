@@ -196,8 +196,8 @@ export interface VenueContext {
   readonly recipient: Address
   /** Cumulative sell-token cap, or undefined for no cap. */
   readonly cap: bigint | undefined
-  /** Per-call buy-token output floor, set only by an opted-in `stableFloor`. */
-  readonly minOut?: bigint
+  /** Per-call buy-token output floor per Swapper direction, set only by an opted-in `stableFloor`. */
+  readonly minOut?: { readonly exactIn: bigint; readonly exactOut: bigint }
 }
 
 /**

@@ -102,17 +102,21 @@ export function resolveStableFloor(
 
 /**
  * The minimum buy-token output for a swap of up to `cap` sell tokens, rounded
- * up so the floor never admits a rate below the tolerance.
+ * up so the floor never admits a rate below the tolerance. Exact-in bounds the
+ * output (`out >= in × (1 − bps)`), exact-out the input (`in <= out × (1 + bps)`,
+ * so `out >= in ÷ (1 + bps)`): at 100 bps the two floors differ by 1 bp of the
+ * cap, and far more at higher tolerances.
  */
 export function stableFloorAmount(
   cap: bigint,
   params: StableFloorParams,
+  direction: 'exactIn' | 'exactOut',
 ): bigint {
-  const numerator =
-    cap *
-    (BPS - BigInt(params.maxSlippageBps)) *
-    10n ** BigInt(params.buyDecimals)
-  const denominator = BPS * 10n ** BigInt(params.sellDecimals)
+  const bps = BigInt(params.maxSlippageBps)
+  const [rateNumerator, rateDenominator] =
+    direction === 'exactIn' ? [BPS - bps, BPS] : [BPS, BPS + bps]
+  const numerator = cap * rateNumerator * 10n ** BigInt(params.buyDecimals)
+  const denominator = rateDenominator * 10n ** BigInt(params.sellDecimals)
   return (numerator + denominator - 1n) / denominator
 }
 

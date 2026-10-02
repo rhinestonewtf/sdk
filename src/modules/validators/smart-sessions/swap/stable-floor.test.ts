@@ -148,6 +148,8 @@ function resolve(s: SwapScopeInput = scope()) {
 
 // 1_000_000 × (10000 − 100) / 10000
 const FLOOR = 990_000n
+// in <= out × 1.01, so out >= ceil(1_000_000 / 1.01) = 990_100.
+const FLOOR_EXACT_OUT = 990_100n
 
 describe('stableFloor — the output bound', () => {
   test('both output bounds sit at the same head offset', () => {
@@ -172,8 +174,10 @@ describe('stableFloor — the output bound', () => {
   })
 
   test('exact-out: amountOut at the floor passes, one below is refused', () => {
-    expect(resolve().exactOut(exactOut(CAP, FLOOR))).toBe(true)
-    expect(resolve().exactOut(exactOut(CAP, FLOOR - 1n))).toBe(false)
+    expect(resolve().exactOut(exactOut(CAP, FLOOR_EXACT_OUT))).toBe(true)
+    expect(resolve().exactOut(exactOut(CAP, FLOOR_EXACT_OUT - 1n))).toBe(false)
+    // The exact-in floor would admit paying 1_000_000 for 990_000: 1.0101%.
+    expect(resolve().exactOut(exactOut(CAP, FLOOR))).toBe(false)
   })
 
   test('the floor rule rides the existing Swapper policy, before the cap', () => {
@@ -219,8 +223,8 @@ describe('stableFloor — the input cap', () => {
     const { exactIn: inPolicy, exactOut: outPolicy } = resolve()
     expect(inPolicy(exactIn(600_000n, FLOOR))).toBe(true)
     expect(inPolicy(exactIn(600_000n, FLOOR))).toBe(false)
-    expect(outPolicy(exactOut(600_000n, FLOOR))).toBe(true)
-    expect(outPolicy(exactOut(600_000n, FLOOR))).toBe(false)
+    expect(outPolicy(exactOut(600_000n, FLOOR_EXACT_OUT))).toBe(true)
+    expect(outPolicy(exactOut(600_000n, FLOOR_EXACT_OUT))).toBe(false)
   })
 })
 
@@ -235,6 +239,15 @@ describe('stableFloor — amounts', () => {
         exactIn(CAP, 994_999n),
       ),
     ).toBe(false)
+  })
+
+  test('exact-out bounds the input by the tolerance, not the output', () => {
+    const at5000 = () =>
+      resolve(scope({ stableFloor: { maxSlippageBps: 5000 } }))
+    // exact-in: out >= 1_000_000 × 0.5; exact-out: out >= 1_000_000 / 1.5.
+    expect(at5000().exactIn(exactIn(CAP, 500_000n))).toBe(true)
+    expect(at5000().exactOut(exactOut(CAP, 666_667n))).toBe(true)
+    expect(at5000().exactOut(exactOut(CAP, 666_666n))).toBe(false)
   })
 
   test('zero slippage floors at the cap itself', () => {

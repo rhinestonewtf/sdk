@@ -184,7 +184,12 @@ export function resolveSwapScope(
       // Derived from the cap this action enforces, so floor/cap stays the
       // worst rate even under a venue-level `maxSpend`.
       ...(stableFloor && cap !== undefined
-        ? { minOut: stableFloorAmount(cap, stableFloor) }
+        ? {
+            minOut: {
+              exactIn: stableFloorAmount(cap, stableFloor, 'exactIn'),
+              exactOut: stableFloorAmount(cap, stableFloor, 'exactOut'),
+            },
+          }
         : {}),
     }
   }
