@@ -1068,13 +1068,20 @@ function settlementLayerPin(
   const derived = [...scoped[0]].filter((layer) =>
     scoped.every((layers) => layers.has(layer)),
   )
-  if (!explicit) return { include: derived }
-  return {
-    include:
-      'include' in explicit
-        ? derived.filter((layer) => explicit.include.includes(layer))
-        : derived.filter((layer) => !explicit.exclude.includes(layer)),
+  const include = !explicit
+    ? derived
+    : 'include' in explicit
+      ? derived.filter((layer) => explicit.include.includes(layer))
+      : derived.filter((layer) => !explicit.exclude.includes(layer))
+  // An empty include would reach the orchestrator as a filter no route can meet.
+  if (include.length === 0) {
+    throw new Error(
+      derived.length === 0
+        ? 'settlementLayers: no settlement layer is left to settle the intent; the signing sessions share none'
+        : `settlementLayers: no settlement layer is left to settle the intent; the filter removes every layer the session permits (${derived.join(', ')})`,
+    )
   }
+  return { include }
 }
 
 export function adaptTransaction(

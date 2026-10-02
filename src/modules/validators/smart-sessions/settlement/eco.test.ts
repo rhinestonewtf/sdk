@@ -11,7 +11,7 @@ import {
   slice,
   toHex,
 } from 'viem'
-import { describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import type {
@@ -19,6 +19,7 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import {
+  ECO_MIN_VALIDITY_SECONDS,
   ecoPortalAbi,
   PUBLISH,
   PUBLISH_AND_FUND_SELECTOR,
@@ -130,6 +131,16 @@ function publish(o: Overrides = {}): Hex {
     ],
   })
 }
+
+const NOW = 1_800_000_000n
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(Number(NOW * 1000n))
+})
+afterAll(() => {
+  vi.useRealTimers()
+})
 
 const word = (calldata: Hex, offset: bigint) =>
   BigInt(slice(calldata, 4 + Number(offset), 36 + Number(offset)))
@@ -447,12 +458,14 @@ describe('scopeEco', () => {
     const settlement = {
       ...SETTLEMENT_CATALOG,
       8453: {
+        ...SETTLEMENT_CATALOG[8453],
         eco: {
           ...SETTLEMENT_CATALOG[8453].eco!,
           provers: [HYPER_PROVER, CCIP_PROVER.toLowerCase() as Address],
         },
       },
       42161: {
+        ...SETTLEMENT_CATALOG[42161],
         eco: {
           ...SETTLEMENT_CATALOG[42161].eco!,
           provers: [CCIP_PROVER, POLYMER_PROVER],
@@ -463,6 +476,63 @@ describe('scopeEco', () => {
     expect(holds(narrowed, publish({ prover: CCIP_PROVER }))).toBe(true)
     expect(holds(narrowed, publish({ prover: HYPER_PROVER }))).toBe(false)
     expect(holds(narrowed, publish({ prover: POLYMER_PROVER }))).toBe(false)
+  })
+
+  test('validUntil must reach the 7 days Eco quotes its reward deadline', () => {
+    const at = (validUntil: bigint) => () => scopeEco({ ...base, validUntil })
+    expect(at(NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
+    expect(at(NOW + ECO_MIN_VALIDITY_SECONDS - 1n)).toThrow(
+      'ECO_IE needs validUntil at least 7 days after it can first act',
+    )
+  })
+
+  test('a later validAfter moves the 7 days with it', () => {
+    const DAY = 86_400n
+    const from = (validAfter: bigint, validUntil: bigint) => () =>
+      scopeEco({ ...base, validAfter, validUntil })
+    expect(from(NOW + 30n * DAY, NOW + 31n * DAY)).toThrow(
+      'ECO_IE needs validUntil at least 7 days after it can first act',
+    )
+    expect(from(NOW + 30n * DAY, NOW + 37n * DAY)).not.toThrow()
+    // A validAfter already past changes nothing.
+    expect(from(NOW - DAY, NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
+  })
+
+  describe('the 1:1 floor needs every token served at 6 decimals', () => {
+    const withUsd = (
+      chainId: number,
+      usdStablecoins:
+        | { address: Address; symbol: string; decimals: number }[]
+        | undefined,
+    ) => ({
+      ...SETTLEMENT_CATALOG,
+      [chainId]: { ...SETTLEMENT_CATALOG[chainId], usdStablecoins },
+    })
+
+    test.each([
+      [
+        'an 18-decimal `from` token',
+        withUsd(8453, [{ address: USDC_BASE, symbol: 'USDC', decimals: 18 }]),
+        'the `from` token 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 on chain 8453 must be a served 6-decimal USD stablecoin; it has 18 decimals',
+      ],
+      [
+        'an 18-decimal `to` token',
+        withUsd(42161, [{ address: USDC_ARB, symbol: 'USDC', decimals: 18 }]),
+        'the `to` token 0xaf88d065e77c8cc2239327c5edb3a432268e5831 on chain 42161 must be a served 6-decimal USD stablecoin; it has 18 decimals',
+      ],
+      [
+        'no served usdStablecoins',
+        withUsd(8453, undefined),
+        'the orchestrator serves no usdStablecoins entry for it',
+      ],
+      [
+        'a token missing from usdStablecoins',
+        withUsd(42161, [{ address: USDT0_ARB, symbol: 'USDT0', decimals: 6 }]),
+        'the orchestrator serves no usdStablecoins entry for it',
+      ],
+    ])('refuses %s', (_, settlement, message) => {
+      expect(() => scopeEco({ ...base, settlement })).toThrow(message)
+    })
   })
 
   test('refuses a chain the orchestrator serves no ECO block for', () => {

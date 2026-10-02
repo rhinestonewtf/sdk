@@ -282,6 +282,8 @@ interface Permit2ClaimPolicy {
  * - `SAME_CHAIN`, `ECO`, `ACROSS` settle through Permit2: each maps to one or
  *   more arbiter addresses from the SDK's bundled allow-set (`ECO` is the
  *   retired Standard Eco arbiter).
+ *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
+ *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
  * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
  *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
  *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
@@ -293,8 +295,11 @@ interface Permit2ClaimPolicy {
  *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
  *   `oneTimeUse`, and only sponsored intents without an app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount`, `maxFeeBps` and `validUntil`; `OFT` and `LZ` require
- *   `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
+ *   `maxAmount`, `maxFeeBps` and `validUntil`; `validUntil` at least 7 days
+ *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
+ *   quotes that ~7 days out; and `from` and `to` tokens the orchestrator
+ *   serves as 6-decimal USD stablecoins. `OFT` and `LZ` require `oneTimeUse`.
+ *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
  */
@@ -354,6 +359,9 @@ interface CrossChainPermit {
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
+   *
+   * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
+   * `SAME_CHAIN_IE` and `ECO_IE`.
    */
   settlementLayers?: CrossChainSettlementLayer[]
   /**
@@ -446,6 +454,9 @@ interface CrossChainPermissionInput {
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
    * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
+   *
+   * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
+   * `SAME_CHAIN_IE` and `ECO_IE`.
    */
   settlementLayers?: CrossChainSettlementLayer[]
   /**

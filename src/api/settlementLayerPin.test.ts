@@ -88,7 +88,15 @@ describe('settlement layer pin', () => {
     expect(layersFor(['CCTP'], { include: ['CCTP', 'RELAY'] })).toEqual({
       include: ['CCTP'],
     })
-    expect(layersFor(['CCTP'], { exclude: ['CCTP'] })).toEqual({ include: [] })
+  })
+
+  test('refuses a filter that leaves the session no layer', () => {
+    expect(() => layersFor(['CCTP'], { exclude: ['CCTP'] })).toThrow(
+      'no settlement layer is left to settle the intent',
+    )
+    expect(() => layersFor(['CCTP'], { include: ['RELAY'] })).toThrow(
+      'no settlement layer is left to settle the intent',
+    )
   })
 
   test('a SAME_CHAIN_IE session adds no bridge filter', () => {
