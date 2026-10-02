@@ -18,6 +18,14 @@ export function expandCrossChainPermit(
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
 } {
+  if (permit.maxFeeBps !== undefined) {
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
+  }
+  if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
+    throw new Error(
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+    )
+  }
   const sourceTokens = permit.from?.length
     ? permit.from.map(({ chain, token }) => ({ chain, address: token }))
     : undefined

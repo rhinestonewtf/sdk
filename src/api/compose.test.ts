@@ -2,6 +2,7 @@ import { type Account, encodeAbiParameters, erc20Abi, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
+import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toEvmChainReference } from '../chains/caip2'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
@@ -737,6 +738,59 @@ describe('internal core composition', () => {
         (action) => action.actionTarget.toLowerCase() === weth,
       ),
     ).toBe(true)
+  })
+
+  test("createSession scopes an IntentExecutor-layer permit with /chains' settlement addresses", async () => {
+    const base = fixture()
+    const served = (id: number) => ({
+      name: String(id),
+      testnet: false,
+      supportedTokens: 'all' as const,
+      settlement: SETTLEMENT_CATALOG[id],
+    })
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                ...served(baseChain.id),
+                wrappedNativeToken: {
+                  symbol: 'WETH',
+                  address: '0x4200000000000000000000000000000000000006',
+                  decimals: 18,
+                },
+              },
+              [arbitrum.id]: served(arbitrum.id),
+            }),
+        ),
+      },
+    })
+
+    const session = await composition.project.createSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      account: '0x1111111111111111111111111111111111111111',
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP'],
+        },
+      ],
+    })
+
+    expect(session.actions[0].actionTarget).toBe(
+      SETTLEMENT_CATALOG[baseChain.id].cctp!.tokenMessenger,
+    )
   })
 
   test('createSession fails fast when the chain has no wrapped-native token', async () => {

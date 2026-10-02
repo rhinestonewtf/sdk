@@ -1029,6 +1029,54 @@ function narrowQuoterPin(
   return { include: narrowed }
 }
 
+/**
+ * The settlement layers a settlement-scoped session admits, narrowed by any
+ * explicit filter. Like the quoter pin, an explicit filter can only narrow: a
+ * route outside the session's layers would fail its action policies on-chain.
+ */
+function settlementLayerPin(
+  signers: SignerSet | undefined,
+  chainIds: readonly number[],
+  explicit: Transaction['settlementLayers'],
+): Transaction['settlementLayers'] {
+  if (signers?.type !== 'session') return explicit
+  const relevant = new Set(chainIds)
+  const sessions =
+    'session' in signers
+      ? [signers.session]
+      : Object.entries(signers.sessions ?? {})
+          .filter(([chainId]) => relevant.has(Number(chainId)))
+          .map(([, s]) => s.session)
+  type Layer = Extract<
+    NonNullable<Transaction['settlementLayers']>,
+    { include: unknown }
+  >['include'][number]
+  // The session's layer names are the SDK's; the filter speaks the
+  // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
+  // no bridge, and the orchestrator refuses same-chain layers in the filter,
+  // so it narrows nothing; its session refuses cross-chain calls on-chain.
+  const toFilter = (
+    layer: NonNullable<Session['settlementLayers']>[number],
+  ): Layer[] =>
+    layer === 'SAME_CHAIN_IE' ? [] : [layer === 'ECO_IE' ? 'ECO' : layer]
+  const scoped = sessions.flatMap((session) => {
+    const layers = session.settlementLayers?.flatMap(toFilter) ?? []
+    return layers.length ? [new Set<Layer>(layers)] : []
+  })
+  // An unscoped session admits every layer, so it narrows nothing.
+  if (scoped.length === 0) return explicit
+  const derived = [...scoped[0]].filter((layer) =>
+    scoped.every((layers) => layers.has(layer)),
+  )
+  if (!explicit) return { include: derived }
+  return {
+    include:
+      'include' in explicit
+        ? derived.filter((layer) => explicit.include.includes(layer))
+        : derived.filter((layer) => !explicit.exclude.includes(layer)),
+  }
+}
+
 export function adaptTransaction(
   context: AccountInvocationContext<Compat>,
   transaction: Transaction,
@@ -1113,9 +1161,17 @@ export function adaptTransaction(
                   },
           }
         : {}),
-      ...(transaction.settlementLayers
-        ? { settlementLayers: transaction.settlementLayers }
-        : {}),
+      ...(() => {
+        const settlementLayers = settlementLayerPin(
+          transaction.signers,
+          [
+            ...(destinationChainId === undefined ? [] : [destinationChainId]),
+            ...(evmSources?.map(({ id }) => id) ?? []),
+          ],
+          transaction.settlementLayers,
+        )
+        return settlementLayers ? { settlementLayers } : {}
+      })(),
       ...(() => {
         const derived = quoterPinFromSession(transaction.signers, [
           ...(destinationChainId === undefined ? [] : [destinationChainId]),

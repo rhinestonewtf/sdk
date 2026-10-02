@@ -77,10 +77,17 @@ export function cumulativeCap(
  * through the router.
  */
 /** Every rule must hold, as a right-folded AND over the expression tree. */
-function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
+export function allOf(
+  rules: UniversalActionPolicyParamRule[],
+): ArgPolicyExpression {
   return rules
     .map((rule): ArgPolicyExpression => ({ type: 'rule', rule }))
     .reduceRight((right, left) => ({ type: 'and', left, right }))
+}
+
+/** At least one branch must hold. */
+export function anyOf(branches: ArgPolicyExpression[]): ArgPolicyExpression {
+  return branches.reduce((left, right) => ({ type: 'or', left, right }))
 }
 
 /**
@@ -97,7 +104,7 @@ function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
  * pin to be dropped. Preferring the simpler policy keeps the common case on the
  * contract it has always used.
  */
-const UNIVERSAL_ACTION_MAX_RULES = 16
+export const UNIVERSAL_ACTION_MAX_RULES = 16
 
 export function swapAction(
   target: Address,
@@ -111,13 +118,18 @@ export function swapAction(
    * alternatives become an OR instead.
    */
   alternatives: UniversalActionPolicyParamRule[][] = [],
+  /**
+   * Native value each call may carry. Zero for every swap; a bridge that pays
+   * its messaging fee in `msg.value` (OFT) raises it.
+   */
+  valueLimitPerUse = 0n,
 ): ScopedAction {
   const usable = alternatives.filter((set) => set.length > 0)
   const policy: SessionPolicy =
     usable.length > 0
       ? {
           type: 'arg-policy',
-          valueLimitPerUse: 0n,
+          valueLimitPerUse,
           expression: {
             type: 'and',
             left: allOf(rules),
@@ -129,13 +141,13 @@ export function swapAction(
       : rules.length <= UNIVERSAL_ACTION_MAX_RULES
         ? {
             type: 'universal-action',
-            valueLimitPerUse: 0n,
+            valueLimitPerUse,
             rules: rules as [
               UniversalActionPolicyParamRule,
               ...UniversalActionPolicyParamRule[],
             ],
           }
-        : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
+        : { type: 'arg-policy', valueLimitPerUse, expression: allOf(rules) }
   return { target, selector, policies: [policy] }
 }
 

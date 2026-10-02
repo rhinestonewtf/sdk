@@ -31,6 +31,7 @@ import type {
   OpenPerpRequest,
 } from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type { IntentExecutorSettlementLayer } from '../modules/validators/smart-sessions/types'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -274,18 +275,34 @@ interface Permit2ClaimPolicy {
 
 /**
  * Settlement layers supported by the cross-chain session abstraction.
- * Each value maps to one or more Permit2 arbiter addresses from the SDK's
- * bundled arbiter allow-set — devs pick a layer, the SDK resolves it to the
- * on-chain arbiter whitelist.
  *
- * The set is intentionally narrower than the orchestrator's broader
- * `SettlementLayer` union (which also names intent-executor-backed
- * bridges like `CCTP`, `RHINO`, ...). Once the params-bearing
- * intent-executor policy lands in smart-sessions-v2 (see
- * `rhinestonewtf/smart-sessions-v2#46`), this union grows to cover those
- * layers via the same selector interface.
+ * - `SAME_CHAIN`, `ECO`, `ACROSS` settle through Permit2: each maps to one or
+ *   more arbiter addresses from the SDK's bundled allow-set (`ECO` is the
+ *   retired Standard Eco arbiter).
+ * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
+ *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
+ *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
+ *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
+ *   account executing the call. Naming one makes
+ *   the permit **settlement-scoped**: the session is restricted to that call
+ *   and its approve, with the `from` token, the `to` chains and recipients,
+ *   and `maxAmount` pinned in its calldata. Such a permit names exactly one of
+ *   them, cannot be combined with the Permit2 layers, `maxAmount` requires
+ *   `oneTimeUse`, and only sponsored intents without an app fee can settle
+ *   through it. `ECO_IE` also requires `maxAmount`, `maxFeeBps` and `validUntil`;
+ *   `OFT` and `LZ` require `oneTimeUse`. `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
+ *   addresses the orchestrator serves on `GET /chains`, so create their
+ *   sessions with `sdk.createSession`.
  */
-type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+type CrossChainSettlementLayer =
+  | 'SAME_CHAIN'
+  | 'ECO'
+  | 'ACROSS'
+  | 'CCTP'
+  | 'OFT'
+  | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
+  | 'LZ'
 
 /**
  * A high-level permit that authorises a session key to move funds
@@ -313,7 +330,7 @@ interface CrossChainPermit {
    * Omit for no destination-token restriction. Note `recipientIsAccount`
    * still constrains the destination recipient even when `to` is absent.
    */
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  to?: ToLeg[]
   /** Upper bound on the permit deadline (Permit2 deadline) — unix seconds */
   validUntil?: bigint
   /** Lower bound on the permit deadline — unix seconds */
@@ -331,12 +348,15 @@ interface CrossChainPermit {
    * `[]`) for any supported layer — the SDK resolves to the union of
    * every arbiter in its bundled allow-set.
    *
-   * **Smart Session limitation:** the built-in `ECO` permission currently
-   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
-   * remain blocked by this allow-set until a route-aware claim policy can
-   * safely inspect their encoded delivery terms.
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
+   * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
+  /**
+   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
+   * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
+   */
+  maxFeeBps?: number
 }
 
 interface FromLeg {
@@ -349,6 +369,12 @@ interface ToLeg {
   chain: Chain
   token: Address
   recipient?: Address | 'any'
+  /**
+   * `SAME_CHAIN_IE` swaps only: the least amount of `token` the swap must deliver.
+   * Required there (with `maxAmount`), since the session key otherwise sets the
+   * swap's output bound; `maxAmount : minAmount` is the worst rate accepted.
+   */
+  minAmount?: bigint
 }
 
 /**
@@ -392,14 +418,17 @@ interface CrossChainPermissionInput {
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) to allow **any of the supported settlement layers** — the SDK
    * resolves to the union of every arbiter in its bundled allow-set. Pass
-   * a subset (e.g. `['ECO']`) to narrow.
+   * a subset (e.g. `['ACROSS']`) to narrow.
    *
-   * **Smart Session limitation:** the built-in `ECO` permission currently
-   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
-   * remain blocked by this allow-set until a route-aware claim policy can
-   * safely inspect their encoded delivery terms.
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming one scopes the
+   * session to that layer's calls instead (see {@link CrossChainSettlementLayer}).
    */
   settlementLayers?: CrossChainSettlementLayer[]
+  /**
+   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
+   * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
+   */
+  maxFeeBps?: number
 }
 
 type Policy =
@@ -771,7 +800,9 @@ interface SessionDefinition<
    * Cross-chain permits expanded by the SDK into matching
    * {@link Permit2ClaimPolicy} (claim-side) plus action-level
    * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
-   * See {@link CrossChainPermissionInput}.
+   * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
+   * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
+   * it pins from the orchestrator's `GET /chains`.
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
   /**
@@ -837,6 +868,12 @@ interface SessionDefinition<
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
+  /**
+   * The account this session is for. Required when a `CCTP` cross-chain permit
+   * leaves its recipient as the account (the default), since the pin is a
+   * literal address in the bridge call.
+   */
+  account?: Address
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
@@ -879,6 +916,10 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
+  /** The IntentExecutor layers a settlement-scoped permit restricted the session
+   *  to. Metadata only — intents with the session are limited to them
+   *  (`SAME_CHAIN_IE` adds no bridge filter). */
+  settlementLayers?: readonly IntentExecutorSettlementLayer[]
   /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
   claimPoliciesEnforcedVia1271?: boolean
   /** A one-time-use session's id and policy; each intent burns the id. */
