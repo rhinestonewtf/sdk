@@ -45,6 +45,18 @@ export function pin(
   return { condition: 'equal', calldataOffset, referenceValue }
 }
 
+/** Require a calldata word to be at least `floor`, per call. */
+export function atLeast(
+  calldataOffset: bigint,
+  floor: bigint,
+): UniversalActionPolicyParamRule {
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset,
+    referenceValue: floor,
+  }
+}
+
 /**
  * Cap a swap's own sell amount, cumulatively across every call.
  *
@@ -184,6 +196,8 @@ export interface VenueContext {
   readonly recipient: Address
   /** Cumulative sell-token cap, or undefined for no cap. */
   readonly cap: bigint | undefined
+  /** Per-call buy-token output floor per Swapper direction, set only by an opted-in `stableFloor`. */
+  readonly minOut?: { readonly exactIn: bigint; readonly exactOut: bigint }
 }
 
 /**
