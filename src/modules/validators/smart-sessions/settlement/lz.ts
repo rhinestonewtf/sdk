@@ -80,6 +80,17 @@ interface NestedCall {
 
 const ceil32 = (n: number) => BigInt(Math.ceil(n / 32) * 32)
 
+const and = (terms: ArgPolicyExpression[]): ArgPolicyExpression =>
+  terms.reduceRight((right, left) => ({ type: 'and', left, right }))
+
+/** The same check on the same word; a usage-limited rule is never the same. */
+const sameRule = (a: Rule, b: Rule) =>
+  a.usageLimit === undefined &&
+  b.usageLimit === undefined &&
+  a.condition === b.condition &&
+  a.calldataOffset === b.calldataOffset &&
+  BigInt(a.referenceValue) === BigInt(b.referenceValue)
+
 /**
  * The pins of an `execute` batch under the canonical encoding, below the
  * `calls` pointer every route shares, and each call's argument accessor.
@@ -118,6 +129,8 @@ type Leg = SettlementContext['destinations'][number]
 
 interface Route {
   readonly rules: Rule[]
+  /** How many nested calls the batch makes. */
+  readonly calls: number
   /** Only for Stargate: TAXI or BUS. */
   readonly modes?: Rule[][]
   /** Pins a leg this route delivers; undefined for one it cannot. */
@@ -230,6 +243,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       crossChain(leg) && servedLz(leg)?.stargateUsdc !== undefined
     routes.push({
       rules,
+      calls: calls.length,
       modes: [taxi, bus],
       reaches,
       leg: (leg) => {
@@ -279,6 +293,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         (servedLz(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
+        calls: calls.length,
         reaches,
         leg: (leg) => {
           const dst = servedLz(leg)?.cctp
@@ -316,19 +331,21 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       )
     }
   }
-  const branches = routes.flatMap((route): ArgPolicyExpression[] => {
+  const branches = routes.flatMap((route) => {
     const pinned = legs.flatMap((leg) => {
       const rules = route.leg(leg)
       return rules ? [rules] : []
     })
     if (pinned.length === 0) return []
     return [
-      [
-        allOf(route.rules),
-        ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
-        anyOf(pinned.map(allOf)),
-        ...(route.limits.length ? [allOf(route.limits)] : []),
-      ].reduceRight((right, left) => ({ type: 'and', left, right })),
+      {
+        route,
+        rest: [
+          ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
+          anyOf(pinned.map(allOf)),
+          ...(route.limits.length ? [allOf(route.limits)] : []),
+        ],
+      },
     ]
   })
   if (branches.length === 0) {
@@ -336,6 +353,23 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
     )
   }
+  // Batches with as many calls share the offset table's position, so a pin on
+  // the same word and value in each of them is checked once, ahead of their OR.
+  const groups = [...new Set(branches.map(({ route }) => route.calls))].map(
+    (calls) => {
+      const group = branches.filter(({ route }) => route.calls === calls)
+      const shared = group[0].route.rules.filter((rule) =>
+        group.every(({ route }) => route.rules.some((r) => sameRule(r, rule))),
+      )
+      const own = group.map(({ route, rest }) => {
+        const left = route.rules.filter(
+          (r) => !shared.some((s) => sameRule(s, r)),
+        )
+        return and([...(left.length ? [allOf(left)] : []), ...rest])
+      })
+      return and([allOf(shared), anyOf(own)])
+    },
+  )
   return {
     target: multiCall,
     selector: LZ_EXECUTE_SELECTOR,
@@ -353,7 +387,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           // stale TransferDelegate allowance could fund a second route, and a
           // second Stargate send would pay another native fee.
           left: allOf([{ ...pinValue(0n, 0x40n), usageLimit: 0x40n }]),
-          right: anyOf(branches),
+          right: anyOf(groups),
         },
       },
       ...ctx.timeFrame,
