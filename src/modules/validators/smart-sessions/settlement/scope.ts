@@ -1,6 +1,6 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
 import { FAR_FUTURE_MS } from '../../permissions'
-import { cumulativeCap, pin, swapAction } from '../swap/rules'
+import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -88,8 +88,14 @@ export function isIntentExecutorLayer(
   )
 }
 
+/** What `settlementLayers: 'all'` expands to: every layer that bridges. */
+const CROSS_CHAIN_LAYERS = ['CCTP', 'OFT', 'ECO_IE', 'LZ'] as const
+
 export function isSettlementScopedPermit(permit: CrossChainPermit): boolean {
-  return permit.settlementLayers?.some(isIntentExecutorLayer) ?? false
+  return (
+    permit.settlementLayers === 'all' ||
+    (permit.settlementLayers?.some(isIntentExecutorLayer) ?? false)
+  )
 }
 
 const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
@@ -127,19 +133,22 @@ export function resolveSettlementScope(
     )
   }
   const permit = scoped[0]
-  const layers = permit.settlementLayers ?? []
+  const all = permit.settlementLayers === 'all'
+  const layers =
+    permit.settlementLayers === 'all'
+      ? [...CROSS_CHAIN_LAYERS]
+      : (permit.settlementLayers ?? [])
   const permit2Layers = layers.filter((layer) => !isIntentExecutorLayer(layer))
   if (permit2Layers.length) {
     throw new Error(
       `crossChainPermits: ${permit2Layers.join(', ')} cannot share a permit with IntentExecutor layers`,
     )
   }
-  const settlementLayers = [...new Set(layers.filter(isIntentExecutorLayer))]
-  // Each layer pins its own token set and call shape, so one permit scopes one
-  // layer; a session that needs two uses two permits in two sessions.
-  if (settlementLayers.length > 1) {
+  const requested = [...new Set(layers.filter(isIntentExecutorLayer))]
+  // SAME_CHAIN_IE's transfer or swap shares no call shape with a bridge.
+  if (requested.length > 1 && requested.includes('SAME_CHAIN_IE')) {
     throw new Error(
-      'crossChainPermits: name one IntentExecutor layer per permit',
+      'crossChainPermits: SAME_CHAIN_IE cannot share a permit with other IntentExecutor layers',
     )
   }
 
@@ -243,16 +252,13 @@ export function resolveSettlementScope(
     policies: [...(action.policies ?? []), ...timeFrame],
   })
 
-  const [layer] = settlementLayers
+  const sameChainOnly = requested[0] === 'SAME_CHAIN_IE'
   // Only ECO_IE prices its delivery against the reward; elsewhere the field would
   // be silently ignored.
-  if (permit.maxFeeBps !== undefined && layer !== 'ECO_IE') {
+  if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  if (
-    layer !== 'SAME_CHAIN_IE' &&
-    permit.to?.some((leg) => leg.minAmount !== undefined)
-  ) {
+  if (!sameChainOnly && permit.to?.some((leg) => leg.minAmount !== undefined)) {
     throw new Error(
       'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
     )
@@ -260,7 +266,8 @@ export function resolveSettlementScope(
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
     : undefined
-  if (layer === 'SAME_CHAIN_IE') {
+  if (sameChainOnly) {
+    const settlementLayers = requested
     const sameChain = scopeSameChain({
       chainId: options.chainId,
       environment: options.environment,
@@ -297,42 +304,107 @@ export function resolveSettlementScope(
       "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
-  if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
-    throw new Error(`crossChainPermits: an ${layer} permit requires oneTimeUse`)
+  const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
+    if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
+      throw new Error(
+        `crossChainPermits: an ${layer} permit requires oneTimeUse`,
+      )
+    }
+    const target = LAYERS[layer].target(settlement, options.chainId)
+    const spender =
+      LAYERS[layer].spender?.(settlement, options.chainId) ?? target
+    const action = LAYERS[layer].scope({
+      chainId: options.chainId,
+      settlement,
+      target,
+      account: options.account,
+      sourceTokens,
+      destinations,
+      cap,
+      timeFrame,
+      ...(permit.maxFeeBps === undefined
+        ? {}
+        : { maxFeeBps: permit.maxFeeBps }),
+      ...(permit.validAfter === undefined
+        ? {}
+        : { validAfter: permit.validAfter }),
+      ...(permit.validUntil === undefined
+        ? {}
+        : { validUntil: permit.validUntil }),
+    })
+    return { layer, spender, action }
   }
-  const target = LAYERS[layer].target(settlement, options.chainId)
-  const spender = LAYERS[layer].spender?.(settlement, options.chainId) ?? target
-  const layerAction = LAYERS[layer].scope({
-    chainId: options.chainId,
-    settlement,
-    target,
-    account: options.account,
-    sourceTokens,
-    destinations,
-    cap,
-    timeFrame,
-    ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
-    ...(permit.validAfter === undefined
-      ? {}
-      : { validAfter: permit.validAfter }),
-    ...(permit.validUntil === undefined
-      ? {}
-      : { validUntil: permit.validUntil }),
-  })
+  // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
+  // only the layers that can.
+  const skipped: string[] = []
+  const scopedLayers = requested
+    .filter((layer) => layer !== 'SAME_CHAIN_IE')
+    .flatMap((layer) => {
+      if (!all) return [scopeLayer(layer)]
+      try {
+        return [scopeLayer(layer)]
+      } catch (error) {
+        skipped.push(`${layer}: ${(error as Error).message}`)
+        return []
+      }
+    })
+  if (scopedLayers.length === 0) {
+    throw new Error(
+      `crossChainPermits: no IntentExecutor layer can settle this permit on chain ${options.chainId} (${skipped.join('; ')})`,
+    )
+  }
+  const settlementLayers = scopedLayers.map(({ layer }) => layer)
+  // 'all' may have dropped ECO_IE, leaving maxFeeBps bounding nothing.
+  if (permit.maxFeeBps !== undefined && !settlementLayers.includes('ECO_IE')) {
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
+  }
+  const spenders = scopedLayers
+    .map(({ spender }) => spender)
+    .filter(
+      (spender, i, list) =>
+        list.findIndex((other) => isAddressEqual(other, spender)) === i,
+    )
 
-  // Without allowFees, only the layer's own approve: an unsponsored intent or one
-  // carrying an app fee adds calls this session does not authorise.
+  // Without allowFees, only the layers' own approves: an unsponsored intent or
+  // one carrying an app fee adds calls this session does not authorise.
+  // Cumulative: the burning transaction admits every op after the burn, so a
+  // per-call bound would let repeated approves grant the cap many times.
+  const capRules = () => (cap === undefined ? [] : [cumulativeCap(32n, cap)])
+  const spenderPins = () => anyOf(spenders.map((s) => allOf([pin(0n, s)])))
   const approveActions = sourceTokens.map((token) =>
     withTimeFrame(
-      swapAction(token, APPROVE_SELECTOR, [
-        pin(0n, spender),
-        // Cumulative: the burning transaction admits every op after the burn, so a
-        // per-call bound would let repeated approves grant the cap many times.
-        ...(cap === undefined ? [] : [cumulativeCap(32n, cap)]),
-      ]),
+      spenders.length === 1
+        ? swapAction(token, APPROVE_SELECTOR, [
+            pin(0n, spenders[0]),
+            ...capRules(),
+          ])
+        : {
+            target: token,
+            selector: APPROVE_SELECTOR,
+            policies: [
+              {
+                type: 'arg-policy',
+                valueLimitPerUse: 0n,
+                // One cap rule, after the spender OR: the chain counts usage per
+                // rule, so every layer draws on the same budget, and a refused
+                // spender never reaches the counter.
+                expression:
+                  cap === undefined
+                    ? spenderPins()
+                    : {
+                        type: 'and',
+                        left: spenderPins(),
+                        right: allOf(capRules()),
+                      },
+              },
+            ],
+          },
     ),
   )
-  const actions = [layerAction, ...approveActions]
+  const actions = [
+    ...scopedLayers.map(({ action }) => action),
+    ...approveActions,
+  ]
   return {
     actions:
       fees === undefined

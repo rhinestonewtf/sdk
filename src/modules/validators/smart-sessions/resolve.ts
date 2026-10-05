@@ -31,7 +31,6 @@ import {
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
 import {
-  isIntentExecutorLayer,
   isSettlementScopedPermit,
   resolveSettlementScope,
 } from './settlement/scope'
@@ -719,14 +718,15 @@ export function toSession(
   const expandedClaims = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))
     .map((permit) => expandCrossChainPermit(permit, environment).claim)
-  const settlementLayers = [
-    ...new Set(
-      scopedPermits.flatMap(
-        (permit) =>
-          permit.settlementLayers?.filter(isIntentExecutorLayer) ?? [],
-      ),
-    ),
-  ]
+  // The layers the scope kept: 'all' drops those this chain cannot settle.
+  const settlementLayers =
+    resolveSettlementScope(resolvedPermits, {
+      chainId: definition.chain.id,
+      environment,
+      account: definition.account,
+      oneTimeUse: Boolean(definition.oneTimeUse),
+      ...(options.settlement ? { settlement: options.settlement } : {}),
+    })?.settlementLayers ?? []
   return {
     chain: definition.chain,
     owners: definition.owners,

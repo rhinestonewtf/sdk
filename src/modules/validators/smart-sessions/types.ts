@@ -245,7 +245,7 @@ export interface CrossChainPermit {
   validAfter?: bigint
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   recipientIsAccount?: boolean
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
 }
@@ -270,7 +270,7 @@ export interface CrossChainPermissionInput {
   validAfter?: Date
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   allowRecipientNotAccount?: boolean
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
 }
