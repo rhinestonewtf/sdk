@@ -1,5 +1,6 @@
 import {
   type Address,
+  type Chain,
   decodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
@@ -58,7 +59,7 @@ const VALID_UNTIL = new Date(2_000_000_000_000)
 
 function definition(
   permit: Partial<CrossChainPermissionInput>,
-  chain = base,
+  chain: Chain = base,
 ): SessionDefinition {
   return {
     chain,
