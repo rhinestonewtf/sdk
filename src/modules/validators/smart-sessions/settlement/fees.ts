@@ -5,12 +5,19 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { resolvePermissions } from '../../permissions'
-import { allOf, anyOf, cumulativeCap, pin } from '../swap/rules'
+import {
+  allOf,
+  anyOf,
+  cumulativeCap,
+  pin,
+  UNIVERSAL_ACTION_MAX_RULES,
+} from '../swap/rules'
 import type {
   ArgPolicyExpression,
   Permission,
   ScopedAction,
   SessionPolicy,
+  UniversalActionPolicyParamRule,
 } from '../types'
 import { withRule } from './same-chain'
 import type { SettlementAddresses, SettlementCatalog } from './types'
@@ -117,6 +124,17 @@ export function swapApprovesAsActions(
   })
 }
 
+/** The rules of an AND-only expression, left to right; undefined if it has an OR or NOT. */
+function conjunction(
+  expression: ArgPolicyExpression,
+): UniversalActionPolicyParamRule[] | undefined {
+  if (expression.type === 'rule') return [expression.rule]
+  if (expression.type !== 'and') return undefined
+  const left = conjunction(expression.left)
+  const right = conjunction(expression.right)
+  return left && right ? [...left, ...right] : undefined
+}
+
 /**
  * Allow `branch` as a shape of the (target, selector) call: a new action when the
  * layer makes no such call, else ORed into the layer's one params policy, since
@@ -133,11 +151,22 @@ function addFeeBranch(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
   )
   if (index === -1) {
+    // A plain AND fits UniversalActionPolicy, whose enable writes fewer slots.
+    const rules = conjunction(branch)
     actions.push({
       target,
       selector,
       policies: [
-        { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
+        rules && rules.length <= UNIVERSAL_ACTION_MAX_RULES
+          ? {
+              type: 'universal-action',
+              valueLimitPerUse: 0n,
+              rules: rules as [
+                UniversalActionPolicyParamRule,
+                ...UniversalActionPolicyParamRule[],
+              ],
+            }
+          : { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
         ...timeFrame,
       ],
     })
@@ -179,7 +208,14 @@ export function withFeeActions(
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  const cap = () => cumulativeCap(32n, SETTLEMENT_FEE_CAP)
+  // `>= 0` with ref 0 stores one slot fewer than `<= cap`: the cumulative limit
+  // already bounds each call, since the counter starts at zero.
+  const cap = (): UniversalActionPolicyParamRule => ({
+    condition: 'greaterThanOrEqual',
+    calldataOffset: 32n,
+    referenceValue: 0n,
+    usageLimit: SETTLEMENT_FEE_CAP,
+  })
   for (const token of sourceTokens) {
     addFeeBranch(
       out,

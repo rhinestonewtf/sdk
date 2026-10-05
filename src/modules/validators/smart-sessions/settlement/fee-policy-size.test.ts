@@ -699,32 +699,32 @@ describe('policy size on enable', () => {
     expect(table).toMatchInlineSnapshot(`
       {
         "CCTP": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 16,
         },
         "ECO_IE": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 130,
         },
         "LZ": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 362,
         },
         "OFT": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 30,
         },
         "SAME_CHAIN_IE swap": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 27,
         },
         "SAME_CHAIN_IE transfer": {
-          "addedAfter": 30,
+          "addedAfter": 19,
           "addedBefore": 30,
           "withoutFees": 5,
         },
@@ -743,24 +743,24 @@ describe('policy size on enable', () => {
         "after": {
           "approve": {
             "initDataBytes": 1248,
-            "nonZeroSlots": 17,
-            "nonZeroWords": 25,
+            "nonZeroSlots": 16,
+            "nonZeroWords": 24,
             "rules": 4,
             "type": "arg-policy",
           },
           "callback": {
-            "initDataBytes": 736,
-            "nonZeroSlots": 9,
-            "nonZeroWords": 15,
+            "initDataBytes": 3136,
+            "nonZeroSlots": 4,
+            "nonZeroWords": 6,
             "rules": 2,
-            "type": "arg-policy",
+            "type": "universal-action",
           },
           "transfer": {
-            "initDataBytes": 736,
-            "nonZeroSlots": 9,
-            "nonZeroWords": 15,
+            "initDataBytes": 3136,
+            "nonZeroSlots": 4,
+            "nonZeroWords": 6,
             "rules": 2,
-            "type": "arg-policy",
+            "type": "universal-action",
           },
         },
         "before": {
