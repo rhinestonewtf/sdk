@@ -46,20 +46,25 @@ const legs = (chainIds: number[], open = false) =>
     recipient: open ? undefined : ACCOUNT,
   }))
 
-/** Every batch the API can quote into a chain, as LZ serves it. */
+/** Every batch the API can quote into a chain, as LZ serves it, but BUS. */
 function batches(chainId: number, to: Address): Hex[] {
   const served = lz(chainId)
   const out: Hex[] = []
   if (served.stargateUsdc) {
     const eid = served.stargateUsdc.eid
     out.push(execute(stargate('taxi', { eid, to })))
-    out.push(execute(stargate('bus', { eid, to })))
   }
   if (served.cctp) {
     const feeless = served.cctp.feeless === true
     out.push(execute(cctp({ domain: served.cctp.domain, to }, feeless)))
   }
   return out
+}
+
+/** The Stargate BUS batch into a chain, which the policy no longer admits. */
+function bus(chainId: number, to: Address): Hex[] {
+  const eid = lz(chainId).stargateUsdc?.eid
+  return eid === undefined ? [] : [execute(stargate('bus', { eid, to }))]
 }
 
 const PERMITS: Record<
@@ -141,14 +146,27 @@ describe.each(Object.entries(PERMITS))(
     const valid = permit.to.flatMap((chainId) =>
       batches(chainId, permit.recipient ?? ACCOUNT),
     )
+    const buses = permit.to.flatMap((chainId) =>
+      bus(chainId, permit.recipient ?? ACCOUNT),
+    )
 
-    test('accepts every batch the old policy accepted', () => {
+    test('accepts every non-BUS batch the old policy accepted', () => {
       expect(valid.length).toBeGreaterThan(0)
       for (const data of valid) {
         expect(holds(old, data)).toBe(true)
         expect(holds(current, data)).toBe(true)
       }
     })
+
+    test.runIf(buses.length > 0)(
+      'refuses the BUS batch the old policy accepted',
+      () => {
+        for (const data of buses) {
+          expect(holds(old, data)).toBe(true)
+          expect(holds(current, data)).toBe(false)
+        }
+      },
+    )
 
     test('decides every single-word mutation the way the old policy did', () => {
       let refused = 0

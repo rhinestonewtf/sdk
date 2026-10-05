@@ -98,10 +98,13 @@ describe('scopeLz', () => {
 
   test.each([
     ['taxi', () => execute(stargate('taxi'))],
-    ['bus', () => execute(stargate('bus'))],
     ['cctp', () => execute(cctp())],
   ])('accepts the API %s batch', (_, data) => {
     expect(holds(action, data())).toBe(true)
+  })
+
+  test('refuses the API Stargate BUS batch', () => {
+    expect(holds(action, execute(stargate('bus')))).toBe(false)
   })
 
   test('accepts the feeless CCTP batch to Plasma', () => {
@@ -120,7 +123,6 @@ describe('scopeLz', () => {
 
   test.each([
     ['taxi', (a: bigint) => execute(stargate('taxi', { amount: a }))],
-    ['bus', (a: bigint) => execute(stargate('bus', { amount: a }))],
     ['cctp', (a: bigint) => execute(cctp({ pull: a }))],
   ])('caps the %s pull at maxAmount', (_, data) => {
     expect(holds(action, data(CAP))).toBe(true)
@@ -162,7 +164,6 @@ describe('scopeLz', () => {
       expect(holds(action, first(), usage)).toBe(true)
       for (const again of [
         execute(stargate('taxi', { amount: 1n })),
-        execute(stargate('bus', { amount: 1n })),
         execute(cctp({ pull: 1n, fee: 0n })),
       ]) {
         expect(holds(action, again, usage)).toBe(false)
@@ -185,7 +186,6 @@ describe('scopeLz', () => {
   test.each([
     ['taxi', () => execute(stargate('taxi', { to: OTHER }))],
     ['taxi eid', () => execute(stargate('taxi', { eid: 30101 }))],
-    ['bus', () => execute(stargate('bus', { to: OTHER }))],
     ['cctp', () => execute(cctp({ to: OTHER }))],
     ['cctp domain', () => execute(cctp({ domain: 0 }))],
   ])('refuses a %s batch to another destination', (_, data) => {
@@ -204,7 +204,6 @@ describe('scopeLz', () => {
 
   test.each([
     ['taxi', () => execute(stargate('taxi'))],
-    ['bus', () => execute(stargate('bus'))],
     ['cctp', () => execute(cctp())],
   ])(
     'accepts a byte-flipped %s batch only when no pinned field changed',
@@ -260,9 +259,9 @@ describe('scopeLz', () => {
     const open = scopeLz(
       context({ destinations: [{ chainId: ARB, token: USDC_ARB }] }),
     )
-    expect(holds(open, execute(stargate('bus', { to: OTHER })))).toBe(true)
+    expect(holds(open, execute(stargate('taxi', { to: OTHER })))).toBe(true)
     expect(holds(open, execute(cctp({ to: OTHER })))).toBe(true)
-    expect(holds(open, execute(stargate('bus', { eid: 30101 })))).toBe(false)
+    expect(holds(open, execute(stargate('taxi', { eid: 30101 })))).toBe(false)
   })
 
   test('without a cap, the pull is unbounded but the layout still binds', () => {

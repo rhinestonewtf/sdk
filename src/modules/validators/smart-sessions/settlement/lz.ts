@@ -30,9 +30,11 @@ import type { SettlementContext } from './types'
  * back. LZMultiCall runs any call it is handed, so every nested call is pinned:
  * the array length, each element offset, target, data pointer and
  * length-plus-selector, and each argument the key could redirect. The API picks
- * one of three routes, so the policy accepts exactly these layouts:
+ * one of several routes, and the policy accepts exactly these layouts:
  *
- * - Stargate TAXI or BUS: delegateTransferFrom, approve(pool), pool.send, sweep.
+ * - Stargate TAXI: delegateTransferFrom, approve(pool), pool.send, sweep. BUS
+ *   is refused: the orchestrator does not plan it, and its pins would make the
+ *   policy too large to enable inside an intent on Base.
  * - CCTP: delegateTransferFrom, transfer(fee), approve(TokenMessengerV2),
  *   depositForBurn, sweep; to Plasma without the fee transfer.
  */
@@ -131,8 +133,6 @@ interface Route {
   readonly rules: Rule[]
   /** How many nested calls the batch makes. */
   readonly calls: number
-  /** Only for Stargate: TAXI or BUS. */
-  readonly modes?: Rule[][]
   /** Pins a leg this route delivers; undefined for one it cannot. */
   readonly leg: (leg: Leg) => Rule[] | undefined
   /** Whether this route reaches the leg's chain at all, whatever its token. */
@@ -221,30 +221,21 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     const calls = [pull, approve(stargate.pool), send, sweep]
     const { rules, args } = batch(calls)
     const s = args[2]
-    // TAXI: extraOptions 0x0003, composeMsg and oftCmd empty. BUS: extraOptions
-    // and composeMsg empty, oftCmd 0x01. No native drop, no compose.
-    const taxi = [
+    // TAXI: extraOptions 0x0003, composeMsg and oftCmd empty. No native drop,
+    // no compose.
+    rules.push(
       pinValue(s(SEND.composeMsgPointer), 0x120n),
       pinValue(s(SEND.oftCmdPointer), 0x140n),
       pinValue(s(0x160n), 2n),
       pinValue(s(0x180n), 0x0003n << 240n),
       pinValue(s(0x1a0n), 0n),
       pinValue(s(0x1c0n), 0n),
-    ]
-    const bus = [
-      pinValue(s(SEND.composeMsgPointer), 0x100n),
-      pinValue(s(SEND.oftCmdPointer), 0x120n),
-      pinValue(s(0x160n), 0n),
-      pinValue(s(0x180n), 0n),
-      pinValue(s(0x1a0n), 1n),
-      pinValue(s(0x1c0n), 0x01n << 248n),
-    ]
+    )
     const reaches = (leg: Leg) =>
       crossChain(leg) && servedLz(leg)?.stargateUsdc !== undefined
     routes.push({
       rules,
       calls: calls.length,
-      modes: [taxi, bus],
       reaches,
       leg: (leg) => {
         const dst = servedLz(leg)?.stargateUsdc
@@ -341,7 +332,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       {
         route,
         rest: [
-          ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
           anyOf(pinned.map(allOf)),
           ...(route.limits.length ? [allOf(route.limits)] : []),
         ],
