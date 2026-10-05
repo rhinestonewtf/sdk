@@ -589,6 +589,7 @@ describe('ECO_IE publishAndFund', () => {
       unfillable,
     )
     expect(refusedByBoth).toBeGreaterThan(0)
+    expect(widenedHarmlessly).toBe(0)
   })
 
   test('a leg is not satisfied by another leg’s recipient or token', () => {
