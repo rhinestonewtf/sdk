@@ -314,7 +314,7 @@ describe('scopeEco', () => {
     // Each equal rule must bind on its own: nudge its word and the publish
     // must fail, whichever pin it is.
     const pinned = rulesOf(expression).filter((r) => r.condition === 'equal')
-    expect(pinned.length).toBeGreaterThan(25)
+    expect(pinned.length).toBeGreaterThan(20)
     for (const rule of pinned) {
       const nudged = BigInt(rule.referenceValue) + 1n
       expect(

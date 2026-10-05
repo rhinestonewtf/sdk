@@ -25,7 +25,12 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * The recipient lives inside the vendor route, and the reward's offsets move
  * with the route's length, so the session pins the one shape the orchestrator
  * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
- * Every pointer and length word is pinned so no field can alias another.
+ * Every calldata pointer, the reward's tokens pointer and every count is pinned
+ * so no field can alias another. The route's own pointers and byte length are
+ * not: the destination re-encodes the `Route` to match the intent hash, so a
+ * fillable route is canonical, and canonical bytes with these counts have
+ * exactly the layout the offsets assume. Any other layout is never filled and
+ * refunds to the pinned creator, as a route deadline in the past already can.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -146,6 +151,18 @@ const allOf = (rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression =>
 const anyOf = (branches: ArgPolicyExpression[]): ArgPolicyExpression =>
   branches.reduce((left, right) => ({ type: 'or', left, right }))
 
+const allOfExpressions = (parts: ArgPolicyExpression[]): ArgPolicyExpression =>
+  parts.reduceRight((right, left) => ({ type: 'and', left, right }))
+
+const sameRule = (
+  a: UniversalActionPolicyParamRule,
+  b: UniversalActionPolicyParamRule,
+) =>
+  a.condition === b.condition &&
+  a.calldataOffset === b.calldataOffset &&
+  BigInt(a.referenceValue) === BigInt(b.referenceValue) &&
+  a.usageLimit === b.usageLimit
+
 /** The publish call, pinned to the permit's destinations, provers and prices. */
 export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
@@ -200,15 +217,9 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
     pinValue(PUBLISH.allowPartial, 0n),
-    pinValue(PUBLISH.routeLength, 0x260n),
-    pinValue(PUBLISH.routeTuplePointer, 0x20n),
     pinValue(PUBLISH.routeNativeAmount, 0n),
-    pinValue(PUBLISH.routeTokensPointer, 0xc0n),
-    pinValue(PUBLISH.routeCallsPointer, 0x120n),
     pinValue(PUBLISH.routeTokensLength, 1n),
     pinValue(PUBLISH.callsLength, 1n),
-    pinValue(PUBLISH.callPointer, 0x20n),
-    pinValue(PUBLISH.callDataPointer, 0x60n),
     pinValue(PUBLISH.callValue, 0n),
     pinValue(PUBLISH.callDataLength, 0x44n),
     pin(PUBLISH.rewardCreator, ctx.account),
@@ -230,7 +241,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       referenceValue: ctx.validUntil,
     },
   ]
-  const legs = ctx.destinations.map((leg): ArgPolicyExpression => {
+  const legs = ctx.destinations.map((leg) => {
     requireStablecoin(ctx.settlement, leg.chainId, leg.token, 'to')
     if (leg.recipient === undefined) {
       throw new Error(
@@ -264,16 +275,39 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
         referenceValue: floor,
       },
     ]
-    // The prover OR nests inside its leg, so the rule count grows with legs
-    // plus provers rather than their product.
-    return {
-      type: 'and',
-      left: allOf(legRules),
-      right: anyOf(
-        provers.map((prover) => allOf([pin(PUBLISH.rewardProver, prover)])),
-      ),
-    }
+    return { rules: legRules, provers }
   })
+  // What every leg pins moves out of the OR, stored once instead of per leg:
+  // (A and X) or (A and Y) is A and (X or Y).
+  const shared = legs[0].rules.filter((rule) =>
+    legs.every((leg) => leg.rules.some((other) => sameRule(other, rule))),
+  )
+  const sharedProvers = legs.every(
+    (leg) =>
+      leg.provers.length === legs[0].provers.length &&
+      leg.provers.every((prover, i) => prover === legs[0].provers[i]),
+  )
+  // The prover OR nests inside its leg, so the rule count grows with legs
+  // plus provers rather than their product.
+  const proverOr = (provers: readonly Address[]) =>
+    anyOf(provers.map((prover) => allOf([pin(PUBLISH.rewardProver, prover)])))
+  const branches = legs.map((leg) => {
+    const own = leg.rules.filter(
+      (rule) => !shared.some((other) => sameRule(other, rule)),
+    )
+    return [
+      ...(own.length ? [allOf(own)] : []),
+      ...(sharedProvers ? [] : [proverOr(leg.provers)]),
+    ]
+  })
+  const expression = [
+    allOf([...rules, ...shared]),
+    ...(sharedProvers ? [proverOr(legs[0].provers)] : []),
+    // A leg left with nothing of its own admits everything the others do.
+    ...(branches.some((branch) => branch.length === 0)
+      ? []
+      : [anyOf(branches.map(allOfExpressions))]),
+  ]
   return {
     target: ctx.target,
     selector: PUBLISH_AND_FUND_SELECTOR,
@@ -281,7 +315,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       {
         type: 'arg-policy',
         valueLimitPerUse: 0n,
-        expression: { type: 'and', left: allOf(rules), right: anyOf(legs) },
+        expression: allOfExpressions(expression),
       },
       ...ctx.timeFrame,
     ],

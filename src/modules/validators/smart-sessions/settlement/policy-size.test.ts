@@ -589,7 +589,9 @@ describe('ECO_IE publishAndFund', () => {
       unfillable,
     )
     expect(refusedByBoth).toBeGreaterThan(0)
-    expect(widenedHarmlessly).toBe(0)
+    // The route's pointers and length are no longer pinned; their mutants
+    // reach `unfillable`.
+    expect(widenedHarmlessly).toBeGreaterThan(0)
   })
 
   test('a leg is not satisfied by another leg’s recipient or token', () => {
@@ -772,7 +774,7 @@ describe('policy size on enable', () => {
           "words": 12,
         },
         "cctpPlusEcoSession": {
-          "after": 163,
+          "after": 139,
           "before": 163,
         },
         "ecoApprove": {
@@ -785,10 +787,10 @@ describe('policy size on enable', () => {
         "ecoPublish": {
           "after": {
             "slots": {
-              "nonZero": 125,
-              "zero": 70,
+              "nonZero": 101,
+              "zero": 58,
             },
-            "words": 136,
+            "words": 112,
           },
           "before": {
             "slots": {
@@ -801,10 +803,10 @@ describe('policy size on enable', () => {
         "ecoPublishTwoLegs": {
           "after": {
             "slots": {
-              "nonZero": 168,
-              "zero": 93,
+              "nonZero": 124,
+              "zero": 71,
             },
-            "words": 180,
+            "words": 134,
           },
           "before": {
             "slots": {
