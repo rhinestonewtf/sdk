@@ -1,14 +1,32 @@
 import {
   type Address,
   decodeFunctionData,
-  encodeFunctionData,
   type Hex,
   maxUint256,
-  pad,
-  parseAbi,
   toHex,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
+import {
+  ACCOUNT,
+  ARB,
+  abi,
+  BASE,
+  CAP,
+  type Call,
+  call,
+  cctp,
+  context,
+  execute,
+  fn,
+  lz,
+  MC,
+  OTHER,
+  PLASMA,
+  stargate,
+  USDC_ARB,
+  USDC_BASE,
+  USDC_PLASMA,
+} from '../../../../../test/utils/lz-calldata'
 import {
   satisfiesRules as holds,
   type RuleUsage,
@@ -17,126 +35,6 @@ import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog
 import { encodeSessionPolicy } from '../policies/encode'
 import { LZ_CCTP_MAX_RELAY_FEE, LZ_EXECUTE_SELECTOR, scopeLz } from './lz'
 import type { SettlementCatalog, SettlementContext } from './types'
-
-const abi = parseAbi([
-  'function execute((address target,uint256 value,bytes data)[] calls, bytes32 quoteId)',
-  'function delegateTransferFrom(address token,address from,address to,uint256 amount)',
-  'function approve(address spender,uint256 amount)',
-  'function transfer(address to,uint256 amount)',
-  'function send((uint32 dstEid,bytes32 to,uint256 amountLD,uint256 minAmountLD,bytes extraOptions,bytes composeMsg,bytes oftCmd) sendParam,(uint256 nativeFee,uint256 lzTokenFee) fee,address refundAddress)',
-  'function depositForBurn(uint256 amount,uint32 destinationDomain,bytes32 mintRecipient,address burnToken,bytes32 destinationCaller,uint256 maxFee,uint32 minFinalityThreshold)',
-  'function sweep(address[] tokens,address recipient)',
-])
-
-const ACCOUNT = '0x7a3f5c2e9b1d4e8f6a0c3b5d7e9f1a2b4c6d8e0f' as Address
-const OTHER = '0x2222222222222222222222222222222222222222' as Address
-const BASE = 8453
-const ARB = 42161
-const PLASMA = 9745
-const lz = (chainId: number) => SETTLEMENT_CATALOG[chainId].lz!
-const USDC_BASE = lz(BASE).stargateUsdc!.token
-const USDC_ARB = lz(ARB).stargateUsdc!.token
-const USDC_PLASMA = '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
-const MC = lz(BASE).multiCall
-const TD = lz(BASE).transferDelegate
-const POOL = lz(BASE).stargateUsdc!.pool
-const FEE_RECEIVER = lz(BASE).cctp!.feeReceiver
-const TOKEN_MESSENGER = '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d' as Address
-const QUOTE_ID = `0x${'00'.repeat(16)}01a0efa5cb93751ca4a9d25a2a4d407c` as Hex
-const CAP = 10_000_000n
-
-type Call = { target: Address; value: bigint; data: Hex }
-const call = (target: Address, data: Hex, value = 0n): Call => ({
-  target,
-  value,
-  data,
-})
-const fn = (functionName: string, args: readonly unknown[]) =>
-  encodeFunctionData({ abi, functionName, args } as never)
-const execute = (calls: Call[], quoteId = QUOTE_ID) =>
-  fn('execute', [calls, quoteId])
-
-/** The API's Stargate calls, as quoted for base -> arbitrum (10 USDC, taxi). */
-function stargate(
-  mode: 'taxi' | 'bus',
-  o: Partial<{ eid: number; to: Address; amount: bigint }> = {},
-): Call[] {
-  const amount = o.amount ?? CAP
-  return [
-    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, amount])),
-    call(USDC_BASE, fn('approve', [POOL, amount])),
-    call(
-      POOL,
-      fn('send', [
-        {
-          dstEid: o.eid ?? 30110,
-          to: pad(o.to ?? ACCOUNT),
-          amountLD: amount,
-          minAmountLD: 9_899_009n,
-          extraOptions: mode === 'taxi' ? '0x0003' : '0x',
-          composeMsg: '0x',
-          oftCmd: mode === 'taxi' ? '0x' : '0x01',
-        },
-        { nativeFee: 110_176_109_085_186n, lzTokenFee: 0n },
-        MC,
-      ]),
-      110_176_109_085_186n,
-    ),
-    call(MC, fn('sweep', [[USDC_BASE, `0x${'00'.repeat(20)}`], ACCOUNT])),
-  ]
-}
-
-/** The API's CCTP calls; to Plasma it charges no relay fee. */
-function cctp(
-  o: Partial<{
-    domain: number
-    to: Address
-    fee: bigint
-    pull: bigint
-    receiver: Address
-  }> = {},
-  feeless = false,
-): Call[] {
-  const pull = o.pull ?? CAP
-  const fee = o.fee ?? 14_061n
-  const burned = feeless || fee >= pull ? pull : pull - fee
-  return [
-    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, pull])),
-    ...(feeless
-      ? []
-      : [call(USDC_BASE, fn('transfer', [o.receiver ?? FEE_RECEIVER, fee]))]),
-    call(USDC_BASE, fn('approve', [TOKEN_MESSENGER, burned])),
-    call(
-      TOKEN_MESSENGER,
-      fn('depositForBurn', [
-        burned,
-        o.domain ?? (feeless ? 33 : 3),
-        pad(o.to ?? ACCOUNT),
-        USDC_BASE,
-        pad('0x00'),
-        1299n,
-        1000,
-      ]),
-    ),
-    call(MC, fn('sweep', [[USDC_BASE, `0x${'00'.repeat(20)}`], ACCOUNT])),
-  ]
-}
-
-function context(
-  overrides: Partial<SettlementContext> = {},
-): SettlementContext {
-  return {
-    chainId: BASE,
-    settlement: SETTLEMENT_CATALOG,
-    target: MC,
-    account: ACCOUNT,
-    sourceTokens: [USDC_BASE],
-    destinations: [{ chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }],
-    cap: CAP,
-    timeFrame: [],
-    ...overrides,
-  }
-}
 
 /** Fields the key may choose: the quote id, fees, and amounts under the cap. */
 const FREE: Record<string, readonly string[]> = {
