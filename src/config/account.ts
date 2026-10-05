@@ -288,20 +288,41 @@ interface Permit2ClaimPolicy {
  *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
  *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
  *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
- *   account executing the call. Naming one makes
- *   the permit **settlement-scoped**: the session is restricted to that call
- *   and its approve, with the `from` token, the `to` chains and recipients,
- *   and `maxAmount` pinned in its calldata. Such a permit may name several of
- *   `CCTP`, `OFT`, `ECO_IE` and `LZ`, and each must be able to settle it on
- *   the session's chain, or the session is refused. The session then allows
- *   each named layer's call and one approve of the `from` token to any of
- *   their contracts, with `maxAmount` one budget across those approves. Each
- *   layer's call is capped at `maxAmount` on its own, so an allowance the
- *   account already gave one of those contracts can move more than
- *   `maxAmount` in total. `SAME_CHAIN_IE` cannot be combined with another
- *   layer, and `maxFeeBps` needs `ECO_IE` among the layers. A permit
- *   settlement-scoped this way cannot be combined with the Permit2 layers, `maxAmount` requires
- *   `oneTimeUse`, and only sponsored intents without an app fee can settle
+ *   account executing the call. Naming any of them makes the permit
+ *   **settlement-scoped**: the session is restricted to those layers' calls
+ *   and their approve, with the `from` token, the `to` chains and recipients,
+ *   and `maxAmount` pinned in the calldata.
+ *
+ *   Such a permit may name several of `CCTP`, `OFT`, `ECO_IE` and `LZ`, and
+ *   each must be able to settle it on the session's chain, or the session is
+ *   refused. The session then allows each named layer's call and one approve
+ *   of the `from` token to any of their contracts, with `maxAmount` one
+ *   budget across those approves. Each layer's call is capped at `maxAmount`
+ *   on its own, so an allowance the account already gave one of those
+ *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
+ *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
+ *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
+ *   layers. With `ECO_IE` among several layers, an intent settles over Eco
+ *   only when it moves close to `maxAmount`: the delivery floor is
+ *   `maxAmount × (1 − maxFeeBps / 10000)`, so the orchestrator may route a
+ *   smaller intent through another layer, or the intent fails if Eco is
+ *   picked.
+ *
+ *   `settlementLayers: 'all'` names every one of `CCTP`, `OFT`, `ECO_IE` and
+ *   `LZ` that can settle the permit on the session's chain, and silently
+ *   drops the rest: a layer that does not route there, does not move the
+ *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
+ *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`). Setting
+ *   `maxFeeBps` asks for `ECO_IE`, so a dropped `ECO_IE` is then refused with
+ *   its reason. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
+ *   no layer qualifies. It resolves against the orchestrator's `GET /chains`
+ *   and the clock when the session is created, so store the created session
+ *   (its `settlementLayers` lists the layers kept) and reuse it rather than
+ *   rebuilding it from `'all'`, which can keep a different set of layers.
+ *
+ *   A settlement-scoped permit cannot be combined with the Permit2 layers,
+ *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
+ *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
  *   `maxAmount`, `maxFeeBps` and `validUntil`; `validUntil` at least 7 days
  *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
@@ -366,15 +387,8 @@ interface CrossChainPermit {
    * every arbiter in its bundled allow-set.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
-   * session to those layers' calls instead (see {@link CrossChainSettlementLayer}).
-   *
-   * `'all'` scopes the session to every one of `CCTP`, `OFT`, `ECO_IE` and
-   * `LZ` that can settle the permit on the session's chain, and silently
-   * drops the rest (a layer that does not route there, does not move the
-   * `from` token, or needs a field the permit lacks, such as `ECO_IE`'s
-   * `maxFeeBps` or `OFT`'s `oneTimeUse`). It never includes `SAME_CHAIN_IE`,
-   * and is refused when no layer qualifies. Name the layers instead to be
-   * refused when one of them cannot settle the permit.
+   * session to those layers' calls instead, and `'all'` to every bridging one
+   * that can settle the permit (see {@link CrossChainSettlementLayer}).
    *
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.
@@ -469,15 +483,8 @@ interface CrossChainPermissionInput {
    * a subset (e.g. `['ACROSS']`) to narrow.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
-   * session to those layers' calls instead (see {@link CrossChainSettlementLayer}).
-   *
-   * `'all'` scopes the session to every one of `CCTP`, `OFT`, `ECO_IE` and
-   * `LZ` that can settle the permit on the session's chain, and silently
-   * drops the rest (a layer that does not route there, does not move the
-   * `from` token, or needs a field the permit lacks, such as `ECO_IE`'s
-   * `maxFeeBps` or `OFT`'s `oneTimeUse`). It never includes `SAME_CHAIN_IE`,
-   * and is refused when no layer qualifies. Name the layers instead to be
-   * refused when one of them cannot settle the permit.
+   * session to those layers' calls instead, and `'all'` to every bridging one
+   * that can settle the permit (see {@link CrossChainSettlementLayer}).
    *
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.

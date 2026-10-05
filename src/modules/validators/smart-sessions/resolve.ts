@@ -40,6 +40,7 @@ import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
+  IntentExecutorSettlementLayer,
   ResolvedAction,
   ResolvedERC7739Policies,
   ResolvedPolicy,
@@ -82,6 +83,17 @@ export function resolveSessionData(
   definition: SessionDefinition,
   options: ResolveSessionOptions = {},
 ): SessionData {
+  return resolveSession(definition, options).data
+}
+
+/** The session data and the IntentExecutor layers its actions were scoped to. */
+function resolveSession(
+  definition: SessionDefinition,
+  options: ResolveSessionOptions,
+): {
+  readonly data: SessionData
+  readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
+} {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
   }
@@ -486,7 +498,7 @@ export function resolveSessionData(
     }
   }
   const enabledErc7739Policies = { ...erc7739Policies, erc1271Policies }
-  return {
+  const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
     // A one-time-use or stable-floor session must never share a permissionId
@@ -505,6 +517,7 @@ export function resolveSessionData(
     actions,
     claimPolicies,
   }
+  return { data, settlementLayers: settlementScope?.settlementLayers ?? [] }
 }
 
 const POLICY_COMPONENTS = [
@@ -704,7 +717,9 @@ export function toSession(
   options: ResolveSessionOptions = {},
 ): Session {
   const environment = options.environment ?? 'production'
-  const data = resolveSessionData(definition, {
+  // One resolution: 'all' depends on the clock and the catalog, so a second
+  // could keep a different set of layers than the session's actions.
+  const { data, settlementLayers } = resolveSession(definition, {
     environment,
     ...(options.wrappedNativeToken
       ? { wrappedNativeToken: options.wrappedNativeToken }
@@ -718,15 +733,6 @@ export function toSession(
   const expandedClaims = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))
     .map((permit) => expandCrossChainPermit(permit, environment).claim)
-  // The layers the scope kept: 'all' drops those this chain cannot settle.
-  const settlementLayers =
-    resolveSettlementScope(resolvedPermits, {
-      chainId: definition.chain.id,
-      environment,
-      account: definition.account,
-      oneTimeUse: Boolean(definition.oneTimeUse),
-      ...(options.settlement ? { settlement: options.settlement } : {}),
-    })?.settlementLayers ?? []
   return {
     chain: definition.chain,
     owners: definition.owners,

@@ -1,8 +1,11 @@
 import {
   type Address,
+  decodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
+  type Hex,
   keccak256,
+  maxUint256,
   toFunctionSelector,
   toHex,
 } from 'viem'
@@ -15,6 +18,7 @@ import {
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { encodeSessionPolicy } from '../policies/encode'
 import { resolveSessionData, toSession } from '../resolve'
 import type {
   CrossChainPermissionInput,
@@ -75,6 +79,7 @@ function definition(
 const scope = (
   permit: Partial<CrossChainPermissionInput>,
   settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+  oneTimeUse = true,
 ) => {
   const input = definition(permit).crossChainPermits?.[0]
   const resolved = resolveSettlementScope(
@@ -83,7 +88,7 @@ const scope = (
       chainId: base.id,
       environment: 'production',
       account: ACCOUNT,
-      oneTimeUse: true,
+      oneTimeUse,
       settlement,
     },
   )
@@ -103,6 +108,67 @@ const approve = (spender: Address, amount = 100n) =>
     functionName: 'approve',
     args: [spender, amount],
   })
+
+/** The ArgPolicy initData's rules and expression tree. */
+function decodeArgPolicy(initData: Hex) {
+  const [{ paramRules }] = decodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'valueLimitPerUse', type: 'uint256' },
+          {
+            name: 'paramRules',
+            type: 'tuple',
+            components: [
+              { name: 'rootNodeIndex', type: 'uint8' },
+              {
+                name: 'rules',
+                type: 'tuple[]',
+                components: [
+                  { name: 'condition', type: 'uint8' },
+                  { name: 'offset', type: 'uint64' },
+                  { name: 'isLimited', type: 'bool' },
+                  { name: 'ref', type: 'bytes32' },
+                  {
+                    name: 'usage',
+                    type: 'tuple',
+                    components: [
+                      { name: 'limit', type: 'uint256' },
+                      { name: 'used', type: 'uint256' },
+                    ],
+                  },
+                ],
+              },
+              { name: 'packedNodes', type: 'uint256[]' },
+            ],
+          },
+        ],
+      },
+    ] as const,
+    initData,
+  )
+  const node = (i: number) => {
+    const packed = paramRules.packedNodes[i]
+    return {
+      kind: ['rule', 'not', 'and', 'or'][Number(packed & 3n)],
+      rule: Number(packed >> 2n),
+      left: Number((packed >> 10n) & 0xffn),
+      right: Number((packed >> 18n) & 0xffn),
+    }
+  }
+  return { rules: paramRules.rules, root: node(paramRules.rootNodeIndex), node }
+}
+
+/** Base serves an OFT of its own USDC, so OFT and LZ can both settle one permit. */
+const USDC_OFT: SettlementCatalog = {
+  ...SETTLEMENT_CATALOG,
+  [base.id]: { ...BASE, oft: { adapter: OTHER, eid: 30184, token: USDC } },
+  [arbitrum.id]: {
+    ...SETTLEMENT_CATALOG[arbitrum.id],
+    oft: { ...OFT_ARB, token: USDC_ARB },
+  },
+}
 
 const digest = (def: SessionDefinition, settlement = SETTLEMENT_CATALOG) =>
   keccak256(
@@ -184,13 +250,52 @@ describe('multi-layer settlement permits', () => {
     expect(satisfiesRules(action, approve(MESSENGER, 1n), usage)).toBe(false)
   })
 
-  test('a refused spender does not draw on the cap', () => {
-    const action = approveOf(
-      scope({ settlementLayers: ['CCTP', 'LZ'] }).actions,
+  test('the approve compiles to one cap counter, after the spender OR', () => {
+    const [policy] =
+      approveOf(scope({ settlementLayers: ['CCTP', 'LZ'] }).actions).policies ??
+      []
+    if (policy?.type !== 'arg-policy') throw new Error('expected an ArgPolicy')
+    const { rules, root, node } = decodeArgPolicy(
+      encodeSessionPolicy(policy, 'production').initData,
     )
-    const usage: RuleUsage = new Map()
-    expect(satisfiesRules(action, approve(OTHER, 100n), usage)).toBe(false)
-    expect(satisfiesRules(action, approve(MESSENGER, 100n), usage)).toBe(true)
+    const limited = rules.filter((rule) => rule.isLimited)
+    expect(limited).toHaveLength(1)
+    expect(limited[0].offset).toBe(32n)
+    expect(limited[0].usage.limit).toBe(100n)
+    expect(root.kind).toBe('and')
+    expect(node(root.left).kind).toBe('or')
+    const cap = node(root.right)
+    expect(cap.kind).toBe('rule')
+    expect(rules[cap.rule].isLimited).toBe(true)
+  })
+
+  test('the order layers are named in does not change the session', () => {
+    const resolve = (
+      settlementLayers: CrossChainPermissionInput['settlementLayers'],
+    ) =>
+      resolveSessionData(definition({ settlementLayers }), {
+        settlement: SETTLEMENT_CATALOG,
+      })
+    expect(resolve(['LZ', 'CCTP'])).toEqual(resolve(['CCTP', 'LZ']))
+    expect(resolve(['CCTP', 'CCTP'])).toEqual(resolve(['CCTP']))
+  })
+
+  test('every action carries the once-policy, and the approve the time frame', () => {
+    const def = definition({
+      settlementLayers: ['CCTP', 'LZ'],
+      validUntil: VALID_UNTIL,
+    })
+    const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
+    for (const action of data.actions.slice(0, 3)) {
+      expect(action.actionPolicies.map((p) => p.policy)).toContain(ONE_TIME_USE)
+    }
+    const resolved = scope({
+      settlementLayers: ['CCTP', 'LZ'],
+      validUntil: VALID_UNTIL,
+    })
+    for (const action of resolved.actions) {
+      expect(action.policies?.map((p) => p.type)).toContain('time-frame')
+    }
   })
 
   test('refuses an approve to a layer the permit did not name', () => {
@@ -233,6 +338,43 @@ describe('multi-layer settlement permits', () => {
     expect(session.settlementLayers).toEqual(['CCTP', 'LZ'])
   })
 
+  test("'all' without oneTimeUse or maxAmount keeps CCTP, uncapped", () => {
+    const resolved = scope(
+      { from: { chain: base, token: USDC }, settlementLayers: 'all' },
+      SETTLEMENT_CATALOG,
+      false,
+    )
+    expect(resolved.settlementLayers).toEqual(['CCTP'])
+    const action = approveOf(resolved.actions)
+    expect(satisfiesRules(action, approve(MESSENGER, maxUint256))).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE))).toBe(false)
+  })
+
+  test("'all' drops a layer only when it refuses the permit", () => {
+    const { stablecoins: _, ...eco } = BASE.eco!
+    const broken = {
+      ...SETTLEMENT_CATALOG,
+      [base.id]: { ...BASE, eco: eco as never },
+    }
+    expect(() =>
+      scope(
+        { settlementLayers: 'all', maxFeeBps: 50, validUntil: VALID_UNTIL },
+        broken,
+      ),
+    ).toThrow(TypeError)
+  })
+
+  test('refuses OFT and LZ together: each pays a native fee', () => {
+    expect(
+      scope({ settlementLayers: ['OFT'] }, USDC_OFT).settlementLayers,
+    ).toEqual(['OFT'])
+    const message = 'OFT and LZ each pay a native LayerZero fee'
+    expect(() => scope({ settlementLayers: ['OFT', 'LZ'] }, USDC_OFT)).toThrow(
+      message,
+    )
+    expect(() => scope({ settlementLayers: 'all' }, USDC_OFT)).toThrow(message)
+  })
+
   test("'all' refuses a permit no layer can satisfy, saying why", () => {
     const refusal = () =>
       scope({
@@ -240,7 +382,8 @@ describe('multi-layer settlement permits', () => {
         settlementLayers: 'all',
       })
     expect(refusal).toThrow('no IntentExecutor layer can settle this permit')
-    expect(refusal).toThrow('CCTP: crossChainPermits: CCTP moves only USDC')
+    expect(refusal).toThrow('CCTP: CCTP moves only USDC')
+    expect(refusal).not.toThrow('CCTP: crossChainPermits:')
     expect(refusal).toThrow('OFT does not route to chain 8453')
   })
 
@@ -268,7 +411,7 @@ describe('multi-layer settlement permits', () => {
     [
       "maxFeeBps where 'all' drops ECO_IE",
       { settlementLayers: 'all', maxFeeBps: 50 },
-      'maxFeeBps applies only to ECO_IE',
+      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil',
     ],
   ] as const)('refuses %s', (_, permit, message) => {
     expect(() => scope(permit as Partial<CrossChainPermissionInput>)).toThrow(

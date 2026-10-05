@@ -15,17 +15,17 @@ import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
-import { served } from './served'
+import { SettlementLayerRefusal, served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
  * Settlement-scoped cross-chain permits (RHI-7826).
  *
- * A permit that names an IntentExecutor layer compiles to scoped actions with
+ * A permit that names IntentExecutor layers compiles to scoped actions with
  * its recipient, destination chain, token and amount pinned in each layer's
  * calldata. Those pins only bind when nothing else can run, so such a session
- * is restricted: the wildcard fallback is dropped and only the layer's approve
- * and settlement call remain.
+ * is restricted: the wildcard fallback is dropped and only the layers'
+ * settlement calls and their shared approve remain.
  */
 
 /** Each layer's settlement contract on a chain and the scoped call it makes. */
@@ -88,7 +88,7 @@ export function isIntentExecutorLayer(
   )
 }
 
-/** What `settlementLayers: 'all'` expands to: every layer that bridges. */
+/** The bridging layers, in the order a session compiles them; `'all'` names each. */
 const CROSS_CHAIN_LAYERS = ['CCTP', 'OFT', 'ECO_IE', 'LZ'] as const
 
 export function isSettlementScopedPermit(permit: CrossChainPermit): boolean {
@@ -133,11 +133,9 @@ export function resolveSettlementScope(
     )
   }
   const permit = scoped[0]
-  const all = permit.settlementLayers === 'all'
-  const layers =
-    permit.settlementLayers === 'all'
-      ? [...CROSS_CHAIN_LAYERS]
-      : (permit.settlementLayers ?? [])
+  const named = permit.settlementLayers
+  const all = named === 'all'
+  const layers = all ? [...CROSS_CHAIN_LAYERS] : (named ?? [])
   const permit2Layers = layers.filter((layer) => !isIntentExecutorLayer(layer))
   if (permit2Layers.length) {
     throw new Error(
@@ -164,7 +162,8 @@ export function resolveSettlementScope(
     maxAmount === undefined ? [] : [maxAmount],
   )
   // Every scoped action keeps its own counter, so a cap is a total only when
-  // the session settles once.
+  // the session settles once. With several layers each call is still capped on
+  // its own; only the shared approve cap bounds what they draw together.
   if (caps.length && !options.oneTimeUse) {
     throw new Error(
       'crossChainPermits: maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
@@ -306,7 +305,7 @@ export function resolveSettlementScope(
   }
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: an ${layer} permit requires oneTimeUse`,
       )
     }
@@ -335,29 +334,47 @@ export function resolveSettlementScope(
     return { layer, spender, action }
   }
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
-  // only the layers that can.
-  const skipped: string[] = []
-  const scopedLayers = requested
-    .filter((layer) => layer !== 'SAME_CHAIN_IE')
-    .flatMap((layer) => {
-      if (!all) return [scopeLayer(layer)]
-      try {
-        return [scopeLayer(layer)]
-      } catch (error) {
-        skipped.push(`${layer}: ${(error as Error).message}`)
-        return []
-      }
-    })
+  // only the layers that can; any other error still throws. A fixed order keeps
+  // the session the same however the layers were listed.
+  const skipped = new Map<string, string>()
+  const scopedLayers = CROSS_CHAIN_LAYERS.filter((layer) =>
+    requested.includes(layer),
+  ).flatMap((layer) => {
+    if (!all) return [scopeLayer(layer)]
+    try {
+      return [scopeLayer(layer)]
+    } catch (error) {
+      if (!(error instanceof SettlementLayerRefusal)) throw error
+      skipped.set(layer, error.message.replace(/^crossChainPermits: /, ''))
+      return []
+    }
+  })
+  const ecoSkipped = skipped.get('ECO_IE')
+  if (permit.maxFeeBps !== undefined && ecoSkipped !== undefined) {
+    throw new Error(
+      `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
+    )
+  }
   if (scopedLayers.length === 0) {
     throw new Error(
-      `crossChainPermits: no IntentExecutor layer can settle this permit on chain ${options.chainId} (${skipped.join('; ')})`,
+      `crossChainPermits: no IntentExecutor layer can settle this permit on chain ${options.chainId} (${[
+        ...skipped,
+      ]
+        .map(([layer, reason]) => `${layer}: ${reason}`)
+        .join('; ')})`,
+    )
+  }
+  // Each layer's call allows one send, but one burning transaction admits both,
+  // and each pays a native fee no pin bounds.
+  const feePaying = scopedLayers.filter(
+    ({ layer }) => LAYERS[layer].requiresOneTimeUse,
+  )
+  if (feePaying.length > 1) {
+    throw new Error(
+      `crossChainPermits: ${feePaying.map(({ layer }) => layer).join(' and ')} each pay a native LayerZero fee, so a permit may use only one of them; name the layers to keep`,
     )
   }
   const settlementLayers = scopedLayers.map(({ layer }) => layer)
-  // 'all' may have dropped ECO_IE, leaving maxFeeBps bounding nothing.
-  if (permit.maxFeeBps !== undefined && !settlementLayers.includes('ECO_IE')) {
-    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
-  }
   const spenders = scopedLayers
     .map(({ spender }) => spender)
     .filter(
@@ -369,14 +386,14 @@ export function resolveSettlementScope(
   // one carrying an app fee adds calls this session does not authorise.
   // Cumulative: the burning transaction admits every op after the burn, so a
   // per-call bound would let repeated approves grant the cap many times.
-  const capRules = () => (cap === undefined ? [] : [cumulativeCap(32n, cap)])
-  const spenderPins = () => anyOf(spenders.map((s) => allOf([pin(0n, s)])))
+  const capRules = cap === undefined ? [] : [cumulativeCap(32n, cap)]
+  const spenderPins = anyOf(spenders.map((s) => allOf([pin(0n, s)])))
   const approveActions = sourceTokens.map((token) =>
     withTimeFrame(
       spenders.length === 1
         ? swapAction(token, APPROVE_SELECTOR, [
             pin(0n, spenders[0]),
-            ...capRules(),
+            ...capRules,
           ])
         : {
             target: token,
@@ -385,16 +402,15 @@ export function resolveSettlementScope(
               {
                 type: 'arg-policy',
                 valueLimitPerUse: 0n,
-                // One cap rule, after the spender OR: the chain counts usage per
-                // rule, so every layer draws on the same budget, and a refused
-                // spender never reaches the counter.
+                // One cap rule after the spender OR: the chain counts usage per
+                // rule, so every layer draws on the same budget.
                 expression:
                   cap === undefined
-                    ? spenderPins()
+                    ? spenderPins
                     : {
                         type: 'and',
-                        left: spenderPins(),
-                        right: allOf(capRules()),
+                        left: spenderPins,
+                        right: allOf(capRules),
                       },
               },
             ],
