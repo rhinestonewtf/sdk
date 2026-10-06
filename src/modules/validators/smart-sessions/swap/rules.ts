@@ -82,6 +82,25 @@ export function cumulativeCap(
 }
 
 /**
+ * `cumulativeCap` with only the usage limit, which stores one slot fewer.
+ *
+ * It still bounds each call because the policies count a limited rule under
+ * any condition with checked math: `used + value > limit` is refused, and a
+ * sum past 2^256 reverts, so both fail closed.
+ */
+export function cumulativeOnly(
+  calldataOffset: bigint,
+  cap: bigint,
+): UniversalActionPolicyParamRule {
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset,
+    referenceValue: 0n,
+    usageLimit: cap,
+  }
+}
+
+/**
  * Wrap rules into the action's policy.
  *
  * `valueLimitPerUse: 0n` because the approve cap only bounds ERC-20 pulls —

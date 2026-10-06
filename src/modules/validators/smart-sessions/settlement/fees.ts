@@ -9,8 +9,9 @@ import {
   allOf,
   anyOf,
   cumulativeCap,
+  cumulativeOnly,
   pin,
-  UNIVERSAL_ACTION_MAX_RULES,
+  swapAction,
 } from '../swap/rules'
 import type {
   ArgPolicyExpression,
@@ -124,17 +125,6 @@ export function swapApprovesAsActions(
   })
 }
 
-/** The rules of an AND-only expression, left to right; undefined if it has an OR or NOT. */
-function conjunction(
-  expression: ArgPolicyExpression,
-): UniversalActionPolicyParamRule[] | undefined {
-  if (expression.type === 'rule') return [expression.rule]
-  if (expression.type !== 'and') return undefined
-  const left = conjunction(expression.left)
-  const right = conjunction(expression.right)
-  return left && right ? [...left, ...right] : undefined
-}
-
 /**
  * Allow `branch` as a shape of the (target, selector) call: a new action when the
  * layer makes no such call, else ORed into the layer's one params policy, since
@@ -144,34 +134,21 @@ function addFeeBranch(
   actions: ScopedAction[],
   target: Address,
   selector: Hex,
-  branch: ArgPolicyExpression,
+  branch: UniversalActionPolicyParamRule[] | ArgPolicyExpression,
   timeFrame: readonly SessionPolicy[],
 ): void {
   const index = actions.findIndex(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
   )
   if (index === -1) {
-    // A plain AND fits UniversalActionPolicy, whose enable writes fewer slots.
-    const rules = conjunction(branch)
-    actions.push({
-      target,
-      selector,
-      policies: [
-        rules && rules.length <= UNIVERSAL_ACTION_MAX_RULES
-          ? {
-              type: 'universal-action',
-              valueLimitPerUse: 0n,
-              rules: rules as [
-                UniversalActionPolicyParamRule,
-                ...UniversalActionPolicyParamRule[],
-              ],
-            }
-          : { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
-        ...timeFrame,
-      ],
-    })
+    // A rule list goes on UniversalActionPolicy, whose enable writes fewer slots.
+    const policies: SessionPolicy[] = Array.isArray(branch)
+      ? (swapAction(target, selector, branch).policies ?? [])
+      : [{ type: 'arg-policy', valueLimitPerUse: 0n, expression: branch }]
+    actions.push({ target, selector, policies: [...policies, ...timeFrame] })
     return
   }
+  const expression = Array.isArray(branch) ? allOf(branch) : branch
   const existing = actions[index]
   const policies = existing.policies ?? []
   const layer = policies.find(isParamsPolicy)
@@ -191,7 +168,7 @@ function addFeeBranch(
         ? {
             type: 'arg-policy',
             valueLimitPerUse: layer.valueLimitPerUse ?? 0n,
-            expression: anyOf([branch, layerExpression]),
+            expression: anyOf([expression, layerExpression]),
           }
         : p,
     ),
@@ -208,20 +185,13 @@ export function withFeeActions(
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  // `>= 0` with ref 0 stores one slot fewer than `<= cap`: the cumulative limit
-  // already bounds each call, since the counter starts at zero.
-  const cap = (): UniversalActionPolicyParamRule => ({
-    condition: 'greaterThanOrEqual',
-    calldataOffset: 32n,
-    referenceValue: 0n,
-    usageLimit: SETTLEMENT_FEE_CAP,
-  })
+  const cap = () => cumulativeOnly(32n, SETTLEMENT_FEE_CAP)
   for (const token of sourceTokens) {
     addFeeBranch(
       out,
       token,
       TRANSFER_SELECTOR,
-      allOf([pin(0n, fees.appFeeCollector), cap()]),
+      [pin(0n, fees.appFeeCollector), cap()],
       timeFrame,
     )
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
@@ -229,7 +199,7 @@ export function withFeeActions(
       out,
       token,
       APPROVE_SELECTOR,
-      allOf([pin(0n, fees.paymaster), cap()]),
+      [pin(0n, fees.paymaster), cap()],
       timeFrame,
     )
   }
@@ -238,11 +208,13 @@ export function withFeeActions(
     out,
     fees.paymaster,
     CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-    {
-      type: 'and',
-      left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
-      right: allOf([cap()]),
-    },
+    sourceTokens.length === 1
+      ? [pin(0n, sourceTokens[0]), cap()]
+      : {
+          type: 'and',
+          left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
+          right: allOf([cap()]),
+        },
     timeFrame,
   )
   return out
