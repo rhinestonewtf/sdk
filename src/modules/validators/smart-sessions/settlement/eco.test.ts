@@ -155,7 +155,6 @@ const base = {
   cap: 100n,
   maxFeeBps: 100,
   validUntil: 1_900_000_000n,
-  timeFrame: [],
 } as const
 
 describe('publishAndFund offsets', () => {
@@ -304,17 +303,6 @@ describe('scopeEco', () => {
       holds(twoLegs, publish({ destination: 10n, routeToken: USDC_OP })),
     ).toBe(true)
     expect(holds(twoLegs, publish({ destination: 10n }))).toBe(false)
-  })
-
-  test('the validity window bounds the publish', () => {
-    const timeFrame = {
-      type: 'time-frame',
-      validAfter: 1,
-      validUntil: 2,
-    } as const
-    expect(
-      scopeEco({ ...base, timeFrame: [timeFrame] }).policies,
-    ).toContainEqual(timeFrame)
   })
 
   test.each([
@@ -482,20 +470,8 @@ describe('scopeEco', () => {
     const at = (validUntil: bigint) => () => scopeEco({ ...base, validUntil })
     expect(at(NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
     expect(at(NOW + ECO_MIN_VALIDITY_SECONDS - 1n)).toThrow(
-      'ECO_IE needs validUntil at least 7 days after it can first act',
+      'ECO_IE needs validUntil at least 7 days ahead',
     )
-  })
-
-  test('a later validAfter moves the 7 days with it', () => {
-    const DAY = 86_400n
-    const from = (validAfter: bigint, validUntil: bigint) => () =>
-      scopeEco({ ...base, validAfter, validUntil })
-    expect(from(NOW + 30n * DAY, NOW + 31n * DAY)).toThrow(
-      'ECO_IE needs validUntil at least 7 days after it can first act',
-    )
-    expect(from(NOW + 30n * DAY, NOW + 37n * DAY)).not.toThrow()
-    // A validAfter already past changes nothing.
-    expect(from(NOW - DAY, NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
   })
 
   describe('the 1:1 floor needs every token served at 6 decimals', () => {

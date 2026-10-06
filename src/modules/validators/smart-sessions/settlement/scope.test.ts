@@ -437,12 +437,10 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
-    test('requires oneTimeUse, through its mandatory maxAmount', () => {
+    test('requires oneTimeUse, through its mandatory validUntil and maxAmount', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
-      ).toThrow(
-        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-      )
+      ).toThrow('supports validUntil only together with oneTimeUse')
     })
 
     test.each([
@@ -690,34 +688,23 @@ describe('resolveSettlementScope', () => {
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
   })
 
-  test('the validity window bounds every action', () => {
-    const validAfter = new Date(1_900_000_000_000)
-    const validUntil = new Date(2_000_000_000_000)
-    const actions = scope({ validAfter, validUntil })
-    expect(actions).toHaveLength(2)
-    for (const action of actions) {
-      expect(action.policies).toContainEqual({
-        type: 'time-frame',
-        validAfter: validAfter.getTime(),
-        validUntil: validUntil.getTime(),
-      })
-    }
-  })
-
-  test('a one-sided window leaves the other bound open', () => {
-    const [afterOnly] = scope({ validAfter: new Date(1_900_000_000_000) })
-    expect(afterOnly.policies).toContainEqual(
-      expect.objectContaining({
-        type: 'time-frame',
-        validAfter: 1_900_000_000_000,
-      }),
+  test.each([
+    ['validAfter', { validAfter: new Date(1_900_000_000_000) }],
+    [
+      'validAfter with validUntil',
+      {
+        validAfter: new Date(1_900_000_000_000),
+        validUntil: new Date(2_000_000_000_000),
+      },
+    ],
+    [
+      'validUntil without oneTimeUse',
+      { validUntil: new Date(2_000_000_000_000) },
+    ],
+  ])('refuses %s, a window that needs oneTimeUse', (_, window) => {
+    expect(() => scope(window)).toThrow(
+      'supports validUntil only together with oneTimeUse, and does not support validAfter',
     )
-    const [untilOnly] = scope({ validUntil: new Date(2_000_000_000_000) })
-    expect(untilOnly.policies).toContainEqual({
-      type: 'time-frame',
-      validAfter: 0,
-      validUntil: 2_000_000_000_000,
-    })
   })
 
   test('refuses a permit with no `from` legs', () => {

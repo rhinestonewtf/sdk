@@ -269,17 +269,33 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
     }
   })
 
-  test('each action keeps one params policy and the window', () => {
+  test('each action keeps one params policy', () => {
     for (const action of on()) {
       const params = (action.policies ?? []).filter(
         (p) => p.type === 'universal-action' || p.type === 'arg-policy',
       )
       expect(params).toHaveLength(1)
-      expect(action.policies).toContainEqual({
-        type: 'time-frame',
-        validAfter: 0,
-        validUntil: VALID_UNTIL.getTime(),
-      })
+    }
+  })
+
+  test('the once-policy carries validUntil, with no time frame', () => {
+    for (const action of on()) {
+      expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
+    }
+    const data = resolveSessionData(
+      definition(permit(layer, { allowFees: true })),
+      { settlement: WITH_FEES },
+    )
+    for (const action of data.actions) {
+      const once = action.actionPolicies.find(
+        (p) => p.policy.toLowerCase() === ONE_TIME_USE.toLowerCase(),
+      )
+      expect(once).toBeDefined()
+      const [, deadline] = decodeAbiParameters(
+        [{ type: 'uint256' }, { type: 'uint256' }],
+        once!.initData,
+      )
+      expect(deadline).toBe(BigInt(VALID_UNTIL.getTime() / 1000))
     }
   })
 
@@ -498,7 +514,7 @@ describe('allowFees refuses', () => {
 })
 
 test('the paymaster callback pins any of several `from` tokens, one shared budget', () => {
-  const [action] = withFeeActions([], [USDC, USDC_ARB], FEES, []).filter(
+  const [action] = withFeeActions([], [USDC, USDC_ARB], FEES).filter(
     (a) => a.selector === CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
   )
   expectRuns(action, [
@@ -514,7 +530,7 @@ test('the paymaster callback pins any of several `from` tokens, one shared budge
 
 test('refuses to join an action with no params policy', () => {
   expect(() =>
-    withFeeActions([{ target: USDC, selector: APPROVE }], [USDC], FEES, []),
+    withFeeActions([{ target: USDC, selector: APPROVE }], [USDC], FEES),
   ).toThrow('has no params policy for allowFees to join')
 })
 

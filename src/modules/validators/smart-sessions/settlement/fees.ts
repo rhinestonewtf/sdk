@@ -127,7 +127,6 @@ function addFeeBranch(
   target: Address,
   selector: Hex,
   branch: ArgPolicyExpression,
-  timeFrame: readonly SessionPolicy[],
 ): void {
   const index = actions.findIndex(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
@@ -138,7 +137,6 @@ function addFeeBranch(
       selector,
       policies: [
         { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
-        ...timeFrame,
       ],
     })
     return
@@ -174,7 +172,6 @@ export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: Fees,
-  timeFrame: readonly SessionPolicy[],
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
@@ -186,7 +183,6 @@ export function withFeeActions(
       token,
       TRANSFER_SELECTOR,
       allOf([pin(0n, fees.appFeeCollector), cap()]),
-      timeFrame,
     )
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
     addFeeBranch(
@@ -194,20 +190,13 @@ export function withFeeActions(
       token,
       APPROVE_SELECTOR,
       allOf([pin(0n, fees.paymaster), cap()]),
-      timeFrame,
     )
   }
   // One cap rule after the OR, so every token draws on the same budget.
-  addFeeBranch(
-    out,
-    fees.paymaster,
-    CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-    {
-      type: 'and',
-      left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
-      right: allOf([cap()]),
-    },
-    timeFrame,
-  )
+  addFeeBranch(out, fees.paymaster, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR, {
+    type: 'and',
+    left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
+    right: allOf([cap()]),
+  })
   return out
 }
