@@ -670,9 +670,11 @@ describe('getSessionData', () => {
       ],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
-    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
-    expect(data.claimPolicies[0].initData).not.toBe('0x')
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    )
+    expect(data.erc7739Policies.erc1271Policies[0].initData).not.toBe('0x')
   })
 })
 
@@ -696,11 +698,13 @@ describe('crossChainPermits expansion', () => {
       ],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
-    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    )
     // modeConfig header: FIELD_ARBITER bit (bit 0) set → arbiter check on
     const modeConfig = Number.parseInt(
-      data.claimPolicies[0].initData.slice(2, 10),
+      data.erc7739Policies.erc1271Policies[0].initData.slice(2, 10),
       16,
     )
     expect(modeConfig & 0b11).toBe(0b01)
@@ -765,7 +769,7 @@ describe('crossChainPermits expansion', () => {
     })
     expect(session.claimPolicies).toHaveLength(2)
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(2)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(2)
   })
 
   test('multiple permits → N claim policies', () => {
@@ -787,7 +791,9 @@ describe('crossChainPermits expansion', () => {
         },
       ],
     })
-    expect(getSessionData(session).claimPolicies).toHaveLength(3)
+    expect(
+      getSessionData(session).erc7739Policies.erc1271Policies,
+    ).toHaveLength(3)
   })
 
   test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
@@ -801,9 +807,9 @@ describe('crossChainPermits expansion', () => {
       crossChainPermits: [{ settlementLayers: ['ECO'] }],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
     const modeConfig = Number.parseInt(
-      data.claimPolicies[0].initData.slice(2, 10),
+      data.erc7739Policies.erc1271Policies[0].initData.slice(2, 10),
       16,
     )
     // arbiter bit set, token-in / token-out bits unset (no from/to)
@@ -827,8 +833,10 @@ describe('crossChainPermits expansion', () => {
         },
       ],
     })
-    const bare = getSessionData(session).claimPolicies[0].initData
-    const tokened = getSessionData(withTokens).claimPolicies[0].initData
+    const bare =
+      getSessionData(session).erc7739Policies.erc1271Policies[0].initData
+    const tokened =
+      getSessionData(withTokens).erc7739Policies.erc1271Policies[0].initData
     // Adding source/dest tokens flips additional mode bits + lengthens the
     // payload, so the two encodings must differ.
     expect(bare).not.toBe(tokened)

@@ -412,6 +412,7 @@ function resolveSession(
     addresses,
   })
   let erc1271Policies = erc7739Policies.erc1271Policies
+  let onceErc1271Policy: { policy: Address; initData: Hex } | undefined
   if (definition.oneTimeUse) {
     if (!addresses.oneTimeUseId) {
       throw new Error(
@@ -458,30 +459,46 @@ function resolveSession(
         }),
       ),
     ]
-    // The Permit2/arbiter route enforces via the 1271 list. The once-policy's
-    // settling proof only binds when the digest-binding Permit2 claim policy sits
-    // on the SAME surface (the 1271 list is an AND: it bounds WHAT may settle, the
-    // once-policy bounds HOW MANY TIMES), so the claim policies move here from
-    // `claimPolicies`. An executor-only session keeps the signing list it asked
-    // for: a lone once-policy there would approve a Permit2 transfer nominated by
-    // an executor-route consumeFor, with no claim policy bounding the spender.
-    if (claimPolicies.length > 0) {
-      const signing = definition.signing
+    onceErc1271Policy = once
+  }
+  // Permit2 verifies a contract owner through `isValidSignature`, so claim
+  // policies only bind from the 1271 list; the on-chain `claimPolicies` field
+  // feeds the Compact claim path, which the manager skips entirely under
+  // NO_LOCKTAG. For a one-time-use session they must additionally sit on the
+  // SAME surface as the once-policy (the 1271 list is an AND: it bounds WHAT may
+  // settle, the once-policy bounds HOW MANY TIMES). A session declaring none
+  // keeps the signing list it asked for: a lone once-policy there would approve a
+  // Permit2 transfer nominated by an executor-route consumeFor, with no claim
+  // policy bounding the spender.
+  const claimPoliciesMoved = claimPolicies.length > 0
+  if (claimPoliciesMoved) {
+    // The claim policies take over the 1271 list, so anything the caller asked
+    // for on that surface would be dropped: a validity window lives on the
+    // signing policy, and a scoped or disabled mode decides the 7739 content the
+    // claim policy is reached through. Refuse rather than silently discard it.
+    const signing = definition.signing
+    if (signing !== undefined) {
       if (
-        signing !== undefined &&
         signing.mode !== 'disabled' &&
         (signing.validAfter !== undefined || signing.validUntil !== undefined)
       ) {
         throw new Error(
-          'oneTimeUse with claim policies cannot take a signing validity window',
+          "Claim policies replace the session's signing policy on the ERC-1271 list, which is where a signing validity window lives; drop validAfter/validUntil or the claim policies",
         )
       }
-      // Replace rather than append: leaving the permissive sudo entry on the 1271
-      // list would let the arbiter route fall through to it, so the once-policy
-      // would never bound the settlement.
-      erc1271Policies = [...claimPolicies, once]
-      claimPolicies = []
+      if (signing.mode !== 'unrestricted') {
+        throw new Error(
+          `Claim policies are reached through the direct-mode ERC-1271 surface, which \`signing: { mode: '${signing.mode}' }\` does not enable; drop the signing mode or the claim policies`,
+        )
+      }
     }
+    // Replace rather than append. The list is an AND, so a permissive sudo entry
+    // alongside cannot weaken it — but it would be dead config that reads as a
+    // signing capability the session no longer has.
+    erc1271Policies = onceErc1271Policy
+      ? [...claimPolicies, onceErc1271Policy]
+      : claimPolicies
+    claimPolicies = []
   }
   // Enabling keeps one config per policy contract and action, so a second
   // entry for the same policy would overwrite the first instead of ANDing.
@@ -501,12 +518,17 @@ function resolveSession(
   const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use or stable-floor session must never share a permissionId
-    // with another session: enabling it would union with that session's
-    // policies, and for a floor that means the unfloored swap actions.
+    // A one-time-use, stable-floor or claim-policy session must never share a
+    // permissionId with another session: enabling it would union with that
+    // session's policies, and for a floor that means the unfloored swap actions.
+    // A claim-policy session is never `restricted`, so without this it would
+    // salt to zeroHash and collide with any plain session for the same signer,
+    // leaving that session's signing policy beside the claim policy.
     salt: sessionSalt(
-      definition.oneTimeUse || stableFloor ? 'strict' : definition.saltMode,
-      restricted || Boolean(definition.oneTimeUse),
+      definition.oneTimeUse || stableFloor || claimPoliciesMoved
+        ? 'strict'
+        : definition.saltMode,
+      restricted || Boolean(definition.oneTimeUse) || claimPoliciesMoved,
       {
         actions: v1SaltActions ?? actions,
         erc7739Policies: enabledErc7739Policies,
@@ -756,16 +778,16 @@ export function toSession(
     actions: data.actions,
     // Keep the raw claim policies on the high-level session for both routes: the
     // permit2 settlement signature builds their calldata from here (see
-    // claimPolicyData in session-signing). For a one-time-use session they are
-    // enforced via the erc1271 surface (already in data.erc7739Policies), so the
-    // flag tells getSessionData NOT to re-encode them onto the on-chain claim
-    // (lockTag) surface — otherwise they'd settle on both surfaces.
+    // claimPolicyData in session-signing). They are enforced via the erc1271
+    // surface (already in data.erc7739Policies), so the flag tells getSessionData
+    // NOT to re-encode them onto the on-chain claim (lockTag) surface — which the
+    // manager drops under NO_LOCKTAG anyway.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    claimPoliciesEnforcedVia1271:
+      (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(settlementLayers.length ? { settlementLayers } : {}),
     ...(definition.oneTimeUse && {
-      claimPoliciesEnforcedVia1271:
-        (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,
       oneTimeUse: {
         id: definition.oneTimeUse.id,
         policy: resolvePolicyAddresses(definition.policyAddresses)

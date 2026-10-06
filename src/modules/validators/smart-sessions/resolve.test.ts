@@ -3,14 +3,20 @@ import { size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { encodeDisableSessionCall, encodeEnableSessionCall } from './calls'
 import {
   resolveCrossChainPermission,
   toCrossChainPermissionInput,
 } from './cross-chain-permits'
+import { getSessionData } from './digest'
 import { buildSmartSessionMockSignature } from './mock-signature'
-import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
-import type { SessionPolicy } from './types'
+import {
+  DEFAULT_POLICY_ADDRESSES,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  toSession,
+} from './resolve'
+import type { SessionDefinition, SessionPolicy } from './types'
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -401,5 +407,92 @@ describe('restricted session guards', () => {
         restrictToActions: true,
       }),
     ).toThrow(/Duplicate scoped action/)
+  })
+})
+
+describe('Permit2 claim policy placement', () => {
+  const definition: SessionDefinition = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    claimPolicies: [
+      {
+        type: 'permit2',
+        recipients: [{ chain: base, address: accountA.address }],
+      },
+    ],
+  }
+
+  test('enforces declared claim policies from the ERC-1271 slot', () => {
+    // Permit2 verifies via `isValidSignature`, which only consults this slot.
+    const policies = toSession(definition).erc7739Policies.erc1271Policies
+    expect(policies).toHaveLength(1)
+    expect(policies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(policies[0].initData).not.toBe('0x')
+  })
+
+  test('leaves the Compact claim slot empty', () => {
+    // The manager skips that slot entirely under NO_LOCKTAG, which is what the
+    // SDK enables with, so anything left here is silently dropped.
+    expect(getSessionData(toSession(definition)).claimPolicies).toEqual([])
+  })
+
+  test('keeps the direct-mode content entry so the policy is reachable', () => {
+    const content = toSession(definition).erc7739Policies.allowedERC7739Content
+    expect(content).toHaveLength(1)
+    expect(content[0].appDomainSeparator).toBe(zeroHash)
+  })
+
+  // The modes that would leave the policy on a surface it cannot be reached
+  // through, rather than silently producing a session that can never settle.
+  test.each([
+    { mode: 'disabled' },
+    {
+      mode: 'scoped',
+      allowedContents: [
+        {
+          domain: { name: 'x' },
+          types: { M: [{ name: 'a', type: 'uint256' }] },
+          primaryType: 'M',
+        },
+      ],
+    },
+  ] as const)('rejects claim policies with $mode signing', (signing) => {
+    expect(() => toSession({ ...definition, signing })).toThrow(
+      /does not enable/,
+    )
+  })
+
+  test('rejects a signing validity window alongside claim policies', () => {
+    expect(() =>
+      toSession({
+        ...definition,
+        signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
+      }),
+    ).toThrow(/signing validity window/)
+  })
+
+  test('salts the session so it cannot share a permissionId with a plain one', () => {
+    // Unsalted, `enable` would union this session's 1271 list with the plain
+    // session's signing policy under the same permissionId.
+    const plain = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+    })
+    expect(toSession(definition).permissionId).not.toBe(plain.permissionId)
+  })
+
+  test('keeps the declared config on the session for signing', () => {
+    // Signing reads this to build the policy calldata.
+    expect(toSession(definition).claimPolicies).toHaveLength(1)
+  })
+
+  test('does not displace the signing policy when none is declared', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+    })
+    expect(session.erc7739Policies.erc1271Policies[0].policy).toBe(
+      DEFAULT_POLICY_ADDRESSES.sudo,
+    )
   })
 })
