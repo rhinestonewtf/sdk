@@ -70,6 +70,16 @@ describe('Smart Sessions claim policies', () => {
     )
   })
 
+  test('bounds the permit deadline by the once-policy deadline', () => {
+    expect(
+      expandCrossChainPermit({ validUntil: 200n }, 'production', 150n).claim
+        .permitDeadline,
+    ).toEqual({ min: undefined, max: 150n })
+    expect(
+      expandCrossChainPermit({}, 'production', 150n).claim.permitDeadline,
+    ).toEqual({ min: undefined, max: 150n })
+  })
+
   test('keeps solver-network ECO blocked instead of authorizing the generic IntentExecutor adapter', () => {
     const { claim } = expandCrossChainPermit(
       { settlementLayers: ['ECO'] },

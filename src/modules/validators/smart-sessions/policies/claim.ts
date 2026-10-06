@@ -13,6 +13,7 @@ import type {
 export function expandCrossChainPermit(
   permit: CrossChainPermit,
   environment: 'production' | 'development',
+  onceDeadline?: bigint,
 ): {
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
@@ -48,9 +49,11 @@ export function expandCrossChainPermit(
       chain,
       address: recipient as `0x${string}` | 'any',
     }))
+  // The once-policy refuses a settlement past its deadline, so the claim does too.
+  const maxDeadline = onceDeadline ?? permit.validUntil
   const permitDeadline =
-    permit.validAfter !== undefined || permit.validUntil !== undefined
-      ? { min: permit.validAfter, max: permit.validUntil }
+    permit.validAfter !== undefined || maxDeadline !== undefined
+      ? { min: permit.validAfter, max: maxDeadline }
       : undefined
   const claim: Permit2ClaimPolicy = {
     type: 'permit2',

@@ -11,8 +11,11 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { getSessionData } from './digest'
-import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
-import { toSession } from './resolve'
+import {
+  INTENT_EXECUTION_POLICY_ADDRESS,
+  TIME_FRAME_POLICY_ADDRESS,
+} from './policies/addresses'
+import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
 import type { ResolvedPolicy, SessionDefinition } from './types'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -527,4 +530,75 @@ describe('a session whose window became the once-policy deadline', () => {
   test.each(Object.entries(WINDOWED))('%s', (name, definition) => {
     expect(fingerprint(definition)).toEqual(WINDOWED_PINS[name])
   })
+})
+
+// A Permit2-layer permit always keeps its target-whitelisted fallback, whatever
+// guardrails it sets.
+describe('a Permit2-layer permit keeps the intent-execution fallback', () => {
+  const fallbackPolicies = (definition: SessionDefinition) =>
+    getSessionData(toSession(definition))
+      .actions.filter((action) =>
+        isAddressEqual(
+          action.actionTarget,
+          SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+        ),
+      )
+      .map((action) => action.actionPolicies.map((p) => p.policy))
+  const permit = (window: Window) => ({
+    from: { chain: base, token: USDC },
+    to: { chain: arbitrum, token: USDC_ARB },
+    settlementLayers: ['ACROSS' as const],
+    ...window,
+  })
+
+  test('validUntil and oneTimeUse, no maxAmount', () => {
+    const definition = {
+      chain: base,
+      owners,
+      ...otu(),
+      crossChainPermits: [permit({ validUntil: UNTIL })],
+    } as SessionDefinition
+    expect(fallbackPolicies(definition)).toEqual([
+      [INTENT_EXECUTION_POLICY_ADDRESS, ONE_TIME_USE],
+    ])
+  })
+
+  test('neither maxAmount nor validUntil, with oneTimeUse', () => {
+    const definition = {
+      chain: base,
+      owners,
+      ...otu(),
+      crossChainPermits: [permit({})],
+    } as SessionDefinition
+    expect(fallbackPolicies(definition)).toEqual([
+      [INTENT_EXECUTION_POLICY_ADDRESS, ONE_TIME_USE],
+    ])
+  })
+
+  test('neither maxAmount nor validUntil, without oneTimeUse', () => {
+    const definition = {
+      chain: base,
+      owners,
+      crossChainPermits: [permit({})],
+    } as SessionDefinition
+    expect(fallbackPolicies(definition)).toEqual([
+      [INTENT_EXECUTION_POLICY_ADDRESS],
+    ])
+  })
+})
+
+test('a Permit2 claim admits no permit deadline past the once-policy deadline', () => {
+  const signingPolicies = (oneTimeUseUntil: Date, permitUntil: Date) =>
+    getSessionData(
+      toSession({
+        chain: base,
+        owners,
+        ...otu(oneTimeUseUntil),
+        crossChainPermits: [permit2Permit({ validUntil: permitUntil })],
+      } as SessionDefinition),
+    ).erc7739Policies.erc1271Policies
+  const earlier = at(T - 100n)
+  expect(signingPolicies(earlier, UNTIL)).toEqual(
+    signingPolicies(earlier, earlier),
+  )
 })

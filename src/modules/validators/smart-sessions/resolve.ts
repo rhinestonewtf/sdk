@@ -320,6 +320,24 @@ function resolveSession(
       )
     }
   }
+  const validUntil = definition.oneTimeUse?.validUntil
+  // A deadline that rounds to 0 would read as "never expires"; a past one only
+  // fails at enable, as an opaque signature error.
+  if (
+    validUntil !== undefined &&
+    !(
+      Number.isFinite(validUntil.getTime()) && validUntil.getTime() > Date.now()
+    )
+  ) {
+    throw new Error('oneTimeUse.validUntil must be a valid Date in the future')
+  }
+  // Every other validUntil on the session joins it as the session deadline.
+  const onceDeadline = definition.oneTimeUse
+    ? [settlementScope?.onceDeadline, ...windowDeadlines].reduce(
+        minDefined,
+        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+      )
+    : undefined
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -343,7 +361,7 @@ function resolveSession(
   }
   const expandedPermits = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))
-    .map((permit) => expandCrossChainPermit(permit, environment))
+    .map((permit) => expandCrossChainPermit(permit, environment, onceDeadline))
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -439,7 +457,7 @@ function resolveSession(
         }))
       : userActions
   let actions: ResolvedAction[] =
-    userActions.length || rawActions.length || permitFallbackPolicies.length
+    userActions.length || rawActions.length || expandedPermits.length
       ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
@@ -525,28 +543,10 @@ function resolveSession(
         'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
       )
     }
-    const validUntil = definition.oneTimeUse.validUntil
-    // A deadline that rounds to 0 would read as "never expires"; a past one only
-    // fails at enable, as an opaque signature error.
-    if (
-      validUntil !== undefined &&
-      !(
-        Number.isFinite(validUntil.getTime()) &&
-        validUntil.getTime() > Date.now()
-      )
-    ) {
-      throw new Error(
-        'oneTimeUse.validUntil must be a valid Date in the future',
-      )
-    }
-    // Every other validUntil on the session joins it as the session deadline.
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline: [settlementScope?.onceDeadline, ...windowDeadlines].reduce(
-        minDefined,
-        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
-      ),
+      deadline: onceDeadline,
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via

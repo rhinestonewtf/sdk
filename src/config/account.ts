@@ -239,9 +239,10 @@ interface SpendingLimitsPolicy {
 }
 
 /**
- * A raw action's time window. A session's time window is expressed as the
- * one-time-use deadline: on a `oneTimeUse` session, `validUntil` (unix ms)
- * joins it and `validAfter` must be `0`. Any other use throws.
+ * A raw action's time window. Optional: bound a session with
+ * `oneTimeUse.validUntil`. On a `oneTimeUse` session, `validUntil` (unix ms)
+ * can only shorten that one session-wide deadline (the earliest applies), and
+ * `validAfter` must be `0`. Any other use throws.
  */
 interface TimeFramePolicy {
   type: 'time-frame'
@@ -374,8 +375,9 @@ interface CrossChainPermit {
    */
   to?: ToLeg[]
   /**
-   * Upper bound on the permit deadline (Permit2 deadline) — unix seconds.
-   * Requires `oneTimeUse`; see {@link CrossChainPermissionInput}.
+   * Optional upper bound on the permit deadline (Permit2 deadline) — unix
+   * seconds. Requires `oneTimeUse` and can only shorten its session-wide
+   * deadline; see {@link CrossChainPermissionInput}.
    */
   validUntil?: bigint
   /** Not supported; a permit that sets it throws. */
@@ -470,10 +472,10 @@ interface CrossChainPermissionInput {
    */
   to?: ToLeg | ToLeg[]
   /**
-   * Upper bound on the permit deadline. A session's time window is expressed
-   * as the one-time-use deadline, so this requires `oneTimeUse` and becomes
-   * that deadline (the earliest `validUntil` in the session applies). A
-   * future `Date`.
+   * Optional upper bound on the permit deadline. Bound a session with
+   * `oneTimeUse.validUntil`; this requires `oneTimeUse` and can only shorten
+   * that one session-wide deadline (the earliest `validUntil` in the session
+   * applies, to the permit deadline too). A future `Date`.
    */
   validUntil?: Date
   /** Not supported; a permit that sets it throws. */
@@ -693,10 +695,10 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Upper bound on `block.timestamp`. A session's time window is expressed as
-   * the one-time-use deadline, so this requires `oneTimeUse` and becomes that
-   * deadline (the earliest `validUntil` in the session applies), bounding the
-   * whole session. A future `Date`.
+   * Optional. Bound a session with `oneTimeUse.validUntil`; this requires
+   * `oneTimeUse` and can only shorten that one session-wide deadline (the
+   * earliest `validUntil` in the session applies). It bounds the whole
+   * session, not this function alone. A future `Date`.
    */
   validUntil?: Date
   /** Not supported; a permission that sets it throws. */
@@ -993,12 +995,13 @@ interface SessionDefinition<
    * that is also one of several sources. A Permit2-route session must also supply `claimPolicies`, each
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
-   * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
-   * A session's time window is expressed as this deadline: a `validUntil` on a
-   * permission function, a raw `time-frame` action policy or a
-   * `crossChainPermits` entry joins it (the earliest applies), and the deadline
-   * bounds the whole session, including its `permissions` and `actions`.
-   * Without `oneTimeUse` those fields throw, and `validAfter` always does.
+   * `validUntil` (a future Date; omit for never) is the way to bound a session
+   * in time: one deadline for the whole session, including its `permissions`,
+   * `actions` and `crossChainPermits`. A `validUntil` on a permission function,
+   * a raw `time-frame` action policy or a `crossChainPermits` entry is optional
+   * and can only shorten it (the earliest applies); there is no per-function
+   * deadline. Without `oneTimeUse` those fields throw, and `validAfter` always
+   * does.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }

@@ -243,13 +243,7 @@ export function resolveSettlementScope(
     }),
   )
 
-  // resolve folds validUntil into the once-policy on every action. A deadline of
-  // 0 would read as "never expires".
-  if (permit.validUntil !== undefined && permit.validUntil <= 0n) {
-    throw new Error(
-      'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
-    )
-  }
+  // resolve has refused a validUntil that is not in the future.
   const onceDeadline =
     permit.validUntil === undefined ? {} : { onceDeadline: permit.validUntil }
 
