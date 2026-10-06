@@ -212,11 +212,11 @@ describe('multi-layer settlement permits', () => {
     )
     expect(digests).toMatchInlineSnapshot(`
       {
-        "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0xa6533b46c8986ff17e94fa85e88ed46a22a8436e3320971cc89b64d65534fe6c",
-        "ECO_IE": "0x7a4abefe796cb5d864b27df6ee3ff2b723a065dbf0131537e382859ae3177d8e",
-        "LZ": "0xd43889c3e9ec91179abefe75255724b8aba43f4661ffe361034eac3fd58ded1c",
-        "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",
+        "CCTP": "0x579b4c3f004b4df034c8e28b13a5f5aadca12060696a508e3c33d921d58a27f7",
+        "CCTP with fees": "0xad0b4cc820007a2a4e1c877c325187d7e04992ffaaa0a11c742f8c41f1e59eb0",
+        "ECO_IE": "0xc4372f0f561d73282eae7fd80b68e608e28e925a959ff18ae68fcedf9beb0266",
+        "LZ": "0xba3c80b97db0739ec489f2be4f0c5c843e1b5c31eac2fb6fdab17ad458eca185",
+        "OFT": "0xafb81473b9789f2853937b3fd3fc384cb4832bec534fd853d45830f27aec0c45",
       }
     `)
   })

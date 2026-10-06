@@ -285,23 +285,29 @@ function resolveSession(
         ]
       : []),
     ...(restricted ? [] : [fallbackAction]),
-    {
-      target: DUMMY_PRECLAIMOP_TARGET,
-      selector: DUMMY_PRECLAIMOP_SELECTOR,
-      // The real pre-claim op carries no value, so cap it for a restricted
-      // session rather than granting sudo, which would let this injected action
-      // send native value to the dummy target.
-      //
-      // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer` does
-      // `require(valueLimit != 0)`, so a zero limit reverts while the policy is
-      // being installed. That made every restricted session impossible to
-      // enable — the revert surfaces as `InvalidSignature()` from the emissary,
-      // which reads as a signature problem rather than a policy-init one.
-      // 1 wei is the smallest limit that installs, and the op carries no value.
-      policies: restricted
-        ? [{ type: 'value-limit', limit: 1n }]
-        : [{ type: 'sudo' }],
-    },
+    // A one-time-use session enables with its burn, which replaces the dummy op.
+    ...(definition.oneTimeUse
+      ? []
+      : [
+          {
+            target: DUMMY_PRECLAIMOP_TARGET,
+            selector: DUMMY_PRECLAIMOP_SELECTOR,
+            // The real pre-claim op carries no value, so cap it for a
+            // restricted session rather than granting sudo, which would let
+            // this injected action send native value to the dummy target.
+            //
+            // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer`
+            // does `require(valueLimit != 0)`, so a zero limit reverts while
+            // the policy is being installed. That made every restricted
+            // session impossible to enable — the revert surfaces as
+            // `InvalidSignature()` from the emissary, which reads as a
+            // signature problem rather than a policy-init one. 1 wei is the
+            // smallest limit that installs, and the op carries no value.
+            policies: restricted
+              ? [{ type: 'value-limit', limit: 1n }]
+              : [{ type: 'sudo' }],
+          } satisfies ScopedAction,
+        ]),
   ]
   if (restricted && !userActions.length && !rawActions.length) {
     throw new Error(

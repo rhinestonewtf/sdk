@@ -813,7 +813,7 @@ describe('intent workflow', () => {
       )
 
     test.each(Object.entries(definitions(true)))(
-      'a one-time-use %s session admits every op it enables with',
+      'a one-time-use %s session admits every op it enables with, and not the dummy',
       async (_, definition) => {
         const session = sessionOf(definition)
         const prepared = await prepareEnabling(session)
@@ -822,6 +822,7 @@ describe('intent workflow', () => {
         for (const op of preClaim) expect(hasAction(session, op)).toBe(true)
         // The orchestrator rewrites a destination burn to `consume`.
         expect(hasAction(session, { to: POLICY, data: CONSUME })).toBe(true)
+        expect(hasAction(session, DUMMY)).toBe(false)
       },
     )
 
