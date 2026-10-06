@@ -25,7 +25,9 @@ import type { SettlementAddresses, SettlementCatalog } from './types'
 
 /**
  * `allowFees` (RHI-7884): the app-fee transfer and the unsponsored-gas paymaster
- * calls the orchestrator adds before the layer calls, each capped at 5 USD.
+ * calls the orchestrator adds before the layer calls. Each call has its own
+ * 5 USD cap: per `from` token for the transfer and approve, one shared across
+ * tokens for the callback.
  */
 
 /** 5 USD at 6 decimals. Cumulative: the burning transaction admits every later op. */
