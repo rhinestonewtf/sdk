@@ -728,27 +728,22 @@ describe('crossChainPermits expansion', () => {
     ).toBe(true)
   })
 
-  test('permit with validUntil adds a TimeFramePolicy to the fallback', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-          validUntil: new Date(2_000_000_000 * 1000),
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    const fallback = data.actions.find(
-      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )!
-    expect(
-      fallback.actionPolicies.some(
-        (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
-      ),
-    ).toBe(true)
+  test('permit with validUntil requires oneTimeUse', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+            validUntil: new Date(2_000_000_000 * 1000),
+          },
+        ],
+      }),
+    ).toThrow(
+      'crossChainPermits: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
+    )
   })
 
   test('user claimPolicies + crossChainPermits are concatenated', () => {
@@ -835,40 +830,22 @@ describe('crossChainPermits expansion', () => {
     expect(bare.length).toBeLessThan(tokened.length)
   })
 
-  test('one-sided validAfter → TimeFramePolicy gets an always-passing far-future validUntil (not 0)', () => {
-    // Regression: a permit with only `validAfter` must NOT produce a
-    // TimeFramePolicy with validUntil=0 (expired the instant validAfter is
-    // reached). It should default to the year-2100 sentinel, mirroring the
-    // permission resolver.
-    const validAfterSeconds = 1_700_000_000 // unix seconds
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-          validAfter: new Date(validAfterSeconds * 1000),
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    const fallback = data.actions.find(
-      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )!
-    const timeFrame = fallback.actionPolicies.find(
-      (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
+  test('permit with validAfter is refused', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+            validAfter: new Date(1_700_000_000 * 1000),
+          },
+        ],
+      }),
+    ).toThrow(
+      'crossChainPermits: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
-    expect(timeFrame).toBeDefined()
-    // initData is encodePacked(['uint48','uint48'], [validUntil_s, validAfter_s]):
-    // 6 bytes (12 hex chars) each, validUntil first.
-    const hex = timeFrame!.initData.slice(2)
-    const validUntilSec = Number.parseInt(hex.slice(0, 12), 16)
-    const validAfterSec = Number.parseInt(hex.slice(12, 24), 16)
-    expect(validAfterSec).toBe(validAfterSeconds)
-    // Far-future sentinel (year 2100) in seconds — must be well in the future.
-    expect(validUntilSec).toBe(4_102_444_800)
-    expect(validUntilSec).toBeGreaterThan(validAfterSec)
   })
 })
 

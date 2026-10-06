@@ -55,12 +55,16 @@ describe('Smart Sessions claim policies', () => {
       recipients: [{ chain: arbitrum, address: recipient }],
       permitDeadline: { min: 100n, max: undefined },
     })
-    expect(afterOnly.fallbackPolicies).toHaveLength(2)
+    expect(afterOnly.fallbackPolicies).toEqual([
+      { type: 'spending-limits', limits: [{ token: source, amount: 10n }] },
+    ])
 
     const untilOnly = expandCrossChainPermit({ validUntil: 200n }, 'production')
-    expect(untilOnly.fallbackPolicies).toEqual([
-      { type: 'time-frame', validUntil: 200_000, validAfter: 0 },
-    ])
+    expect(untilOnly.claim.permitDeadline).toEqual({
+      min: undefined,
+      max: 200n,
+    })
+    expect(untilOnly.fallbackPolicies).toEqual([])
     expect(expandCrossChainPermit({}, 'production').fallbackPolicies).toEqual(
       [],
     )

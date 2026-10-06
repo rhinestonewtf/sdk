@@ -1,5 +1,4 @@
 import { isAddressEqual } from 'viem'
-import { FAR_FUTURE_MS } from '../../permissions'
 import { getArbitersForSettlementLayers } from '../../policies/claim/arbiters'
 import type {
   InternalPermit2ClaimPolicy,
@@ -71,17 +70,6 @@ export function expandCrossChainPermit(
     .filter(({ maxAmount }) => maxAmount !== undefined)
     .map(({ token, maxAmount }) => ({ token, amount: maxAmount as bigint }))
   if (limits.length) fallbackPolicies.push({ type: 'spending-limits', limits })
-  if (permitDeadline) {
-    fallbackPolicies.push({
-      type: 'time-frame',
-      validUntil:
-        permit.validUntil === undefined
-          ? FAR_FUTURE_MS
-          : Number(permit.validUntil * 1000n),
-      validAfter:
-        permit.validAfter === undefined ? 0 : Number(permit.validAfter * 1000n),
-    })
-  }
   return { claim, fallbackPolicies }
 }
 
