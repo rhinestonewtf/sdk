@@ -192,12 +192,40 @@ function rewrite(calldata: Hex, offset: bigint, value: bigint): Hex {
   ])
 }
 
+/** The ecrecover precompile: code-less on every EVM chain. */
+const ECRECOVER = '0x0000000000000000000000000000000000000001'
+
+/** Every Eco stablecoin a leg can deliver; each one's `transfer` is non-payable. */
+const NON_PAYABLE_TOKENS = new Set(
+  Object.values(SETTLEMENT_CATALOG).flatMap((block) =>
+    (block.eco?.stablecoins ?? []).map((t) => t.toLowerCase()),
+  ),
+)
+
+/**
+ * Whether the destination Portal reverts every fill of a canonical route.
+ * `_fulfill` pulls each route token with OZ 5.0 `safeTransferFrom`, which
+ * reverts on a target with no code, and `Executor` bubbles a failed call, which
+ * a non-payable `transfer` sent value always is.
+ */
+function fillReverts(
+  route: ReturnType<typeof decodeAbiParameters<typeof routeAbi>>[0],
+) {
+  return (
+    route.tokens.some((t) => t.token.toLowerCase() === ECRECOVER) ||
+    route.calls.some(
+      (c) => c.value !== 0n && NON_PAYABLE_TOKENS.has(c.target.toLowerCase()),
+    )
+  )
+}
+
 /**
  * Whether no solver can ever fill the publish. The source hashes the route
  * bytes as given, the destination re-encodes the decoded `Route`, so a route
- * that is not the canonical encoding of any `Route` never matches. Its reward
- * only refunds to the pinned creator after the pinned deadline — what a route
- * deadline in the past, which the policy has always admitted, already does.
+ * that is not the canonical encoding of any `Route` never matches, and a
+ * canonical one whose fill reverts never lands either. Its reward only refunds
+ * to the pinned creator after the pinned deadline — what a route deadline in
+ * the past, which the policy has always admitted, already does.
  */
 function unfillable(calldata: Hex): boolean {
   const args = slice(calldata, 4)
@@ -215,7 +243,10 @@ function unfillable(calldata: Hex): boolean {
       : slice(args, Number(pointer) + 32, Number(pointer + 32n + length))
   try {
     const [decoded] = decodeAbiParameters(routeAbi, route)
-    return encodeAbiParameters(routeAbi, [decoded]) !== route.toLowerCase()
+    return (
+      encodeAbiParameters(routeAbi, [decoded]) !== route.toLowerCase() ||
+      fillReverts(decoded)
+    )
   } catch {
     return true
   }
@@ -318,6 +349,33 @@ const emptiedCalls = (calldata: Hex): Hex =>
     PUBLISH.callsLength,
     0n,
   )
+
+/**
+ * The route re-declared with `n` tokens and laid out canonically around it:
+ * the calls pointer after the tokens, the route ending at a zero call count.
+ * With 3 tokens it is canonical, its second token is the pinned call count
+ * (address 1) and the call count is the pinned call value; other counts land
+ * the call count on a pinned non-zero word or a token on the transfer head.
+ */
+const tokenCount =
+  (n: bigint) =>
+  (calldata: Hex): Hex =>
+    rewrite(
+      rewrite(
+        rewrite(calldata, PUBLISH.routeTokensLength, n),
+        PUBLISH.routeCallsPointer,
+        0xe0n + 0x40n * n,
+      ),
+      PUBLISH.routeLength,
+      0x120n + 0x40n * n,
+    )
+
+/**
+ * No tokens and no calls: the call count lands on the route token word, so
+ * only the route token pin keeps this canonical, deliver-nothing route out.
+ */
+const noTokensNoCalls = (calldata: Hex): Hex =>
+  rewrite(tokenCount(0n)(calldata), PUBLISH.routeToken, 0n)
 
 const ruleComponents = [
   { name: 'condition', type: 'uint8' },
@@ -525,7 +583,12 @@ describe('ECO_IE publishAndFund', () => {
       scopeEco(ctx),
       valid,
       alternatives,
-      [relocatedRoute, emptiedCalls],
+      [
+        relocatedRoute,
+        emptiedCalls,
+        noTokensNoCalls,
+        ...[0n, 2n, 3n, 4n, 5n, 6n, 7n].map(tokenCount),
+      ],
       unfillable,
     )
     expect(refusedByBoth).toBeGreaterThan(0)
@@ -558,6 +621,18 @@ describe('ECO_IE publishAndFund', () => {
       }
     },
   )
+
+  test('a three-token route is canonical; only its precompile token stops the fill', () => {
+    const calldata = tokenCount(3n)(publish())
+    const args = slice(calldata, 4)
+    const length = hexToBigInt(slice(args, 0x80, 0xa0))
+    const route = slice(args, 0xa0, 0xa0 + Number(length))
+    const [decoded] = decodeAbiParameters(routeAbi, route)
+    expect(encodeAbiParameters(routeAbi, [decoded])).toBe(route.toLowerCase())
+    expect(decoded.calls).toEqual([])
+    expect(decoded.tokens[1].token.toLowerCase()).toBe(ECRECOVER)
+    expect(fillReverts(decoded)).toBe(true)
+  })
 
   test('the reward cap is cumulative in both', () => {
     for (const action of [legacyEco(ecoCtx), scopeEco(ecoCtx)]) {
