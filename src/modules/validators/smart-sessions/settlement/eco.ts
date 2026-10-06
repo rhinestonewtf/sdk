@@ -27,10 +27,14 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
  * Every calldata pointer, the reward's tokens pointer and every count is pinned
  * so no field can alias another. The route's own pointers and byte length are
- * not: the destination re-encodes the `Route` to match the intent hash, so a
- * fillable route is canonical, and canonical bytes with these counts have
- * exactly the layout the offsets assume. Any other layout is never filled and
- * refunds to the pinned creator, as a route deadline in the past already can.
+ * not: the destination Portal
+ * (0xEC000769A73b70e16f361a442292500b3BCf4A85, verified source on Base
+ * Blockscout) checks every fill and cancel in `_validateRoute`, which hashes
+ * `abi.encode(route)` and reverts `InvalidHash`, so only canonical bytes are
+ * fillable, and canonical bytes with these counts have exactly the layout the
+ * offsets assume. Any other layout is never filled and refunds to the pinned
+ * creator after the pinned deadline. This assumes EVM destinations and a Portal
+ * that keeps re-encoding.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -154,14 +158,19 @@ const anyOf = (branches: ArgPolicyExpression[]): ArgPolicyExpression =>
 const allOfExpressions = (parts: ArgPolicyExpression[]): ArgPolicyExpression =>
   parts.reduceRight((right, left) => ({ type: 'and', left, right }))
 
-const sameRule = (
+/**
+ * The same check on the same word; a usage-limited rule is never the same, as
+ * hoisted out of the leg OR it would count calls its branch never admits.
+ */
+export const sameRule = (
   a: UniversalActionPolicyParamRule,
   b: UniversalActionPolicyParamRule,
 ) =>
+  a.usageLimit === undefined &&
+  b.usageLimit === undefined &&
   a.condition === b.condition &&
   a.calldataOffset === b.calldataOffset &&
-  BigInt(a.referenceValue) === BigInt(b.referenceValue) &&
-  a.usageLimit === b.usageLimit
+  BigInt(a.referenceValue) === BigInt(b.referenceValue)
 
 /** The publish call, pinned to the permit's destinations, provers and prices. */
 export function scopeEco(ctx: SettlementContext): ScopedAction {
