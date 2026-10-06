@@ -33,6 +33,7 @@ import type {
   FromLeg,
   ScopedAction,
   SessionPolicy,
+  UniversalActionPolicyParamRule,
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
@@ -75,10 +76,6 @@ const WITH_FEES: SettlementCatalog = {
 const TIME_FRAME: SessionPolicy[] = [
   { type: 'time-frame', validAfter: 0, validUntil: VALID_UNTIL.getTime() },
 ]
-
-/* -------------------------------------------------------------------------- */
-/*            `withFeeActions` before the size reduction, verbatim             */
-/* -------------------------------------------------------------------------- */
 
 type Fees = NonNullable<SettlementAddresses['fees']>
 type ParamsPolicy = Extract<
@@ -167,10 +164,6 @@ function legacyWithFeeActions(
   return out
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                   Metrics                                  */
-/* -------------------------------------------------------------------------- */
-
 const ruleComponents = [
   { name: 'condition', type: 'uint8' },
   { name: 'offset', type: 'uint64' },
@@ -205,9 +198,10 @@ function nonZeroWords(initData: Hex): number {
 
 /**
  * The non-zero slots a params policy's `fill` writes: a rule is 4 slots
- * (condition/offset/isLimited packed, ref, limit, used). UniversalActionPolicy
- * stores its length and only the first `length` rules; ArgPolicy stores its
- * root index, both array lengths and a slot per tree node.
+ * (condition/offset/isLimited sharing one, ORed below for zero-ness only, then
+ * ref, limit, used). UniversalActionPolicy stores its length and only the
+ * first `length` rules; ArgPolicy stores its root index, both array lengths
+ * and a slot per tree node.
  */
 function nonZeroSlots(policy: SessionPolicy): number {
   const { initData } = encodeSessionPolicy(policy, 'production')
@@ -315,10 +309,6 @@ function measure(action: ScopedAction) {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                  Calldata                                  */
-/* -------------------------------------------------------------------------- */
-
 const transfer = (to: Address, amount: bigint) =>
   encodeFunctionData({
     abi: erc20Abi,
@@ -368,10 +358,6 @@ function mutants(calldata: Hex): Hex[] {
     }),
   ].filter((mutant) => mutant !== calldata)
 }
-
-/* -------------------------------------------------------------------------- */
-/*                                   Layers                                   */
-/* -------------------------------------------------------------------------- */
 
 interface Layer {
   readonly chain: Chain
@@ -464,6 +450,54 @@ const baseActions = (layer: Layer) => {
 
 const sameCall = (a: ScopedAction, b: ScopedAction) =>
   isAddressEqual(a.target, b.target) && a.selector === b.selector
+
+/**
+ * Each fee branch's rules, left to right: a new action's whole params policy, or
+ * the first OR branch of a layer action the fee call joined.
+ */
+function feeBranches(
+  input: readonly ScopedAction[],
+  actions: readonly ScopedAction[],
+  tokens: readonly Address[],
+): UniversalActionPolicyParamRule[][] {
+  const flat = (e: ArgPolicyExpression): UniversalActionPolicyParamRule[] =>
+    e.type === 'rule'
+      ? [e.rule]
+      : e.type === 'not'
+        ? flat(e.child)
+        : [...flat(e.left), ...flat(e.right)]
+  return actions
+    .filter((a) =>
+      a.selector === CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR
+        ? isAddressEqual(a.target, PAYMASTER)
+        : [TRANSFER, APPROVE].includes(a.selector) &&
+          tokens.some((token) => isAddressEqual(a.target, token)),
+    )
+    .map((action) => {
+      const policy = paramsPolicy(action)
+      if (policy.type === 'universal-action') return policy.rules
+      if (!input.some((a) => sameCall(a, action))) {
+        return flat(policy.expression)
+      }
+      if (policy.expression.type !== 'or') {
+        throw new Error('a joined fee call is not an OR')
+      }
+      return flat(policy.expression.left)
+    })
+}
+
+/** A limited rule counts even when a later rule of its branch fails. */
+const expectOnlyLastLimited = (
+  branches: UniversalActionPolicyParamRule[][],
+  count: number,
+) => {
+  expect(branches).toHaveLength(count)
+  for (const rules of branches) {
+    expect(rules.map((rule) => rule.usageLimit !== undefined)).toEqual(
+      rules.map((_, i) => i === rules.length - 1),
+    )
+  }
+}
 
 /** Valid calls of each fee-touched action, as the existing tests admit them. */
 const validCalls = (layer: Layer, tokens: readonly Address[]): Hex[] => [
@@ -593,8 +627,12 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
     legacyWithFeeActions(input, [layer.token], FEES, TIME_FRAME)
   const current = () => withFeeActions(input, [layer.token], FEES, TIME_FRAME)
 
-  test('the frozen builder is the scoped session’s fee path', () => {
+  test('the scoped session’s fee path is withFeeActions', () => {
     expect(scope(permit(layer, { allowFees: true })).actions).toEqual(current())
+  })
+
+  test('each fee branch is limited in its last rule only', () => {
+    expectOnlyLastLimited(feeBranches(input, current(), [layer.token]), 3)
   })
 
   test('no valid fee call is refused and no mutation is judged differently', () => {
@@ -646,6 +684,11 @@ describe('two `from` tokens', () => {
     expect(refused).toBeGreaterThan(0)
   })
 
+  test('each fee branch is limited in its last rule only', () => {
+    // Two transfers, two approves and the shared callback.
+    expectOnlyLastLimited(feeBranches([], current, tokens), 5)
+  })
+
   test('the callback keeps one budget across tokens', () => {
     const [old, now] = [legacy, current].map(
       (actions) =>
@@ -689,7 +732,6 @@ describe('policy size on enable', () => {
         return [
           name,
           {
-            withoutFees: slotsOf(input),
             addedBefore: slotsOf(old) - slotsOf(input),
             addedAfter: slotsOf(now) - slotsOf(input),
           },
@@ -701,32 +743,26 @@ describe('policy size on enable', () => {
         "CCTP": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 16,
         },
         "ECO_IE": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 130,
         },
         "LZ": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 362,
         },
         "OFT": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 30,
         },
         "SAME_CHAIN_IE swap": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 27,
         },
         "SAME_CHAIN_IE transfer": {
           "addedAfter": 19,
           "addedBefore": 30,
-          "withoutFees": 5,
         },
       }
     `)
