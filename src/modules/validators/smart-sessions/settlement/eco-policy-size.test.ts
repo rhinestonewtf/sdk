@@ -14,10 +14,11 @@ import {
   toFunctionSelector,
   toHex,
 } from 'viem'
-import { arbitrum, base, mainnet, optimism, plasma } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
   ECO_ACCOUNT,
+  ECO_PORTAL,
   publish,
   routeAbi,
 } from '../../../../../test/utils/eco-publish'
@@ -26,14 +27,11 @@ import {
   satisfiesRules,
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
-import { resolveCrossChainPermission } from '../cross-chain-permits'
 import { encodeSessionPolicy } from '../policies/encode'
 import { allOf, pin, pinValue, pinWord } from '../swap/rules'
 import type {
   ArgPolicyExpression,
-  CrossChainPermissionInput,
   ScopedAction,
-  SessionPolicy,
   UniversalActionPolicyParamRule,
 } from '../types'
 import {
@@ -42,16 +40,15 @@ import {
   proversBetween,
   scopeEco,
 } from './eco'
-import { resolveSettlementScope } from './scope'
 import { served } from './served'
 import type { SettlementContext } from './types'
 
 /**
  * Enabling a session stores every action policy's config, and the cost tracks
- * the non-zero words written. This file guards the size reductions: a frozen
- * copy of each policy as it stood before them, and a differential that every
- * valid call is still admitted and every one-word mutation the old policy
- * refused is still refused.
+ * the non-zero slots written. This file guards the ECO_IE publish policy's size
+ * reduction: a frozen copy of the policy as it stood before it, and a
+ * differential that every valid call is still admitted and every mutation the
+ * old policy refused is still refused, unless no solver can ever fill it.
  */
 
 const NOW = 1_800_000_000n
@@ -65,7 +62,6 @@ afterAll(() => {
 
 const stablecoins = (chainId: number) =>
   SETTLEMENT_CATALOG[chainId].eco!.stablecoins
-const ECO_PORTAL = SETTLEMENT_CATALOG[base.id].eco!.portal
 const USDC_BASE = stablecoins(base.id)[0]
 const USDC_ARB = stablecoins(arbitrum.id)[0]
 const USDC_OP = stablecoins(optimism.id)[0]
@@ -170,20 +166,13 @@ function legacyEco(ctx: SettlementContext): ScopedAction {
   }
 }
 
-/** Every rule in a policy, OR branches included. */
-function rulesOf(policy: SessionPolicy): UniversalActionPolicyParamRule[] {
-  const walk = (e: ArgPolicyExpression): UniversalActionPolicyParamRule[] =>
-    e.type === 'rule'
-      ? [e.rule]
-      : e.type === 'not'
-        ? walk(e.child)
-        : [...walk(e.left), ...walk(e.right)]
-  return policy.type === 'arg-policy'
-    ? walk(policy.expression)
-    : policy.type === 'universal-action'
-      ? [...policy.rules]
-      : []
-}
+/** Every rule in an expression, OR branches included. */
+const rulesOf = (e: ArgPolicyExpression): UniversalActionPolicyParamRule[] =>
+  e.type === 'rule'
+    ? [e.rule]
+    : e.type === 'not'
+      ? rulesOf(e.child)
+      : [...rulesOf(e.left), ...rulesOf(e.right)]
 
 /** What the chain admits: the action id binds the selector, the policy the args. */
 function accepts(action: ScopedAction, calldata: Hex, usage?: RuleUsage) {
@@ -247,15 +236,15 @@ function expectNoWidening(
   harmless: (calldata: Hex) => boolean,
 ) {
   const legacyOffsets = (legacy.policies ?? []).flatMap((p) =>
-    rulesOf(p).map((r) => r.calldataOffset),
+    p.type === 'arg-policy'
+      ? rulesOf(p.expression).map((r) => r.calldataOffset)
+      : [],
   )
   let refusedByBoth = 0
-  let widenedHarmlessly = 0
   const check = (mutant: Hex) => {
     if (accepts(legacy, mutant)) return
     if (accepts(current, mutant)) {
       expect(harmless(mutant), `widened: ${mutant}`).toBe(true)
-      widenedHarmlessly++
     } else {
       refusedByBoth++
     }
@@ -282,7 +271,7 @@ function expectNoWidening(
     ]
     for (const mutant of mutants) if (mutant !== calldata) check(mutant)
   }
-  return { refusedByBoth, widenedHarmlessly }
+  return refusedByBoth
 }
 
 /**
@@ -330,22 +319,6 @@ const emptiedCalls = (calldata: Hex): Hex =>
     0n,
   )
 
-/** Non-zero 32-byte words in an encoded policy initData. */
-function nonZeroWords(initData: Hex): number {
-  let count = 0
-  for (let at = 0; at < size(initData); at += 32) {
-    if (hexToBigInt(slice(initData, at, at + 32)) !== 0n) count++
-  }
-  return count
-}
-
-const actionWords = (action: ScopedAction) =>
-  (action.policies ?? []).reduce(
-    (sum, policy) =>
-      sum + nonZeroWords(encodeSessionPolicy(policy, 'production').initData),
-    0,
-  )
-
 const ruleComponents = [
   { name: 'condition', type: 'uint8' },
   { name: 'offset', type: 'uint64' },
@@ -361,103 +334,51 @@ const ruleComponents = [
   },
 ] as const
 
-interface StoredRule {
-  readonly condition: number
-  readonly offset: bigint
-  readonly isLimited: boolean
-  readonly ref: Hex
-  readonly usage: { readonly limit: bigint; readonly used: bigint }
-}
-
 /**
- * The storage slots a params policy writes on enable, as each contract's `fill`
- * writes them: a rule is 4 slots (condition/offset/isLimited packed, ref,
- * limit, used). UniversalActionPolicy stores only the first `length` of its 16
- * rules; ArgPolicy also stores its root index, both array lengths and a slot per
- * tree node.
+ * The storage slots an ArgPolicy writes on enable, as its `fill` writes them:
+ * a rule is 4 slots (condition/offset/isLimited packed, ref, limit, used), plus
+ * the root index, both array lengths and a slot per tree node.
  */
-function storageSlots(policy: SessionPolicy) {
-  const { initData } = encodeSessionPolicy(policy, 'production')
-  const ruleSlots = (r: StoredRule) => [
-    BigInt(r.condition) | r.offset | (r.isLimited ? 1n : 0n),
-    hexToBigInt(r.ref),
-    r.usage.limit,
-    r.usage.used,
+function storageSlots(action: ScopedAction) {
+  const policy = action.policies?.find((p) => p.type === 'arg-policy')
+  if (!policy) throw new Error('expected an arg policy')
+  const [config] = decodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'valueLimitPerUse', type: 'uint256' },
+          {
+            name: 'paramRules',
+            type: 'tuple',
+            components: [
+              { name: 'rootNodeIndex', type: 'uint8' },
+              { name: 'rules', type: 'tuple[]', components: ruleComponents },
+              { name: 'packedNodes', type: 'uint256[]' },
+            ],
+          },
+        ],
+      },
+    ],
+    encodeSessionPolicy(policy, 'production').initData,
+  )
+  const { rootNodeIndex, rules, packedNodes } = config.paramRules
+  const slots = [
+    config.valueLimitPerUse,
+    BigInt(rootNodeIndex),
+    BigInt(rules.length),
+    // OR-ed rather than packed: only whether the slot is zero matters.
+    ...rules.flatMap((r) => [
+      BigInt(r.condition) | r.offset | (r.isLimited ? 1n : 0n),
+      hexToBigInt(r.ref),
+      r.usage.limit,
+      r.usage.used,
+    ]),
+    BigInt(packedNodes.length),
+    ...packedNodes,
   ]
-  let slots: bigint[]
-  if (policy.type === 'universal-action') {
-    const [config] = decodeAbiParameters(
-      [
-        {
-          type: 'tuple',
-          components: [
-            { name: 'valueLimitPerUse', type: 'uint256' },
-            {
-              name: 'paramRules',
-              type: 'tuple',
-              components: [
-                { name: 'length', type: 'uint256' },
-                {
-                  name: 'rules',
-                  type: 'tuple[16]',
-                  components: ruleComponents,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      initData,
-    )
-    const { length, rules } = config.paramRules
-    slots = [
-      config.valueLimitPerUse,
-      length,
-      ...rules.slice(0, Number(length)).flatMap(ruleSlots),
-    ]
-  } else if (policy.type === 'arg-policy') {
-    const [config] = decodeAbiParameters(
-      [
-        {
-          type: 'tuple',
-          components: [
-            { name: 'valueLimitPerUse', type: 'uint256' },
-            {
-              name: 'paramRules',
-              type: 'tuple',
-              components: [
-                { name: 'rootNodeIndex', type: 'uint8' },
-                { name: 'rules', type: 'tuple[]', components: ruleComponents },
-                { name: 'packedNodes', type: 'uint256[]' },
-              ],
-            },
-          ],
-        },
-      ],
-      initData,
-    )
-    const { rootNodeIndex, rules, packedNodes } = config.paramRules
-    slots = [
-      config.valueLimitPerUse,
-      BigInt(rootNodeIndex),
-      BigInt(rules.length),
-      ...rules.flatMap(ruleSlots),
-      BigInt(packedNodes.length),
-      ...packedNodes,
-    ]
-  } else {
-    return { nonZero: 0, zero: 0 }
-  }
   const nonZero = slots.filter((s) => s !== 0n).length
   return { nonZero, zero: slots.length - nonZero }
-}
-
-const paramsPolicy = (action: ScopedAction) => {
-  const policy = action.policies?.find(
-    (p) => p.type === 'universal-action' || p.type === 'arg-policy',
-  )
-  if (!policy) throw new Error('no params policy')
-  return policy
 }
 
 const ecoCtx: SettlementContext = {
@@ -475,6 +396,11 @@ const ecoCtx: SettlementContext = {
   timeFrame: [],
 }
 
+const legsCtx = (destinations: SettlementContext['destinations']) => ({
+  ...ecoCtx,
+  destinations,
+})
+
 describe('ECO_IE publishAndFund', () => {
   const cases: readonly {
     readonly name: string
@@ -488,6 +414,8 @@ describe('ECO_IE publishAndFund', () => {
         publish(),
         publish({ prover: POLYMER_PROVER }),
         publish({ delivered: 100n, reward: 50n }),
+        // Already unfillable and admitted before: the baseline a non-canonical
+        // route is held to.
         publish({ routeDeadline: 0n }),
       ],
     },
@@ -497,14 +425,11 @@ describe('ECO_IE publishAndFund', () => {
       valid: [publish({ delivered: 100n })],
     },
     {
-      name: 'two legs with their own recipients and prover sets',
-      ctx: {
-        ...ecoCtx,
-        destinations: [
-          { chainId: arbitrum.id, token: USDC_ARB, recipient: ECO_ACCOUNT },
-          { chainId: optimism.id, token: USDC_OP, recipient: ATTACKER },
-        ],
-      },
+      name: 'two legs with their own recipients, sharing a prover set',
+      ctx: legsCtx([
+        { chainId: arbitrum.id, token: USDC_ARB, recipient: ECO_ACCOUNT },
+        { chainId: optimism.id, token: USDC_OP, recipient: ATTACKER },
+      ]),
       valid: [
         publish(),
         publish({
@@ -515,18 +440,28 @@ describe('ECO_IE publishAndFund', () => {
       ],
     },
     {
-      name: 'two legs sharing the recipient and prover set',
-      ctx: {
-        ...ecoCtx,
-        destinations: [
-          { chainId: arbitrum.id, token: USDC_ARB, recipient: ECO_ACCOUNT },
-          { chainId: mainnet.id, token: USDC_ETH, recipient: ECO_ACCOUNT },
-        ],
-      },
+      name: 'two legs sharing the recipient, with their own prover sets',
+      ctx: legsCtx([
+        { chainId: arbitrum.id, token: USDC_ARB, recipient: ECO_ACCOUNT },
+        { chainId: mainnet.id, token: USDC_ETH, recipient: ECO_ACCOUNT },
+      ]),
       valid: [
         publish(),
         publish({ destination: 1n, routeToken: USDC_ETH }),
         publish({ destination: 1n, routeToken: USDC_ETH, prover: CCIP_PROVER }),
+      ],
+    },
+    {
+      // The same word at different offsets in different legs: hoisting it
+      // by value alone would pin one leg's recipient onto the other.
+      name: "one leg's recipient is another leg's token",
+      ctx: legsCtx([
+        { chainId: arbitrum.id, token: USDC_ARB, recipient: USDC_OP },
+        { chainId: optimism.id, token: USDC_OP, recipient: ECO_ACCOUNT },
+      ]),
+      valid: [
+        publish({ recipient: USDC_OP }),
+        publish({ destination: 10n, routeToken: USDC_OP }),
       ],
     },
     {
@@ -550,6 +485,11 @@ describe('ECO_IE publishAndFund', () => {
       ],
     },
   ]
+  const ctxOf = (name: string) => {
+    const found = cases.find((c) => c.name === name)
+    if (!found) throw new Error(`no case ${name}`)
+    return found.ctx
+  }
 
   /** Canonical publishes the existing tests refuse, one field changed each. */
   const alternatives = [
@@ -580,7 +520,7 @@ describe('ECO_IE publishAndFund', () => {
   ]
 
   test.each(cases)('$name: no one-word mutation widens', ({ ctx, valid }) => {
-    const { refusedByBoth, widenedHarmlessly } = expectNoWidening(
+    const refusedByBoth = expectNoWidening(
       legacyEco(ctx),
       scopeEco(ctx),
       valid,
@@ -589,32 +529,35 @@ describe('ECO_IE publishAndFund', () => {
       unfillable,
     )
     expect(refusedByBoth).toBeGreaterThan(0)
-    // The route's pointers and length are no longer pinned; their mutants
-    // reach `unfillable`.
-    expect(widenedHarmlessly).toBeGreaterThan(0)
   })
 
-  test('a leg is not satisfied by another leg’s recipient or token', () => {
-    const [, legs] = cases
-    const current = scopeEco(legs.ctx)
-    const crossed = [
-      publish({ destination: 10n, routeToken: USDC_OP }),
-      publish({ recipient: ATTACKER }),
-      publish({ destination: 10n, recipient: ATTACKER }),
-    ]
-    for (const calldata of crossed) {
-      expect(accepts(legacyEco(legs.ctx), calldata)).toBe(false)
-      expect(accepts(current, calldata)).toBe(false)
-    }
-  })
-
-  test('the old policy already admits an unfillable publish', () => {
-    // A route deadline in the past: no solver can fill it, and the reward only
-    // refunds after its deadline. Non-canonical route bytes do no more.
-    expect(accepts(legacyEco(ecoCtx), publish({ routeDeadline: 0n }))).toBe(
-      true,
-    )
-  })
+  test.each([
+    [
+      'two legs with their own recipients, sharing a prover set',
+      [
+        publish({ destination: 10n, routeToken: USDC_OP }),
+        publish({ recipient: ATTACKER }),
+        publish({ destination: 10n, recipient: ATTACKER }),
+      ],
+    ],
+    [
+      "one leg's recipient is another leg's token",
+      [
+        publish({ destination: 10n, routeToken: USDC_OP, recipient: USDC_OP }),
+        publish({ routeToken: USDC_OP, recipient: USDC_OP }),
+        publish(),
+      ],
+    ],
+  ] as const)(
+    '%s: a leg is not satisfied by another leg’s fields',
+    (name, crossed) => {
+      const ctx = ctxOf(name)
+      for (const calldata of crossed) {
+        expect(accepts(legacyEco(ctx), calldata)).toBe(false)
+        expect(accepts(scopeEco(ctx), calldata)).toBe(false)
+      }
+    },
+  )
 
   test('the reward cap is cumulative in both', () => {
     for (const action of [legacyEco(ecoCtx), scopeEco(ecoCtx)]) {
@@ -627,8 +570,10 @@ describe('ECO_IE publishAndFund', () => {
   })
 
   test('the reward cap keeps one counter across legs', () => {
-    const [, , , shared] = cases
-    for (const action of [legacyEco(shared.ctx), scopeEco(shared.ctx)]) {
+    const ctx = ctxOf(
+      'two legs sharing the recipient, with their own prover sets',
+    )
+    for (const action of [legacyEco(ctx), scopeEco(ctx)]) {
       const usage: RuleUsage = new Map()
       expect(accepts(action, publish({ reward: 60n }), usage)).toBe(true)
       expect(
@@ -640,195 +585,41 @@ describe('ECO_IE publishAndFund', () => {
       ).toBe(false)
     }
   })
-})
 
-/** A permit's settlement actions on Base (Arbitrum for OFT), as a session enables them. */
-function settlementActions(permit: CrossChainPermissionInput, chainId: number) {
-  const resolved = resolveSettlementScope(
-    [resolveCrossChainPermission(permit)],
-    {
-      chainId,
-      environment: 'production',
-      account: ECO_ACCOUNT,
-      oneTimeUse: true,
-      settlement: SETTLEMENT_CATALOG,
-    },
-  )
-  if (!resolved) throw new Error('expected a settlement scope')
-  return resolved.actions
-}
-
-const cctpActions = () =>
-  settlementActions(
-    {
-      from: { chain: base, token: USDC_BASE, maxAmount: 100n },
-      to: { chain: arbitrum, token: USDC_ARB },
-      settlementLayers: ['CCTP'],
-    },
-    base.id,
-  )
-const oftActions = () =>
-  settlementActions(
-    {
-      from: {
-        chain: arbitrum,
-        token: SETTLEMENT_CATALOG[arbitrum.id].oft!.token,
-        maxAmount: 100n,
-      },
-      to: { chain: plasma, token: SETTLEMENT_CATALOG[plasma.id].oft!.token },
-      settlementLayers: ['OFT'],
-    },
-    arbitrum.id,
-  )
-const ecoActions = () =>
-  settlementActions(
-    {
-      from: { chain: base, token: USDC_BASE, maxAmount: 100n },
-      to: { chain: arbitrum, token: USDC_ARB },
-      settlementLayers: ['ECO_IE'],
-      maxFeeBps: 100,
-      validUntil: new Date(1_900_000_000_000),
-    },
-    base.id,
-  )
-
-describe('policy size on enable', () => {
-  test('UniversalActionPolicy stays cheaper than ArgPolicy for every rule list it carries', () => {
-    // Its fixed 16-rule array is zero words, and `fill` stores only `length`
-    // rules; ArgPolicy stores the same rules plus a slot per tree node.
-    const universal = [...cctpActions(), ...oftActions(), ...ecoActions()]
-      .map(paramsPolicy)
-      .filter((p) => p.type === 'universal-action')
-    expect(universal.length).toBe(5)
-    for (const policy of universal) {
-      if (policy.type !== 'universal-action') continue
-      const asArg: SessionPolicy = {
-        type: 'arg-policy',
-        valueLimitPerUse: policy.valueLimitPerUse ?? 0n,
-        expression: allOf([...policy.rules]),
-      }
-      const words = (p: SessionPolicy) =>
-        nonZeroWords(encodeSessionPolicy(p, 'production').initData)
-      expect(words(policy)).toBeLessThan(words(asArg))
-      expect(storageSlots(policy).nonZero).toBeLessThan(
-        storageSlots(asArg).nonZero,
-      )
-    }
-  })
-
-  test('non-zero words written per action, before and after', () => {
-    const measure = (action: ScopedAction) => ({
-      words: actionWords(action),
-      slots: storageSlots(paramsPolicy(action)),
-    })
-    const [cctpBurn, cctpApprove] = cctpActions()
-    const [oftSend, oftApprove] = oftActions()
-    const [ecoPublish, ecoApprove] = ecoActions()
-    const timeFrame = ecoPublish.policies?.slice(1) ?? []
-    const legacyPublish = legacyEco({
-      ...ecoCtx,
-      validUntil: 1_900_000_000n,
-      timeFrame,
-    })
-    const twoLegs = {
-      ...ecoCtx,
-      destinations: [
-        { chainId: arbitrum.id, token: USDC_ARB, recipient: ECO_ACCOUNT },
-        { chainId: mainnet.id, token: USDC_ETH, recipient: ECO_ACCOUNT },
-      ],
-    }
-    const session = (actions: ScopedAction[]) =>
-      actions.reduce((sum, a) => sum + actionWords(a), 0)
+  test('storage slots written on enable, before and after', () => {
+    const twoLegs = ctxOf(
+      'two legs sharing the recipient, with their own prover sets',
+    )
     expect({
-      ecoPublish: {
-        before: measure(legacyPublish),
-        after: measure(ecoPublish),
+      oneLeg: {
+        before: storageSlots(legacyEco(ecoCtx)),
+        after: storageSlots(scopeEco(ecoCtx)),
       },
-      ecoPublishTwoLegs: {
-        before: measure(legacyEco(twoLegs)),
-        after: measure(scopeEco(twoLegs)),
-      },
-      ecoApprove: measure(ecoApprove),
-      cctpBurn: measure(cctpBurn),
-      cctpApprove: measure(cctpApprove),
-      oftSend: measure(oftSend),
-      oftApprove: measure(oftApprove),
-      cctpPlusEcoSession: {
-        before: session([cctpBurn, cctpApprove, legacyPublish, ecoApprove]),
-        after: session([cctpBurn, cctpApprove, ecoPublish, ecoApprove]),
+      twoLegs: {
+        before: storageSlots(legacyEco(twoLegs)),
+        after: storageSlots(scopeEco(twoLegs)),
       },
     }).toMatchInlineSnapshot(`
       {
-        "cctpApprove": {
-          "slots": {
-            "nonZero": 5,
-            "zero": 5,
-          },
-          "words": 7,
-        },
-        "cctpBurn": {
-          "slots": {
-            "nonZero": 11,
-            "zero": 11,
-          },
-          "words": 12,
-        },
-        "cctpPlusEcoSession": {
-          "after": 139,
-          "before": 163,
-        },
-        "ecoApprove": {
-          "slots": {
-            "nonZero": 5,
-            "zero": 5,
-          },
-          "words": 8,
-        },
-        "ecoPublish": {
+        "oneLeg": {
           "after": {
-            "slots": {
-              "nonZero": 101,
-              "zero": 58,
-            },
-            "words": 112,
+            "nonZero": 101,
+            "zero": 58,
           },
           "before": {
-            "slots": {
-              "nonZero": 125,
-              "zero": 70,
-            },
-            "words": 136,
+            "nonZero": 125,
+            "zero": 70,
           },
         },
-        "ecoPublishTwoLegs": {
+        "twoLegs": {
           "after": {
-            "slots": {
-              "nonZero": 124,
-              "zero": 71,
-            },
-            "words": 134,
+            "nonZero": 124,
+            "zero": 71,
           },
           "before": {
-            "slots": {
-              "nonZero": 168,
-              "zero": 93,
-            },
-            "words": 180,
+            "nonZero": 168,
+            "zero": 93,
           },
-        },
-        "oftApprove": {
-          "slots": {
-            "nonZero": 5,
-            "zero": 5,
-          },
-          "words": 7,
-        },
-        "oftSend": {
-          "slots": {
-            "nonZero": 25,
-            "zero": 29,
-          },
-          "words": 28,
         },
       }
     `)
