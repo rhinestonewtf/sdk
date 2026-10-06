@@ -22,10 +22,13 @@ import {
   MC,
   OTHER,
   PLASMA,
+  SONEIUM,
+  SONEIUM_EID,
   stargate,
   USDC_ARB,
   USDC_BASE,
   USDC_PLASMA,
+  USDC_SONEIUM,
 } from '../../../../../test/utils/lz-calldata'
 import {
   satisfiesRules as holds,
@@ -83,8 +86,21 @@ function pinnedView(data: Hex) {
   })
 }
 
+const ARB_LEG = { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }
+const SONEIUM_LEG = {
+  chainId: SONEIUM,
+  token: USDC_SONEIUM,
+  recipient: ACCOUNT,
+}
+
+/** The API's Stargate TAXI batch into Soneium, which no CCTP route reaches. */
+const taxi = (o: Parameters<typeof stargate>[1] = {}) =>
+  execute(stargate('taxi', { eid: SONEIUM_EID, ...o }))
+
 describe('scopeLz', () => {
+  // Base -> Arbitrum, which CCTP reaches: no Stargate route.
   const action = scopeLz(context())
+  const toSoneium = scopeLz(context({ destinations: [SONEIUM_LEG] }))
 
   test('targets the chain LZMultiCall execute and admits native value', () => {
     expect(action.target).toBe(MC)
@@ -97,14 +113,24 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi'))],
-    ['cctp', () => execute(cctp())],
-  ])('accepts the API %s batch', (_, data) => {
-    expect(holds(action, data())).toBe(true)
+    ['taxi', () => toSoneium, () => taxi()],
+    ['cctp', () => action, () => execute(cctp())],
+  ])('accepts the API %s batch', (_, permit, data) => {
+    expect(holds(permit(), data())).toBe(true)
+  })
+
+  test('refuses Stargate TAXI into a leg a CCTP route reaches', () => {
+    expect(holds(action, execute(stargate('taxi')))).toBe(false)
+    const both = scopeLz(context({ destinations: [ARB_LEG, SONEIUM_LEG] }))
+    expect(holds(both, execute(stargate('taxi')))).toBe(false)
+    expect(holds(both, taxi())).toBe(true)
+    expect(holds(both, execute(cctp()))).toBe(true)
   })
 
   test('refuses the API Stargate BUS batch', () => {
-    expect(holds(action, execute(stargate('bus')))).toBe(false)
+    expect(
+      holds(toSoneium, execute(stargate('bus', { eid: SONEIUM_EID }))),
+    ).toBe(false)
   })
 
   test('accepts the feeless CCTP batch to Plasma', () => {
@@ -122,11 +148,11 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', (a: bigint) => execute(stargate('taxi', { amount: a }))],
-    ['cctp', (a: bigint) => execute(cctp({ pull: a }))],
-  ])('caps the %s pull at maxAmount', (_, data) => {
-    expect(holds(action, data(CAP))).toBe(true)
-    expect(holds(action, data(CAP + 1n))).toBe(false)
+    ['taxi', () => toSoneium, (a: bigint) => taxi({ amount: a })],
+    ['cctp', () => action, (a: bigint) => execute(cctp({ pull: a }))],
+  ])('caps the %s pull at maxAmount', (_, permit, data) => {
+    expect(holds(permit(), data(CAP))).toBe(true)
+    expect(holds(permit(), data(CAP + 1n))).toBe(false)
   })
 
   test('caps the feeless CCTP pull at maxAmount', () => {
@@ -153,61 +179,62 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi', { amount: 1n }))],
+    ['taxi', () => taxi({ amount: 1n })],
     ['cctp', () => execute(cctp({ pull: 1n, fee: 0n }))],
   ])(
     'admits one execute per session: after %s, no route runs again',
     (_, first) => {
       // Even with a stale TransferDelegate allowance to fund it, a second
       // route would pull another maxAmount, and a second send another fee.
+      const both = scopeLz(context({ destinations: [ARB_LEG, SONEIUM_LEG] }))
       const usage: RuleUsage = new Map()
-      expect(holds(action, first(), usage)).toBe(true)
+      expect(holds(both, first(), usage)).toBe(true)
       for (const again of [
-        execute(stargate('taxi', { amount: 1n })),
+        taxi({ amount: 1n }),
         execute(cctp({ pull: 1n, fee: 0n })),
       ]) {
-        expect(holds(action, again, usage)).toBe(false)
+        expect(holds(both, again, usage)).toBe(false)
       }
     },
   )
 
   test('a refused execute does not use up the session', () => {
     const usage: RuleUsage = new Map()
-    expect(holds(action, execute(stargate('taxi', { to: OTHER })), usage)).toBe(
-      false,
-    )
-    expect(holds(action, execute(stargate('taxi')), usage)).toBe(true)
+    expect(holds(toSoneium, taxi({ to: OTHER }), usage)).toBe(false)
+    expect(holds(toSoneium, taxi(), usage)).toBe(true)
   })
 
   test('refuses a zero-amount Stargate send', () => {
-    expect(holds(action, execute(stargate('taxi', { amount: 0n })))).toBe(false)
+    expect(holds(toSoneium, taxi({ amount: 0n }))).toBe(false)
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi', { to: OTHER }))],
-    ['taxi eid', () => execute(stargate('taxi', { eid: 30101 }))],
-    ['cctp', () => execute(cctp({ to: OTHER }))],
-    ['cctp domain', () => execute(cctp({ domain: 0 }))],
-  ])('refuses a %s batch to another destination', (_, data) => {
-    expect(holds(action, data())).toBe(false)
+    ['taxi', () => toSoneium, () => taxi({ to: OTHER })],
+    ['taxi eid', () => toSoneium, () => taxi({ eid: 30101 })],
+    ['cctp', () => action, () => execute(cctp({ to: OTHER }))],
+    ['cctp domain', () => action, () => execute(cctp({ domain: 0 }))],
+  ])('refuses a %s batch to another destination', (_, permit, data) => {
+    expect(holds(permit(), data())).toBe(false)
   })
 
   test('refuses an extra, missing or reordered nested call', () => {
-    const calls = stargate('taxi')
+    const calls = stargate('taxi', { eid: SONEIUM_EID })
     const drain = call(USDC_BASE, fn('transfer', [OTHER, 1n]))
-    expect(holds(action, execute([...calls, drain]))).toBe(false)
-    expect(holds(action, execute(calls.slice(0, 3)))).toBe(false)
+    expect(holds(toSoneium, execute(calls))).toBe(true)
+    expect(holds(toSoneium, execute([...calls, drain]))).toBe(false)
+    expect(holds(toSoneium, execute(calls.slice(0, 3)))).toBe(false)
     expect(
-      holds(action, execute([calls[0], calls[1], calls[3], calls[2]])),
+      holds(toSoneium, execute([calls[0], calls[1], calls[3], calls[2]])),
     ).toBe(false)
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi'))],
-    ['cctp', () => execute(cctp())],
+    ['taxi', () => toSoneium, () => taxi()],
+    ['cctp', () => action, () => execute(cctp())],
   ])(
     'accepts a byte-flipped %s batch only when no pinned field changed',
-    (_, data) => {
+    (_, permit, data) => {
+      const action = permit()
       const original = data()
       const expected = pinnedView(original)
       const bytes = Buffer.from(original.slice(2), 'hex')
@@ -243,36 +270,39 @@ describe('scopeLz', () => {
     const both = scopeLz(
       context({
         destinations: [
-          { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+          SONEIUM_LEG,
           { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
         ],
       }),
     )
-    expect(holds(both, execute(stargate('taxi')))).toBe(true)
+    expect(holds(both, taxi())).toBe(true)
     expect(holds(both, execute(cctp({}, true)))).toBe(false)
     expect(holds(both, execute(cctp({ to: OTHER }, true)))).toBe(true)
     // Plasma has no Stargate pool, so its recipient does not open a send.
-    expect(holds(both, execute(stargate('taxi', { to: OTHER })))).toBe(false)
+    expect(holds(both, taxi({ to: OTHER }))).toBe(false)
   })
 
   test("leaves the recipient open for 'any'", () => {
     const open = scopeLz(
-      context({ destinations: [{ chainId: ARB, token: USDC_ARB }] }),
+      context({
+        destinations: [
+          { chainId: ARB, token: USDC_ARB },
+          { chainId: SONEIUM, token: USDC_SONEIUM },
+        ],
+      }),
     )
-    expect(holds(open, execute(stargate('taxi', { to: OTHER })))).toBe(true)
+    expect(holds(open, taxi({ to: OTHER }))).toBe(true)
     expect(holds(open, execute(cctp({ to: OTHER })))).toBe(true)
-    expect(holds(open, execute(stargate('taxi', { eid: 30101 })))).toBe(false)
+    expect(holds(open, taxi({ eid: 30101 }))).toBe(false)
   })
 
   test('without a cap, the pull is unbounded but the layout still binds', () => {
-    const uncapped = scopeLz(context({ cap: undefined }))
+    const uncapped = scopeLz(
+      context({ destinations: [SONEIUM_LEG], cap: undefined }),
+    )
     const big = 10n ** 30n
-    expect(holds(uncapped, execute(stargate('taxi', { amount: big })))).toBe(
-      true,
-    )
-    expect(holds(uncapped, execute(stargate('taxi', { to: OTHER })))).toBe(
-      false,
-    )
+    expect(holds(uncapped, taxi({ amount: big }))).toBe(true)
+    expect(holds(uncapped, taxi({ to: OTHER }))).toBe(false)
   })
 
   test('refuses a permit that would exceed the ArgPolicy rule limit', () => {
@@ -295,19 +325,19 @@ describe('scopeLz', () => {
       if (!p) throw new Error('no policy')
       return () => encodeSessionPolicy(p, 'production')
     }
-    // A Stargate leg and a feeless CCTP leg: all three layouts, and it fits.
-    expect(
-      policy([
-        { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
-        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
-      ]),
-    ).not.toThrow()
-    expect(
-      policy([
-        ...destinations,
-        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
-      ]),
-    ).toThrow(/max is 128/)
+    // Every destination LZ serves from Base, in all three layouts, fits.
+    const all = [
+      ...destinations,
+      SONEIUM_LEG,
+      { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
+    ]
+    expect(policy(all)).not.toThrow()
+    // Each further recipient adds a branch, until it no longer fits.
+    const more = [0x20, 0x21, 0x22, 0x23].map((n) => ({
+      ...ARB_LEG,
+      recipient: `0x${n.toString(16).padStart(40, '0')}` as Address,
+    }))
+    expect(policy([...all, ...more])).toThrow(/max is 128/)
   })
 
   test('refuses a token LZ does not move', () => {
@@ -333,11 +363,11 @@ describe('scopeLz', () => {
         destinations: [
           { chainId: BASE, token: USDC_BASE, recipient: OTHER },
           { chainId: 56, token: OTHER, recipient: OTHER },
-          { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+          ARB_LEG,
         ],
       }),
     )
-    expect(holds(mixed, execute(stargate('taxi')))).toBe(true)
+    expect(holds(mixed, execute(cctp()))).toBe(true)
     expect(() =>
       scopeLz(
         context({
@@ -389,6 +419,20 @@ describe('scopeLz', () => {
     const feeless = scopeLz(context({ settlement }))
     expect(holds(feeless, execute(cctp({ domain: 3 }, true)))).toBe(true)
     expect(holds(feeless, execute(cctp()))).toBe(false)
+  })
+
+  test('admits Stargate TAXI where no CCTP route reaches the leg', () => {
+    const { cctp: _, ...noCctp } = lz(ARB)
+    const intoArb = scopeLz(context({ settlement: withLz(ARB, noCctp) }))
+    expect(holds(intoArb, execute(stargate('taxi')))).toBe(true)
+    expect(holds(intoArb, execute(cctp()))).toBe(false)
+    // A source without CCTP has no CCTP route to any leg.
+    const { cctp: __, ...noSourceCctp } = lz(BASE)
+    const fromBase = scopeLz(
+      context({ settlement: withLz(BASE, noSourceCctp) }),
+    )
+    expect(holds(fromBase, execute(stargate('taxi')))).toBe(true)
+    expect(holds(fromBase, execute(cctp()))).toBe(false)
   })
 
   test('routes only through the blocks the orchestrator serves', () => {

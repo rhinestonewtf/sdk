@@ -1,6 +1,7 @@
 import {
   type Address,
   type Hex,
+  keccak256,
   maxUint256,
   pad,
   size,
@@ -11,26 +12,31 @@ import { describe, expect, test } from 'vitest'
 import {
   ACCOUNT,
   ARB,
+  BASE,
   cctp,
   context,
   execute,
   lz,
   OTHER,
   PLASMA,
+  SONEIUM,
   stargate,
+  USDC_PLASMA,
 } from '../../../../../test/utils/lz-calldata'
 import { scopeLzV0 } from '../../../../../test/utils/lz-scope-v0'
-import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
+import {
+  satisfiesRules as holds,
+  type RuleUsage,
+} from '../../../../../test/utils/policy-rules'
 import { encodeSessionPolicy } from '../policies/encode'
-import type { ScopedAction } from '../types'
+import type { ArgPolicyExpression, ScopedAction } from '../types'
 import { scopeLz } from './lz'
-import type { SettlementContext } from './types'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 const OP = 10
 const ETH = 1
 const UNICHAIN = 130
 const USDC_UNICHAIN = '0x078D782b760474a361dDA0AF3839290b0EF57AD6' as Address
-const USDC_PLASMA = '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
 
 const usdc = (chainId: number): Address =>
   chainId === UNICHAIN
@@ -46,32 +52,80 @@ const legs = (chainIds: number[], open = false) =>
     recipient: open ? undefined : ACCOUNT,
   }))
 
-/** Every batch the API can quote into a chain, as LZ serves it, but BUS. */
-function batches(chainId: number, to: Address): Hex[] {
-  const served = lz(chainId)
-  const out: Hex[] = []
-  if (served.stargateUsdc) {
-    const eid = served.stargateUsdc.eid
-    out.push(execute(stargate('taxi', { eid, to })))
+/** Whether a CCTP route from Base reaches the chain. */
+const cctpReaches = (chainId: number) =>
+  lz(BASE).cctp !== undefined && lz(chainId).cctp !== undefined
+
+interface Batch {
+  readonly data: Hex
+  readonly calls: number
+}
+
+const taxi = (chainId: number, to: Address, amount?: bigint): Batch => ({
+  data: execute(
+    stargate('taxi', { eid: lz(chainId).stargateUsdc!.eid, to, amount }),
+  ),
+  calls: 4,
+})
+
+/** The API's CCTP batch into a chain, as LZ serves it. */
+function burn(
+  chainId: number,
+  o: Parameters<typeof cctp>[0] = {},
+): Batch | undefined {
+  const served = lz(chainId).cctp
+  if (!served) return undefined
+  const feeless = served.feeless === true
+  return {
+    data: execute(cctp({ domain: served.domain, ...o }, feeless)),
+    calls: feeless ? 4 : 5,
   }
-  if (served.cctp) {
-    const feeless = served.cctp.feeless === true
-    out.push(execute(cctp({ domain: served.cctp.domain, to }, feeless)))
+}
+
+/** Every batch the policy still admits into a chain. */
+function admitted(chainId: number, to: Address): Batch[] {
+  const out: Batch[] = []
+  const cctpBatch = burn(chainId, { to })
+  if (cctpBatch) out.push(cctpBatch)
+  if (lz(chainId).stargateUsdc && !cctpReaches(chainId)) {
+    out.push(taxi(chainId, to))
   }
   return out
 }
 
-/** The Stargate BUS batch into a chain, which the policy no longer admits. */
+/** The Stargate TAXI batch into a chain CCTP reaches, which it now refuses. */
+const taxiIntoCctp = (chainId: number, to: Address): Batch[] =>
+  lz(chainId).stargateUsdc && cctpReaches(chainId) ? [taxi(chainId, to)] : []
+
+/** The Stargate BUS batch into a chain, which it refuses everywhere. */
 function bus(chainId: number, to: Address): Hex[] {
   const eid = lz(chainId).stargateUsdc?.eid
   return eid === undefined ? [] : [execute(stargate('bus', { eid, to }))]
+}
+
+/**
+ * The context with Stargate dropped from every leg CCTP reaches: the old
+ * policy compiled from it decides each batch as the live one should.
+ */
+function withoutTaxiIntoCctp(ctx: SettlementContext): SettlementContext {
+  const settlement: Record<number, SettlementCatalog[number]> = {}
+  for (const [id, block] of Object.entries(ctx.settlement)) {
+    const chainId = Number(id)
+    if (chainId === ctx.chainId || !block.lz || !cctpReaches(chainId)) {
+      settlement[chainId] = block
+      continue
+    }
+    const { stargateUsdc: _, ...rest } = block.lz
+    settlement[chainId] = { ...block, lz: rest }
+  }
+  return { ...ctx, settlement }
 }
 
 const PERMITS: Record<
   string,
   { ctx: Partial<SettlementContext>; to: number[]; recipient?: Address }
 > = {
-  'stargate + cctp, base -> arbitrum': {
+  'cctp, base -> arbitrum': {
     ctx: { destinations: legs([ARB]) },
     to: [ARB],
   },
@@ -83,22 +137,30 @@ const PERMITS: Record<
     ctx: { destinations: legs([PLASMA]) },
     to: [PLASMA],
   },
-  'all three layouts, base -> arbitrum + plasma': {
+  'stargate only, base -> soneium': {
+    ctx: { destinations: legs([SONEIUM]) },
+    to: [SONEIUM],
+  },
+  'cctp and feeless cctp, base -> arbitrum + plasma': {
     ctx: { destinations: legs([ARB, PLASMA]) },
     to: [ARB, PLASMA],
+  },
+  'all three layouts, base -> soneium + arbitrum + plasma': {
+    ctx: { destinations: legs([SONEIUM, ARB, PLASMA]) },
+    to: [SONEIUM, ARB, PLASMA],
   },
   'three destinations, base -> arbitrum + optimism + ethereum': {
     ctx: { destinations: legs([ARB, OP, ETH]) },
     to: [ARB, OP, ETH],
   },
-  "recipient 'any', base -> arbitrum + plasma": {
-    ctx: { destinations: legs([ARB, PLASMA], true) },
-    to: [ARB, PLASMA],
+  "recipient 'any', base -> soneium + arbitrum + plasma": {
+    ctx: { destinations: legs([SONEIUM, ARB, PLASMA], true) },
+    to: [SONEIUM, ARB, PLASMA],
     recipient: OTHER,
   },
-  'uncapped, base -> arbitrum': {
-    ctx: { destinations: legs([ARB]), cap: undefined },
-    to: [ARB],
+  'uncapped, base -> soneium + arbitrum': {
+    ctx: { destinations: legs([SONEIUM, ARB]), cap: undefined },
+    to: [SONEIUM, ARB],
   },
 }
 
@@ -134,8 +196,70 @@ function* mutations(data: Hex): Generator<[string, Hex]> {
   }
 }
 
-const initDataSize = (action: ScopedAction) =>
-  size(encodeSessionPolicy(action.policies![0], 'production').initData)
+/** `execute`'s argument words, 32 bytes each (the last may be shorter). */
+const words = (data: Hex): Hex[] => {
+  const out: Hex[] = []
+  for (let at = 4; at < size(data); at += 32) {
+    out.push(slice(data, at, Math.min(at + 32, size(data))))
+  }
+  return out
+}
+
+/**
+ * Seeded word splices of `a` with `b`: each word where they differ is taken
+ * from `b` with even odds, so the hybrids mix two routes' pins.
+ */
+function* splices(a: Hex, b: Hex, count: number): Generator<Hex> {
+  let seed = 1
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31
+    return seed / 2 ** 31
+  }
+  const wa = words(a)
+  const wb = words(b)
+  const differ = wa.flatMap((w, i) =>
+    wb[i] !== undefined && wb[i] !== w && size(wb[i]) === size(w) ? [i] : [],
+  )
+  for (let n = 0; n < count; n++) {
+    const ws = [...wa]
+    for (const i of differ) if (random() < 0.5) ws[i] = wb[i]
+    yield `${slice(a, 0, 4)}${ws.map((w) => w.slice(2)).join('')}` as Hex
+  }
+}
+
+const rules = (e: ArgPolicyExpression): number =>
+  e.type === 'rule'
+    ? 1
+    : e.type === 'not'
+      ? rules(e.child)
+      : rules(e.left) + rules(e.right)
+
+const initData = (action: ScopedAction) =>
+  encodeSessionPolicy(action.policies![0], 'production').initData as Hex
+
+function measure(action: ScopedAction) {
+  const policy = action.policies![0]
+  const data = initData(action)
+  return {
+    rules: policy.type === 'arg-policy' ? rules(policy.expression) : 0,
+    bytes: size(data),
+    nonZeroWords: (data.slice(2).match(/.{1,64}/g) ?? []).filter((w) =>
+      /[^0]/.test(w),
+    ).length,
+  }
+}
+
+/** The frozen policy's size and initData hash, or its rule count if too large. */
+function frozen(action: ScopedAction) {
+  try {
+    return { ...measure(action), hash: keccak256(initData(action)) }
+  } catch {
+    const policy = action.policies![0]
+    return {
+      rules: policy.type === 'arg-policy' ? rules(policy.expression) : 0,
+    }
+  }
+}
 
 describe.each(Object.entries(PERMITS))(
   'LZ policy against its pre-RHI-8045 compilation: %s',
@@ -143,20 +267,40 @@ describe.each(Object.entries(PERMITS))(
     const ctx = context(permit.ctx)
     const old = scopeLzV0(ctx)
     const current = scopeLz(ctx)
-    const valid = permit.to.flatMap((chainId) =>
-      batches(chainId, permit.recipient ?? ACCOUNT),
+    // The old policy as it decides with no Stargate into legs CCTP reaches.
+    const reference = scopeLzV0(withoutTaxiIntoCctp(ctx))
+    const to = permit.recipient ?? ACCOUNT
+    const valid = permit.to.flatMap((chainId) => admitted(chainId, to))
+    const refusedTaxi = permit.to.flatMap((chainId) =>
+      taxiIntoCctp(chainId, to),
     )
-    const buses = permit.to.flatMap((chainId) =>
-      bus(chainId, permit.recipient ?? ACCOUNT),
-    )
+    const buses = permit.to.flatMap((chainId) => bus(chainId, to))
 
-    test('accepts every non-BUS batch the old policy accepted', () => {
+    /** The live verdict: the reference's, and never looser than the old one. */
+    const expectDecided = (data: Hex, name: string) => {
+      const now = holds(current, data)
+      expect(now, name).toBe(holds(reference, data))
+      if (now) expect(holds(old, data), name).toBe(true)
+      return now
+    }
+
+    test('accepts every batch it still admits, as the old policy did', () => {
       expect(valid.length).toBeGreaterThan(0)
-      for (const data of valid) {
+      for (const { data } of valid) {
         expect(holds(old, data)).toBe(true)
         expect(holds(current, data)).toBe(true)
       }
     })
+
+    test.runIf(refusedTaxi.length > 0)(
+      'refuses Stargate into a leg CCTP reaches, which the old policy accepted',
+      () => {
+        for (const { data } of refusedTaxi) {
+          expect(holds(old, data)).toBe(true)
+          expect(holds(current, data)).toBe(false)
+        }
+      },
+    )
 
     test.runIf(buses.length > 0)(
       'refuses the BUS batch the old policy accepted',
@@ -168,21 +312,199 @@ describe.each(Object.entries(PERMITS))(
       },
     )
 
-    test('decides every single-word mutation the way the old policy did', () => {
+    test('decides every single-word mutation as before', () => {
       let refused = 0
-      for (const data of valid) {
+      for (const { data } of valid) {
         for (const [name, mutated] of mutations(data)) {
-          const before = holds(old, mutated)
-          if (!before) refused++
-          expect(holds(current, mutated), name).toBe(before)
+          if (!expectDecided(mutated, name)) refused++
         }
       }
       // The pins bind: most mutations are refused, so the check is not vacuous.
       expect(refused).toBeGreaterThan(0)
     })
 
-    test('compiles to no more initData than before', () => {
-      expect(initDataSize(current)).toBeLessThanOrEqual(initDataSize(old))
+    // Batches into other legs too, so each layout has a same-length partner
+    // whose pins it can borrow.
+    const foreign = [
+      taxi(SONEIUM, to),
+      ...[ARB, OP, PLASMA].flatMap((chainId) => burn(chainId, { to }) ?? []),
+    ]
+    const pool = [...valid, ...refusedTaxi, ...foreign].filter(
+      (batch, i, all) => all.findIndex((b) => b.data === batch.data) === i,
+    )
+    const pairs = pool.flatMap((a) =>
+      pool.flatMap((b) => (a !== b && a.calls === b.calls ? [[a, b]] : [])),
+    )
+    test('decides every splice of two same-length batches as before', () => {
+      let refused = 0
+      for (const [a, b] of pairs) {
+        let n = 0
+        for (const spliced of splices(a.data, b.data, 200)) {
+          if (!expectDecided(spliced, `splice ${n++}`)) refused++
+        }
+      }
+      expect(refused).toBeGreaterThan(0)
+    })
+
+    test('decides every two-call sequence as before, counters shared', () => {
+      const [first] = permit.to
+      const over = [
+        burn(first, { to, fee: 10_000_000n }),
+        burn(first, { to, pull: 5n, fee: 2_000_000n }),
+      ].flatMap((b) => (b ? [b] : []))
+      const smallTaxi = lz(first).stargateUsdc
+        ? [taxi(first, to, 1n)]
+        : ([] as Batch[])
+      const batches = [...valid, ...refusedTaxi, ...over, ...smallTaxi].map(
+        (b) => b.data,
+      )
+      for (const a of batches) {
+        for (const b of batches) {
+          const now: RuleUsage = new Map()
+          const ref: RuleUsage = new Map()
+          const before: RuleUsage = new Map()
+          // Once the old policy ran a call the live one refuses, their
+          // counters part; until then the live one is never looser.
+          let agreed = true
+          for (const [step, data] of [a, b].entries()) {
+            const verdict = holds(current, data, now)
+            expect(verdict, `step ${step}`).toBe(holds(reference, data, ref))
+            const was = holds(old, data, before)
+            if (agreed && verdict) expect(was, `step ${step}`).toBe(true)
+            agreed &&= was === verdict
+          }
+        }
+      }
     })
   },
 )
+
+test('rule counts, initData and the frozen policy compile as pinned', () => {
+  // A revert of the shared-pin factoring or of a route's narrowing moves the
+  // live numbers; any change to the frozen copy's inputs moves its hash.
+  const table = Object.fromEntries(
+    Object.entries(PERMITS).map(([name, permit]) => {
+      const ctx = context(permit.ctx)
+      const old = scopeLzV0(ctx)
+      return [name, { old: frozen(old), now: measure(scopeLz(ctx)) }]
+    }),
+  )
+  expect(table).toMatchInlineSnapshot(`
+    {
+      "all three layouts, base -> soneium + arbitrum + plasma": {
+        "now": {
+          "bytes": 27104,
+          "nonZeroWords": 421,
+          "rules": 105,
+        },
+        "old": {
+          "rules": 129,
+        },
+      },
+      "cctp and feeless cctp, base -> arbitrum + plasma": {
+        "now": {
+          "bytes": 20192,
+          "nonZeroWords": 315,
+          "rules": 78,
+        },
+        "old": {
+          "bytes": 32736,
+          "hash": "0x7ecf7a58b84b223b79427b9f0ee31c91c97257969d2a992a254e06697bd1e0c7",
+          "nonZeroWords": 505,
+          "rules": 127,
+        },
+      },
+      "cctp only, base -> unichain": {
+        "now": {
+          "bytes": 11232,
+          "nonZeroWords": 178,
+          "rules": 43,
+        },
+        "old": {
+          "bytes": 11232,
+          "hash": "0x09f51cbd6b6c0bed02a6843b16bfba22ea7a9e6afab344c98d0adb686bef92e7",
+          "nonZeroWords": 178,
+          "rules": 43,
+        },
+      },
+      "cctp, base -> arbitrum": {
+        "now": {
+          "bytes": 11232,
+          "nonZeroWords": 178,
+          "rules": 43,
+        },
+        "old": {
+          "bytes": 23776,
+          "hash": "0x8f13ab97cea8150b61b9a555780205d77a0174af80341935e9f9598f53f02a09",
+          "nonZeroWords": 368,
+          "rules": 92,
+        },
+      },
+      "feeless cctp, base -> plasma": {
+        "now": {
+          "bytes": 9440,
+          "nonZeroWords": 148,
+          "rules": 36,
+        },
+        "old": {
+          "bytes": 9440,
+          "hash": "0x8d49f2894f88ed4a6d1e472b9eb15cd23ac7b92d84deabd7d94440f7c291abf2",
+          "nonZeroWords": 148,
+          "rules": 36,
+        },
+      },
+      "recipient 'any', base -> soneium + arbitrum + plasma": {
+        "now": {
+          "bytes": 26336,
+          "nonZeroWords": 409,
+          "rules": 102,
+        },
+        "old": {
+          "bytes": 32224,
+          "hash": "0xc260734cee7b7986e5e968f1a976022de391d6cccb86caa13fc7247b5f5544f8",
+          "nonZeroWords": 497,
+          "rules": 125,
+        },
+      },
+      "stargate only, base -> soneium": {
+        "now": {
+          "bytes": 11488,
+          "nonZeroWords": 179,
+          "rules": 44,
+        },
+        "old": {
+          "bytes": 13024,
+          "hash": "0x51500e748c8a2af355e79f4c6928f8f9c1b8d2ac767efad567fbcb2d1add4d50",
+          "nonZeroWords": 201,
+          "rules": 50,
+        },
+      },
+      "three destinations, base -> arbitrum + optimism + ethereum": {
+        "now": {
+          "bytes": 12256,
+          "nonZeroWords": 193,
+          "rules": 47,
+        },
+        "old": {
+          "bytes": 25824,
+          "hash": "0x1a584f3e2bbcfa8dfeb7d74077139a9b78a0f9edf6ff5f2b6f9cef6e918b39d6",
+          "nonZeroWords": 399,
+          "rules": 100,
+        },
+      },
+      "uncapped, base -> soneium + arbitrum": {
+        "now": {
+          "bytes": 21728,
+          "nonZeroWords": 332,
+          "rules": 84,
+        },
+        "old": {
+          "bytes": 23776,
+          "hash": "0xf93ddc24687daeeb915550f4ba41e85881614eb4b5d896c378eb487d60c30ff1",
+          "nonZeroWords": 362,
+          "rules": 92,
+        },
+      },
+    }
+  `)
+})

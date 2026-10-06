@@ -29,14 +29,15 @@ import type { SettlementContext } from './types'
  * quoteId)`, whose nested calls pull the tokens, bridge them and sweep the rest
  * back. LZMultiCall runs any call it is handed, so every nested call is pinned:
  * the array length, each element offset, target, data pointer and
- * length-plus-selector, and each argument the key could redirect. The API picks
- * one of several routes, and the policy accepts exactly these layouts:
+ * length-plus-selector, and each argument the key could redirect. The policy
+ * accepts two of the API's routes, in three layouts:
  *
- * - Stargate TAXI: delegateTransferFrom, approve(pool), pool.send, sweep. BUS
- *   is refused: the orchestrator does not plan it, and its pins would make the
- *   policy too large to enable inside an intent on Base.
  * - CCTP: delegateTransferFrom, transfer(fee), approve(TokenMessengerV2),
  *   depositForBurn, sweep; to Plasma without the fee transfer.
+ * - Stargate TAXI: delegateTransferFrom, approve(pool), pool.send, sweep; only
+ *   into a leg no CCTP route reaches. Where both exist CCTP is cheaper and
+ *   faster, and the orchestrator must not plan Stargate. BUS, which the
+ *   orchestrator does not plan, is refused.
  */
 
 /**
@@ -196,6 +197,11 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     args: (at) => [pin(at(0n), spender)],
   })
   const routes: Route[] = []
+  const cctp = source.cctp
+  const cctpFrom = cctp !== undefined && isAddressEqual(token, cctp.token)
+  // A route exists where both chains carry its block.
+  const cctpReaches = (leg: Leg) =>
+    cctpFrom && crossChain(leg) && servedLz(leg)?.cctp !== undefined
   const stargate = source.stargateUsdc
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
@@ -232,7 +238,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       pinValue(s(0x1c0n), 0n),
     )
     const reaches = (leg: Leg) =>
-      crossChain(leg) && servedLz(leg)?.stargateUsdc !== undefined
+      crossChain(leg) &&
+      servedLz(leg)?.stargateUsdc !== undefined &&
+      !cctpReaches(leg)
     routes.push({
       rules,
       calls: calls.length,
@@ -249,8 +257,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       limits: cap(args[0](96n)),
     })
   }
-  const cctp = source.cctp
-  if (cctp !== undefined && isAddressEqual(token, cctp.token)) {
+  if (cctpFrom) {
     const burn: NestedCall = {
       target: LZ_CCTP_TOKEN_MESSENGER,
       selector: DEPOSIT_FOR_BURN,
@@ -279,9 +286,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       const { rules, args } = batch(calls)
       const b = args[calls.indexOf(burn)]
       const reaches = (leg: Leg) =>
-        crossChain(leg) &&
-        servedLz(leg)?.cctp !== undefined &&
-        (servedLz(leg)?.cctp?.feeless === true) === feeless
+        cctpReaches(leg) && (servedLz(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
         calls: calls.length,

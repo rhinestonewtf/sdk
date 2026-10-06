@@ -19,11 +19,15 @@ export const OTHER = '0x2222222222222222222222222222222222222222' as Address
 export const BASE = 8453
 export const ARB = 42161
 export const PLASMA = 9745
+/** Stargate's only destination LZ serves without a CCTP route. */
+export const SONEIUM = 1868
 export const lz = (chainId: number) => SETTLEMENT_CATALOG[chainId].lz!
 export const USDC_BASE = lz(BASE).stargateUsdc!.token
 export const USDC_ARB = lz(ARB).stargateUsdc!.token
 export const USDC_PLASMA =
   '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
+export const USDC_SONEIUM = lz(SONEIUM).stargateUsdc!.token
+export const SONEIUM_EID = lz(SONEIUM).stargateUsdc!.eid
 export const MC = lz(BASE).multiCall
 export const TD = lz(BASE).transferDelegate
 export const POOL = lz(BASE).stargateUsdc!.pool
