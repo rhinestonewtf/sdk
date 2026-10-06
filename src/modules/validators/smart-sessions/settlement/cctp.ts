@@ -14,7 +14,7 @@ import {
   swapAction,
 } from '../swap/rules'
 import type { ScopedAction, UniversalActionPolicyParamRule } from '../types'
-import { served } from './served'
+import { SettlementLayerRefusal, served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -62,7 +62,7 @@ function requireUsdc(
   leg: 'from' | 'to',
 ) {
   if (!isAddressEqual(token, served(settlement, chainId, 'cctp').usdc)) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: CCTP moves only USDC; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
@@ -71,7 +71,7 @@ function requireUsdc(
 /** The burn call, pinned to the permit's token, destinations and cap. */
 export function scopeCctp(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: CCTP burns one token (USDC) per chain; give exactly one `from` token on this chain',
     )
   }

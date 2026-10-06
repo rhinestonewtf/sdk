@@ -9,6 +9,9 @@ const REFUSAL: Record<Layer, string> = {
   lz: 'LZ does not route from',
 }
 
+/** A layer cannot settle the permit here; `settlementLayers: 'all'` drops it. */
+export class SettlementLayerRefusal extends Error {}
+
 /** The chain's served block for a layer; a chain without one does not route it. */
 export function served<L extends Layer>(
   settlement: SettlementCatalog,
@@ -17,7 +20,9 @@ export function served<L extends Layer>(
 ): NonNullable<SettlementAddresses[L]> {
   const block = settlement[chainId]?.[layer]
   if (block === undefined) {
-    throw new Error(`crossChainPermits: ${REFUSAL[layer]} chain ${chainId}`)
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: ${REFUSAL[layer]} chain ${chainId}`,
+    )
   }
   return block as NonNullable<SettlementAddresses[L]>
 }
