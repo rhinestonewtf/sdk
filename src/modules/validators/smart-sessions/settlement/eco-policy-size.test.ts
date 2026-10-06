@@ -220,14 +220,6 @@ function fillReverts(
 }
 
 /**
- * Whether no solver can ever fill the publish. The source hashes the route
- * bytes as given, the destination re-encodes the decoded `Route`, so a route
- * that is not the canonical encoding of any `Route` never matches, and a
- * canonical one whose fill reverts never lands either. Its reward only refunds
- * to the pinned creator after the pinned deadline — what a route deadline in
- * the past, which the policy has always admitted, already does.
- */
-/**
  * Whether the publish is one the old policy admits but for its funding words:
  * `allowPartial`, the route's and the reward's native amounts. With
  * `msg.value` held at 0, `_fundNative` can fill reward native only from a
@@ -245,6 +237,14 @@ function sameAccountOutflow(legacy: ScopedAction, calldata: Hex): boolean {
   return zeroed !== calldata && accepts(legacy, zeroed)
 }
 
+/**
+ * Whether no solver can ever fill the publish. The source hashes the route
+ * bytes as given, the destination re-encodes the decoded `Route`, so a route
+ * that is not the canonical encoding of any `Route` never matches, and a
+ * canonical one whose fill reverts never lands either. Its reward only refunds
+ * to the pinned creator after the pinned deadline — what a route deadline in
+ * the past, which the policy has always admitted, already does.
+ */
 function unfillable(calldata: Hex): boolean {
   const args = slice(calldata, 4)
   const end = BigInt(size(args))
