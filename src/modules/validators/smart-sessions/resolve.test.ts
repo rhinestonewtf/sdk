@@ -442,10 +442,12 @@ describe('Permit2 claim policy placement', () => {
     expect(content[0].appDomainSeparator).toBe(zeroHash)
   })
 
-  // The modes that would leave the policy on a surface it cannot be reached
-  // through, rather than silently producing a session that can never settle.
+  // Claim policies take over the 1271 list, so any signing config the caller
+  // asked for would be dropped — refuse rather than hand back a session that
+  // cannot do what was declared.
   test.each([
     { mode: 'disabled' },
+    { mode: 'unrestricted' },
     {
       mode: 'scoped',
       allowedContents: [
@@ -458,7 +460,7 @@ describe('Permit2 claim policy placement', () => {
     },
   ] as const)('rejects claim policies with $mode signing', (signing) => {
     expect(() => toSession({ ...definition, signing })).toThrow(
-      /does not enable/,
+      /cannot also be configured/,
     )
   })
 
@@ -468,7 +470,7 @@ describe('Permit2 claim policy placement', () => {
         ...definition,
         signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
       }),
-    ).toThrow(/signing validity window/)
+    ).toThrow(/cannot also be configured/)
   })
 
   test('salts the session so it cannot share a permissionId with a plain one', () => {

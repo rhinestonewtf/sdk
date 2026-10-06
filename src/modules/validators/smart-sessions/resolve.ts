@@ -476,21 +476,20 @@ function resolveSession(
     // for on that surface would be dropped: a validity window lives on the
     // signing policy, and a scoped or disabled mode decides the 7739 content the
     // claim policy is reached through. Refuse rather than silently discard it.
-    const signing = definition.signing
-    if (signing !== undefined) {
-      if (
-        signing.mode !== 'disabled' &&
-        (signing.validAfter !== undefined || signing.validUntil !== undefined)
-      ) {
-        throw new Error(
-          "Claim policies replace the session's signing policy on the ERC-1271 list, which is where a signing validity window lives; drop validAfter/validUntil or the claim policies",
-        )
-      }
-      if (signing.mode !== 'unrestricted') {
-        throw new Error(
-          `Claim policies are reached through the direct-mode ERC-1271 surface, which \`signing: { mode: '${signing.mode}' }\` does not enable; drop the signing mode or the claim policies`,
-        )
-      }
+    if (definition.signing !== undefined) {
+      throw new Error(
+        `Claim policies take over the session's ERC-1271 list, so \`signing\` cannot also be configured — its policy and validity window would be dropped. Drop \`signing\` or the claim policies.`,
+      )
+    }
+    // Every claim policy resolves to the same policy contract, and enabling
+    // stores one config per contract, so a second would overwrite the first
+    // while the signing path still builds calldata for both. Refuse rather than
+    // enforce one of N and report success. One permit per session until the
+    // policy can express them together.
+    if (claimPolicies.length > 1) {
+      throw new Error(
+        `A session can declare one Permit2 claim policy, not ${claimPolicies.length}: they share a policy contract on-chain, so only the last would be installed. Split them across sessions.`,
+      )
     }
     // Replace rather than append. The list is an AND, so a permissive sudo entry
     // alongside cannot weaken it — but it would be dead config that reads as a
@@ -779,12 +778,9 @@ export function toSession(
     // Keep the raw claim policies on the high-level session for both routes: the
     // permit2 settlement signature builds their calldata from here (see
     // claimPolicyData in session-signing). They are enforced via the erc1271
-    // surface (already in data.erc7739Policies), so the flag tells getSessionData
-    // NOT to re-encode them onto the on-chain claim (lockTag) surface — which the
-    // manager drops under NO_LOCKTAG anyway.
+    // surface (already in data.erc7739Policies); getSessionData leaves the
+    // on-chain claim (lockTag) field empty, which the manager skips anyway.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
-    claimPoliciesEnforcedVia1271:
-      (definition.claimPolicies?.length ?? 0) + expandedClaims.length > 0,
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(settlementLayers.length ? { settlementLayers } : {}),
     ...(definition.oneTimeUse && {

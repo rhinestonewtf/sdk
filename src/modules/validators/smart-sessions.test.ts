@@ -755,45 +755,35 @@ describe('crossChainPermits expansion', () => {
     ).toBe(true)
   })
 
-  test('user claimPolicies + crossChainPermits are concatenated', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      claimPolicies: [{ type: 'permit2' }],
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-      ],
-    })
-    expect(session.claimPolicies).toHaveLength(2)
-    const data = getSessionData(session)
-    expect(data.erc7739Policies.erc1271Policies).toHaveLength(2)
+  test('refuses user claimPolicies combined with crossChainPermits', () => {
+    // They share a policy contract on-chain, so only the last would install.
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        claimPolicies: [{ type: 'permit2' }],
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+          },
+        ],
+      }),
+    ).toThrow(/one Permit2 claim policy/)
   })
 
-  test('multiple permits → N claim policies', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-      ],
-    })
-    expect(
-      getSessionData(session).erc7739Policies.erc1271Policies,
-    ).toHaveLength(3)
+  test('refuses multiple permits, which would collapse to one on-chain', () => {
+    const permit = {
+      from: [{ chain: base, token: USDC }],
+      to: [{ chain: base, token: USDC_ARB }],
+    }
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [permit, permit, permit],
+      }),
+    ).toThrow(/one Permit2 claim policy/)
   })
 
   test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
