@@ -2,7 +2,7 @@
 '@rhinestone/sdk': minor
 ---
 
-**Breaking:** declaring `claimPolicies` or `crossChainPermits` now refuses two configurations that previously resolved. Declaring `signing` alongside them throws — the claim policies take over the session's ERC-1271 list, so a signing policy or validity window declared beside them would be dropped. Declaring more than one Permit2 claim policy (including a `claimPolicies` entry plus a `crossChainPermits` one) also throws: they resolve to the same policy contract, and enabling stores one config per contract, so only the last would be installed while the signing path still built calldata for the rest. Split them across sessions.
+Refuse two `claimPolicies` / `crossChainPermits` configurations that previously resolved but could not be enforced. Declaring `signing` alongside them throws — the claim policies take over the session's ERC-1271 list, so a signing policy or validity window declared beside them would be dropped. Declaring more than one Permit2 claim policy (including a `claimPolicies` entry plus a `crossChainPermits` one) also throws: they resolve to the same policy contract, and enabling stores one config per contract, so only the last would be installed while the signing path still built calldata for the rest. Split them across sessions.
 
 Permit2 claim policies are now enforced from the ERC-1271 policy list — the list Permit2's `isValidSignature` consults — for every session. Previously only one-time-use sessions placed them there. They replace the session's signing policy rather than joining it, since that list is an AND and a permissive entry alongside would be dead config advertising a capability the session no longer has.
 
