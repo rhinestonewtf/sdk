@@ -36,7 +36,13 @@ import {
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { encodeSessionPolicy } from '../policies/encode'
-import { LZ_CCTP_MAX_RELAY_FEE, LZ_EXECUTE_SELECTOR, scopeLz } from './lz'
+import { pinValue } from '../swap/rules'
+import {
+  LZ_CCTP_MAX_RELAY_FEE,
+  LZ_EXECUTE_SELECTOR,
+  sameRule,
+  scopeLz,
+} from './lz'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /** Fields the key may choose: the quote id, fees, and amounts under the cap. */
@@ -446,6 +452,13 @@ describe('scopeLz', () => {
     expect(() =>
       scopeLz(context({ settlement: withLz(BASE, undefined) })),
     ).toThrow(/does not route from chain 8453/)
+  })
+
+  test('never shares a usage-limited rule between branches', () => {
+    const rule = pinValue(0x40n, 4n)
+    expect(sameRule(rule, { ...rule })).toBe(true)
+    const limited = { ...rule, usageLimit: 4n }
+    expect(sameRule(limited, { ...limited })).toBe(false)
   })
 
   test('needs the account and exactly one source token', () => {

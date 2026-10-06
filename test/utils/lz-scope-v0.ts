@@ -1,6 +1,7 @@
 // Frozen copy of `scopeLz` before RHI-8045 shrank its policy. The differential
-// test in lz-policy-size.test.ts holds the live one to refuse all it refused.
-// Do not edit.
+// test in lz-policy-size.test.ts holds the live one to refuse all it refused,
+// and pins this copy's compiled initData by hash, so a change to the live
+// helpers it imports cannot move both sides together. Do not edit.
 import {
   type Address,
   type Hex,

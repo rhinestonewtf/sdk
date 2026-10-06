@@ -86,8 +86,11 @@ const ceil32 = (n: number) => BigInt(Math.ceil(n / 32) * 32)
 const and = (terms: ArgPolicyExpression[]): ArgPolicyExpression =>
   terms.reduceRight((right, left) => ({ type: 'and', left, right }))
 
-/** The same check on the same word; a usage-limited rule is never the same. */
-const sameRule = (a: Rule, b: Rule) =>
+/**
+ * The same check on the same word. A usage-limited rule is never the same: one
+ * hoisted out of an OR would count on every call, not only when its branch runs.
+ */
+export const sameRule = (a: Rule, b: Rule) =>
   a.usageLimit === undefined &&
   b.usageLimit === undefined &&
   a.condition === b.condition &&
@@ -348,8 +351,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
     )
   }
-  // Batches with as many calls share the offset table's position, so a pin on
-  // the same word and value in each of them is checked once, ahead of their OR.
+  // A pure pin that every branch of a group carries (`group.every`) is checked
+  // once, ahead of their OR; that alone makes it sound. Grouping by call count
+  // only picks the batches likely to share pins.
   const groups = [...new Set(branches.map(({ route }) => route.calls))].map(
     (calls) => {
       const group = branches.filter(({ route }) => route.calls === calls)
@@ -362,7 +366,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         )
         return and([...(left.length ? [allOf(left)] : []), ...rest])
       })
-      return and([allOf(shared), anyOf(own)])
+      return and([...(shared.length ? [allOf(shared)] : []), anyOf(own)])
     },
   )
   return {
