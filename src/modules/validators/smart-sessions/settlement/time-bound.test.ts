@@ -297,7 +297,7 @@ describe('a validAfter or a validUntil without oneTimeUse is refused at resolve'
 
   test.each(cases)('%s', (_, shape, window) => {
     expect(() => resolve(shape, window)).toThrow(
-      'crossChainPermits: an IntentExecutor-layer permit supports validUntil only together with oneTimeUse, and does not support validAfter; set oneTimeUse with validUntil to bound the session',
+      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
   })
 

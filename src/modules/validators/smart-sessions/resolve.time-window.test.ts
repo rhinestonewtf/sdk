@@ -204,15 +204,15 @@ const permit2Permit = (window: Window) => ({
 /** Each place a session definition can set an action time window. */
 const SOURCES = {
   permissions: {
-    field: 'permissions.approve',
+    field: `permissions[${USDC}].approve`,
     define: (window: Window) => ({ permissions: [permission(window)] }),
   },
   actions: {
-    field: 'actions[0x12345678]',
+    field: `actions[${TARGET}:0x12345678]`,
     define: (window: Window) => ({ actions: [rawAction(window)] }),
   },
   crossChainPermits: {
-    field: 'crossChainPermits',
+    field: 'crossChainPermits[0]',
     define: (window: Window) => ({
       crossChainPermits: [permit2Permit(window)],
     }),
@@ -394,6 +394,72 @@ describe('a session time window it cannot express is refused at resolve', () => 
       )
     },
   )
+
+  const NOT_A_DATE: Record<string, unknown> = {
+    null: null,
+    'a string': '2033-05-18T03:33:20Z',
+    'a number': UNTIL.getTime(),
+  }
+  const notADateCases = (['permissions', 'crossChainPermits'] as const).flatMap(
+    (name) =>
+      Object.entries(NOT_A_DATE).map(
+        ([label, validUntil]) =>
+          [`${name}, ${label}`, name, validUntil] as const,
+      ),
+  )
+  test.each(notADateCases)(
+    '%s: validUntil must be a Date',
+    (_, name, validUntil) => {
+      const { field, define } = SOURCES[name]
+      const definition = {
+        chain: base,
+        owners,
+        ...otu(),
+        ...define({ validUntil } as unknown as Window),
+      } as SessionDefinition
+      expect(() => toSession(definition)).toThrow(
+        `${field}: validUntil must be a valid Date in the future`,
+      )
+    },
+  )
+
+  test.each([null, '2033-05-18T03:33:20Z'])(
+    'actions: a time-frame validUntil of %o must be a number',
+    (validUntil) => {
+      const definition = {
+        chain: base,
+        owners,
+        ...otu(),
+        actions: [
+          {
+            target: TARGET,
+            selector: '0x12345678',
+            policies: [{ type: 'time-frame', validUntil, validAfter: 0 }],
+          },
+        ],
+      } as unknown as SessionDefinition
+      expect(() => toSession(definition)).toThrow(
+        `${SOURCES.actions.field}: validUntil must be a valid Date in the future`,
+      )
+    },
+  )
+})
+
+// A raw action whose only policy was its window compiles as a permission whose
+// only setting was its window: sudo, plus the once-policy.
+test('a raw time-frame-only action is sudo, as a window-only permission is', () => {
+  const policiesOf = (definition: SessionDefinition, target: Address) =>
+    getSessionData(toSession(definition))
+      .actions.find((action) => isAddressEqual(action.actionTarget, target))
+      ?.actionPolicies.map((p) => p.policy)
+  const raw = policiesOf(WINDOWED['raw time-frame action, oneTimeUse'], TARGET)
+  const permission = policiesOf(
+    WINDOWED['permissions validUntil, oneTimeUse'],
+    USDC,
+  )
+  expect(raw).toHaveLength(2)
+  expect(isAddressEqual(raw?.[1] as Address, ONE_TIME_USE)).toBe(true)
+  expect(raw).toEqual(permission)
 })
 
 const WINDOWED: Record<string, SessionDefinition> = {
@@ -447,8 +513,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'raw time-frame action, oneTimeUse': {
     permissionId:
-      '0x3cab6beb2d9154a9078438f00c1c8073ff42ed3d4318f40385456886c0a7bd77',
-    data: '0xab0eccdf0b4a7a610805af152081785e728f596529d7515ae01247daaf4e1ea3',
+      '0xe46a3d35490ea0029b39e1913adb2a11d96b3221d17a032cb60020494dcf4da2',
+    data: '0xb06ef3c963c4fa2cc0e62d616c379ff6778c7767b609b4c52db602ef4c922265',
   },
   'Permit2 permit validUntil, oneTimeUse': {
     permissionId:

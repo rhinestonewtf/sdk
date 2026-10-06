@@ -20,6 +20,7 @@ import {
   CONSUME_FOR_SELECTOR,
   CONSUME_SELECTOR,
   oneTimeUseIdErc1271Policy,
+  sessionWindowRefusal,
 } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
@@ -41,6 +42,7 @@ import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
   IntentExecutorSettlementLayer,
+  Permission,
   ResolvedAction,
   ResolvedERC7739Policies,
   ResolvedPolicy,
@@ -66,9 +68,6 @@ function minDefined(a?: bigint, b?: bigint): bigint | undefined {
   return a < b ? a : b
 }
 
-const SESSION_WINDOW_REFUSAL =
-  'a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)'
-
 /**
  * Each validUntil the session's actions set, in seconds. A session's time window
  * is expressed as the one-time-use deadline, so a window without oneTimeUse, or
@@ -76,18 +75,15 @@ const SESSION_WINDOW_REFUSAL =
  */
 function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
   const deadlines: bigint[] = []
-  const take = (
-    field: string,
-    validUntil: Date | undefined,
-    hasValidAfter: boolean,
-  ) => {
+  const take = (field: string, validUntil: unknown, hasValidAfter: boolean) => {
     if (hasValidAfter || (validUntil !== undefined && !definition.oneTimeUse)) {
-      throw new Error(`${field}: ${SESSION_WINDOW_REFUSAL}`)
+      throw new Error(sessionWindowRefusal(field))
     }
     if (validUntil === undefined) return
     // As for oneTimeUse.validUntil: 0 or less would read as "never expires".
     if (
       !(
+        validUntil instanceof Date &&
         Number.isFinite(validUntil.getTime()) &&
         validUntil.getTime() > Date.now()
       )
@@ -96,39 +92,57 @@ function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
     }
     deadlines.push(BigInt(Math.floor(validUntil.getTime() / 1000)))
   }
-  for (const { functions } of definition.permissions ?? []) {
+  for (const { address, functions } of definition.permissions ?? []) {
     for (const [name, config] of Object.entries(functions)) {
       if (config) {
         take(
-          `permissions.${name}`,
+          `permissions[${address}].${name}`,
           config.validUntil,
           config.validAfter !== undefined,
         )
       }
     }
   }
-  for (const { selector, policies } of definition.actions ?? []) {
+  for (const { target, selector, policies } of definition.actions ?? []) {
     for (const policy of policies ?? []) {
       if (policy.type === 'time-frame') {
         take(
-          `actions[${selector}]`,
-          new Date(policy.validUntil),
+          `actions[${target}:${selector}]`,
+          typeof policy.validUntil === 'number'
+            ? new Date(policy.validUntil)
+            : policy.validUntil,
           policy.validAfter !== 0,
         )
       }
     }
   }
   // An IntentExecutor-layer permit's window is resolved with its scope.
-  for (const permit of definition.crossChainPermits ?? []) {
+  for (const [index, permit] of (
+    definition.crossChainPermits ?? []
+  ).entries()) {
     if (!isSettlementScopedPermit(permit)) {
       take(
-        'crossChainPermits',
+        `crossChainPermits[${index}]`,
         permit.validUntil,
         permit.validAfter !== undefined,
       )
     }
   }
   return deadlines
+}
+
+/** The permission without its window, which the session carries as its deadline. */
+function withoutWindow(permission: Permission): Permission {
+  return {
+    ...permission,
+    functions: Object.fromEntries(
+      Object.entries(permission.functions).map(([name, config]) => {
+        if (!config) return [name, config]
+        const { validUntil: _until, validAfter: _after, ...rest } = config
+        return [name, rest]
+      }),
+    ),
+  } as Permission
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -258,7 +272,7 @@ function resolveSession(
     swapScope !== undefined ||
     settlementScope !== undefined
   const permissions = [
-    ...(definition.permissions ?? []),
+    ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []),
   ]
@@ -266,17 +280,17 @@ function resolveSession(
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
+  // A time-frame policy is carried as the deadline; an action left with no
+  // policy is sudo, as a permission with only a window is.
   const rawActions = [
-    ...(definition.actions ?? []).map((action) =>
-      action.policies?.some((policy) => policy.type === 'time-frame')
-        ? {
-            ...action,
-            policies: action.policies.filter(
-              (policy) => policy.type !== 'time-frame',
-            ),
-          }
-        : action,
-    ),
+    ...(definition.actions ?? []).map((action): ScopedAction => {
+      if (!action.policies?.some((policy) => policy.type === 'time-frame')) {
+        return action
+      }
+      const { policies, ...rest } = action
+      const kept = policies.filter((policy) => policy.type !== 'time-frame')
+      return kept.length ? { ...rest, policies: kept } : rest
+    }),
     ...(swapScope?.actions ?? []),
     ...(settlementScope?.actions ?? []),
   ]

@@ -742,7 +742,7 @@ describe('crossChainPermits expansion', () => {
         ],
       }),
     ).toThrow(
-      'crossChainPermits: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
+      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
   })
 
@@ -844,7 +844,7 @@ describe('crossChainPermits expansion', () => {
         ],
       }),
     ).toThrow(
-      'crossChainPermits: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
+      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
   })
 })

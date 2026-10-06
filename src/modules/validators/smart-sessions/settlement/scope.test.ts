@@ -440,7 +440,7 @@ describe('settlement-scoped crossChainPermits', () => {
     test('requires oneTimeUse, through its mandatory validUntil and maxAmount', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
-      ).toThrow('supports validUntil only together with oneTimeUse')
+      ).toThrow('a session time window requires oneTimeUse')
     })
 
     test.each([
@@ -703,7 +703,7 @@ describe('resolveSettlementScope', () => {
     ],
   ])('refuses %s, a window that needs oneTimeUse', (_, window) => {
     expect(() => scope(window)).toThrow(
-      'supports validUntil only together with oneTimeUse, and does not support validAfter',
+      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
   })
 

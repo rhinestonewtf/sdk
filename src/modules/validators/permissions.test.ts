@@ -749,19 +749,20 @@ describe('resolvePermission sugar fields', () => {
     expect(actions[0].policies).toEqual([{ type: 'usage-limit', limit: 10n }])
   })
 
-  // The session resolver carries validUntil as the one-time-use deadline.
-  test('validUntil and validAfter add no action policy', () => {
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        transfer: {
-          validUntil: new Date('2027-01-01'),
-          validAfter: new Date('2026-01-01'),
-        },
-      },
-    })
-    expect(actions[0].policies).toBeUndefined()
+  // The session resolver folds a window into the deadline and strips it first.
+  test.each([
+    { validUntil: new Date('2027-01-01') },
+    { validAfter: new Date('2026-01-01') },
+  ])('refuses a window that reaches it: %o', (window) => {
+    expect(() =>
+      resolvePermission({
+        abi: erc20Abi,
+        address: USDC,
+        functions: { transfer: window },
+      }),
+    ).toThrow(
+      'Function "transfer": validUntil/validAfter belong to the session deadline; build the session with toSession',
+    )
   })
 
   test('spendingLimit on an ERC-20-transfer-shaped ABI emits spending-limits', () => {

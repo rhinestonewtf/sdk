@@ -198,6 +198,8 @@ type RawParamConstraint = {
 }
 
 type RawFunctionConfig = {
+  validUntil?: unknown
+  validAfter?: unknown
   valueLimitPerUse?: bigint
   params?: Record<string, RawParamConstraint | undefined>
   maxUses?: bigint
@@ -260,8 +262,13 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       policies.push({ type: 'usage-limit', limit: config.maxUses })
     }
 
-    // validUntil/validAfter: the session resolver folds them into the
-    // one-time-use deadline (see sessionWindowDeadlines).
+    // The session resolver folds a window into the one-time-use deadline and
+    // strips it; one that reaches here was never folded.
+    if (config.validUntil !== undefined || config.validAfter !== undefined) {
+      throw new Error(
+        `Function "${fnName}": validUntil/validAfter belong to the session deadline; build the session with toSession`,
+      )
+    }
 
     if (config.valueLimit !== undefined) {
       // Runtime backstop: payable-gating is enforced at the type level, but
