@@ -1,4 +1,15 @@
-import { type Address, encodeFunctionData, type Hex, pad, parseAbi } from 'viem'
+import {
+  type Address,
+  decodeFunctionData,
+  encodeFunctionData,
+  type Hex,
+  isAddressEqual,
+  pad,
+  parseAbi,
+  size,
+  slice,
+  toFunctionSelector,
+} from 'viem'
 import type { SettlementContext } from '../../src/modules/validators/smart-sessions/settlement/types'
 import { SETTLEMENT_CATALOG } from './settlement-catalog'
 
@@ -129,4 +140,45 @@ export function context(
     timeFrame: [],
     ...overrides,
   }
+}
+
+/**
+ * Base's non-payable nested calls, `target:selector`. Each reverts on non-zero
+ * `msg.value` (solc callvalue guard; verified on every LZ source chain), and
+ * LZMultiCall bubbles the revert.
+ */
+const NON_PAYABLE = new Set(
+  [
+    [TD, 'delegateTransferFrom'],
+    [MC, 'sweep'],
+    [USDC_BASE, 'approve'],
+    [USDC_BASE, 'transfer'],
+    [TOKEN_MESSENGER, 'depositForBurn'],
+  ].map(([target, name]) =>
+    `${target}:${toFunctionSelector(abi.find((f) => f.name === name)!)}`.toLowerCase(),
+  ),
+)
+
+/**
+ * Whether LZMultiCall reverts the batch whoever signs it: a call to its
+ * TransferDelegate must be 132 bytes of `delegateTransferFrom` pulling from the
+ * caller, and value sent to a non-payable call reverts.
+ */
+export function multiCallReverts(data: Hex, caller: Address): boolean {
+  const { args } = decodeFunctionData({ abi, data })
+  const [calls] = args as unknown as [readonly Call[]]
+  return calls.some((c) => {
+    const selector = slice(c.data, 0, 4)
+    if (isAddressEqual(c.target, TD)) {
+      if (
+        size(c.data) !== 132 ||
+        selector !== toFunctionSelector(abi[1]) ||
+        !isAddressEqual(slice(c.data, 48, 68), caller)
+      )
+        return true
+    }
+    return (
+      c.value !== 0n && NON_PAYABLE.has(`${c.target}:${selector}`.toLowerCase())
+    )
+  })
 }

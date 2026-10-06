@@ -20,6 +20,7 @@ import {
   fn,
   lz,
   MC,
+  multiCallReverts,
   OTHER,
   PLASMA,
   SONEIUM,
@@ -90,6 +91,14 @@ function pinnedView(data: Hex) {
       args: blank(named, free),
     }
   })
+}
+
+const revertsOnChain = (data: Hex) => {
+  try {
+    return multiCallReverts(data, ACCOUNT)
+  } catch {
+    return false
+  }
 }
 
 const ARB_LEG = { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }
@@ -252,6 +261,8 @@ describe('scopeLz', () => {
           const mutated = toHex(flipped)
           if (!holds(action, mutated)) continue
           accepted++
+          // LZMultiCall reverts these on-chain, whatever the policy says.
+          if (revertsOnChain(mutated)) continue
           let view: ReturnType<typeof pinnedView>
           try {
             view = pinnedView(mutated)

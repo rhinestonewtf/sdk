@@ -17,6 +17,7 @@ import {
   context,
   execute,
   lz,
+  multiCallReverts,
   OTHER,
   PLASMA,
   SONEIUM,
@@ -276,11 +277,24 @@ describe.each(Object.entries(PERMITS))(
     )
     const buses = permit.to.flatMap((chainId) => bus(chainId, to))
 
-    /** The live verdict: the reference's, and never looser than the old one. */
+    /**
+     * The live verdict: the reference's, and never looser than the old one,
+     * except for a batch LZMultiCall reverts on-chain anyway.
+     */
     const expectDecided = (data: Hex, name: string) => {
       const now = holds(current, data)
-      expect(now, name).toBe(holds(reference, data))
-      if (now) expect(holds(old, data), name).toBe(true)
+      const reverts = () => {
+        try {
+          return multiCallReverts(data, ACCOUNT)
+        } catch {
+          return false
+        }
+      }
+      if (now && !(holds(reference, data) && holds(old, data))) {
+        expect(reverts(), `widened: ${name}`).toBe(true)
+      } else {
+        expect(now, name).toBe(holds(reference, data))
+      }
       return now
     }
 
