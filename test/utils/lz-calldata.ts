@@ -194,3 +194,30 @@ export function multiCallReverts(data: Hex, caller: Address): boolean {
     )
   })
 }
+
+/**
+ * The batch with its burn's `burnToken` set to `token`, or undefined unless
+ * the batch is the canonical encoding of one with a CCTP burn.
+ */
+export function withBurnToken(data: Hex, token: Address): Hex | undefined {
+  let calls: readonly Call[]
+  try {
+    const { args } = decodeFunctionData({ abi, data })
+    ;[calls] = args as unknown as [readonly Call[]]
+    if (execute([...calls], args[1] as Hex) !== data) return undefined
+  } catch {
+    return undefined
+  }
+  let swapped = false
+  const next = calls.map((c) => {
+    if (slice(c.data, 0, 4) !== toFunctionSelector(abi[5])) return c
+    const inner = decodeFunctionData({ abi, data: c.data })
+    const a = [...(inner.args as readonly unknown[])]
+    a[3] = token
+    swapped = true
+    return { ...c, data: fn('depositForBurn', a) }
+  })
+  return swapped
+    ? execute(next as Call[], decodeFunctionData({ abi, data }).args[1] as Hex)
+    : undefined
+}

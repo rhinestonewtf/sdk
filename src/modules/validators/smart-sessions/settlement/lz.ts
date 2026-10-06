@@ -277,8 +277,10 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       target: LZ_CCTP_TOKEN_MESSENGER,
       selector: DEPOSIT_FOR_BURN,
       length: 228,
+      // `burnToken` is not pinned: the pull and the sweep are pinned to this
+      // token and the account, so another burn token can only spend what a
+      // third party left in LZMultiCall, and the pull is swept back.
       args: (at) => [
-        pin(at(96n), token),
         // A non-zero destinationCaller restricts who may mint; the API never
         // sets one.
         pinValue(at(128n), 0n),

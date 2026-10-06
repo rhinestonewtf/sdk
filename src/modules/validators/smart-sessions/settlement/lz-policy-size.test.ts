@@ -22,7 +22,9 @@ import {
   PLASMA,
   SONEIUM,
   stargate,
+  USDC_BASE,
   USDC_PLASMA,
+  withBurnToken,
 } from '../../../../../test/utils/lz-calldata'
 import { scopeLzV0 } from '../../../../../test/utils/lz-scope-v0'
 import {
@@ -290,8 +292,20 @@ describe.each(Object.entries(PERMITS))(
           return false
         }
       }
+      // Only the batch's burn token differs from one both admit. The pull and
+      // sweep stay pinned to USDC and the account, so a foreign burn token
+      // can only burn what someone else left in LZMultiCall.
+      const foreignBurn = () => {
+        const usdc = withBurnToken(data, USDC_BASE)
+        return (
+          usdc !== undefined &&
+          usdc !== data &&
+          holds(reference, usdc) &&
+          holds(old, usdc)
+        )
+      }
       if (now && !(holds(reference, data) && holds(old, data))) {
-        expect(reverts(), `widened: ${name}`).toBe(true)
+        expect(reverts() || foreignBurn(), `widened: ${name}`).toBe(true)
       } else {
         expect(now, name).toBe(holds(reference, data))
       }
@@ -407,9 +421,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
     {
       "all three layouts, base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 23520,
-          "nonZeroWords": 375,
-          "rules": 91,
+          "bytes": 23008,
+          "nonZeroWords": 367,
+          "rules": 89,
         },
         "old": {
           "rules": 129,
@@ -417,9 +431,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp and feeless cctp, base -> arbitrum + plasma": {
         "now": {
-          "bytes": 16864,
-          "nonZeroWords": 272,
-          "rules": 65,
+          "bytes": 16352,
+          "nonZeroWords": 264,
+          "rules": 63,
         },
         "old": {
           "bytes": 32736,
@@ -430,9 +444,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp only, base -> unichain": {
         "now": {
-          "bytes": 9440,
-          "nonZeroWords": 155,
-          "rules": 36,
+          "bytes": 9184,
+          "nonZeroWords": 151,
+          "rules": 35,
         },
         "old": {
           "bytes": 11232,
@@ -443,9 +457,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp, base -> arbitrum": {
         "now": {
-          "bytes": 9440,
-          "nonZeroWords": 155,
-          "rules": 36,
+          "bytes": 9184,
+          "nonZeroWords": 151,
+          "rules": 35,
         },
         "old": {
           "bytes": 23776,
@@ -456,9 +470,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "feeless cctp, base -> plasma": {
         "now": {
-          "bytes": 7904,
-          "nonZeroWords": 128,
-          "rules": 30,
+          "bytes": 7648,
+          "nonZeroWords": 124,
+          "rules": 29,
         },
         "old": {
           "bytes": 9440,
@@ -469,9 +483,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "recipient 'any', base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 22752,
-          "nonZeroWords": 363,
-          "rules": 88,
+          "bytes": 22240,
+          "nonZeroWords": 355,
+          "rules": 86,
         },
         "old": {
           "bytes": 32224,
@@ -495,9 +509,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "three destinations, base -> arbitrum + optimism + ethereum": {
         "now": {
-          "bytes": 10464,
-          "nonZeroWords": 170,
-          "rules": 40,
+          "bytes": 10208,
+          "nonZeroWords": 166,
+          "rules": 39,
         },
         "old": {
           "bytes": 25824,
@@ -508,9 +522,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "uncapped, base -> soneium + arbitrum": {
         "now": {
-          "bytes": 18656,
-          "nonZeroWords": 292,
-          "rules": 72,
+          "bytes": 18400,
+          "nonZeroWords": 288,
+          "rules": 71,
         },
         "old": {
           "bytes": 23776,
