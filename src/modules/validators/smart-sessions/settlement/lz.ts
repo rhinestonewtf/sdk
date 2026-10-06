@@ -203,8 +203,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   const cctp = source.cctp
   const cctpFrom = cctp !== undefined && isAddressEqual(token, cctp.token)
   // A route exists where both chains carry its block.
-  const cctpReaches = (leg: Leg) =>
+  const cctpLinks = (leg: Leg) =>
     cctpFrom && crossChain(leg) && servedLz(leg)?.cctp !== undefined
+  // A leg whose token CCTP does not mint, such as a Stargate USDC, stays
+  // Stargate's.
+  const cctpReaches = (leg: Leg) => {
+    const dst = servedLz(leg)?.cctp
+    return cctpLinks(leg) && !!dst && isAddressEqual(leg.token, dst.token)
+  }
   const stargate = source.stargateUsdc
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
@@ -289,7 +295,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       const { rules, args } = batch(calls)
       const b = args[calls.indexOf(burn)]
       const reaches = (leg: Leg) =>
-        cctpReaches(leg) && (servedLz(leg)?.cctp?.feeless === true) === feeless
+        cctpLinks(leg) && (servedLz(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
         calls: calls.length,

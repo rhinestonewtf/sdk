@@ -441,6 +441,25 @@ describe('scopeLz', () => {
     expect(holds(fromBase, execute(cctp()))).toBe(false)
   })
 
+  test('admits Stargate TAXI for a Stargate USDC that CCTP does not mint', () => {
+    const settlement = withLz(ARB, {
+      ...lz(ARB),
+      stargateUsdc: { ...lz(ARB).stargateUsdc!, token: OTHER },
+    })
+    const toStargateUsdc = scopeLz(
+      context({
+        settlement,
+        destinations: [{ chainId: ARB, token: OTHER, recipient: ACCOUNT }],
+      }),
+    )
+    expect(holds(toStargateUsdc, execute(stargate('taxi')))).toBe(true)
+    expect(holds(toStargateUsdc, execute(cctp()))).toBe(false)
+    // The CCTP USDC leg on the same pair still gets CCTP only.
+    const toCctpUsdc = scopeLz(context({ settlement }))
+    expect(holds(toCctpUsdc, execute(cctp()))).toBe(true)
+    expect(holds(toCctpUsdc, execute(stargate('taxi')))).toBe(false)
+  })
+
   test('routes only through the blocks the orchestrator serves', () => {
     const { stargateUsdc: _, ...noPool } = lz(ARB)
     const cctpOnly = scopeLz(context({ settlement: withLz(ARB, noPool) }))
