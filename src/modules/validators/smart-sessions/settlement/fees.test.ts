@@ -19,6 +19,7 @@ import { resolveCrossChainPermission } from '../cross-chain-permits'
 import { encodeSessionPolicy } from '../policies/encode'
 import { resolveSessionData, toSession } from '../resolve'
 import { swapperAddresses } from '../swap/rhinestone'
+import { allOf, pin } from '../swap/rules'
 import type {
   CrossChainPermissionInput,
   FromLeg,
@@ -534,6 +535,36 @@ test('refuses to join an action with no params policy', () => {
   ).toThrow('has no params policy for allowFees to join')
 })
 
+test('joins the params policy and keeps the other policies on the action', () => {
+  const usageLimit = { type: 'usage-limit', limit: 3n } as const
+  const joined = withFeeActions(
+    [
+      {
+        target: USDC,
+        selector: APPROVE,
+        policies: [
+          { type: 'arg-policy', expression: allOf([pin(0n, STRANGER)]) },
+          usageLimit,
+        ],
+      },
+    ],
+    [USDC],
+    FEES,
+  )
+  const action = find(joined, USDC, APPROVE)
+  expect(action.policies).toHaveLength(2)
+  expect(action.policies).toContainEqual(usageLimit)
+  expect(action.policies?.[0]).toMatchObject({
+    type: 'arg-policy',
+    valueLimitPerUse: 0n,
+  })
+  expectRuns(action, [
+    [[approve(PAYMASTER, CAP), true]],
+    [[approve(STRANGER, maxUint256), true]],
+    [[approve(COLLECTOR, 1n), false]],
+  ])
+})
+
 describe('swapApprovesAsActions refuses', () => {
   const approvePermission = (params?: object) =>
     ({
@@ -579,6 +610,35 @@ describe('swapApprovesAsActions refuses', () => {
     )
     expect(swapApprovesAsActions([], undefined)).toEqual([])
   })
+})
+
+test('a swap approve trades its spending limit for the cap and keeps maxUses', () => {
+  const [action] = swapApprovesAsActions(
+    [
+      {
+        abi: erc20Abi,
+        address: USDC,
+        functions: {
+          approve: {
+            spendingLimit: { token: USDC, amount: 100n },
+            maxUses: 2n,
+            params: { spender: { condition: 'equal', value: STRANGER } },
+          },
+        },
+      } as unknown as Permission,
+    ],
+    100n,
+  )
+  expect(action.policies?.map((p) => p.type)).not.toContain('spending-limits')
+  expect(action.policies).toContainEqual({ type: 'usage-limit', limit: 2n })
+  expectRuns(action, [
+    [[approve(STRANGER, 100n), true]],
+    [
+      [approve(STRANGER, 60n), true],
+      [approve(STRANGER, 60n), false],
+    ],
+    [[approve(COLLECTOR, 1n), false]],
+  ])
 })
 
 test('a token served by any one layer counts as a stablecoin', () => {
