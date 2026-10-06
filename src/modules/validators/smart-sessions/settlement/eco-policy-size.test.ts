@@ -678,8 +678,8 @@ describe('ECO_IE publishAndFund', () => {
       {
         "oneLeg": {
           "after": {
-            "nonZero": 101,
-            "zero": 58,
+            "nonZero": 94,
+            "zero": 53,
           },
           "before": {
             "nonZero": 125,
@@ -688,8 +688,8 @@ describe('ECO_IE publishAndFund', () => {
         },
         "twoLegs": {
           "after": {
-            "nonZero": 124,
-            "zero": 71,
+            "nonZero": 117,
+            "zero": 66,
           },
           "before": {
             "nonZero": 168,
