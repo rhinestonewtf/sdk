@@ -140,19 +140,25 @@ describe('scopeEco', () => {
     ['destination portal', { portal: OTHER }],
     ['delivery token', { routeToken: USDT0_ARB, callTarget: USDT0_ARB }],
     ['call target', { callTarget: OTHER }],
-    ['route native amount', { routeNative: 1n }],
     ['prover', { prover: OTHER }],
     ['creator', { creator: OTHER }],
     ['reward token', { rewardToken: USDC_OP }],
     ['reward over the cap', { reward: 101n }],
-    ['reward native amount', { rewardNative: 1n }],
     ['deadline past validUntil', { deadline: 1_900_000_001n }],
     ['route deadline past validUntil', { routeDeadline: 1_900_000_001n }],
-    ['allowPartial', { allowPartial: true }],
     ['second call', { extraCall: true }],
     ['delivery under the floor', { delivered: 98n }],
   ] as const)('refuses a publish with another %s', (_, overrides) => {
     expect(holds(action, publish(overrides))).toBe(false)
+  })
+
+  // Funded by the solver or a third party, never the account: see eco.ts.
+  test.each([
+    ['route native amount', { routeNative: 1n }],
+    ['reward native amount', { rewardNative: 1n }],
+    ['allowPartial', { allowPartial: true }],
+  ] as const)('admits a publish with another %s', (_, overrides) => {
+    expect(holds(action, publish(overrides))).toBe(true)
   })
 
   /** Overwrite one args word of the canonical publish. */
@@ -318,7 +324,7 @@ describe('scopeEco', () => {
     // Each equal rule must bind on its own: nudge its word and the publish
     // must fail, whichever pin it is.
     const pinned = rulesOf(expression).filter((r) => r.condition === 'equal')
-    expect(pinned.length).toBe(19)
+    expect(pinned.length).toBe(16)
     for (const rule of pinned) {
       const nudged = BigInt(rule.referenceValue) + 1n
       expect(

@@ -227,6 +227,24 @@ function fillReverts(
  * to the pinned creator after the pinned deadline — what a route deadline in
  * the past, which the policy has always admitted, already does.
  */
+/**
+ * Whether the publish is one the old policy admits but for its funding words:
+ * `allowPartial`, the route's and the reward's native amounts. With
+ * `msg.value` held at 0, `_fundNative` can fill reward native only from a
+ * vault a third party pre-funded, partial funding pulls at most the capped
+ * reward, `Vault.withdraw` pays at most what the vault holds, and the
+ * destination takes route native from the solver. The account pays no more.
+ */
+function sameAccountOutflow(legacy: ScopedAction, calldata: Hex): boolean {
+  if (size(calldata) < 4 + Number(PUBLISH.rewardNativeAmount) + 32) return false
+  const zeroed = [
+    PUBLISH.allowPartial,
+    PUBLISH.routeNativeAmount,
+    PUBLISH.rewardNativeAmount,
+  ].reduce((data, offset) => rewrite(data, offset, 0n), calldata)
+  return zeroed !== calldata && accepts(legacy, zeroed)
+}
+
 function unfillable(calldata: Hex): boolean {
   const args = slice(calldata, 4)
   const end = BigInt(size(args))
@@ -589,7 +607,8 @@ describe('ECO_IE publishAndFund', () => {
         noTokensNoCalls,
         ...[0n, 2n, 3n, 4n, 5n, 6n, 7n].map(tokenCount),
       ],
-      unfillable,
+      (calldata) =>
+        unfillable(calldata) || sameAccountOutflow(legacyEco(ctx), calldata),
     )
     expect(refusedByBoth).toBeGreaterThan(0)
   })
@@ -678,8 +697,8 @@ describe('ECO_IE publishAndFund', () => {
       {
         "oneLeg": {
           "after": {
-            "nonZero": 94,
-            "zero": 53,
+            "nonZero": 85,
+            "zero": 44,
           },
           "before": {
             "nonZero": 125,
@@ -688,8 +707,8 @@ describe('ECO_IE publishAndFund', () => {
         },
         "twoLegs": {
           "after": {
-            "nonZero": 117,
-            "zero": 66,
+            "nonZero": 108,
+            "zero": 57,
           },
           "before": {
             "nonZero": 168,

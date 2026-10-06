@@ -42,6 +42,12 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * 5.0 `safeTransferFrom`, which reverts on a code-less target. The call's
  * value is not pinned: `Executor` bubbles the revert of every served
  * stablecoin's non-payable `transfer`. Both were checked on every ECO chain.
+ *
+ * Neither native amount nor `allowPartial` is pinned. `valueLimitPerUse: 0`
+ * holds `msg.value` at 0, so `_fundNative` fills reward native only from a
+ * vault a third party pre-funded; partial funding pulls at most the capped
+ * reward and `Vault.withdraw` pays at most what the vault holds; route native
+ * comes from the solver. The account never pays more than the capped reward.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -232,12 +238,9 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   const rules: UniversalActionPolicyParamRule[] = [
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
-    pinValue(PUBLISH.allowPartial, 0n),
-    pinValue(PUBLISH.routeNativeAmount, 0n),
     pinValue(PUBLISH.callsLength, 1n),
     pinValue(PUBLISH.callDataLength, 0x44n),
     pin(PUBLISH.rewardCreator, ctx.account),
-    pinValue(PUBLISH.rewardNativeAmount, 0n),
     pinValue(PUBLISH.rewardTokensPointer, 0xa0n),
     pinValue(PUBLISH.rewardTokensLength, 1n),
     pin(PUBLISH.rewardToken, ctx.sourceTokens[0]),
