@@ -350,10 +350,11 @@ describe('scopeLz', () => {
     ]
     expect(policy(all)).not.toThrow()
     // Each further recipient adds a branch, until it no longer fits.
-    const more = [0x20, 0x21, 0x22, 0x23].map((n) => ({
+    const more = Array.from({ length: 11 }, (_, n) => ({
       ...ARB_LEG,
-      recipient: `0x${n.toString(16).padStart(40, '0')}` as Address,
+      recipient: `0x${(0x20 + n).toString(16).padStart(40, '0')}` as Address,
     }))
+    expect(policy([...all, ...more.slice(0, 10)])).not.toThrow()
     expect(policy([...all, ...more])).toThrow(/max is 128/)
   })
 

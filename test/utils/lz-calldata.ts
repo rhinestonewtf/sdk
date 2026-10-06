@@ -162,11 +162,23 @@ const NON_PAYABLE = new Set(
 /**
  * Whether LZMultiCall reverts the batch whoever signs it: a call to its
  * TransferDelegate must be 132 bytes of `delegateTransferFrom` pulling from the
- * caller, and value sent to a non-payable call reverts.
+ * caller, and value sent to a non-payable call reverts. So does a `bytes` that
+ * runs past calldata or past 2^64, which solc's calldata decoder refuses.
  */
 export function multiCallReverts(data: Hex, caller: Address): boolean {
-  const { args } = decodeFunctionData({ abi, data })
-  const [calls] = args as unknown as [readonly Call[]]
+  let calls: readonly Call[]
+  try {
+    const { args } = decodeFunctionData({ abi, data })
+    ;[calls] = args as unknown as [readonly Call[]]
+  } catch (error) {
+    const name = (error as Error).name
+    if (
+      name === 'PositionOutOfBoundsError' ||
+      name === 'IntegerOutOfRangeError'
+    )
+      return true
+    throw error
+  }
   return calls.some((c) => {
     const selector = slice(c.data, 0, 4)
     if (isAddressEqual(c.target, TD)) {

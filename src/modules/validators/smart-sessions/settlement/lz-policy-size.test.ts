@@ -407,9 +407,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
     {
       "all three layouts, base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 27104,
-          "nonZeroWords": 421,
-          "rules": 105,
+          "bytes": 23520,
+          "nonZeroWords": 375,
+          "rules": 91,
         },
         "old": {
           "rules": 129,
@@ -417,9 +417,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp and feeless cctp, base -> arbitrum + plasma": {
         "now": {
-          "bytes": 20192,
-          "nonZeroWords": 315,
-          "rules": 78,
+          "bytes": 16864,
+          "nonZeroWords": 272,
+          "rules": 65,
         },
         "old": {
           "bytes": 32736,
@@ -430,9 +430,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp only, base -> unichain": {
         "now": {
-          "bytes": 11232,
-          "nonZeroWords": 178,
-          "rules": 43,
+          "bytes": 9440,
+          "nonZeroWords": 155,
+          "rules": 36,
         },
         "old": {
           "bytes": 11232,
@@ -443,9 +443,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp, base -> arbitrum": {
         "now": {
-          "bytes": 11232,
-          "nonZeroWords": 178,
-          "rules": 43,
+          "bytes": 9440,
+          "nonZeroWords": 155,
+          "rules": 36,
         },
         "old": {
           "bytes": 23776,
@@ -456,9 +456,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "feeless cctp, base -> plasma": {
         "now": {
-          "bytes": 9440,
-          "nonZeroWords": 148,
-          "rules": 36,
+          "bytes": 7904,
+          "nonZeroWords": 128,
+          "rules": 30,
         },
         "old": {
           "bytes": 9440,
@@ -469,9 +469,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "recipient 'any', base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 26336,
-          "nonZeroWords": 409,
-          "rules": 102,
+          "bytes": 22752,
+          "nonZeroWords": 363,
+          "rules": 88,
         },
         "old": {
           "bytes": 32224,
@@ -482,9 +482,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "stargate only, base -> soneium": {
         "now": {
-          "bytes": 11488,
-          "nonZeroWords": 179,
-          "rules": 44,
+          "bytes": 10208,
+          "nonZeroWords": 162,
+          "rules": 39,
         },
         "old": {
           "bytes": 13024,
@@ -495,9 +495,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "three destinations, base -> arbitrum + optimism + ethereum": {
         "now": {
-          "bytes": 12256,
-          "nonZeroWords": 193,
-          "rules": 47,
+          "bytes": 10464,
+          "nonZeroWords": 170,
+          "rules": 40,
         },
         "old": {
           "bytes": 25824,
@@ -508,9 +508,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "uncapped, base -> soneium + arbitrum": {
         "now": {
-          "bytes": 21728,
-          "nonZeroWords": 332,
-          "rules": 84,
+          "bytes": 18656,
+          "nonZeroWords": 292,
+          "rules": 72,
         },
         "old": {
           "bytes": 23776,
