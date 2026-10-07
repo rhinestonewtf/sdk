@@ -443,9 +443,12 @@ interface ToLeg {
    *   so the pool's fee costs at most `amount sent − minAmount`. Without it
    *   the send accepts whatever fee the pool charges. It is an absolute
    *   amount, not a rate: a smaller send fails, and a quote whose own minimum
-   *   is below it is refused.
-   *   Refused on a leg LZ reaches over CCTP, and unless the orchestrator serves
-   *   both tokens as USD stablecoins with equal decimals.
+   *   is below it is refused. The LZ API quotes `minAmountLD` with about 1%
+   *   slippage, so set `minAmount` to at most ~99% of the expected send, or
+   *   the session cannot settle it. Refused on a leg LZ reaches over CCTP,
+   *   beside a second `to` leg on the same chain, above uint64, and unless
+   *   the orchestrator serves both tokens as USD stablecoins with equal
+   *   decimals.
    */
   minAmount?: bigint
 }

@@ -2,6 +2,7 @@ import {
   type Address,
   type Hex,
   isAddressEqual,
+  maxUint64,
   maxUint256,
   pad,
   toFunctionSelector,
@@ -9,6 +10,7 @@ import {
 import {
   allOf,
   anyOf,
+  atLeast,
   cumulativeCap,
   pin,
   pinValue,
@@ -230,10 +232,30 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     )?.decimals
   // The floor is a constant in `minAmountLD`, so it must reach the pool as the
   // owner meant it: on a Stargate send, in units both legs share.
-  const requireStargateFloor = (leg: Leg, minAmount: bigint) => {
+  const requireStargateFloor = (
+    leg: Leg,
+    minAmount: bigint,
+    reached: readonly Leg[],
+  ) => {
     if (minAmount <= 0n) {
       throw new Error(
         'crossChainPermits: an LZ `to.minAmount` must be positive',
+      )
+    }
+    // Stargate casts `minAmountLD` in shared decimals to uint64; a larger floor
+    // would revert every send.
+    if (minAmount > maxUint64) {
+      throw new Error(
+        'crossChainPermits: an LZ `to.minAmount` above uint64 cannot be met by any Stargate send',
+      )
+    }
+    // Legs are ORed, so a second leg into the chain would admit the send
+    // without this floor.
+    if (
+      reached.some((other) => other !== leg && other.chainId === leg.chainId)
+    ) {
+      throw new Error(
+        `crossChainPermits: a floored LZ leg must be the only \`to\` leg on chain ${leg.chainId}; give one \`to\` leg per chain`,
       )
     }
     if (ctx.cap !== undefined && minAmount > ctx.cap) {
@@ -308,13 +330,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           ...recipient(s(SEND.to), leg),
           ...(leg.minAmount === undefined
             ? []
-            : [
-                {
-                  condition: 'greaterThanOrEqual',
-                  calldataOffset: s(SEND.minAmountLD),
-                  referenceValue: leg.minAmount,
-                } as const,
-              ]),
+            : [atLeast(s(SEND.minAmountLD), leg.minAmount)]),
         ]
       },
       limits: cap(args[0](96n)),
@@ -391,7 +407,8 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
       )
     }
-    if (leg.minAmount !== undefined) requireStargateFloor(leg, leg.minAmount)
+    if (leg.minAmount !== undefined)
+      requireStargateFloor(leg, leg.minAmount, legs)
   }
   const branches = routes.flatMap((route) => {
     const pinned = legs.flatMap((leg) => {

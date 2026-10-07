@@ -601,6 +601,44 @@ describe('scopeLz to.minAmount', () => {
       ),
     ).toThrow(/decimals/)
   })
+
+  test('refuses a second leg into the floored chain, which would bypass the floor', () => {
+    for (const second of [
+      SONEIUM_LEG,
+      { ...SONEIUM_LEG, minAmount: 1n },
+      { ...SONEIUM_LEG, recipient: undefined },
+    ]) {
+      expect(() =>
+        scopeLz(
+          context({
+            destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }, second],
+          }),
+        ),
+      ).toThrow(/one `to` leg/)
+    }
+  })
+
+  test('refuses a floor Stargate could not read as a uint64', () => {
+    expect(() =>
+      scopeLz(
+        context({
+          cap: undefined,
+          destinations: [{ ...SONEIUM_LEG, minAmount: 2n ** 64n }],
+        }),
+      ),
+    ).toThrow(/uint64/)
+    expect(
+      holds(
+        scopeLz(
+          context({
+            cap: undefined,
+            destinations: [{ ...SONEIUM_LEG, minAmount: 2n ** 64n - 1n }],
+          }),
+        ),
+        taxi({ minAmount: 2n ** 64n - 1n }),
+      ),
+    ).toBe(true)
+  })
 })
 
 function toSoneiumUnfloored() {
