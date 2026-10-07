@@ -11,6 +11,7 @@ import {
   toHex,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { scopeOft as frozenScopeOft } from '../../../../../test/utils/oft-frozen'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { OFT_SEND_SELECTOR, oftAbi, SEND, scopeOft } from './oft'
@@ -26,6 +27,7 @@ function send(
     eid: number
     to: Address
     amount: bigint
+    minAmount: bigint
     extraOptions: Hex
     composeMsg: Hex
     oftCmd: Hex
@@ -41,7 +43,7 @@ function send(
         dstEid: overrides.eid ?? 30383,
         to: pad(overrides.to ?? ACCOUNT),
         amountLD: overrides.amount ?? 100n,
-        minAmountLD: 99n,
+        minAmountLD: overrides.minAmount ?? 99n,
         extraOptions: overrides.extraOptions ?? '0x',
         composeMsg: overrides.composeMsg ?? '0x',
         oftCmd: overrides.oftCmd ?? '0x',
@@ -285,4 +287,59 @@ describe('scopeOft', () => {
       expect(isAddress(oft.token)).toBe(true)
     }
   })
+})
+
+describe('scopeOft against the frozen builder', () => {
+  const contexts = {
+    'one leg, pinned recipient, capped': {
+      destinations: [
+        { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+      ],
+      cap: 100n,
+    },
+    'one leg, open recipient, uncapped': {
+      destinations: [{ chainId: 9745, token: USDT0_PLASMA }],
+    },
+    'two legs, capped': {
+      destinations: [
+        { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+        { chainId: 10, token: USDT0_OP, recipient: OTHER },
+      ],
+      cap: 100n,
+    },
+  } as const
+
+  const calls = [
+    ...[30383, 30111, 30110].flatMap((eid) =>
+      [ACCOUNT, OTHER].flatMap((to) =>
+        [0n, 1n, 60n, 100n, 101n].flatMap((amount) =>
+          [0n, 1n, 50n, 60n, 80n, 100n, 101n].map((minAmount) =>
+            send({ eid, to, amount, minAmount }),
+          ),
+        ),
+      ),
+    ),
+    send({ refund: OTHER }),
+    send({ lzTokenFee: 1n }),
+    send({ composeMsg: '0x01' }),
+  ]
+
+  test.each(Object.entries(contexts))(
+    '%s: unchanged without a floor',
+    (_, ctx) => {
+      const live = scopeOft({ ...base, ...ctx })
+      const frozen = frozenScopeOft({ ...base, ...ctx })
+      expect(live).toEqual(frozen)
+      // The matrix must reach both verdicts, or agreement proves nothing.
+      expect(calls.some((calldata) => holds(frozen, calldata))).toBe(true)
+      expect(calls.some((calldata) => !holds(frozen, calldata))).toBe(true)
+      for (const calldata of calls) {
+        for (const used of [0n, 1n]) {
+          expect(holds(live, calldata, used)).toBe(
+            holds(frozen, calldata, used),
+          )
+        }
+      }
+    },
+  )
 })
