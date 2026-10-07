@@ -1,5 +1,5 @@
 ---
-'@rhinestone/sdk': patch
+'@rhinestone/sdk': minor
 ---
 
 Add `SessionDefinition.policyAddresses.universalActionCopies`: optional extra UniversalActionPolicy deployments let an all-AND ArgPolicy split across them (RHI-8045). When it is set, an action's ArgPolicy whose expression only ANDs rules is installed as UniversalActionPolicy configs of up to 16 rules each, in evaluation order, one per deployment, with the same `valueLimitPerUse` on each. This can lower the storage written at enable. An action keeps its ArgPolicy if its expression has an `or` or a `not`, or if there are fewer free deployments than configs. Off until configured: with no copies, sessions encode as before.
