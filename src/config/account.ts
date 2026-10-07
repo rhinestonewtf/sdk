@@ -1042,8 +1042,6 @@ interface Session {
    *  to. Metadata only — intents with the session are limited to them
    *  (`SAME_CHAIN_IE` adds no bridge filter). */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
-  /** Claim policies enforced via the ERC-1271 list, not the claim surface. */
-  claimPoliciesEnforcedVia1271?: boolean
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
