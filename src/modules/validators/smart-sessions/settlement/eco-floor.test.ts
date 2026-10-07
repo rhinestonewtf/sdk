@@ -282,7 +282,7 @@ describe('the maxFeeBps floor rescales between served decimals', () => {
 })
 
 describe('to.minAmount floors delivery in the `to` token', () => {
-  const WETH_FLOOR = 4n * 10n ** 16n
+  const FLOOR = 98n * E6
   const cross = {
     ...base,
     maxFeeBps: undefined,
@@ -290,36 +290,60 @@ describe('to.minAmount floors delivery in the `to` token', () => {
     destinations: [
       {
         chainId: 42161,
-        token: WETH_ARB,
+        token: USDT0_ARB,
         recipient: ACCOUNT,
-        minAmount: WETH_FLOOR,
+        minAmount: FLOOR,
       },
     ],
   }
-  const toWeth = (delivered: bigint, reward = 100n * E6) =>
-    publish({ routeToken: WETH_ARB, delivered, reward })
+  const toUsdt = (delivered: bigint, reward = 100n * E6) =>
+    publish({ routeToken: USDT0_ARB, delivered, reward })
 
-  test('admits any pair at or above the floor, and refuses below it', () => {
+  test('admits USDC to USDT0 at or above the floor, and refuses below it', () => {
     const action = scopeEco(cross)
-    expect(floors(cross)).toEqual([WETH_FLOOR, WETH_FLOOR])
-    expect(holds(action, toWeth(WETH_FLOOR))).toBe(true)
-    expect(holds(action, toWeth(WETH_FLOOR + 1n))).toBe(true)
-    expect(holds(action, toWeth(WETH_FLOOR - 1n))).toBe(false)
+    expect(floors(cross)).toEqual([FLOOR, FLOOR])
+    expect(holds(action, toUsdt(FLOOR))).toBe(true)
+    expect(holds(action, toUsdt(FLOOR + 1n))).toBe(true)
+    expect(holds(action, toUsdt(FLOOR - 1n))).toBe(false)
   })
 
-  test("an unserved `from` token is priced by the owner's floor", () => {
-    const FROM = '0x4444444444444444444444444444444444444444' as Address
-    const action = scopeEco({ ...cross, sourceTokens: [FROM] })
-    expect(
-      holds(
-        action,
-        publish({
-          routeToken: WETH_ARB,
-          delivered: WETH_FLOOR,
-          rewardToken: FROM,
-        }),
-      ),
-    ).toBe(true)
+  test('needs no served decimals, only a token Eco serves', () => {
+    const settlement = {
+      ...SETTLEMENT_CATALOG,
+      42161: { ...SETTLEMENT_CATALOG[42161], usdStablecoins: undefined },
+    }
+    expect(floors({ ...cross, settlement })).toEqual([FLOOR, FLOOR])
+  })
+
+  test.each([
+    [
+      'an unserved `from` token',
+      { sourceTokens: [OTHER] },
+      'ECO_IE moves only USD stablecoins; the `from` token on chain 8453',
+    ],
+    [
+      'an unserved `to` token',
+      {
+        destinations: [
+          { ...cross.destinations[0], token: WETH_ARB, minAmount: 1n },
+        ],
+      },
+      'ECO_IE moves only USD stablecoins; the `to` token on chain 42161',
+    ],
+    [
+      'an unserved second `to` token',
+      {
+        destinations: [
+          cross.destinations[0],
+          { chainId: 10, token: OTHER, recipient: ACCOUNT, minAmount: 1n },
+        ],
+      },
+      'ECO_IE moves only USD stablecoins; the `to` token on chain 10',
+    ],
+  ] as const)('refuses %s even with a floor', (_, overrides, message) => {
+    expect(() =>
+      scopeEco({ ...cross, ...overrides } as SettlementContext),
+    ).toThrow(message)
   })
 
   test.each([
@@ -344,17 +368,12 @@ describe('to.minAmount floors delivery in the `to` token', () => {
     const ctx = {
       ...cross,
       destinations: [
-        {
-          chainId: 42161,
-          token: WETH_ARB,
-          recipient: ACCOUNT,
-          minAmount: WETH_FLOOR,
-        },
+        cross.destinations[0],
         {
           chainId: 10,
           token: USDC_OP,
           recipient: ACCOUNT,
-          minAmount: 98n * E6,
+          minAmount: 97n * E6,
         },
       ],
     }
@@ -366,11 +385,10 @@ describe('to.minAmount floors delivery in the `to` token', () => {
         delivered,
         reward: 100n * E6,
       })
-    expect(holds(action, toWeth(WETH_FLOOR))).toBe(true)
-    expect(holds(action, toOp(98n * E6))).toBe(true)
-    expect(holds(action, toOp(98n * E6 - 1n))).toBe(false)
-    // The WETH floor in raw units is no floor for USDC.
-    expect(holds(action, toOp(WETH_FLOOR))).toBe(true)
+    expect(holds(action, toUsdt(FLOOR))).toBe(true)
+    expect(holds(action, toUsdt(97n * E6))).toBe(false)
+    expect(holds(action, toOp(97n * E6))).toBe(true)
+    expect(holds(action, toOp(97n * E6 - 1n))).toBe(false)
   })
 
   test.each([
@@ -426,7 +444,7 @@ describe('a hostile key filling its own intent', () => {
       token: USD18_ARB,
       floor: 99n * E18,
     },
-    'to.minAmount, cross-token': {
+    'to.minAmount, USDC to USDT0': {
       ctx: {
         ...base,
         maxFeeBps: undefined,
@@ -434,14 +452,14 @@ describe('a hostile key filling its own intent', () => {
         destinations: [
           {
             chainId: 42161,
-            token: WETH_ARB,
+            token: USDT0_ARB,
             recipient: ACCOUNT,
-            minAmount: 4n * 10n ** 16n,
+            minAmount: 98n * E6,
           },
         ],
       },
-      token: WETH_ARB,
-      floor: 4n * 10n ** 16n,
+      token: USDT0_ARB,
+      floor: 98n * E6,
     },
   }
 

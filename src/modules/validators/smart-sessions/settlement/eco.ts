@@ -54,7 +54,8 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * its own intent: the delivery floor is the whole price bound. With `maxFeeBps`
  * it is the cap less the most the solver may keep, rescaled between two served
  * USD stablecoins' decimals. With `to.minAmount` it is the owner's own amount
- * of the `to` token, for any pair; given both, the higher floor applies.
+ * of the `to` token, for any two served stablecoins; given both, the higher
+ * floor applies.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -113,16 +114,15 @@ const BPS = 10_000n
 export const ECO_MIN_VALIDITY_SECONDS = 7n * 24n * 60n * 60n
 
 /**
- * The decimals of a token the `maxFeeBps` floor may price 1:1: a USD stablecoin
- * Eco serves on the chain, with decimals the served `usdStablecoins` vouch for.
- * Eco's bare address list carries none, and the permit's own word is not taken.
+ * Eco's solvers deliver only the stablecoins it serves on a chain; any other
+ * token never fills and locks the reward until its deadline.
  */
-function stableDecimals(
+function requireServed(
   settlement: SettlementCatalog,
   chainId: number,
   token: Address,
   leg: 'from' | 'to',
-): number {
+) {
   if (
     !served(settlement, chainId, 'eco').stablecoins.some((t) =>
       isAddressEqual(t, token),
@@ -132,6 +132,19 @@ function stableDecimals(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
+}
+
+/**
+ * The decimals of a served Eco stablecoin the `maxFeeBps` floor prices 1:1, as
+ * the served `usdStablecoins` vouch for them. Eco's bare address list carries
+ * none, and the permit's own word is not taken.
+ */
+function stableDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+  leg: 'from' | 'to',
+): number {
   const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
     isAddressEqual(t.address, token),
   )
@@ -210,6 +223,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   }
   // `maxFeeBps` prices the reward 1:1 against delivery; without it every leg's
   // owner-set `to.minAmount` is the floor, in that leg's own token.
+  requireServed(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   const fromDecimals =
     ctx.maxFeeBps === undefined
       ? undefined
@@ -292,6 +306,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     },
   ]
   const legs = ctx.destinations.map((leg) => {
+    requireServed(ctx.settlement, leg.chainId, leg.token, 'to')
     // The cap less what the solver may keep, rescaled from the reward's
     // decimals to the delivery's; with `to.minAmount` too, the stricter wins.
     const feeFloor =

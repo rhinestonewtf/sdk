@@ -457,14 +457,20 @@ describe('settlement-scoped crossChainPermits', () => {
       )
     })
 
+    const USDT0_ARB = SETTLEMENT_CATALOG[arbitrum.id].eco!.stablecoins[1]
     const WETH_ARB = '0x82af49447d8a07e3bd95bd0d56f35241523fbab1' as Address
-    const toWeth = {
-      to: { chain: arbitrum, token: WETH_ARB, minAmount: 4n * 10n ** 16n },
+    const toUsdt = {
+      to: { chain: arbitrum, token: USDT0_ARB, minAmount: 98n },
       maxFeeBps: undefined,
     }
 
-    test('takes a to.minAmount in place of maxFeeBps, for any pair', () => {
-      expect(toSession(eco(toWeth)).settlementLayers).toEqual(['ECO_IE'])
+    test('takes a to.minAmount in place of maxFeeBps, for served tokens', () => {
+      expect(toSession(eco(toUsdt)).settlementLayers).toEqual(['ECO_IE'])
+      expect(() =>
+        resolveSessionData(
+          eco({ to: { ...toUsdt.to, token: WETH_ARB }, maxFeeBps: undefined }),
+        ),
+      ).toThrow('ECO_IE moves only USD stablecoins; the `to` token')
     })
 
     test('a to.minAmount beside another layer floors only ECO_IE', () => {
@@ -479,7 +485,7 @@ describe('settlement-scoped crossChainPermits', () => {
     test("refuses a to.minAmount when 'all' drops ECO_IE", () => {
       expect(() =>
         resolveSessionData(
-          eco({ ...toWeth, settlementLayers: 'all', validUntil: undefined }),
+          eco({ ...toUsdt, settlementLayers: 'all', validUntil: undefined }),
         ),
       ).toThrow('`to.minAmount` asks for ECO_IE, which cannot settle')
     })

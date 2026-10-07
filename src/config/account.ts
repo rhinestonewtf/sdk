@@ -284,8 +284,8 @@ interface Permit2ClaimPolicy {
  *   retired Standard Eco arbiter).
  *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
  *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (Eco's solver network: USD stablecoins, or any pair
- *   with a `to.minAmount` floor), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
+ * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
+ *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
  *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
  *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
  *   account executing the call. Naming any of them makes the permit
@@ -327,10 +327,10 @@ interface Permit2ClaimPolicy {
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
  *   `maxAmount`, a delivery floor and `validUntil`; `validUntil` at least 7 days
  *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
- *   quotes that ~7 days out. The floor is `maxFeeBps`, which needs `from` and
- *   `to` tokens the orchestrator serves as USD stablecoins with known
- *   decimals, or a `to.minAmount` on every leg, for any pair; given both, the
- *   higher applies. `OFT` and `LZ` require `oneTimeUse`.
+ *   quotes that ~7 days out. Both tokens must be ones the orchestrator serves
+ *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
+ *   served, or a `to.minAmount` on every leg, for any two such tokens; given
+ *   both, the higher applies. `OFT` and `LZ` require `oneTimeUse`.
  *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
@@ -440,8 +440,8 @@ interface ToLeg {
    * `SAME_CHAIN_IE` swaps and `ECO_IE` only: the least amount of `token` the swap
    * or the Eco route must deliver. Required for a swap (with `maxAmount`), since
    * the session key otherwise sets the swap's output bound; `maxAmount :
-   * minAmount` is the worst rate accepted. On `ECO_IE` it allows any `from` and
-   * `to` pair, and stands in for `maxFeeBps` (given both, the higher floor applies).
+   * minAmount` is the worst rate accepted. On `ECO_IE` it prices any pair of
+   * tokens the orchestrator serves for `ECO_IE`, and stands in for `maxFeeBps` (given both, the higher floor applies).
    */
   minAmount?: bigint
 }
