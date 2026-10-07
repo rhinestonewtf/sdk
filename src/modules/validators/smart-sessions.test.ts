@@ -670,9 +670,11 @@ describe('getSessionData', () => {
       ],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
-    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
-    expect(data.claimPolicies[0].initData).not.toBe('0x')
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    )
+    expect(data.erc7739Policies.erc1271Policies[0].initData).not.toBe('0x')
   })
 })
 
@@ -696,11 +698,13 @@ describe('crossChainPermits expansion', () => {
       ],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
-    expect(data.claimPolicies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    )
     // modeConfig header: FIELD_ARBITER bit (bit 0) set → arbiter check on
     const modeConfig = Number.parseInt(
-      data.claimPolicies[0].initData.slice(2, 10),
+      data.erc7739Policies.erc1271Policies[0].initData.slice(2, 10),
       16,
     )
     expect(modeConfig & 0b11).toBe(0b01)
@@ -751,43 +755,35 @@ describe('crossChainPermits expansion', () => {
     ).toBe(true)
   })
 
-  test('user claimPolicies + crossChainPermits are concatenated', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      claimPolicies: [{ type: 'permit2' }],
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-      ],
-    })
-    expect(session.claimPolicies).toHaveLength(2)
-    const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(2)
+  test('refuses user claimPolicies combined with crossChainPermits', () => {
+    // They share a policy contract on-chain, so only the last would install.
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        claimPolicies: [{ type: 'permit2' }],
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+          },
+        ],
+      }),
+    ).toThrow(/one Permit2 claim policy/)
   })
 
-  test('multiple permits → N claim policies', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-        },
-      ],
-    })
-    expect(getSessionData(session).claimPolicies).toHaveLength(3)
+  test('refuses multiple permits, which would collapse to one on-chain', () => {
+    const permit = {
+      from: [{ chain: base, token: USDC }],
+      to: [{ chain: base, token: USDC_ARB }],
+    }
+    expect(() =>
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [permit, permit, permit],
+      }),
+    ).toThrow(/one Permit2 claim policy/)
   })
 
   test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
@@ -801,9 +797,9 @@ describe('crossChainPermits expansion', () => {
       crossChainPermits: [{ settlementLayers: ['ECO'] }],
     })
     const data = getSessionData(session)
-    expect(data.claimPolicies).toHaveLength(1)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
     const modeConfig = Number.parseInt(
-      data.claimPolicies[0].initData.slice(2, 10),
+      data.erc7739Policies.erc1271Policies[0].initData.slice(2, 10),
       16,
     )
     // arbiter bit set, token-in / token-out bits unset (no from/to)
@@ -827,8 +823,10 @@ describe('crossChainPermits expansion', () => {
         },
       ],
     })
-    const bare = getSessionData(session).claimPolicies[0].initData
-    const tokened = getSessionData(withTokens).claimPolicies[0].initData
+    const bare =
+      getSessionData(session).erc7739Policies.erc1271Policies[0].initData
+    const tokened =
+      getSessionData(withTokens).erc7739Policies.erc1271Policies[0].initData
     // Adding source/dest tokens flips additional mode bits + lengthens the
     // payload, so the two encodings must differ.
     expect(bare).not.toBe(tokened)
