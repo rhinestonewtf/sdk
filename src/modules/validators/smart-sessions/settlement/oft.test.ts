@@ -408,6 +408,73 @@ describe('scopeOft with to.minAmount', () => {
     ).toThrow(message)
   })
 
+  describe('legs on one chain', () => {
+    const legs =
+      (
+        a: { recipient?: Address; minAmount?: bigint },
+        b: { recipient?: Address; minAmount?: bigint },
+      ) =>
+      () =>
+        scopeOft({
+          ...base,
+          destinations: [
+            { chainId: 9745, token: USDT0_PLASMA, ...a },
+            { chainId: 9745, token: USDT0_PLASMA, ...b },
+          ],
+        })
+
+    test.each([
+      [
+        'different floors',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { recipient: ACCOUNT, minAmount: 80n },
+      ],
+      [
+        'a floor beside none',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { recipient: ACCOUNT },
+      ],
+      [
+        'an open recipient beside a floored one',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { minAmount: 50n },
+      ],
+    ] as const)('refuses two legs that admit one send with %s', (_, a, b) => {
+      // The key would pick the looser branch.
+      expect(legs(a, b)).toThrow('admit the same send but set different')
+    })
+
+    test('accepts legs whose sends cannot coincide, or whose floors agree', () => {
+      expect(
+        legs(
+          { recipient: ACCOUNT, minAmount: 60n },
+          { recipient: OTHER, minAmount: 80n },
+        ),
+      ).not.toThrow()
+      expect(
+        legs(
+          { recipient: ACCOUNT, minAmount: 60n },
+          { recipient: ACCOUNT, minAmount: 60n },
+        ),
+      ).not.toThrow()
+      // Another chain is another eid, so the sends differ.
+      expect(() =>
+        scopeOft({
+          ...base,
+          destinations: [
+            {
+              chainId: 9745,
+              token: USDT0_PLASMA,
+              recipient: ACCOUNT,
+              minAmount: 60n,
+            },
+            { chainId: 10, token: USDT0_OP, recipient: ACCOUNT },
+          ],
+        }),
+      ).not.toThrow()
+    })
+  })
+
   describe('decimals', () => {
     /** The catalog with each listed token's served decimals replaced, or dropped when undefined. */
     const serving = (decimals: Record<number, number | undefined>) =>

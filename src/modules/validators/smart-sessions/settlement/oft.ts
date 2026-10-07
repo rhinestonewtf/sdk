@@ -7,6 +7,7 @@ import {
   toFunctionSelector,
 } from 'viem'
 import {
+  atLeast,
   cumulativeCap,
   pin,
   pinValue,
@@ -131,11 +132,7 @@ function floorMinAmount(
       'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
     )
   }
-  return {
-    condition: 'greaterThanOrEqual',
-    calldataOffset: SEND.minAmountLD,
-    referenceValue: minAmount,
-  }
+  return atLeast(SEND.minAmountLD, minAmount)
 }
 
 /** The send call, pinned to the permit's destinations, refund and cap. */
@@ -173,6 +170,25 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     },
   ]
   if (ctx.cap !== undefined) rules.push(cumulativeCap(SEND.amountLD, ctx.cap))
+  // Legs whose sends look alike are alternatives the key picks from, so a
+  // looser floor on one would open the other.
+  ctx.destinations.forEach((leg, i) => {
+    const twin = ctx.destinations
+      .slice(i + 1)
+      .find(
+        (other) =>
+          other.chainId === leg.chainId &&
+          (other.recipient === undefined ||
+            leg.recipient === undefined ||
+            isAddressEqual(other.recipient, leg.recipient)) &&
+          other.minAmount !== leg.minAmount,
+      )
+    if (twin) {
+      throw new Error(
+        `crossChainPermits: two OFT \`to\` legs on chain ${leg.chainId} admit the same send but set different \`minAmount\`s`,
+      )
+    }
+  })
   const legs = ctx.destinations.map((leg) => {
     requireUsdt0(ctx.settlement, leg.chainId, leg.token, 'to')
     const legRules = [
