@@ -1,9 +1,4 @@
 import { encodeAbiParameters, keccak256 } from 'viem'
-import {
-  encodePermit2ClaimPolicyInitData,
-  PERMIT2_CLAIM_POLICY_ADDRESS,
-} from '../policies/claim/permit2'
-import { resolvePermit2ClaimPolicy } from './policies/claim'
 import type { Session, SessionData } from './types'
 
 export function getPermissionIdFromData(session: SessionData): `0x${string}` {
@@ -30,17 +25,11 @@ export function getSessionData(session: Session): SessionData {
     salt: session.salt,
     erc7739Policies: session.erc7739Policies,
     actions: session.actions,
-    // When the claim policies are enforced via the erc1271 surface they're
-    // already in erc7739Policies; encoding them here too would settle them on
-    // the on-chain claim (lockTag) surface as well.
-    claimPolicies: session.claimPoliciesEnforcedVia1271
-      ? []
-      : session.claimPolicies.map((policy) => ({
-          policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-          initData: encodePermit2ClaimPolicyInitData(
-            resolvePermit2ClaimPolicy(policy),
-          ),
-        })),
+    // Declared claim policies are enforced from the erc1271 surface and are
+    // already in `erc7739Policies`. Encoding them here too would also place
+    // them on the on-chain claim (lockTag) surface, which the manager skips
+    // under the zero lock tag the SDK enables with.
+    claimPolicies: [],
   }
 }
 
