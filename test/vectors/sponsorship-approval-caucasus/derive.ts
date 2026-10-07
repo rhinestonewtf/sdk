@@ -1,4 +1,4 @@
-// Derives each singular sponsorship approval vector from the SDK itself: the
+// Derives each Caucasus sponsorship approval vector from the SDK itself: the
 // exact body a sponsored `POST /quotes` sends and the approval input handed to
 // `getIntentExtensionToken`. EVM cases run through the public facade; the
 // Solana, Swig-creation and smart-session cases through the request builders,

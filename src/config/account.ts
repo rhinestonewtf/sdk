@@ -985,7 +985,7 @@ interface JwtAuth {
   /**
    * Called when preparing a sponsored transaction, before it is quoted, so it
    * runs for quotes that are never submitted. Receives the approval input —
-   * the quote request under the `sdk-caucasus-singular-2026-09-v1` contract,
+   * the quote request under the `sdk-3.0.0-caucasus` contract,
    * with CAIP-2 chain ids — and must return a signed intent_extension_token
    * JWT whose sponsorship digest covers it. Submission never calls it again.
    * A request outside the contract fails with

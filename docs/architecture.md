@@ -390,7 +390,7 @@ identity to invent.
 
 The sponsorship approval input (`PreparedTransactionData.intentInput`) is the
 quote body itself under a versioned contract,
-`sdk-caucasus-singular-2026-09-v1`: `clients/orchestrator/sponsorship-approval.ts`
+`sdk-3.0.0-caucasus`: `clients/orchestrator/sponsorship-approval.ts`
 projects it from the request the builder produced, so the two cannot drift.
 
 A JWT intent-scoped sponsorship grant is requested when a sponsored quote is

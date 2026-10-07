@@ -1,20 +1,21 @@
-// Regenerates the singular sponsorship approval vectors
-// (test/vectors/sponsorship-approval-singular/vectors.json) from the checkout
+// Regenerates the Caucasus sponsorship approval vectors
+// (test/vectors/sponsorship-approval-caucasus/vectors.json) from the checkout
 // this script runs in. The provenance block is carried over from the existing
 // file: update it when the orchestrator cross-check is re-run.
 //
-// The legacy vectors in test/vectors/sponsorship-approval are frozen and never
+// The legacy (test/vectors/sponsorship-approval) and interim singular
+// (test/vectors/sponsorship-approval-singular) vectors are frozen and never
 // regenerated; nothing here writes them.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SPONSORSHIP_APPROVAL_CONTRACT } from '../../src/clients/orchestrator/sponsorship-approval'
 import { computeIntentInputDigest } from '../../src/jwt-server/digest'
-import { deriveVectors } from '../../test/vectors/sponsorship-approval-singular/derive'
-import { refusedVectors } from '../../test/vectors/sponsorship-approval-singular/refused'
+import { deriveVectors } from '../../test/vectors/sponsorship-approval-caucasus/derive'
+import { refusedVectors } from '../../test/vectors/sponsorship-approval-caucasus/refused'
 
 const outPath = resolve(
   import.meta.dir,
-  '../../test/vectors/sponsorship-approval-singular/vectors.json',
+  '../../test/vectors/sponsorship-approval-caucasus/vectors.json',
 )
 
 const previous = existsSync(outPath)

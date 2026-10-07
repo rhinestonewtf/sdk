@@ -116,7 +116,7 @@ const intentRequest = {
 } satisfies OrchestratorIntentRequest
 // The approval input that request projects to.
 const serializedIntentInput = {
-  contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+  contractVersion: 'sdk-3.0.0-caucasus',
   account: { evm: { type: 'erc7579', address: recipientAddress } },
   destination: { vm: 'evm', chainId: formatCaip2(mainnet.id) },
   options: {},
@@ -3040,7 +3040,7 @@ describe('standalone managed Solana account facade', () => {
       },
     })
     expect(prepared.intentInput).toEqual({
-      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      contractVersion: 'sdk-3.0.0-caucasus',
       account,
       source: { vm: 'svm', chainId: solanaDevnet.caip2, token: mint },
       destination: {
@@ -5651,7 +5651,7 @@ describe('quote-time sponsorship approval', () => {
 
       expect(server.events).toEqual(['approve', 'quote', 'submit'])
       expect(approvals[0]).toEqual({
-        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        contractVersion: 'sdk-3.0.0-caucasus',
         account: {
           svm: {
             type: 'swig',

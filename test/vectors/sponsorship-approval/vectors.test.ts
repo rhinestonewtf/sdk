@@ -9,7 +9,7 @@ import vectors from './vectors.json'
 // The frozen legacy sponsorship approval contract. The SDK no longer sends it,
 // but the orchestrator serves it to older pinned clients and copies this file
 // verbatim as its legacy fixture, so it must never change. The current
-// contract's vectors live in ../sponsorship-approval-singular.
+// contract's vectors live in ../sponsorship-approval-caucasus.
 const LEGACY_VECTORS_SHA256 =
   '3292c83e17d948cdc93602081aaa9e7b7a90da6c93de47793f2c468dc89a4f12'
 

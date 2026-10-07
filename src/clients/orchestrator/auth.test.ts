@@ -4,7 +4,7 @@ import type { SerializedIntentInput } from './public'
 
 const address = '0x0000000000000000000000000000000000000001' as const
 const intentInput = {
-  contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+  contractVersion: 'sdk-3.0.0-caucasus',
   account: { evm: { type: 'erc7579', address } },
   destination: { vm: 'evm', chainId: 'eip155:1' },
   options: {},

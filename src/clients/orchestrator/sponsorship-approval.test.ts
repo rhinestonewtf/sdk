@@ -24,7 +24,7 @@ function body(overrides: Record<string, unknown> = {}) {
   return { account: evmAccount, destination: evmDestination, ...overrides }
 }
 
-const CONTRACT_VERSION = 'sdk-caucasus-singular-2026-09-v1'
+const CONTRACT_VERSION = 'sdk-3.0.0-caucasus'
 
 describe('projectSponsorshipApproval', () => {
   test('projects a minimal EVM body into the envelope, with source omitted', () => {

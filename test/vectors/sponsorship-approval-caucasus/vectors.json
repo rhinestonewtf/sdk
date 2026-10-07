@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+  "contractVersion": "sdk-3.0.0-caucasus",
   "digest": "sha256(RFC 8785 JCS(intentInput)), lowercase hex",
   "provenance": {
     "owner": "sdk",
-    "derivation": "Derived at sdk 6cc5fca0 by the derivation now in test/vectors/sponsorship-approval-caucasus/derive.ts, under this file's contractVersion. Frozen: vectors.test.ts checks the bytes and re-projects every case under this identifier.",
+    "derivation": "Every case is rebuilt by test/vectors/sponsorship-approval-caucasus/derive.ts: EVM cases through prepareTransaction (or deploy) with a JWT getIntentExtensionToken that records its argument; smart-session, Solana and Swig-creation cases through the request builders. vectors.test.ts re-derives them on every run.",
     "orchestratorCrossCheck": {
       "repository": "git@github.com:rhinestonewtf/orchestrator.git",
       "ref": "main",
       "commit": "ca9bac3a8e4eac5858c1ef828a67e753f8aa2bf8",
       "method": "Each case's body and digest was passed to authorizeQuoteRequest (apiVersion 2026-09.caucasus, intent-scoped sponsorship) and each refused body to the same function.",
-      "result": "All 30 cases bound under sdk-caucasus-singular-2026-09-v1 with the SDK digest, and all 18 refused bodies were refused as SPONSORSHIP_BINDING_UNSUPPORTED."
+      "result": "All 30 cases bound under sdk-3.0.0-caucasus with the SDK digest, and all 18 refused bodies were refused as SPONSORSHIP_BINDING_UNSUPPORTED."
     }
   },
   "cases": [
@@ -54,7 +54,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -91,7 +91,7 @@
           }
         }
       },
-      "digest": "f4d57f226959c312a29609b1e0e44aacac9feeb38ab8161420db4680736cc909"
+      "digest": "2bf6978769b53440ae1a9ce953b28aa3df59a19b4eaa3cd1afcf74ce8ca5020a"
     },
     {
       "id": "evm-same-chain-explicit-source",
@@ -133,7 +133,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -170,7 +170,7 @@
           }
         }
       },
-      "digest": "f4d57f226959c312a29609b1e0e44aacac9feeb38ab8161420db4680736cc909"
+      "digest": "2bf6978769b53440ae1a9ce953b28aa3df59a19b4eaa3cd1afcf74ce8ca5020a"
     },
     {
       "id": "evm-max-output",
@@ -203,7 +203,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -231,7 +231,7 @@
           }
         }
       },
-      "digest": "53cd0692ce5e328f34b75cefad10a0a4d64f8f641c221689995dac85d8c6568b"
+      "digest": "fb87a0d4e75f02c0b167379a6cf670ac1af88e3831fac1bbabbb6cd05eedfff1"
     },
     {
       "id": "evm-cross-chain-source-calls",
@@ -275,7 +275,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -314,7 +314,7 @@
           }
         }
       },
-      "digest": "34f77d733ec35e9daa1ffdab76f92bc80a950a1ad9574917a4bd3e131e93b1cc"
+      "digest": "0b12b056c70673b6973a86d2af1bca33eb66686e72a2bc1b26be7fd34a14feb6"
     },
     {
       "id": "evm-sponsored-source-free-calls",
@@ -350,7 +350,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -381,7 +381,7 @@
           }
         }
       },
-      "digest": "7ad12977fb27d28fce04bdf09cdc35e2cfc049c83b372290f4a6cd927db6734b"
+      "digest": "5f90032fe71b5317464a0a4bc8eb75dbde86ba09c022fe3923800e0c711fc8be"
     },
     {
       "id": "evm-explicit-false-sponsorship",
@@ -421,7 +421,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -456,7 +456,7 @@
           }
         }
       },
-      "digest": "bac4665fd3e47ee310bbbefa145ad6dbe9354839b1e9d777136463d9a1de4a1e"
+      "digest": "5a2e22cf36a0d8089b819d33ecbc399c7b160acceeffce3adc0738ad899a5a4f"
     },
     {
       "id": "evm-sponsored-deploy",
@@ -489,7 +489,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -517,7 +517,7 @@
           }
         }
       },
-      "digest": "87fa128ebd59643ec58fd5aa36df194fbbdaab6886829eafe74c2a69f45f7090"
+      "digest": "14612a1de9e18b4bcaa66ee57780d10e087762ae0e3ba1977fd6a648e9c3c8ed"
     },
     {
       "id": "evm-undeployed-erc7579",
@@ -558,7 +558,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -594,7 +594,7 @@
           }
         }
       },
-      "digest": "6a85e21586764bab6e546325cab6883ae9d56ddcaf728f53100854fe797f23c0"
+      "digest": "1e9b9a966863324205c1a39ca4aac9eceaec5ad52ef01aedfac6007405115a8d"
     },
     {
       "id": "evm-eoa",
@@ -627,7 +627,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "eoa",
@@ -655,7 +655,7 @@
           }
         }
       },
-      "digest": "b2669fc75985b883cb4a536f9f930fd7553daf8c3b6cba9e98b075d01de7c69d"
+      "digest": "8f08cf107f21afe9ec5c3e4bfdf0f2debbf821820a9c0c4a19b7ffa2209c6d55"
     },
     {
       "id": "evm-eoa-delegation",
@@ -708,7 +708,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -756,7 +756,7 @@
           }
         }
       },
-      "digest": "41c63c6a3e6fe28690b64ab382fe21c0437a4f5e1bf2689ca85f71ffc0bae06c"
+      "digest": "2a1ca56c0d220a6697d86b37a2f6d5c4ea377abba2e70e11a70e84e9cb4e020b"
     },
     {
       "id": "evm-fees-deadline-venues",
@@ -802,7 +802,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -843,7 +843,7 @@
           }
         }
       },
-      "digest": "2aab988ef095d3f6153142eadcd5836ac3f07be20d4dd2a868aef40d83aaea5a"
+      "digest": "bfd38a2c9594a88eb61c631e5f9705e89a4ad61f621a479a6c8bcbe90f654742"
     },
     {
       "id": "evm-bare-recipient",
@@ -879,7 +879,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -910,7 +910,7 @@
           }
         }
       },
-      "digest": "547ed4e8ca67df22e89841dcb904878e116e8276ce5d004c2fc97206b0b66661"
+      "digest": "bbf22afe6108cb30ede05958d6e002497ef2726a86ec264a14933379684966a5"
     },
     {
       "id": "evm-typed-recipient",
@@ -955,7 +955,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -995,7 +995,7 @@
           }
         }
       },
-      "digest": "9c41cdb740408b01dd49539df6db4106dcca8adef24295f7c0e28901445d5ec5"
+      "digest": "3b6ff3aff2a19753f724d17a16f7b3703422429673be5173447802d985f8baf8"
     },
     {
       "id": "evm-hypercore-action",
@@ -1050,7 +1050,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1100,7 +1100,7 @@
           }
         }
       },
-      "digest": "81d64ae92bc65a44d1412a9e0f9706e80f773b7175b593a1387ad5d09ed27a77"
+      "digest": "371bbe40be210a07e89e8de4b6d0e6240fd4a69d44e2323e7bcb6bf6ac030cf9"
     },
     {
       "id": "evm-to-solana",
@@ -1136,7 +1136,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1167,7 +1167,7 @@
           }
         }
       },
-      "digest": "ea652bfc111f864d19f4774e7091006c8ea07622c98accc753a48ef6a130cd3e"
+      "digest": "79044535cd2ed82534bbf4a7f80564ad5006f90608304e65199d5445283edd73"
     },
     {
       "id": "evm-to-tron",
@@ -1203,7 +1203,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1234,7 +1234,7 @@
           }
         }
       },
-      "digest": "3f1ea484099d62fc68a13e56feb0b0d0a225406dd221f6a10003dd9c9af5e530"
+      "digest": "a188d88b5c205046293781ce839b26633858e514ae91ec6d659a80b6278520bf"
     },
     {
       "id": "evm-to-stellar",
@@ -1270,7 +1270,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1301,7 +1301,7 @@
           }
         }
       },
-      "digest": "1adea9fc89ef44bd3e01a3ca4e96d0c1d008dac338d46a959173997df4b7d0d8"
+      "digest": "90b5cfd022fbd0861631f1f72a21e0e8322302699b2d101113237e3a5c47b02c"
     },
     {
       "id": "evm-smart-session-enable",
@@ -1357,7 +1357,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1408,7 +1408,7 @@
           }
         }
       },
-      "digest": "8696f89015c4e5a6afe4ef44c9a87f2b0183f0921d50425820a83c720ba5116a"
+      "digest": "96488ec3da8b565846d8727d877411b19b0cbb0b06cb81b695a70a5941f1b5f1"
     },
     {
       "id": "solana-transfer",
@@ -1447,7 +1447,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1481,7 +1481,7 @@
           }
         }
       },
-      "digest": "459c0e85ac131f4337be0d508824b152f2336acceafaac328b957d9f8dd39556"
+      "digest": "c87523af6d4eda112816f7ab07be4b736620ce84dec4e832fb81ef384cf3a086"
     },
     {
       "id": "solana-transfer-capped",
@@ -1521,7 +1521,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1556,7 +1556,7 @@
           }
         }
       },
-      "digest": "6322edccd742628fd598b67b41aff42e9696e4e4139164dd4294a40baf5431d8"
+      "digest": "854a12d2c8e3244a4efceea93a8407aff02d1edfd37c3d677be7b60b18246544"
     },
     {
       "id": "solana-instructions-sponsored",
@@ -1601,7 +1601,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1641,7 +1641,7 @@
           }
         }
       },
-      "digest": "351f02620c20d345383bebc1ebb29a80f5e7d6e987780fa1ab512a6d35313259"
+      "digest": "a7a991e1e8218bde092e3ab30a3ee4659fd542f7c390c4e3cc615bafda8b17fd"
     },
     {
       "id": "solana-instructions-fee-token",
@@ -1683,7 +1683,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1721,7 +1721,7 @@
         },
         "options": {}
       },
-      "digest": "11d3a75a8c0e64f01be93b79a6ad7ad6b377bcba265091f8c8c8c71e3dc3cee8"
+      "digest": "60d3f96ce5b5b67491e383fc941d1a7bad7f78dfa325c55245e3aa4bb9f74c46"
     },
     {
       "id": "solana-to-evm",
@@ -1761,7 +1761,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1796,7 +1796,7 @@
           }
         }
       },
-      "digest": "c950b8c818f6caf4e34489908a90cbc8297848f1bb8ef33a3b589bb768e28a6e"
+      "digest": "accf065685ff572e82f5bf52ecc6ace72fab721859bfe8dccf9e62d9138d33c4"
     },
     {
       "id": "solana-to-evm-calls",
@@ -1854,7 +1854,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "evm": {
             "type": "erc7579",
@@ -1907,7 +1907,7 @@
           }
         }
       },
-      "digest": "f3abd438e67d5601bb64b67664ce1ea41c4e5f514c0f62f3adfa01f969457c69"
+      "digest": "d2a3d3ad3fbfe95158d42b7e120da62b14d066445a1918eac84ad28810b37d67"
     },
     {
       "id": "solana-authority-add-passkey",
@@ -1946,7 +1946,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -1980,7 +1980,7 @@
           }
         }
       },
-      "digest": "c8e008102ec908931506475eadfe35d75e8ef8e1e8831219ed5c8f8aadc6a92a"
+      "digest": "50b0d1382bafd96f02677d100280eb25affe2f13e401715b366fcd9caede23c7"
     },
     {
       "id": "solana-authority-add-ecdsa-passkey-owner",
@@ -2019,7 +2019,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -2053,7 +2053,7 @@
           }
         }
       },
-      "digest": "49b47e05a6320ad54bf63517ba10adfa45d782348b84d1e60a6da29be82d1914"
+      "digest": "4a34ea1c26438b8157736a80cfb7640b8aeaac7798ce72b47df467d2b1444831"
     },
     {
       "id": "solana-authority-remove-passkey",
@@ -2091,7 +2091,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -2124,7 +2124,7 @@
           }
         }
       },
-      "digest": "03dddbc34addd17fb44c003abc0ea5b32b7ae1b61751adc1950086c1612d2851"
+      "digest": "d11c77e28e56b675c89a427b6250b74603014dde465b5fd04e4a6a539995bd3a"
     },
     {
       "id": "solana-authority-remove-ecdsa",
@@ -2162,7 +2162,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -2195,7 +2195,7 @@
           }
         }
       },
-      "digest": "0558264d4c213f65bf24808dc610148f65aa057704f423a677a733c8b82eafa4"
+      "digest": "44c1a791dbe5979de81d101a7dc97a82ccc6553ffe183e6d6eb05b5d2995867c"
     },
     {
       "id": "swig-creation-secp256k1",
@@ -2231,7 +2231,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -2262,7 +2262,7 @@
           }
         }
       },
-      "digest": "fe12ac6d2cce3a495f962c0d43acbc722ff8efe47b5f5e0846c2a8c2ca391e95"
+      "digest": "ef2e229311de2e1838dbc41f805204a8ae49141483d6bee1895663a8b59d71a2"
     },
     {
       "id": "swig-creation-secp256r1",
@@ -2298,7 +2298,7 @@
         }
       },
       "intentInput": {
-        "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+        "contractVersion": "sdk-3.0.0-caucasus",
         "account": {
           "svm": {
             "type": "swig",
@@ -2329,7 +2329,7 @@
           }
         }
       },
-      "digest": "f8999dd1b25678ae3df425a9cf430b87669e8352bab1574fba9228eb811ca002"
+      "digest": "5bf746944c24e037dbf68c22f7663c0c78f096a07fb1bcc5e3d679495e2156d1"
     }
   ],
   "refused": [

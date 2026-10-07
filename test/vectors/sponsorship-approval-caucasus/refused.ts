@@ -1,4 +1,4 @@
-// Request shapes the singular approval contract refuses. Each is a supported
+// Request shapes the Caucasus approval contract refuses. Each is a supported
 // vector's body with one change, so it reads as the smallest step outside the
 // contract; the orchestrator must refuse every one of them too.
 

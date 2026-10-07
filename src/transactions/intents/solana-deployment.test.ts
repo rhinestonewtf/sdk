@@ -151,7 +151,7 @@ describe('Solana Swig deployment request', () => {
     expect(request.account).not.toHaveProperty('evm')
     expect(request).not.toHaveProperty('source')
     expect(intentInput).toStrictEqual({
-      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      contractVersion: 'sdk-3.0.0-caucasus',
       // Names the installed owner and the Swig id, exactly as requested.
       account: { svm: request.account.svm },
       destination: { vm: 'svm', chainId: DEVNET },

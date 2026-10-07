@@ -101,12 +101,23 @@ UserOperations are unchanged.
 
 `PreparedTransactionData.intentInput`, and the argument of JWT
 `getIntentExtensionToken`, is now the versioned
-`sdk-caucasus-singular-2026-09-v1` input: the quote body itself, with CAIP-2
-chain ids and chain-native strings
-([sponsorship approval](sponsorship-approval.md)). A sponsorship policy that
-reads `destinationChainId`, `destinationExecutions`, `tokenRequests` or numeric
-chain ids must be reviewed. `/jwt-server`'s `shouldSponsor` reads both the new
-input and the one older pinned SDKs send.
+`sdk-3.0.0-caucasus` input: the quote body itself, with CAIP-2 chain ids and
+chain-native strings ([sponsorship approval](sponsorship-approval.md)). A
+sponsorship policy that reads `destinationChainId`, `destinationExecutions`,
+`tokenRequests` or numeric chain ids must be reviewed. `/jwt-server`'s
+`shouldSponsor` reads the new input, the interim
+`sdk-caucasus-singular-2026-09-v1` input of earlier v3 snapshots, and the one
+older pinned SDKs send.
+
+Deploy the backend first: update `/jwt-server` (or your own signer) to accept
+`sdk-3.0.0-caucasus` before any client sends it. Older helpers refuse an
+unknown `contractVersion`, so the prepare fails.
+
+If you adopted an earlier v3 snapshot, which sends
+`sdk-caucasus-singular-2026-09-v1`, only the identifier (and so the digest)
+changes. A Solana transaction prepared under the
+interim identifier fails restore with `InvalidSolanaTransactionArtifactError`;
+prepare it again. Persisted EVM transactions are unaffected.
 
 ### Exports
 
@@ -659,7 +670,7 @@ The orchestrator binds the grant by recomputing the approval input from the
 quote request ([sponsorship approval](sponsorship-approval.md)).
 
 - **The input changed.** It is the versioned
-  `sdk-caucasus-singular-2026-09-v1` input, the quote body itself; see
+  `sdk-3.0.0-caucasus` input, the quote body itself; see
   [Approval input and policies](#approval-input-and-policies). A request
   outside its allowlist fails with `UnsupportedSponsorshipApprovalError` before
   the callback runs; use project-wide sponsorship for such a request.

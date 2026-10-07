@@ -1,4 +1,4 @@
-// The EVM transactions the singular sponsorship approval vectors are derived
+// The EVM transactions the Caucasus sponsorship approval vectors are derived
 // from, prepared through the public facade. Plain data plus viem chains, so
 // each case reads as the transaction an integrator writes.
 import { encodeFunctionData, erc20Abi, type Hex } from 'viem'

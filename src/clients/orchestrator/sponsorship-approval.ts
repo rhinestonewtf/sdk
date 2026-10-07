@@ -2,15 +2,14 @@ import { UnsupportedSponsorshipApprovalError } from '../../errors/execution'
 import type { SerializedIntentInput } from './public'
 import { serializeBigInts } from './serialization'
 
-// The sponsorship approval contract `sdk-caucasus-singular-2026-09-v1`: the
+// The sponsorship approval contract `sdk-3.0.0-caucasus`: the
 // approval input an intent-scoped grant commits to is the singular Caucasus
 // quote body itself, validated field by field. The orchestrator recomputes it
 // from the body it received, so any field outside this allowlist is refused
 // rather than hashed: a stripped extra field would let two different requests
 // share one grant. docs/sponsorship-approval.md is the published form.
 
-export const SPONSORSHIP_APPROVAL_CONTRACT =
-  'sdk-caucasus-singular-2026-09-v1' as const
+export const SPONSORSHIP_APPROVAL_CONTRACT = 'sdk-3.0.0-caucasus' as const
 
 type Json = null | boolean | number | string | Json[] | JsonObject
 interface JsonObject {
