@@ -68,6 +68,8 @@ export interface SettlementContext {
     readonly chainId: number
     readonly token: Address
     readonly recipient?: Address
+    /** LZ only: the least the Stargate send may deliver, in `token` units. */
+    readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
   readonly cap?: bigint

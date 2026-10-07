@@ -38,6 +38,7 @@ import {
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { encodeSessionPolicy } from '../policies/encode'
 import { pinValue } from '../swap/rules'
+import type { ArgPolicyExpression } from '../types'
 import {
   LZ_CCTP_MAX_RELAY_FEE,
   LZ_EXECUTE_SELECTOR,
@@ -499,3 +500,109 @@ describe('scopeLz', () => {
     ).toThrow(/exactly one/)
   })
 })
+
+describe('scopeLz to.minAmount', () => {
+  const FLOOR = 9_800_000n
+  const floored = (minAmount: bigint = FLOOR) =>
+    scopeLz(context({ destinations: [{ ...SONEIUM_LEG, minAmount }] }))
+
+  test('admits a Stargate send whose minAmountLD is at or above the floor', () => {
+    expect(holds(floored(), taxi())).toBe(true)
+    expect(holds(floored(), taxi({ minAmount: FLOOR }))).toBe(true)
+    expect(holds(floored(), taxi({ minAmount: CAP }))).toBe(true)
+  })
+
+  test('refuses a Stargate send that accepts less than the floor', () => {
+    expect(holds(floored(), taxi({ minAmount: FLOOR - 1n }))).toBe(false)
+    expect(holds(floored(), taxi({ minAmount: 0n }))).toBe(false)
+    // Without the floor the key may accept any shortfall.
+    expect(holds(toSoneiumUnfloored(), taxi({ minAmount: 0n }))).toBe(true)
+  })
+
+  test('the floor binds only its own leg', () => {
+    const arbStargate = (() => {
+      const { cctp: _, ...noCctp } = lz(ARB)
+      return {
+        ...SETTLEMENT_CATALOG,
+        [ARB]: { ...SETTLEMENT_CATALOG[ARB], lz: noCctp },
+      }
+    })()
+    const both = scopeLz(
+      context({
+        settlement: arbStargate,
+        destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }, ARB_LEG],
+      }),
+    )
+    expect(holds(both, taxi({ minAmount: FLOOR - 1n }))).toBe(false)
+    expect(holds(both, execute(stargate('taxi', { minAmount: 0n })))).toBe(true)
+  })
+
+  test('adds one rule and keeps a one-leg policy free of ORs', () => {
+    const count = (e: ArgPolicyExpression): { rules: number; ors: number } =>
+      e.type === 'rule'
+        ? { rules: 1, ors: 0 }
+        : e.type === 'not'
+          ? count(e.child)
+          : (() => {
+              const l = count(e.left)
+              const r = count(e.right)
+              return {
+                rules: l.rules + r.rules,
+                ors: l.ors + r.ors + (e.type === 'or' ? 1 : 0),
+              }
+            })()
+    const expr = (a: ReturnType<typeof scopeLz>) => {
+      const policy = a.policies![0]
+      if (policy.type !== 'arg-policy') throw new Error('not an arg-policy')
+      return policy.expression
+    }
+    const before = count(expr(toSoneiumUnfloored()))
+    const after = count(expr(floored()))
+    expect(after).toEqual({ rules: before.rules + 1, ors: before.ors })
+    expect(after.ors).toBe(0)
+  })
+
+  test('refuses a floor no Stargate route can carry', () => {
+    // CCTP reaches Arbitrum from Base, and depositForBurn has no minimum out.
+    expect(() =>
+      scopeLz(context({ destinations: [{ ...ARB_LEG, minAmount: FLOOR }] })),
+    ).toThrow(/minAmount/)
+  })
+
+  test('refuses a floor that is not positive or exceeds the cap', () => {
+    expect(() => floored(0n)).toThrow(/positive/)
+    expect(() => floored(CAP + 1n)).toThrow(/maxAmount/)
+  })
+
+  test('refuses a floor across tokens whose decimals are not served equal', () => {
+    const { usdStablecoins: _, ...soneium } = SETTLEMENT_CATALOG[SONEIUM]
+    expect(() =>
+      scopeLz(
+        context({
+          settlement: { ...SETTLEMENT_CATALOG, [SONEIUM]: soneium },
+          destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }],
+        }),
+      ),
+    ).toThrow(/decimals/)
+    expect(() =>
+      scopeLz(
+        context({
+          settlement: {
+            ...SETTLEMENT_CATALOG,
+            [SONEIUM]: {
+              ...soneium,
+              usdStablecoins: [
+                { address: USDC_SONEIUM, symbol: 'USDC', decimals: 18 },
+              ],
+            },
+          },
+          destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }],
+        }),
+      ),
+    ).toThrow(/decimals/)
+  })
+})
+
+function toSoneiumUnfloored() {
+  return scopeLz(context({ destinations: [SONEIUM_LEG] }))
+}

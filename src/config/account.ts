@@ -328,6 +328,7 @@ interface Permit2ClaimPolicy {
  *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
  *   quotes that ~7 days out; and `from` and `to` tokens the orchestrator
  *   serves as 6-decimal USD stablecoins. `OFT` and `LZ` require `oneTimeUse`.
+ *   `to.minAmount` applies to `SAME_CHAIN_IE` and to `LZ` named alone.
  *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
@@ -432,9 +433,19 @@ interface ToLeg {
   token: Address
   recipient?: Address | 'any'
   /**
-   * `SAME_CHAIN_IE` swaps only: the least amount of `token` the swap must deliver.
-   * Required there (with `maxAmount`), since the session key otherwise sets the
-   * swap's output bound; `maxAmount : minAmount` is the worst rate accepted.
+   * The least amount of `token` the settlement must deliver.
+   *
+   * - `SAME_CHAIN_IE` swaps: required (with `maxAmount`), since the session key
+   *   otherwise sets the swap's output bound; `maxAmount : minAmount` is the
+   *   worst rate accepted.
+   * - `LZ` (as the only layer): optional, on a leg LZ reaches over Stargate.
+   *   The session then refuses a Stargate send whose `minAmountLD` is below it,
+   *   so the pool's fee costs at most `amount sent − minAmount`. Without it
+   *   the send accepts whatever fee the pool charges. It is an absolute
+   *   amount, not a rate: a smaller send fails, and a quote whose own minimum
+   *   is below it is refused.
+   *   Refused on a leg LZ reaches over CCTP, and unless the orchestrator serves
+   *   both tokens as USD stablecoins with equal decimals.
    */
   minAmount?: bigint
 }

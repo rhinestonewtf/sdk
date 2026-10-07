@@ -10,9 +10,18 @@ import {
   base,
   baseSepolia,
   plasma,
+  soneium,
 } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
+import {
+  execute,
+  ACCOUNT as LZ_ACCOUNT,
+  CAP as LZ_CAP,
+  SONEIUM_EID,
+  stargate,
+  USDC_SONEIUM,
+} from '../../../../../test/utils/lz-calldata'
 import {
   type RuleUsage,
   satisfiesRules,
@@ -290,6 +299,55 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(satisfiesRules(action, approve(delegate, 40n), usage)).toBe(true)
     // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
     expect(satisfiesRules(action, approve(LZ_BASE.multiCall))).toBe(false)
+  })
+
+  describe('LZ to.minAmount', () => {
+    const lzScope = (permit: Partial<CrossChainPermissionInput>) =>
+      resolveSettlementScope(
+        [
+          resolveCrossChainPermission({
+            from: { chain: base, token: USDC, maxAmount: LZ_CAP },
+            to: {
+              chain: soneium,
+              token: USDC_SONEIUM,
+              minAmount: 9_800_000n,
+            },
+            settlementLayers: ['LZ'],
+            ...permit,
+          }),
+        ],
+        {
+          chainId: base.id,
+          environment: 'production',
+          account: LZ_ACCOUNT,
+          oneTimeUse: true,
+          settlement: SETTLEMENT_CATALOG,
+        },
+      )
+
+    test('floors what the Stargate send must deliver', () => {
+      const action = lzScope({})?.actions.find(
+        (a) => a.selector === LZ_EXECUTE_SELECTOR,
+      )
+      if (!action) throw new Error('no execute action')
+      const send = (minAmount: bigint) =>
+        execute(stargate('taxi', { eid: SONEIUM_EID, minAmount }))
+      expect(satisfiesRules(action, send(9_800_000n))).toBe(true)
+      expect(satisfiesRules(action, send(9_799_999n))).toBe(false)
+    })
+
+    test('refuses the floor where another layer could settle the permit', () => {
+      for (const settlementLayers of [['LZ', 'CCTP'], 'all'] as const) {
+        expect(() =>
+          lzScope({
+            settlementLayers:
+              settlementLayers as CrossChainPermissionInput['settlementLayers'],
+          }),
+        ).toThrow(
+          '`to.minAmount` applies only to a SAME_CHAIN_IE swap or an LZ-only permit',
+        )
+      }
+    })
   })
 
   describe('SAME_CHAIN_IE', () => {

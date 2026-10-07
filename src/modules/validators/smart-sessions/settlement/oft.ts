@@ -71,6 +71,7 @@ export const SEND = {
   dstEid: 128n,
   to: 160n,
   amountLD: 192n,
+  minAmountLD: 224n,
   extraOptionsPointer: 256n,
   composeMsgPointer: 288n,
   oftCmdPointer: 320n,

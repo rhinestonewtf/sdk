@@ -257,9 +257,16 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  if (!sameChainOnly && permit.to?.some((leg) => leg.minAmount !== undefined)) {
+  // An LZ floor binds only LZ's Stargate send; beside another layer that layer
+  // could settle the permit without it.
+  const lzOnly = !all && requested.length === 1 && requested[0] === 'LZ'
+  if (
+    !sameChainOnly &&
+    !lzOnly &&
+    permit.to?.some((leg) => leg.minAmount !== undefined)
+  ) {
     throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or an LZ-only permit',
     )
   }
   const fees = permit.allowFees
