@@ -408,6 +408,83 @@ describe('scopeOft with to.minAmount', () => {
     ).toThrow(message)
   })
 
+  describe('decimals', () => {
+    /** The catalog with each listed token's served decimals replaced, or dropped when undefined. */
+    const serving = (decimals: Record<number, number | undefined>) =>
+      Object.fromEntries(
+        Object.entries(SETTLEMENT_CATALOG).map(([id, chain]) => {
+          const chainId = Number(id)
+          if (!(chainId in decimals) || !chain.oft) return [id, chain]
+          const others = (chain.usdStablecoins ?? []).filter(
+            (t) => t.address !== chain.oft?.token,
+          )
+          const own = decimals[chainId]
+          return [
+            id,
+            {
+              ...chain,
+              usdStablecoins:
+                own === undefined
+                  ? others
+                  : [
+                      ...others,
+                      {
+                        address: chain.oft.token,
+                        symbol: 'USDT0',
+                        decimals: own,
+                      },
+                    ],
+            },
+          ]
+        }),
+      )
+    const floor = (settlement: ReturnType<typeof serving>) =>
+      scopeOft({
+        ...base,
+        settlement,
+        destinations: [
+          {
+            chainId: 9745,
+            token: USDT0_PLASMA,
+            recipient: ACCOUNT,
+            minAmount: 60n,
+          },
+        ],
+      })
+
+    test('accepts a floor when both tokens are served with equal decimals', () => {
+      expect(() => floor(serving({}))).not.toThrow()
+      expect(() => floor(serving({ 42161: 18, 9745: 18 }))).not.toThrow()
+    })
+
+    test.each([
+      ['more decimals on the destination', { 9745: 18 }],
+      ['more decimals on the source', { 42161: 18 }],
+      ['no served decimals for the destination', { 9745: undefined }],
+      ['no served decimals for the source', { 42161: undefined }],
+      [
+        'no served decimals for either token',
+        { 42161: undefined, 9745: undefined },
+      ],
+    ] as const)('refuses a floor with %s', (_, decimals) => {
+      expect(() => floor(serving(decimals))).toThrow(
+        'needs served, equal decimals',
+      )
+    })
+
+    test('an unfloored send needs no served decimals', () => {
+      expect(() =>
+        scopeOft({
+          ...base,
+          settlement: serving({ 42161: undefined, 9745: undefined }),
+          destinations: [
+            { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+          ],
+        }),
+      ).not.toThrow()
+    })
+  })
+
   // Against the frozen builder a floor only narrows: it admits exactly the
   // frozen admissions whose minAmountLD meets the leg's floor.
   const floors: Record<number, bigint> = { 30383: 50n, 30111: 80n }

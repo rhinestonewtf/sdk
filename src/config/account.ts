@@ -436,7 +436,8 @@ interface ToLeg {
    * the settlement must deliver. Required on a swap (with `maxAmount`), since the
    * session key otherwise sets the swap's output bound; `maxAmount : minAmount`
    * is the worst rate accepted. Optional on `OFT`, where it floors the send's
-   * `minAmountLD` and so also refuses any send smaller than it.
+   * `minAmountLD` and so also refuses any send smaller than it; there both
+   * tokens need served, equal decimals.
    */
   minAmount?: bigint
 }

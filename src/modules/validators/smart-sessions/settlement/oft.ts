@@ -104,16 +104,29 @@ function requireUsdt0(
  * `send` reverts unless it delivers at least `minAmountLD`, so a floor on that
  * word floors the delivery. It is a fixed amount, since a rule compares with a
  * constant, not with `amountLD`. `minAmountLD` is in the source token's
- * decimals, which for USDT0 match the `to` leg's.
+ * decimals and `to.minAmount` in the destination's, so both must be served
+ * and equal.
  */
 function floorMinAmount(
+  ctx: SettlementContext,
+  leg: SettlementContext['destinations'][number],
   minAmount: bigint,
-  cap: bigint | undefined,
 ): UniversalActionPolicyParamRule {
+  const decimals = (chainId: number, token: Address) =>
+    ctx.settlement[chainId]?.usdStablecoins?.find((t) =>
+      isAddressEqual(t.address, token),
+    )?.decimals
+  const from = decimals(ctx.chainId, ctx.sourceTokens[0])
+  const to = decimals(leg.chainId, leg.token)
+  if (from === undefined || from !== to) {
+    throw new Error(
+      `crossChainPermits: an OFT \`to.minAmount\` needs served, equal decimals for the \`from\` token on chain ${ctx.chainId} (${from ?? 'not served'}) and the \`to\` token on chain ${leg.chainId} (${to ?? 'not served'})`,
+    )
+  }
   if (minAmount <= 0n) {
     throw new Error('crossChainPermits: an OFT `to.minAmount` must be positive')
   }
-  if (cap !== undefined && minAmount > cap) {
+  if (ctx.cap !== undefined && minAmount > ctx.cap) {
     throw new Error(
       'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
     )
@@ -172,7 +185,7 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
       legRules.push(pinWord(SEND.to, pad(leg.recipient)))
     }
     if (leg.minAmount !== undefined) {
-      legRules.push(floorMinAmount(leg.minAmount, ctx.cap))
+      legRules.push(floorMinAmount(ctx, leg, leg.minAmount))
     }
     return legRules
   })
