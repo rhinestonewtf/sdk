@@ -108,9 +108,10 @@ the orchestrator commit the vectors were last cross-checked against. To
 regenerate after an intended change, run
 `bun run scripts/vectors/sponsorship-approval.ts`.
 
-`test/vectors/sponsorship-approval-singular/` (the interim singular contract)
-and `test/vectors/sponsorship-approval/` (the legacy contract) are frozen:
-each has a hash guard over its `vectors.json`, and nothing regenerates them.
+`test/vectors/sponsorship-approval-singular/` holds the frozen interim
+singular contract. Its cases are projected by the current projector with the
+identifier swapped, and a hash guard fails on any change to `vectors.json`;
+nothing regenerates it.
 
 `test/vectors/sponsorship-approval/` holds the frozen legacy contract. Its
 bodies are projected through test-only `legacy-projection.ts`, and a hash guard

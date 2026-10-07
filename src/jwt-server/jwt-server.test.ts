@@ -373,21 +373,32 @@ describe.each(['sdk-3.0.0-caucasus', 'sdk-caucasus-singular-2026-09-v1'])(
       })
       expect(result).toBe(true)
     })
-
-    it.each([
-      'caucasus-1',
-      'sdk-3.0.1-caucasus',
-      'sdk-caucasus-2026-09',
-      'sdk-2.16.2-blanc',
-    ])('throws on an unknown contractVersion %s', async (unknown) => {
-      await expect(
-        shouldSponsor({ ...evmIntentInput, contractVersion: unknown }, {}),
-      ).rejects.toThrow(
-        `intentInput.contractVersion "${unknown}" is not supported`,
-      )
-    })
   },
 )
+
+it.each([
+  'caucasus-1',
+  'sdk-3.0.1-caucasus',
+  'sdk-caucasus-2026-09',
+  'sdk-2.16.2-blanc',
+])('shouldSponsor throws on an unknown contractVersion %s', async (unknown) => {
+  await expect(
+    shouldSponsor(
+      {
+        contractVersion: unknown,
+        account: {
+          evm: {
+            type: 'erc7579',
+            address: '0x1234000000000000000000000000000000000000',
+          },
+        },
+        destination: { vm: 'evm', chainId: 'eip155:8453' },
+        options: {},
+      },
+      {},
+    ),
+  ).rejects.toThrow(`intentInput.contractVersion "${unknown}" is not supported`)
+})
 
 describe('createJwtSigner', () => {
   async function makeTestConfig() {

@@ -114,9 +114,8 @@ Deploy the backend first: update `/jwt-server` (or your own signer) to accept
 unknown `contractVersion`, so the prepare fails.
 
 If you adopted an earlier v3 snapshot, which sends
-`sdk-caucasus-singular-2026-09-v1`, only the identifier changes: the
-projection, allowlist and digest rule are the same, so digests differ only
-because the identifier is hashed. A Solana transaction prepared under the
+`sdk-caucasus-singular-2026-09-v1`, only the identifier (and so the digest)
+changes. A Solana transaction prepared under the
 interim identifier fails restore with `InvalidSolanaTransactionArtifactError`;
 prepare it again. Persisted EVM transactions are unaffected.
 
