@@ -7,25 +7,10 @@ import {
   slice,
   toFunctionSelector,
 } from 'viem'
-import { compareHexValues } from '../../src/modules/validators/ordering'
-import {
-  PUBLISH,
-  PUBLISH_AND_FUND_SELECTOR,
-} from '../../src/modules/validators/smart-sessions/settlement/eco'
-import {
-  SettlementLayerRefusal,
-  served,
-} from '../../src/modules/validators/smart-sessions/settlement/served'
 import type {
   SettlementCatalog,
   SettlementContext,
 } from '../../src/modules/validators/smart-sessions/settlement/types'
-import {
-  cumulativeCap,
-  pin,
-  pinValue,
-  pinWord,
-} from '../../src/modules/validators/smart-sessions/swap/rules'
 import type {
   ArgPolicyExpression,
   ScopedAction,
@@ -35,7 +20,88 @@ import type {
 /**
  * ECO_IE's `scopeEco` frozen as of 366001ca, so the differential test can show
  * the live builder emits the same policy wherever its behaviour is unchanged.
+ * Self-contained: nothing here moves when the live helpers do.
  */
+
+const PUBLISH = {
+  destination: 0n,
+  routePointer: 32n,
+  rewardPointer: 64n,
+  routeDeadline: 224n,
+  routePortal: 256n,
+  routeToken: 416n,
+  routeTokenAmount: 448n,
+  callsLength: 480n,
+  callTarget: 544n,
+  callDataLength: 640n,
+  callDataHead: 672n,
+  transferRecipient: 676n,
+  transferAmount: 708n,
+  rewardDeadline: 768n,
+  rewardCreator: 800n,
+  rewardProver: 832n,
+  rewardTokensPointer: 896n,
+  rewardTokensLength: 928n,
+  rewardToken: 960n,
+  rewardAmount: 992n,
+} as const
+
+const PUBLISH_AND_FUND_SELECTOR = toFunctionSelector(
+  'function publishAndFund(uint64 destination, bytes route, (uint64 deadline,address creator,address prover,uint256 nativeAmount,(address token,uint256 amount)[] tokens) reward, bool allowPartial)',
+)
+
+class SettlementLayerRefusal extends Error {}
+
+function served(settlement: SettlementCatalog, chainId: number, _: 'eco') {
+  const block = settlement[chainId]?.eco
+  if (block === undefined) {
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE does not route to chain ${chainId}`,
+    )
+  }
+  return block
+}
+
+function compareHexValues(left: Hex, right: Hex): number {
+  const leftValue = BigInt(left)
+  const rightValue = BigInt(right)
+  if (leftValue === rightValue) return 0
+  return leftValue < rightValue ? -1 : 1
+}
+
+const pinValue = (
+  calldataOffset: bigint,
+  referenceValue: bigint,
+): UniversalActionPolicyParamRule => ({
+  condition: 'equal',
+  calldataOffset,
+  referenceValue,
+})
+const pinWord = (
+  calldataOffset: bigint,
+  referenceValue: Hex,
+): UniversalActionPolicyParamRule => ({
+  condition: 'equal',
+  calldataOffset,
+  referenceValue,
+})
+const pin = (
+  calldataOffset: bigint,
+  referenceValue: Address,
+): UniversalActionPolicyParamRule => ({
+  condition: 'equal',
+  calldataOffset,
+  referenceValue,
+})
+const cumulativeCap = (
+  calldataOffset: bigint,
+  cap: bigint,
+): UniversalActionPolicyParamRule => ({
+  condition: 'lessThanOrEqual',
+  calldataOffset,
+  referenceValue: cap,
+  usageLimit: cap,
+})
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
 const BPS = 10_000n

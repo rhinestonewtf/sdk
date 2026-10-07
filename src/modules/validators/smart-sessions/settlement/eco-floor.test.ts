@@ -444,6 +444,34 @@ describe('a hostile key filling its own intent', () => {
       token: USD18_ARB,
       floor: 99n * E18,
     },
+    'maxFeeBps, 18 to 6': {
+      ctx: {
+        ...base,
+        settlement: WITH_18,
+        sourceTokens: [USD18_BASE],
+        cap: 100n * E18,
+      },
+      token: USDC_ARB,
+      floor: 99n * E6,
+      reward: 100n * E18,
+      rewardToken: USD18_BASE,
+    },
+    'maxFeeBps and a stricter to.minAmount': {
+      ctx: {
+        ...base,
+        cap: 100n * E6,
+        destinations: [
+          {
+            chainId: 42161,
+            token: USDT0_ARB,
+            recipient: ACCOUNT,
+            minAmount: 99_500_000n,
+          },
+        ],
+      },
+      token: USDT0_ARB,
+      floor: 99_500_000n,
+    },
     'to.minAmount, USDC to USDT0': {
       ctx: {
         ...base,
@@ -463,11 +491,16 @@ describe('a hostile key filling its own intent', () => {
     },
   }
 
-  for (const [mode, { ctx, token, floor }] of Object.entries(modes)) {
+  for (const [mode, m] of Object.entries(modes)) {
+    const { ctx, token, floor } = m
+    const { reward = 100n * E6, rewardToken = USDC_BASE } = m as {
+      reward?: bigint
+      rewardToken?: Address
+    }
     describe(mode, () => {
       const action = scopeEco(ctx as SettlementContext)
       const fill = (o: Parameters<typeof publish>[0]) =>
-        holds(action, publish({ routeToken: token, reward: 100n * E6, ...o }))
+        holds(action, publish({ routeToken: token, reward, rewardToken, ...o }))
 
       test('admits the honest publish', () => {
         expect(fill({ delivered: floor })).toBe(true)
@@ -477,7 +510,7 @@ describe('a hostile key filling its own intent', () => {
         ['delivers one unit for the whole cap', { delivered: 1n }],
         ['delivers nothing for the whole cap', { delivered: 0n }],
         ['delivers a unit under the floor', { delivered: floor - 1n }],
-        ['rewards past the cap', { delivered: floor, reward: 100n * E6 + 1n }],
+        ['rewards past the cap', { delivered: floor, reward: reward + 1n }],
         ['delivers to itself', { delivered: floor, recipient: OTHER }],
         [
           'delivers another token',

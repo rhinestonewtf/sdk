@@ -475,12 +475,56 @@ describe('settlement-scoped crossChainPermits', () => {
     })
 
     test('a to.minAmount beside another layer floors only ECO_IE', () => {
-      const permit = eco({
-        to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
-        maxFeeBps: undefined,
-        settlementLayers: ['CCTP', 'ECO_IE'],
-      })
-      expect(toSession(permit).settlementLayers).toEqual(['CCTP', 'ECO_IE'])
+      const scoped = (minAmount?: bigint) =>
+        resolveSettlementScope(
+          [
+            resolveCrossChainPermission(
+              eco({
+                to: { chain: arbitrum, token: USDC_ARB, minAmount },
+                maxFeeBps: 100,
+                settlementLayers: ['CCTP', 'ECO_IE'],
+              }).crossChainPermits?.[0] ?? {},
+            ),
+          ],
+          {
+            chainId: base.id,
+            environment: 'production',
+            account: ACCOUNT,
+            oneTimeUse: true,
+            settlement: SETTLEMENT_CATALOG,
+          },
+        )
+      const action = (minAmount: bigint | undefined, selector: string) => {
+        const found = scoped(minAmount)?.actions.find(
+          (a) => a.selector === selector,
+        )
+        if (!found) throw new Error(`no ${selector} action`)
+        return found
+      }
+      const floorsOf = (minAmount?: bigint) => {
+        const policy = action(minAmount, PUBLISH_AND_FUND_SELECTOR)
+          .policies?.[0]
+        if (policy?.type !== 'arg-policy') throw new Error('no arg policy')
+        const out: bigint[] = []
+        const walk = (e: typeof policy.expression): void => {
+          if (e.type === 'rule') {
+            if (e.rule.condition === 'greaterThanOrEqual')
+              out.push(BigInt(e.rule.referenceValue))
+          } else if (e.type === 'not') walk(e.child)
+          else {
+            walk(e.left)
+            walk(e.right)
+          }
+        }
+        walk(policy.expression)
+        return out
+      }
+      expect(action(100n, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR)).toEqual(
+        action(undefined, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR),
+      )
+      // cap 100 at 100 bps floors at 99; the owner's 100 is stricter.
+      expect(floorsOf()).toEqual([99n, 99n])
+      expect(floorsOf(100n)).toEqual([100n, 100n])
     })
 
     test("refuses a to.minAmount when 'all' drops ECO_IE", () => {
