@@ -499,13 +499,14 @@ describe('settlement-scoped crossChainPermits', () => {
             { chain: base, token: USDC, maxAmount: 1000n * 10n ** 6n },
             { chain: arbitrum, token: USDC_ARB, maxAmount: arbCap },
           ],
-          to: { chain: optimism, token: USDC_OP, minAmount: 9_800_000n },
+          to: { chain: optimism, token: USDC_OP, minAmount: 550n * 10n ** 6n },
           maxFeeBps,
         })
 
-      // A 9.8 USDC floor would let the Base key pay a 1000 USDC reward for it.
+      // A 550 USDC floor fits the Arbitrum cap of 600, and lets the Base key pay
+      // a 1000 USDC reward for 550.
       test.each([
-        ['different caps', 10n * 10n ** 6n],
+        ['different caps', 600n * 10n ** 6n],
         ['a leg with no cap', undefined],
       ])('refuses %s without maxFeeBps', (_, arbCap) => {
         expect(() => resolveSessionData(spread(arbCap))).toThrow(
@@ -515,7 +516,7 @@ describe('settlement-scoped crossChainPermits', () => {
 
       test('admits them with maxFeeBps, and equal caps without', () => {
         expect(
-          toSession(spread(10n * 10n ** 6n, 100)).settlementLayers,
+          toSession(spread(600n * 10n ** 6n, 100)).settlementLayers,
         ).toEqual(['ECO_IE'])
         expect(toSession(spread(1000n * 10n ** 6n)).settlementLayers).toEqual([
           'ECO_IE',

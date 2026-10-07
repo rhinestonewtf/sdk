@@ -166,6 +166,20 @@ function stableDecimals(
   return usd[0].decimals
 }
 
+/** The token's served decimals when `stableDecimals` would accept them. */
+function knownDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+): number | undefined {
+  const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
+    isAddressEqual(t.address, token),
+  )
+  return usd.length === 1 && STABLE_DECIMALS.has(usd[0].decimals)
+    ? usd[0].decimals
+    : undefined
+}
+
 /**
  * Provers served on both chains of a leg. An unlisted prover could attest a
  * fill that never happened; one with no code on the source chain makes
@@ -305,8 +319,44 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       referenceValue: ctx.validUntil,
     },
   ]
+  // Two legs that pin the same delivery become an OR, so the lower floor binds.
+  const twin = ctx.destinations.find((leg, i) =>
+    ctx.destinations.some(
+      (other, j) =>
+        j < i &&
+        other.chainId === leg.chainId &&
+        isAddressEqual(other.token, leg.token) &&
+        (other.recipient === undefined || leg.recipient === undefined
+          ? other.recipient === leg.recipient
+          : isAddressEqual(other.recipient, leg.recipient)) &&
+        other.minAmount !== leg.minAmount,
+    ),
+  )
+  if (twin) {
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE names the \`to\` leg ${twin.token} on chain ${twin.chainId} twice with different \`to.minAmount\`; give it once`,
+    )
+  }
   const legs = ctx.destinations.map((leg) => {
     requireServed(ctx.settlement, leg.chainId, leg.token, 'to')
+    // Every Eco token is a USD stablecoin, so a floor under half the cap is a
+    // units mistake: `to.minAmount` is in the `to` token's smallest units.
+    const fromKnown = knownDecimals(
+      ctx.settlement,
+      ctx.chainId,
+      ctx.sourceTokens[0],
+    )
+    const toKnown = knownDecimals(ctx.settlement, leg.chainId, leg.token)
+    if (
+      leg.minAmount !== undefined &&
+      fromKnown !== undefined &&
+      toKnown !== undefined &&
+      leg.minAmount < floorFor(cap, 1n, 2n, fromKnown, toKnown)
+    ) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ECO_IE \`to.minAmount\` ${leg.minAmount} on chain ${leg.chainId} is under half of maxAmount; give it in the \`to\` token's smallest units (${toKnown} decimals)`,
+      )
+    }
     // The cap less what the solver may keep, rescaled from the reward's
     // decimals to the delivery's; with `to.minAmount` too, the stricter wins.
     const feeFloor =

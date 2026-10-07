@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import { type Address, getAddress } from 'viem'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { frozenScopeEco } from '../../../../../test/utils/eco-frozen'
 import {
@@ -348,7 +348,7 @@ describe('to.minAmount floors delivery in the `to` token', () => {
 
   test.each([
     ['a minAmount above the fee floor', 99_500_000n, 99_500_000n],
-    ['a minAmount below the fee floor', 1n, 99n * E6],
+    ['a minAmount below the fee floor', 60n * E6, 99n * E6],
     ['a minAmount equal to the fee floor', 99n * E6, 99n * E6],
   ])(
     'with maxFeeBps too, the stricter floor applies: %s',
@@ -488,4 +488,51 @@ describe('a hostile key filling its own intent', () => {
       })
     })
   }
+})
+
+describe('to.minAmount sanity', () => {
+  const to18 = (minAmount: bigint) => ({
+    ...base,
+    settlement: WITH_18,
+    maxFeeBps: undefined,
+    cap: 100n * E6,
+    destinations: [
+      { chainId: 42161, token: USD18_ARB, recipient: ACCOUNT, minAmount },
+    ],
+  })
+
+  test('refuses a 6-decimal amount given for an 18-decimal token', () => {
+    // 99 USD meant, 99e-12 USD pinned: the key would keep the whole cap.
+    expect(() => scopeEco(to18(99n * E6))).toThrow(
+      "is under half of maxAmount; give it in the `to` token's smallest units (18 decimals)",
+    )
+  })
+
+  test('the bound is half the cap, rescaled', () => {
+    expect(floors(to18(50n * E18))).toEqual([50n * E18, 50n * E18])
+    expect(() => scopeEco(to18(50n * E18 - 1n))).toThrow('under half')
+  })
+
+  const leg = { chainId: 42161, token: USDC_ARB, recipient: ACCOUNT }
+  const twins = (a?: bigint, b?: bigint) => ({
+    ...base,
+    cap: 100n * E6,
+    destinations: [
+      { ...leg, minAmount: a },
+      { ...leg, token: getAddress(leg.token), minAmount: b },
+    ],
+  })
+
+  test.each([
+    ['different floors', 99n * E6, 60n * E6],
+    ['one floor missing', 99n * E6, undefined],
+  ])('refuses the same leg twice with %s', (_, a, b) => {
+    expect(() => scopeEco(twins(a, b))).toThrow(
+      'twice with different `to.minAmount`',
+    )
+  })
+
+  test('admits the same leg twice with the same floor', () => {
+    expect(floors(twins(99n * E6, 99n * E6))).toContain(99n * E6)
+  })
 })
