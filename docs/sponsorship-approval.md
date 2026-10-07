@@ -8,12 +8,13 @@ input. It recomputes it from the Caucasus `POST /quotes` body it did receive,
 hashes it, and compares the result with the grant's
 `policy.sponsorship.intent_input.digest`.
 
-The current contract is **`sdk-caucasus-singular-2026-09-v1`**, for the
-singular `2026-09.caucasus` body this SDK sends. The SDK implements it in
+The current contract is **`sdk-3.0.0-caucasus`**, for the singular
+`2026-09.caucasus` body this SDK sends. The SDK implements it in
 `src/clients/orchestrator/sponsorship-approval.ts` (`projectSponsorshipApproval`)
 and owns its golden vectors, in
-`test/vectors/sponsorship-approval-singular/vectors.json`. The earlier,
-unversioned contract is [frozen](#legacy-contract-frozen).
+`test/vectors/sponsorship-approval-caucasus/vectors.json`. The
+[interim singular contract](#interim-singular-contract-frozen) and the earlier,
+unversioned contract are [frozen](#legacy-contract-frozen).
 
 ## Timing
 
@@ -42,7 +43,7 @@ The approval input is the validated body verbatim:
 
 ```json
 {
-  "contractVersion": "sdk-caucasus-singular-2026-09-v1",
+  "contractVersion": "sdk-3.0.0-caucasus",
   "account": { … },
   "source": { … },
   "destination": { … },
@@ -99,16 +100,23 @@ legacy-shaped body is refused.
 
 ## Integrator policies
 
-`/jwt-server`'s `shouldSponsor` and `SponsorshipFilter` read both formats: the
-singular input, recognised by its `contractVersion`, and the legacy input older
-pinned SDKs still send. An unknown `contractVersion` is refused. A policy of
-its own that reads legacy field names (`destinationChainId`,
-`destinationExecutions`, `tokenRequests`, numeric chain ids) must be reviewed:
-the singular input has none of them.
+`/jwt-server`'s `shouldSponsor` and `SponsorshipFilter` read the same policy
+values from three inputs:
+
+- `sdk-3.0.0-caucasus`, which this SDK sends.
+- `sdk-caucasus-singular-2026-09-v1`, which earlier v3 snapshots send.
+- The unversioned legacy input of v2 and older pinned SDKs (no
+  `contractVersion` member).
+
+Any other `contractVersion` is refused, and so the prepare fails. Deploy
+helpers (or a signer of your own) that accept `sdk-3.0.0-caucasus` on your
+backend **before** your clients send it. A policy of its own that reads legacy
+field names (`destinationChainId`, `destinationExecutions`, `tokenRequests`,
+numeric chain ids) must be reviewed: the current input has none of them.
 
 ## Vectors
 
-`test/vectors/sponsorship-approval-singular/vectors.json` has:
+`test/vectors/sponsorship-approval-caucasus/vectors.json` has:
 
 - `contractVersion` and the `digest` rule.
 - `cases`: each entry holds the exact wire `body`, its `intentInput` and its
@@ -123,8 +131,23 @@ through `prepareTransaction` (or `deploy`), and the others through the request
 builders.
 
 To regenerate after an intended change, run
-`bun run scripts/vectors/sponsorship-approval.ts`. Re-run the orchestrator
-cross-check and update `provenance` when the orchestrator's projection changes.
+`bun run scripts/vectors/sponsorship-approval.ts`; it carries `provenance`
+over. Re-run the orchestrator cross-check whenever the vectors or the
+orchestrator's projection change: in an orchestrator checkout, run its
+singular-vectors test (`authorizeQuoteRequest`, apiVersion `2026-09.caucasus`,
+intent scope) against this file with the stable identifier, and record the
+repository, ref, commit and result in `provenance.orchestratorCrossCheck`.
+
+## Interim singular contract (frozen)
+
+`sdk-caucasus-singular-2026-09-v1` is the same projection under a different
+identifier. Earlier v3 dev snapshots send it, the orchestrator still serves it
+and `/jwt-server` still accepts it. Its vectors,
+`test/vectors/sponsorship-approval-singular/vectors.json`, are frozen: a hash
+guard in its `vectors.test.ts` fails on any change, and every case is
+re-projected by the current projector with the identifier swapped. A Solana
+transaction prepared under it fails restore with
+`InvalidSolanaTransactionArtifactError`; prepare it again.
 
 ## Legacy contract (frozen)
 

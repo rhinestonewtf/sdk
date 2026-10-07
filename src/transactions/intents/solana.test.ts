@@ -232,7 +232,7 @@ describe('managed Solana intent workflow', () => {
     // The approval input is the request body verbatim, with decimal-string
     // amounts, naming the paying Swig and the spent mint.
     expect(prepared.intentInput).toStrictEqual({
-      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      contractVersion: 'sdk-3.0.0-caucasus',
       account: {
         svm: {
           type: 'swig',
@@ -824,6 +824,25 @@ describe('sponsored Solana intents', () => {
       }),
     ).toThrow(/canonical intent input|persisted request/)
   })
+
+  test('rejects a restored transaction prepared under the interim singular contract', async () => {
+    const fixture = context()
+    const input = transfer({ sponsorSettings })
+    const prepared = await prepareSolanaIntent(fixture.workflow, input)
+    const interim = JSON.parse(JSON.stringify(prepared.intentInput))
+    interim.contractVersion = 'sdk-caucasus-singular-2026-09-v1'
+
+    expect(() =>
+      reconstructSolanaIntent({
+        traceId: prepared.traceId,
+        request: prepared.request,
+        transfer: input,
+        intentInput: interim,
+        quote: prepared.quote,
+        quotes: prepared.quotes,
+      }),
+    ).toThrow(InvalidSolanaTransactionArtifactError)
+  })
 })
 
 describe('Solana-origin cross-chain delivery', () => {
@@ -892,7 +911,7 @@ describe('Solana-origin cross-chain delivery', () => {
         options: { appFees: { feeBps: 10 }, protocolFees: { feeBps: 5 } },
       },
       intentInput: {
-        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        contractVersion: 'sdk-3.0.0-caucasus',
         account: {
           svm: {
             type: 'swig',
@@ -1159,7 +1178,7 @@ describe('Solana-origin cross-chain delivery', () => {
           },
         },
         intentInput: {
-          contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+          contractVersion: 'sdk-3.0.0-caucasus',
           account: {
             evm: { type: 'erc7579', address: accountAddress, signatureMode: 1 },
             // The paying Swig, as the paired request names it.
@@ -2002,7 +2021,7 @@ describe('same-chain Solana instruction execution', () => {
     ).toStrictEqual({
       request: { account: svmAccount, source, destination },
       intentInput: {
-        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        contractVersion: 'sdk-3.0.0-caucasus',
         account: svmAccount,
         source,
         destination,
@@ -2036,7 +2055,7 @@ describe('same-chain Solana instruction execution', () => {
         options: { sponsorship: gasOnly },
       },
       intentInput: {
-        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        contractVersion: 'sdk-3.0.0-caucasus',
         account: svmAccount,
         destination,
         options: { sponsorship: gasOnly },

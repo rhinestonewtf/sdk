@@ -211,7 +211,7 @@ describe('orchestrator client', () => {
   describe('quote-time sponsorship approval', () => {
     // Exactly what `projectSponsorshipApproval` derives from `request`.
     const boundInput = {
-      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      contractVersion: 'sdk-3.0.0-caucasus',
       account: { evm: { type: 'erc7579', address, signatureMode: 1 } },
       source: {
         vm: 'evm',

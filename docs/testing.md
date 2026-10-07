@@ -99,7 +99,7 @@ generator there with `SDK_VECTORS_OUT` pointing at this checkout's baseline.
 
 ## Sponsorship approval vectors
 
-`test/vectors/sponsorship-approval-singular/` pins the current contract in
+`test/vectors/sponsorship-approval-caucasus/` pins the current contract in
 [sponsorship-approval.md](sponsorship-approval.md). Every case is rebuilt from
 the SDK on each run: EVM cases through `prepareTransaction` (or `deploy`), the
 others through the request builders. It must project to its recorded approval
@@ -107,6 +107,10 @@ input and digest, and every refused body must be refused. `provenance` records
 the orchestrator commit the vectors were last cross-checked against. To
 regenerate after an intended change, run
 `bun run scripts/vectors/sponsorship-approval.ts`.
+
+`test/vectors/sponsorship-approval-singular/` (the interim singular contract)
+and `test/vectors/sponsorship-approval/` (the legacy contract) are frozen:
+each has a hash guard over its `vectors.json`, and nothing regenerates them.
 
 `test/vectors/sponsorship-approval/` holds the frozen legacy contract. Its
 bodies are projected through test-only `legacy-projection.ts`, and a hash guard

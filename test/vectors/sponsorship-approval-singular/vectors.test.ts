@@ -1,31 +1,39 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import {
-  projectSponsorshipApproval,
-  SPONSORSHIP_APPROVAL_CONTRACT,
-} from '../../../src/clients/orchestrator/sponsorship-approval'
+import { projectSponsorshipApproval } from '../../../src/clients/orchestrator/sponsorship-approval'
 import { UnsupportedSponsorshipApprovalError } from '../../../src/errors/execution'
 import { computeIntentInputDigest } from '../../../src/jwt-server/digest'
-import { deriveVectors } from './derive'
-import { refusedVectors } from './refused'
 import vectors from './vectors.json'
 
-// The published singular sponsorship approval contract
-// (docs/sponsorship-approval.md). The orchestrator imports these vectors as its
-// fixture for `sdk-caucasus-singular-2026-09-v1`.
-describe('singular sponsorship approval vectors', () => {
+// The frozen interim singular contract `sdk-caucasus-singular-2026-09-v1`.
+// Earlier v3 snapshots send it and the orchestrator still serves it, so it must
+// never change until it is removed. Its projection is the current one under a
+// different identifier; the current contract's vectors live in
+// ../sponsorship-approval-caucasus.
+const SINGULAR_CONTRACT = 'sdk-caucasus-singular-2026-09-v1'
+const SINGULAR_VECTORS_SHA256 =
+  '26acac6407104ebfeea4041c9c101dd0f0e48019f51afe3804a3ec29a4772f19'
+
+describe('singular sponsorship approval vectors (frozen)', () => {
+  test('the vector file is byte-identical to the frozen contract', () => {
+    const bytes = readFileSync(new URL('./vectors.json', import.meta.url))
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+      SINGULAR_VECTORS_SHA256,
+    )
+  })
+
   test('name the contract they pin', () => {
-    expect(vectors.contractVersion).toBe(SPONSORSHIP_APPROVAL_CONTRACT)
-    for (const vector of vectors.cases) {
-      expect(vector.intentInput.contractVersion).toBe(
-        SPONSORSHIP_APPROVAL_CONTRACT,
-      )
-    }
+    expect(vectors.contractVersion).toBe(SINGULAR_CONTRACT)
   })
 
   test.each(vectors.cases.map((vector) => [vector.id, vector] as const))(
     '%s: the body projects to the approval input and its digest',
     async (_id, vector) => {
-      const projected = projectSponsorshipApproval(vector.body)
+      const projected = {
+        ...projectSponsorshipApproval(vector.body),
+        contractVersion: SINGULAR_CONTRACT,
+      }
       expect(projected).toEqual(vector.intentInput)
       expect(await computeIntentInputDigest(projected)).toBe(vector.digest)
     },
@@ -47,48 +55,4 @@ describe('singular sponsorship approval vectors', () => {
       })
     },
   )
-
-  test('the same-chain shorthand approves exactly like the explicit source', () => {
-    const digest = (id: string) =>
-      vectors.cases.find((vector) => vector.id === id)?.digest
-    expect(digest('evm-same-chain-exact-out')).toBeDefined()
-    expect(digest('evm-same-chain-exact-out')).toBe(
-      digest('evm-same-chain-explicit-source'),
-    )
-  })
-
-  test('a changed bound field changes the digest', async () => {
-    const vector = vectors.cases.find(
-      ({ id }) => id === 'evm-same-chain-exact-out',
-    )!
-    const body = structuredClone(vector.body) as {
-      destination: { amount: string }
-    }
-    body.destination.amount = '1000001'
-    expect(
-      await computeIntentInputDigest(projectSponsorshipApproval(body)),
-    ).not.toBe(vector.digest)
-  })
-
-  // Rebuilt from the SDK on every run, so a vector cannot drift from what a
-  // sponsored quote actually sends and what the integrator is asked to approve.
-  test('matches what the SDK sends and asks the integrator to approve', async () => {
-    const derived = await deriveVectors()
-    expect(
-      derived.map(({ id, body, intentInput }) => ({ id, body, intentInput })),
-    ).toEqual(
-      vectors.cases.map(({ id, body, intentInput }) => ({
-        id,
-        body,
-        intentInput,
-      })),
-    )
-    expect(
-      refusedVectors(
-        Object.fromEntries(derived.map(({ id, body }) => [id, body])),
-      ).map(({ id, body, field }) => ({ id, body, field })),
-    ).toEqual(
-      vectors.refused.map(({ id, body, field }) => ({ id, body, field })),
-    )
-  })
 })

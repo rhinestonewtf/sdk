@@ -12,9 +12,11 @@ type MaybeAsync<T> = T | Promise<T>
 
 /**
  * Sponsorship policy checks over an intent's approval input. Every filter
- * reads the same values from both approval formats: the singular
- * `sdk-caucasus-singular-2026-09-v1` input current SDKs send, and the legacy
- * input of older pinned clients.
+ * reads the same values from each accepted approval input: the
+ * `sdk-3.0.0-caucasus` input current SDKs send, the identical
+ * `sdk-caucasus-singular-2026-09-v1` input of earlier v3 snapshots, and the
+ * unversioned legacy input of v2 and older clients. Any other
+ * `contractVersion` is refused.
  */
 export interface SponsorshipFilter {
   /** The destination chain, by the SDK's numeric chain id. */
@@ -33,7 +35,12 @@ interface ParsedIntentInput {
   calls: { to: Address; value: bigint; data: Hex }[]
 }
 
-const SINGULAR_CONTRACT = 'sdk-caucasus-singular-2026-09-v1'
+// The interim singular-v1 identifier stays accepted for earlier v3 snapshots
+// until they drain.
+const SINGULAR_CONTRACTS: readonly unknown[] = [
+  'sdk-3.0.0-caucasus',
+  'sdk-caucasus-singular-2026-09-v1',
+]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -130,7 +137,7 @@ function parseIntentInput(intentInput: unknown): ParsedIntentInput {
   if (!Object.hasOwn(intentInput, 'contractVersion')) {
     return parseLegacyIntentInput(intentInput)
   }
-  if (intentInput.contractVersion !== SINGULAR_CONTRACT) {
+  if (!SINGULAR_CONTRACTS.includes(intentInput.contractVersion)) {
     throw new Error(
       `intentInput.contractVersion ${JSON.stringify(intentInput.contractVersion)} is not supported`,
     )

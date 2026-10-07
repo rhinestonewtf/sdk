@@ -200,7 +200,7 @@ describe('Swig authority change requests', () => {
         options: { sponsorship: sponsorSettings },
       })
       expect(intentInput).toStrictEqual({
-        contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+        contractVersion: 'sdk-3.0.0-caucasus',
         account: { svm },
         destination: {
           vm: 'svm',

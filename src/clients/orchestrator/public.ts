@@ -428,7 +428,7 @@ interface SolanaWireInstruction {
 }
 
 /** The approval contract `intentInput` follows. */
-type SponsorshipApprovalContractVersion = 'sdk-caucasus-singular-2026-09-v1'
+type SponsorshipApprovalContractVersion = 'sdk-3.0.0-caucasus'
 
 /** A typed EVM account or recipient, as the quote request names it. */
 type IntentInputEvmAccount =
@@ -567,7 +567,7 @@ interface IntentInputOptions {
 
 /**
  * The sponsorship approval input: the quote request an intent-scoped grant
- * commits to, under the `sdk-caucasus-singular-2026-09-v1` contract.
+ * commits to, under the `sdk-3.0.0-caucasus` contract.
  *
  * It is the validated request body verbatim — CAIP-2 chain ids, chain-native
  * token and account strings, and supplied spellings — with `source` omitted

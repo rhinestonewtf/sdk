@@ -298,7 +298,7 @@ describe('Swig authority changes on a standalone Solana account', () => {
       },
     })
     expect(prepared.intentInput).toStrictEqual({
-      contractVersion: 'sdk-caucasus-singular-2026-09-v1',
+      contractVersion: 'sdk-3.0.0-caucasus',
       account: {
         svm: {
           type: 'swig',
