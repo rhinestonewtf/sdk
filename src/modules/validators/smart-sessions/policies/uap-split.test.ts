@@ -31,6 +31,7 @@ import {
 } from '../../../../../test/utils/policy-rules'
 import { propertyParameters } from '../../../../../test/utils/property'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
 import { getSessionDetails } from '../authorization'
 import { getPermissionId } from '../digest'
 import { resolveSessionData, toSession } from '../resolve'
@@ -45,7 +46,18 @@ import type {
   SessionPolicy,
   UniversalActionPolicyParamRule,
 } from '../types'
-import { DEFAULT_POLICY_ADDRESSES, resolvePolicyAddresses } from './addresses'
+import {
+  ARG_POLICY_ADDRESS,
+  DEFAULT_POLICY_ADDRESSES,
+  INTENT_EXECUTION_POLICY_ADDRESS,
+  INTENT_EXECUTION_POLICY_ADDRESS_DEV,
+  resolvePolicyAddresses,
+  SPENDING_LIMITS_POLICY_ADDRESS,
+  SUDO_POLICY_ADDRESS,
+  TIME_FRAME_POLICY_ADDRESS,
+  USAGE_LIMIT_POLICY_ADDRESS,
+  VALUE_LIMIT_POLICY_ADDRESS,
+} from './addresses'
 import { encodeActionPolicies, encodeSessionPolicy } from './encode'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -724,6 +736,64 @@ describe('which ArgPolicies are split', () => {
       }),
     ).toThrow('repeats')
   })
+
+  test('refuses a copy that is any other policy the SDK uses', () => {
+    const OVERRIDE = '0x00000000000000000000000000000000000000d1' as Address
+    const others: Address[] = [
+      SUDO_POLICY_ADDRESS,
+      ARG_POLICY_ADDRESS,
+      SPENDING_LIMITS_POLICY_ADDRESS,
+      TIME_FRAME_POLICY_ADDRESS,
+      USAGE_LIMIT_POLICY_ADDRESS,
+      VALUE_LIMIT_POLICY_ADDRESS,
+      INTENT_EXECUTION_POLICY_ADDRESS,
+      INTENT_EXECUTION_POLICY_ADDRESS_DEV,
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+      ONE_TIME_USE,
+      OVERRIDE,
+      // Every other default, so a policy added later is covered too.
+      ...Object.entries(DEFAULT_POLICY_ADDRESSES).flatMap(([name, address]) =>
+        name === 'universalAction' ? [] : [address],
+      ),
+    ]
+    for (const other of others) {
+      for (const copy of [other, other.toLowerCase() as Address]) {
+        expect(
+          () =>
+            resolvePolicyAddresses({
+              sudo: OVERRIDE,
+              oneTimeUseId: ONE_TIME_USE,
+              universalActionCopies: [COPIES[0], copy],
+            }),
+          other,
+        ).toThrow('not a UniversalActionPolicy deployment')
+      }
+    }
+  })
+
+  test('accepts the default deployment as a copy of an overridden one', () => {
+    const universalAction = '0x00000000000000000000000000000000000000d2'
+    expect(
+      resolvePolicyAddresses({
+        universalAction,
+        universalActionCopies: [DEFAULT_POLICY_ADDRESSES.universalAction],
+      }).universalActionCopies,
+    ).toEqual([DEFAULT_POLICY_ADDRESSES.universalAction])
+  })
+})
+
+test("copies cannot rebuild a saltMode 'v1' session", () => {
+  const definition = {
+    ...SESSIONS['raw actions'].definition,
+    saltMode: 'v1',
+    policyAddresses: { universalActionCopies: COPIES },
+  } as SessionDefinition
+  expect(() => resolveSessionData(definition)).toThrow(
+    "universalActionCopies cannot use saltMode 'v1'",
+  )
+  expect(() =>
+    resolveSessionData({ ...definition, policyAddresses: {} }),
+  ).not.toThrow()
 })
 
 test('an LZ session installs its execute policy across the copies', () => {

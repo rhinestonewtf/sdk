@@ -213,6 +213,14 @@ function resolveSession(
       )
     }
   }
+  if (
+    definition.saltMode === 'v1' &&
+    definition.policyAddresses?.universalActionCopies?.length
+  ) {
+    throw new Error(
+      "universalActionCopies cannot use saltMode 'v1': a 1.x session has no split policies to reproduce",
+    )
+  }
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
