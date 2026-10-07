@@ -363,7 +363,7 @@ describe('settlement-scoped crossChainPermits', () => {
             settlementLayers: ['ACROSS'],
           }),
         ),
-      ).toThrow('applies only to a SAME_CHAIN_IE swap')
+      ).toThrow('`to.minAmount` does not apply to Permit2 layers')
     })
   })
 
