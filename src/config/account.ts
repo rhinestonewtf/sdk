@@ -284,14 +284,15 @@ interface Permit2ClaimPolicy {
  *   retired Standard Eco arbiter).
  *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
  *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
- *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
- *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
- *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
- *   account executing the call. Naming any of them makes the permit
- *   **settlement-scoped**: the session is restricted to those layers' calls
- *   and their approve, with the `from` token, the `to` chains and recipients,
- *   and `maxAmount` pinned in the calldata.
+ * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor),
+ *   `ECO_IE` (USD stablecoins, Eco's solver network), `SAME_CHAIN_IE` (a
+ *   transfer, or a Rhinestone Swapper swap with a `to.minAmount` floor, on the
+ *   session's own chain) and `LZ` (USDC through the LayerZero Value Transfer
+ *   API, over Stargate or CCTP) settle by the account executing the call.
+ *   Naming any of them makes the permit **settlement-scoped**: the session is
+ *   restricted to those layers' calls and their approve, with the `from`
+ *   token, the `to` chains and recipients, and `maxAmount` pinned in the
+ *   calldata.
  *
  *   Such a permit may name several of `CCTP`, `OFT`, `ECO_IE` and `LZ`, and
  *   each must be able to settle it on the session's chain, or the session is
@@ -437,7 +438,8 @@ interface ToLeg {
    * session key otherwise sets the swap's output bound; `maxAmount : minAmount`
    * is the worst rate accepted. Optional on `OFT`, where it floors the send's
    * `minAmountLD` and so also refuses any send smaller than it; there both
-   * tokens need served, equal decimals.
+   * tokens need served, equal decimals. The orchestrator sends at 1% slippage,
+   * so set it at most 99% of the amount you expect to send.
    */
   minAmount?: bigint
 }
