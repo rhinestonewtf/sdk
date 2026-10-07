@@ -143,8 +143,8 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'Permit2 crossChainPermit': {
     permissionId:
-      '0xb45b15b276c19135237bb960e9fc0b5226a65d673ffdb7a31717a713faf4e1b4',
-    data: '0x77b9b5fedc7034a7a3697fc457eddba419fe6cfed294fb6dd4f21140c9791673',
+      '0x46ee4c9e4cc4618684d16a85e2b3524ab87d2f6a7299a62e4ecabc434d985bad',
+    data: '0x6debffe5ff0b6ed08239d2ce4d68814592fef3fd70df8d6f5269c6355c1a68cb',
   },
   'oneTimeUse with permissions and claim policies': {
     permissionId:
