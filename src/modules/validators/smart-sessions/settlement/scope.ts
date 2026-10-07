@@ -263,6 +263,21 @@ export function resolveSettlementScope(
       'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or ECO_IE',
     )
   }
+  // Each source chain's session floors its own capped reward with the same
+  // absolute amount, so it bounds the rate only where every cap is the same.
+  const sourceCaps = new Set(
+    (permit.from ?? []).map(({ maxAmount }) => maxAmount),
+  )
+  if (
+    minAmount &&
+    requested.includes('ECO_IE') &&
+    permit.maxFeeBps === undefined &&
+    sourceCaps.size > 1
+  ) {
+    throw new Error(
+      'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
+    )
+  }
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
     : undefined

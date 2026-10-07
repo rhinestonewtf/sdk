@@ -9,6 +9,7 @@ import {
   arbitrumSepolia,
   base,
   baseSepolia,
+  optimism,
   plasma,
 } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
@@ -488,6 +489,38 @@ describe('settlement-scoped crossChainPermits', () => {
           eco({ ...toUsdt, settlementLayers: 'all', validUntil: undefined }),
         ),
       ).toThrow('`to.minAmount` asks for ECO_IE, which cannot settle')
+    })
+
+    describe('a to.minAmount across source chains with different caps', () => {
+      const USDC_OP = SETTLEMENT_CATALOG[optimism.id].eco!.stablecoins[0]
+      const spread = (arbCap: bigint | undefined, maxFeeBps?: number) =>
+        eco({
+          from: [
+            { chain: base, token: USDC, maxAmount: 1000n * 10n ** 6n },
+            { chain: arbitrum, token: USDC_ARB, maxAmount: arbCap },
+          ],
+          to: { chain: optimism, token: USDC_OP, minAmount: 9_800_000n },
+          maxFeeBps,
+        })
+
+      // A 9.8 USDC floor would let the Base key pay a 1000 USDC reward for it.
+      test.each([
+        ['different caps', 10n * 10n ** 6n],
+        ['a leg with no cap', undefined],
+      ])('refuses %s without maxFeeBps', (_, arbCap) => {
+        expect(() => resolveSessionData(spread(arbCap))).toThrow(
+          '`from` legs with different maxAmount need maxFeeBps',
+        )
+      })
+
+      test('admits them with maxFeeBps, and equal caps without', () => {
+        expect(
+          toSession(spread(10n * 10n ** 6n, 100)).settlementLayers,
+        ).toEqual(['ECO_IE'])
+        expect(toSession(spread(1000n * 10n ** 6n)).settlementLayers).toEqual([
+          'ECO_IE',
+        ])
+      })
     })
   })
 
