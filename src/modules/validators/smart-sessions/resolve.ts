@@ -24,6 +24,9 @@ import {
 import {
   DEFAULT_POLICY_ADDRESSES,
   resolvePolicyAddresses,
+  UNIVERSAL_ACTION_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_COPIES,
+  UNIVERSAL_ACTION_POLICY_COPY_CHAINS,
 } from './policies/addresses'
 import {
   expandCrossChainPermit,
@@ -49,6 +52,7 @@ import type {
   SessionAction,
   SessionData,
   SessionDefinition,
+  SessionPolicyAddresses,
 } from './types'
 
 export const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
@@ -98,7 +102,7 @@ function resolveSession(
     throw new Error('ENS owners are not supported for smart sessions')
   }
   const environment = options.environment ?? 'production'
-  const addresses = resolvePolicyAddresses(definition.policyAddresses)
+  const addresses = resolvePolicyAddresses(sessionPolicyAddresses(definition))
   const validator = resolveValidator(
     defineValidator(definition.owners, 'session-validator'),
   )
@@ -739,6 +743,30 @@ function strictSessionSalt(session: {
       ],
     ),
   )
+}
+
+/**
+ * The definition's policy addresses, with the deployed UniversalActionPolicy
+ * copies defaulted in for a settlement-scoped session on a chain that has them.
+ */
+export function sessionPolicyAddresses(
+  definition: SessionDefinition,
+): SessionPolicyAddresses | undefined {
+  const overrides = definition.policyAddresses
+  const universalAction = overrides?.universalAction
+  if (
+    overrides?.universalActionCopies !== undefined ||
+    // The copies hold the canonical code, so they cannot stand in for another.
+    (universalAction !== undefined &&
+      universalAction.toLowerCase() !==
+        UNIVERSAL_ACTION_POLICY_ADDRESS.toLowerCase()) ||
+    definition.saltMode === 'v1' ||
+    !UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(definition.chain.id) ||
+    !definition.crossChainPermits?.some(isSettlementScopedPermit)
+  ) {
+    return overrides
+  }
+  return { ...overrides, universalActionCopies: UNIVERSAL_ACTION_POLICY_COPIES }
 }
 
 export function toSession(

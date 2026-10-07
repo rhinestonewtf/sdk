@@ -9,7 +9,7 @@ import {
   slice,
   toHex,
 } from 'viem'
-import { arbitrum, base, plasma } from 'viem/chains'
+import { arbitrum, avalanche, base, linea, plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { admits, install } from '../../../../../test/utils/installed-policies'
@@ -34,7 +34,11 @@ import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
 import { getSessionDetails } from '../authorization'
 import { getPermissionId } from '../digest'
-import { resolveSessionData, toSession } from '../resolve'
+import {
+  resolveSessionData,
+  sessionPolicyAddresses,
+  toSession,
+} from '../resolve'
 import { LZ_EXECUTE_SELECTOR, scopeLz } from '../settlement/lz'
 import type { SettlementCatalog } from '../settlement/types'
 import type {
@@ -55,6 +59,8 @@ import {
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_COPIES,
+  UNIVERSAL_ACTION_POLICY_COPY_CHAINS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
 } from './addresses'
@@ -226,10 +232,22 @@ async function fingerprint(
   }
 }
 
+const withCopies = (
+  definition: SessionDefinition,
+  universalActionCopies: readonly Address[],
+): SessionDefinition => ({
+  ...definition,
+  policyAddresses: { ...definition.policyAddresses, universalActionCopies },
+})
+
+// The permit sessions opt out of the copies they now default to on these chains.
 test('every session encodes and digests as pinned', async () => {
   const table: Record<string, unknown> = {}
   for (const [name, { definition, settlement }] of Object.entries(SESSIONS)) {
-    table[name] = await fingerprint(definition, settlement)
+    table[name] = await fingerprint(
+      definition.crossChainPermits ? withCopies(definition, []) : definition,
+      settlement,
+    )
   }
   expect(table).toMatchInlineSnapshot(`
     {
@@ -812,4 +830,127 @@ test('an LZ session installs its execute policy across the copies', () => {
     DEFAULT_POLICY_ADDRESSES.timeFrame,
     ONE_TIME_USE,
   ])
+})
+
+describe('a settlement-scoped session defaults to the deployed copies', () => {
+  const lzSession = SESSIONS.lz.definition
+  const policies = (
+    definition: SessionDefinition,
+    settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+  ) =>
+    resolveSessionData(definition, { settlement }).actions.flatMap((a) =>
+      a.actionPolicies.map((p) => p.policy),
+    )
+  const usesDeployedCopies = (
+    definition: SessionDefinition,
+    settlement?: SettlementCatalog,
+  ) =>
+    policies(definition, settlement).some((p) =>
+      UNIVERSAL_ACTION_POLICY_COPIES.includes(p),
+    )
+  // Splits once given the copies, so its unsplit default proves the guard held.
+  const expectUnsplitByDefault = async (
+    definition: SessionDefinition,
+    settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+  ) => {
+    expect(
+      usesDeployedCopies(
+        withCopies(definition, UNIVERSAL_ACTION_POLICY_COPIES),
+        settlement,
+      ),
+    ).toBe(true)
+    expect(usesDeployedCopies(definition, settlement)).toBe(false)
+    expect(await fingerprint(definition, settlement)).toEqual(
+      await fingerprint(withCopies(definition, []), settlement),
+    )
+  }
+
+  test('an LZ session on Base splits onto them', async () => {
+    expect(UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(base.id)).toBe(true)
+    expect(usesDeployedCopies(lzSession)).toBe(true)
+    expect(await fingerprint(lzSession)).toEqual(
+      await fingerprint(withCopies(lzSession, UNIVERSAL_ACTION_POLICY_COPIES)),
+    )
+  })
+
+  test('an LZ session on Avalanche, which has none yet, encodes as before', async () => {
+    expect(UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(avalanche.id)).toBe(false)
+    await expectUnsplitByDefault(
+      permitSession(
+        {
+          from: {
+            chain: avalanche,
+            token: SETTLEMENT_CATALOG[avalanche.id].lz!.stargateUsdc!.token,
+            maxAmount: 100_000_000n,
+          },
+          settlementLayers: ['LZ'],
+        },
+        avalanche,
+      ),
+    )
+  })
+
+  test('an LZ session on a chain outside the set encodes as before', async () => {
+    expect(UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(linea.id)).toBe(false)
+    await expectUnsplitByDefault(
+      permitSession(
+        {
+          from: { chain: linea, token: USDC, maxAmount: 100_000_000n },
+          settlementLayers: ['LZ'],
+        },
+        linea,
+      ),
+      { ...SETTLEMENT_CATALOG, [linea.id]: SETTLEMENT_CATALOG[base.id] },
+    )
+  })
+
+  test('a session without a settlement-scoped permit does not', async () => {
+    await expectUnsplitByDefault(SESSIONS['raw actions'].definition)
+  })
+
+  // A v1 session cannot hold oneTimeUse, which every splitting permit needs,
+  // so only the resolved addresses show the guard.
+  test("a saltMode 'v1' session does not, and does not throw", async () => {
+    const { oneTimeUse: _, ...rest } = permitSession({
+      from: { chain: base, token: USDC },
+      settlementLayers: ['CCTP'],
+    })
+    const latest = { ...rest, policyAddresses: {} }
+    const v1 = { ...latest, saltMode: 'v1' } as SessionDefinition
+    expect(sessionPolicyAddresses(latest)?.universalActionCopies).toEqual(
+      UNIVERSAL_ACTION_POLICY_COPIES,
+    )
+    expect(sessionPolicyAddresses(v1)).toEqual({})
+    expect(await fingerprint(v1)).toEqual(await fingerprint(withCopies(v1, [])))
+  })
+
+  test('an explicit empty list opts out', () => {
+    expect(usesDeployedCopies(withCopies(lzSession, []))).toBe(false)
+  })
+
+  test('an explicit list is used as given', () => {
+    const used = policies(withCopies(lzSession, COPIES))
+    expect(used).toEqual(expect.arrayContaining(COPIES.slice(0, 2)))
+    expect(used.some((p) => UNIVERSAL_ACTION_POLICY_COPIES.includes(p))).toBe(
+      false,
+    )
+  })
+
+  test('an overridden universalAction does not', async () => {
+    const universalAction = '0x00000000000000000000000000000000000000d2'
+    await expectUnsplitByDefault({
+      ...lzSession,
+      policyAddresses: { ...lzSession.policyAddresses, universalAction },
+    })
+    expect(
+      usesDeployedCopies({
+        ...lzSession,
+        policyAddresses: {
+          ...lzSession.policyAddresses,
+          universalAction:
+            DEFAULT_POLICY_ADDRESSES.universalAction.toLowerCase() as Address,
+        },
+      }),
+    ).toBe(true)
+  })
 })

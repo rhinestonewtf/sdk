@@ -730,7 +730,10 @@ interface SessionPolicyAddresses {
    * ArgPolicy when there are not enough deployments. `sdk.createSession`
    * checks that each copy holds the same code as `universalAction`; `toSession`
    * cannot, so check the deployments before using it. Not available with
-   * `saltMode: 'v1'`. Defaults to none.
+   * `saltMode: 'v1'`. Defaults to the three deployed copies for a session with
+   * an IntentExecutor-layer `crossChainPermits` entry on a chain that has them,
+   * unless `universalAction` is overridden or `saltMode` is `'v1'`; otherwise
+   * to none. Set `[]` to opt out.
    */
   universalActionCopies?: readonly Address[]
   argPolicy?: Address

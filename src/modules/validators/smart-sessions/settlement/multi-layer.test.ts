@@ -201,12 +201,22 @@ const SINGLE: Record<string, SessionDefinition> = {
 
 describe('multi-layer settlement permits', () => {
   // Captured on main before multi-layer permits: a changed digest would be a
-  // HashMismatch for every single-layer session already signed.
+  // HashMismatch for every single-layer session already signed. Opted out of
+  // the default UniversalActionPolicy copies, which re-encode some of them.
   test('a single-layer permit compiles to the same actions as before', () => {
     const digests = Object.fromEntries(
       Object.entries(SINGLE).map(([name, def]) => [
         name,
-        digest(def, WITH_FEES),
+        digest(
+          {
+            ...def,
+            policyAddresses: {
+              ...def.policyAddresses,
+              universalActionCopies: [],
+            },
+          },
+          WITH_FEES,
+        ),
       ]),
     )
     expect(digests).toMatchInlineSnapshot(`

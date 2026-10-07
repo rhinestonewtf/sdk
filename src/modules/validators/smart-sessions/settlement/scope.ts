@@ -91,7 +91,9 @@ export function isIntentExecutorLayer(
 /** The bridging layers, in the order a session compiles them; `'all'` names each. */
 const CROSS_CHAIN_LAYERS = ['CCTP', 'OFT', 'ECO_IE', 'LZ'] as const
 
-export function isSettlementScopedPermit(permit: CrossChainPermit): boolean {
+export function isSettlementScopedPermit(
+  permit: Pick<CrossChainPermit, 'settlementLayers'>,
+): boolean {
   return (
     permit.settlementLayers === 'all' ||
     (permit.settlementLayers?.some(isIntentExecutorLayer) ?? false)
