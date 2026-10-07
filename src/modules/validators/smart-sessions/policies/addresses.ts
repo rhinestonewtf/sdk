@@ -23,6 +23,8 @@ export const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
   readonly universalAction: Address
+  // Only present when configured: no copy has a canonical deployment yet.
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy: Address
   readonly spendingLimits: Address
   readonly timeFrame: Address
@@ -45,10 +47,22 @@ export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
 export function resolvePolicyAddresses(
   overrides?: SessionPolicyAddresses,
 ): ResolvedPolicyAddresses {
+  const universalAction =
+    overrides?.universalAction ?? DEFAULT_POLICY_ADDRESSES.universalAction
+  const copies = overrides?.universalActionCopies ?? []
+  const seen = new Set([universalAction.toLowerCase()])
+  for (const copy of copies) {
+    if (seen.has(copy.toLowerCase())) {
+      throw new Error(
+        `universalActionCopies must be distinct from universalAction and from each other; ${copy} repeats`,
+      )
+    }
+    seen.add(copy.toLowerCase())
+  }
   return {
     sudo: overrides?.sudo ?? DEFAULT_POLICY_ADDRESSES.sudo,
-    universalAction:
-      overrides?.universalAction ?? DEFAULT_POLICY_ADDRESSES.universalAction,
+    universalAction,
+    ...(copies.length ? { universalActionCopies: copies } : {}),
     argPolicy: overrides?.argPolicy ?? DEFAULT_POLICY_ADDRESSES.argPolicy,
     spendingLimits:
       overrides?.spendingLimits ?? DEFAULT_POLICY_ADDRESSES.spendingLimits,

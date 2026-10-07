@@ -1,4 +1,4 @@
-import { type Address, decodeAbiParameters, type Hex, size, slice } from 'viem'
+import { type Address, decodeAbiParameters, type Hex, size } from 'viem'
 import type { ResolvedPolicy } from '../../src/modules/validators/smart-sessions/types'
 
 interface Rule {
@@ -158,18 +158,25 @@ class Reverted extends Error {}
  * Whether the installed action admits one call. Policies run in list order and
  * every one must pass; a refusal reverts the transaction, so no counter moves
  * unless the whole check passes. Policies other than UniversalActionPolicy and
- * ArgPolicy carry no argument rules and pass here.
+ * ArgPolicy carry no argument rules and pass here. `rollback: false` keeps the
+ * counters a refused call moved, as a chain without that revert would.
  */
 export function admits(
   action: InstalledAction,
   calldata: Hex,
   value = 0n,
+  { rollback = true } = {},
 ): boolean {
   const used = new Map(action.used)
+  const words = new Map<bigint, bigint>()
   const word = (offset: bigint): bigint => {
     const at = 4 + Number(offset)
     if (at + 32 > size(calldata)) throw new Reverted()
-    return BigInt(slice(calldata, at, at + 32))
+    const known = words.get(offset)
+    if (known !== undefined) return known
+    const read = BigInt(`0x${calldata.slice(2 + 2 * at, 2 + 2 * (at + 32))}`)
+    words.set(offset, read)
+    return read
   }
   const check = (address: string, index: number, r: Rule): boolean => {
     const param = word(r.offset)
@@ -191,7 +198,7 @@ export function admits(
     used.set(key, prior + param)
     return true
   }
-  try {
+  const run = (): boolean => {
     for (const address of action.order) {
       const config = action.configs.get(address) as Config
       if (config.kind === 'other') continue
@@ -217,10 +224,17 @@ export function admits(
       }
       if (!node(config.root)) return false
     }
-  } catch (error) {
-    if (error instanceof Reverted) return false
-    throw error
+    return true
   }
-  for (const [key, amount] of used) action.used.set(key, amount)
-  return true
+  let passed: boolean
+  try {
+    passed = run()
+  } catch (error) {
+    if (!(error instanceof Reverted)) throw error
+    passed = false
+  }
+  if (passed || !rollback) {
+    for (const [key, amount] of used) action.used.set(key, amount)
+  }
+  return passed
 }

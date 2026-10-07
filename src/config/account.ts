@@ -720,6 +720,15 @@ type PermissionsForAbis<TAbis extends readonly Abi[]> = {
 interface SessionPolicyAddresses {
   sudo?: Address
   universalAction?: Address
+  /**
+   * Further deployments of the UniversalActionPolicy code, distinct from
+   * `universalAction` and from each other. When set, an action's ArgPolicy
+   * whose expression only ANDs rules is installed as UniversalActionPolicy
+   * configs of up to 16 rules each, one per deployment, which costs less gas
+   * to enable. An action keeps its ArgPolicy when there are not enough
+   * deployments. Defaults to none.
+   */
+  universalActionCopies?: readonly Address[]
   argPolicy?: Address
   spendingLimits?: Address
   timeFrame?: Address

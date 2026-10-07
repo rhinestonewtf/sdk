@@ -204,6 +204,7 @@ export interface Permission {
 export interface SessionPolicyAddresses {
   readonly sudo?: Address
   readonly universalAction?: Address
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy?: Address
   readonly spendingLimits?: Address
   readonly timeFrame?: Address

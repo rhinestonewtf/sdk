@@ -1,8 +1,10 @@
+import fc from 'fast-check'
 import {
   type Address,
   type Chain,
   type Hex,
   keccak256,
+  maxUint256,
   size,
   slice,
   toHex,
@@ -27,20 +29,24 @@ import {
   type RuleUsage,
   satisfiesRules,
 } from '../../../../../test/utils/policy-rules'
+import { propertyParameters } from '../../../../../test/utils/property'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { getSessionDetails } from '../authorization'
 import { getPermissionId } from '../digest'
-import { toSession } from '../resolve'
-import { scopeLz } from '../settlement/lz'
+import { resolveSessionData, toSession } from '../resolve'
+import { LZ_EXECUTE_SELECTOR, scopeLz } from '../settlement/lz'
 import type { SettlementCatalog } from '../settlement/types'
 import type {
   ArgPolicyExpression,
   CrossChainPermissionInput,
+  ResolvedPolicy,
   ScopedAction,
   SessionDefinition,
+  SessionPolicy,
+  UniversalActionPolicyParamRule,
 } from '../types'
-import { DEFAULT_POLICY_ADDRESSES } from './addresses'
-import { encodeSessionPolicy } from './encode'
+import { DEFAULT_POLICY_ADDRESSES, resolvePolicyAddresses } from './addresses'
+import { encodeActionPolicies, encodeSessionPolicy } from './encode'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -382,3 +388,358 @@ describe.each(Object.entries(LZ_PERMITS))(
     })
   },
 )
+
+const COPIES: Address[] = [
+  '0x00000000000000000000000000000000000000c1',
+  '0x00000000000000000000000000000000000000c2',
+  '0x00000000000000000000000000000000000000c3',
+]
+const SPLIT = resolvePolicyAddresses({ universalActionCopies: COPIES })
+const UNIVERSAL = [SPLIT.universalAction, ...COPIES]
+const SPLIT_KINDS = {
+  universalAction: UNIVERSAL,
+  argPolicy: SPLIT.argPolicy,
+}
+
+type Rule = UniversalActionPolicyParamRule
+
+const leaves = (e: ArgPolicyExpression): Rule[] => {
+  if (e.type === 'rule') return [e.rule]
+  if (e.type !== 'and') throw new Error('not a pure AND')
+  return [...leaves(e.left), ...leaves(e.right)]
+}
+
+const sixteens = (rules: readonly Rule[]): Rule[][] =>
+  Array.from({ length: Math.ceil(rules.length / 16) }, (_, i) =>
+    rules.slice(16 * i, 16 * (i + 1)),
+  )
+
+/** UniversalActionPolicy configs, chunk `i` at `addresses[i]`. */
+const configs = (
+  chunks: readonly Rule[][],
+  valueLimitPerUse: bigint | undefined,
+  addresses: readonly Address[] = UNIVERSAL,
+): ResolvedPolicy[] =>
+  chunks.map((rules, i) => ({
+    ...encodeSessionPolicy(
+      {
+        type: 'universal-action',
+        valueLimitPerUse,
+        rules: rules as [Rule, ...Rule[]],
+      },
+      'production',
+    ),
+    policy: addresses[i],
+  }))
+
+interface Call {
+  readonly data: Hex
+  readonly value: bigint
+}
+
+/** Each sequence's verdicts, every one starting from unused counters. */
+const decide = (
+  policies: readonly ResolvedPolicy[],
+  sequences: readonly (readonly Call[])[],
+  options?: { rollback: boolean },
+) => {
+  const installed = install(policies, SPLIT_KINDS)
+  return sequences.map((calls) => {
+    installed.used.clear()
+    return calls.map((c) => admits(installed, c.data, c.value, options))
+  })
+}
+
+/** Seeded word splices of `a` with `b`, mixing two routes' pins. */
+function* splices(a: Hex, b: Hex, count: number): Generator<Hex> {
+  let seed = 1
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31
+    return seed / 2 ** 31
+  }
+  for (let n = 0; n < count; n++) {
+    let out = a.slice(0, 10)
+    for (let at = 10; at < a.length; at += 64) {
+      const wa = a.slice(at, at + 64)
+      const wb = b.slice(at, at + 64)
+      out += wb.length === wa.length && random() < 0.5 ? wb : wa
+    }
+    yield out as Hex
+  }
+}
+
+const STARGATE_FEE = 110_176_109_085_186n
+
+describe.each(Object.entries(LZ_PERMITS))(
+  'a pure-AND LZ ArgPolicy split across UniversalActionPolicy deployments: %s',
+  (_, chainId) => {
+    const action = lzAction(chainId)
+    const arg = action.policies!.find((p) => p.type === 'arg-policy')!
+    if (arg.type !== 'arg-policy') throw new Error('expected an ArgPolicy')
+    const rules = leaves(arg.expression)
+    const old = encodeActionPolicies(
+      action.policies!,
+      'production',
+      DEFAULT_POLICY_ADDRESSES,
+    )
+    const split = encodeActionPolicies(action.policies!, 'production', SPLIT)
+
+    const valid = [...served(chainId), ...served(chainId, { pull: 4_000_000n })]
+    const pool = Object.values(LZ_PERMITS).flatMap((id) => [
+      ...served(id),
+      ...served(id, { fee: 10_000_000n }),
+    ])
+    const singles: Hex[] = [
+      ...valid,
+      ...served(chainId, { fee: 10_000_000n }),
+      ...served(chainId, { pull: 5n, fee: 2_000_000n }),
+      ...valid.flatMap((data) => [...mutations(data)]),
+      ...pool.flatMap((a) =>
+        pool.flatMap((b) =>
+          a !== b && a.length === b.length ? [...splices(a, b, 50)] : [],
+        ),
+      ),
+    ]
+    const values = [0n, STARGATE_FEE]
+    const one = singles.flatMap((data) =>
+      values.map((value) => [{ data, value }]),
+    )
+    // A refused call first, then a call that spends the whole cap: a counter
+    // the refusal moved would refuse the second.
+    const call = (data: Hex): Call => ({ data, value: 0n })
+    const full = served(chainId).map(call)
+    const two: Call[][] = [
+      ...[...valid, ...served(chainId, { pull: 5n, fee: 2_000_000n })].flatMap(
+        (a) => valid.map((b) => [call(a), call(b)]),
+      ),
+      ...singles.flatMap((a) => full.map((b) => [call(a), b])),
+    ]
+    const sequences = [...one, ...two]
+    const expected = decide(old, sequences)
+
+    test('uses one deployment per 16 rules, in evaluation order', () => {
+      expect(old).toEqual([encodeSessionPolicy(arg, 'production')])
+      expect(rules.length).toBeGreaterThan(16)
+      expect(split).toEqual(
+        configs(sixteens(rules), arg.valueLimitPerUse ?? 0n),
+      )
+    })
+
+    test('decides every call and sequence as the ArgPolicy does', () => {
+      expect(decide(split, sequences)).toEqual(expected)
+      const verdicts = expected.flat()
+      expect(verdicts.filter(Boolean).length).toBeGreaterThan(0)
+      expect(verdicts.filter((v) => !v).length).toBeGreaterThan(0)
+      // Some second call is refused only because the first spent the cap.
+      const capped = two.filter((calls, i) => {
+        const [first, second] = expected[one.length + i]
+        return first && !second && decide(old, [[calls[1]]])[0][0] === true
+      })
+      expect(capped.length).toBeGreaterThan(0)
+    })
+
+    test('is decided differently once a rule is dropped', () => {
+      for (let k = 0; k < rules.length; k++) {
+        const dropped = rules.filter((_, i) => i !== k)
+        expect(
+          decide(configs(sixteens(dropped), arg.valueLimitPerUse), sequences),
+          `rule ${k}`,
+        ).not.toEqual(expected)
+      }
+    }, 30_000)
+
+    test('is decided differently when two chunks share a deployment', () => {
+      const chunks = sixteens(rules)
+      for (let i = 1; i < chunks.length; i++) {
+        const addresses = [...UNIVERSAL]
+        addresses[i] = addresses[i - 1]
+        expect(
+          decide(configs(chunks, arg.valueLimitPerUse, addresses), sequences),
+        ).not.toEqual(expected)
+      }
+    })
+
+    test('the last limited rule moved first only matters without the revert', () => {
+      const limited = rules
+        .map((r) => r.usageLimit !== undefined)
+        .lastIndexOf(true)
+      expect(limited).toBeGreaterThanOrEqual(16)
+      const moved = [rules[limited], ...rules.filter((_, i) => i !== limited)]
+      const reordered = configs(sixteens(moved), arg.valueLimitPerUse)
+      expect(decide(reordered, sequences)).toEqual(expected)
+      const noRevert = { rollback: false }
+      const unreverted = decide(old, sequences, noRevert)
+      expect(decide(split, sequences, noRevert)).toEqual(unreverted)
+      expect(decide(reordered, sequences, noRevert)).not.toEqual(unreverted)
+    })
+  },
+)
+
+/** A pure AND over `rules`, its shape drawn from `cuts`. */
+function tree(
+  rules: readonly Rule[],
+  cuts: readonly number[],
+): ArgPolicyExpression {
+  if (rules.length === 1) return { type: 'rule', rule: rules[0] }
+  const at = 1 + ((cuts[0] ?? 0) % (rules.length - 1))
+  return {
+    type: 'and',
+    left: tree(rules.slice(0, at), cuts.slice(1)),
+    right: tree(rules.slice(at), cuts.slice(1)),
+  }
+}
+
+const CONDITIONS = [
+  'equal',
+  'greaterThan',
+  'lessThan',
+  'greaterThanOrEqual',
+  'lessThanOrEqual',
+  'notEqual',
+  'inRange',
+] as const
+
+const ruleArb = fc
+  .record({
+    condition: fc.constantFrom(...CONDITIONS),
+    word: fc.integer({ min: 0, max: 5 }),
+    ref: fc.bigInt({ min: 0n, max: 4n }),
+    max: fc.bigInt({ min: 0n, max: 4n }),
+    limit: fc.option(fc.bigInt({ min: 0n, max: 8n }), { nil: undefined }),
+  })
+  .map(
+    ({ condition, word, ref, max, limit }): Rule => ({
+      condition,
+      calldataOffset: BigInt(32 * word),
+      referenceValue: condition === 'inRange' ? (ref << 128n) | max : ref,
+      ...(limit === undefined ? {} : { usageLimit: limit }),
+    }),
+  )
+
+const callArb = fc.record({
+  data: fc
+    .array(fc.bigInt({ min: 0n, max: 4n }), { minLength: 5, maxLength: 6 })
+    .map(
+      (words) =>
+        `0x12345678${words.map((w) => toHex(w, { size: 32 }).slice(2)).join('')}` as Hex,
+    ),
+  value: fc.constantFrom(0n, 3n, 2n ** 255n),
+})
+
+test('any pure-AND ArgPolicy decides every call sequence as its split', () => {
+  fc.assert(
+    fc.property(
+      fc.array(ruleArb, { minLength: 1, maxLength: 64 }),
+      fc.array(fc.nat(), { maxLength: 64 }),
+      fc.constantFrom(undefined, 0n, 3n, maxUint256),
+      fc.array(fc.array(callArb, { minLength: 1, maxLength: 4 }), {
+        minLength: 1,
+        maxLength: 4,
+      }),
+      (rules, cuts, valueLimitPerUse, sequences) => {
+        const policy: SessionPolicy = {
+          type: 'arg-policy',
+          valueLimitPerUse,
+          expression: tree(rules, cuts),
+        }
+        const split = encodeActionPolicies([policy], 'production', SPLIT)
+        expect(split.map((p) => p.policy)).toEqual(
+          UNIVERSAL.slice(0, Math.ceil(rules.length / 16)),
+        )
+        expect(decide(split, sequences)).toEqual(
+          decide([encodeSessionPolicy(policy, 'production')], sequences),
+        )
+      },
+    ),
+    propertyParameters(),
+  )
+})
+
+describe('which ArgPolicies are split', () => {
+  const and = andOf(35)
+  const policy: SessionPolicy = { type: 'arg-policy', expression: and }
+
+  test('none without copies, so the encoding is unchanged', () => {
+    expect(
+      encodeActionPolicies([policy], 'production', DEFAULT_POLICY_ADDRESSES),
+    ).toEqual([encodeSessionPolicy(policy, 'production')])
+  })
+
+  test('none with fewer free deployments than chunks', () => {
+    const two = resolvePolicyAddresses({ universalActionCopies: [COPIES[0]] })
+    expect(encodeActionPolicies([policy], 'production', two)).toEqual([
+      encodeSessionPolicy(policy, 'production'),
+    ])
+  })
+
+  test('none whose expression has an OR or a NOT', () => {
+    const small = andOf(3)
+    const rule = leaves(andOf(1))[0]
+    for (const expression of [
+      { type: 'or', left: small, right: { type: 'rule', rule } },
+      { type: 'and', left: small, right: { type: 'not', child: small } },
+      { type: 'not', child: small },
+    ] as ArgPolicyExpression[]) {
+      const p: SessionPolicy = { type: 'arg-policy', expression }
+      expect(encodeActionPolicies([p], 'production', SPLIT)).toEqual([
+        encodeSessionPolicy(p, 'production'),
+      ])
+    }
+  })
+
+  test('a small one into one config on the canonical deployment', () => {
+    const p: SessionPolicy = { type: 'arg-policy', expression: andOf(3) }
+    expect(encodeActionPolicies([p], 'production', SPLIT)).toEqual(
+      configs([leaves(andOf(3))], undefined),
+    )
+  })
+
+  test('around the deployments the action already uses, in place', () => {
+    const uni: SessionPolicy = {
+      type: 'universal-action',
+      rules: [{ condition: 'equal', calldataOffset: 0n, referenceValue: 1n }],
+    }
+    const usage: SessionPolicy = { type: 'usage-limit', limit: 2n }
+    const encoded = encodeActionPolicies(
+      [uni, policy, usage],
+      'production',
+      SPLIT,
+    )
+    expect(encoded).toEqual([
+      encodeSessionPolicy(uni, 'production'),
+      ...configs(sixteens(leaves(and)), undefined, COPIES),
+      encodeSessionPolicy(usage, 'production'),
+    ])
+  })
+
+  test('refuses copies that repeat a deployment', () => {
+    expect(() =>
+      resolvePolicyAddresses({
+        universalActionCopies: [COPIES[0], COPIES[0].toUpperCase() as Address],
+      }),
+    ).toThrow('repeats')
+    expect(() =>
+      resolvePolicyAddresses({
+        universalActionCopies: [DEFAULT_POLICY_ADDRESSES.universalAction],
+      }),
+    ).toThrow('repeats')
+  })
+})
+
+test('an LZ session installs its execute policy across the copies', () => {
+  const definition = {
+    ...SESSIONS.lz.definition,
+    policyAddresses: {
+      oneTimeUseId: ONE_TIME_USE,
+      universalActionCopies: COPIES,
+    },
+  }
+  const execute = resolveSessionData(definition, {
+    settlement: SETTLEMENT_CATALOG,
+  }).actions.find((a) => a.actionTargetSelector === LZ_EXECUTE_SELECTOR)!
+  expect(execute.actionPolicies.map((p) => p.policy)).toEqual([
+    ...UNIVERSAL.slice(0, 3),
+    DEFAULT_POLICY_ADDRESSES.timeFrame,
+    ONE_TIME_USE,
+  ])
+})

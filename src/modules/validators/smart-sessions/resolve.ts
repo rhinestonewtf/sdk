@@ -29,7 +29,7 @@ import {
   expandCrossChainPermit,
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
-import { encodeSessionPolicy } from './policies/encode'
+import { encodeActionPolicies } from './policies/encode'
 import {
   isSettlementScopedPermit,
   resolveSettlementScope,
@@ -343,9 +343,9 @@ function resolveSession(
               'target' in action
                 ? action.target
                 : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: action.policies?.map((policy) =>
-              encodeSessionPolicy(policy, environment, addresses),
-            ) ?? [{ policy: addresses.sudo, initData: '0x' }],
+            actionPolicies: action.policies
+              ? encodeActionPolicies(action.policies, environment, addresses)
+              : [{ policy: addresses.sudo, initData: '0x' }],
           }),
         )
       : [sudoAction]
