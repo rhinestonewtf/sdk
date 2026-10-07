@@ -82,6 +82,23 @@ export function cumulativeCap(
 }
 
 /**
+ * The least `to`-token amount worth `cap` `from` tokens at `numerator /
+ * denominator`, for two 1:1 assets, rescaled between their decimals. Rounded up,
+ * so the floor never admits a rate below the one asked for.
+ */
+export function floorFor(
+  cap: bigint,
+  numerator: bigint,
+  denominator: bigint,
+  fromDecimals: number,
+  toDecimals: number,
+): bigint {
+  const scaled = cap * numerator * 10n ** BigInt(toDecimals)
+  const unit = denominator * 10n ** BigInt(fromDecimals)
+  return (scaled + unit - 1n) / unit
+}
+
+/**
  * Wrap rules into the action's policy.
  *
  * `valueLimitPerUse: 0n` because the approve cap only bounds ERC-20 pulls —

@@ -456,6 +456,33 @@ describe('settlement-scoped crossChainPermits', () => {
         'maxFeeBps applies only to ECO',
       )
     })
+
+    const WETH_ARB = '0x82af49447d8a07e3bd95bd0d56f35241523fbab1' as Address
+    const toWeth = {
+      to: { chain: arbitrum, token: WETH_ARB, minAmount: 4n * 10n ** 16n },
+      maxFeeBps: undefined,
+    }
+
+    test('takes a to.minAmount in place of maxFeeBps, for any pair', () => {
+      expect(toSession(eco(toWeth)).settlementLayers).toEqual(['ECO_IE'])
+    })
+
+    test('a to.minAmount beside another layer floors only ECO_IE', () => {
+      const permit = eco({
+        to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+        maxFeeBps: undefined,
+        settlementLayers: ['CCTP', 'ECO_IE'],
+      })
+      expect(toSession(permit).settlementLayers).toEqual(['CCTP', 'ECO_IE'])
+    })
+
+    test("refuses a to.minAmount when 'all' drops ECO_IE", () => {
+      expect(() =>
+        resolveSessionData(
+          eco({ ...toWeth, settlementLayers: 'all', validUntil: undefined }),
+        ),
+      ).toThrow('`to.minAmount` asks for ECO_IE, which cannot settle')
+    })
   })
 
   test('refuses an action carrying the same policy twice', () => {

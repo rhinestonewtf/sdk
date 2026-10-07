@@ -4,10 +4,12 @@ import { frozenScopeEco } from '../../../../../test/utils/eco-frozen'
 import {
   ECO_ACCOUNT as ACCOUNT,
   ECO_PORTAL,
+  publish,
 } from '../../../../../test/utils/eco-publish'
+import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { scopeEco } from './eco'
-import type { SettlementContext } from './types'
+import type { SettlementCatalog, SettlementContext } from './types'
 
 const stablecoins = (chainId: number) =>
   SETTLEMENT_CATALOG[chainId].eco!.stablecoins
@@ -125,4 +127,347 @@ describe('scopeEco against the frozen builder', () => {
     }
     expect(() => scopeEco(ctx)).toThrow(frozen)
   })
+})
+
+/** The floor each delivery word must clear, read back from the policy. */
+const floors = (ctx: SettlementContext) => {
+  const policy = scopeEco(ctx).policies?.[0]
+  if (policy?.type !== 'arg-policy') throw new Error('expected an arg policy')
+  const out: bigint[] = []
+  const walk = (e: typeof policy.expression): void => {
+    if (e.type === 'rule') {
+      if (e.rule.condition === 'greaterThanOrEqual')
+        out.push(BigInt(e.rule.referenceValue))
+    } else if (e.type === 'not') walk(e.child)
+    else {
+      walk(e.left)
+      walk(e.right)
+    }
+  }
+  walk(policy.expression)
+  return out
+}
+
+// Served 18-decimal USD stablecoins, as the orchestrator could serve them.
+const USD18_BASE = '0x1818181818181818181818181818181818181818' as Address
+const USD18_ARB = '0x8181818181818181818181818181818181818181' as Address
+const WETH_ARB = '0x82af49447d8a07e3bd95bd0d56f35241523fbab1' as Address
+const E6 = 10n ** 6n
+const E18 = 10n ** 18n
+
+const serve = (
+  chainId: number,
+  token: Address,
+  decimals: number,
+): SettlementCatalog[number] => ({
+  ...SETTLEMENT_CATALOG[chainId],
+  eco: {
+    ...SETTLEMENT_CATALOG[chainId].eco!,
+    stablecoins: [...SETTLEMENT_CATALOG[chainId].eco!.stablecoins, token],
+  },
+  usdStablecoins: [
+    ...(SETTLEMENT_CATALOG[chainId].usdStablecoins ?? []),
+    { address: token, symbol: 'USD18', decimals },
+  ],
+})
+const WITH_18: SettlementCatalog = {
+  ...SETTLEMENT_CATALOG,
+  8453: serve(8453, USD18_BASE, 18),
+  42161: serve(42161, USD18_ARB, 18),
+}
+
+describe('the maxFeeBps floor rescales between served decimals', () => {
+  test.each([
+    ['6 to 6', USDC_BASE, USDC_ARB, 100n * E6, 100, [99n * E6]],
+    ['USDC to USDT0', USDC_BASE, USDT0_ARB, 100n * E6, 100, [99n * E6]],
+    ['6 to 18', USDC_BASE, USD18_ARB, 100n * E6, 100, [99n * E18]],
+    ['18 to 6', USD18_BASE, USDC_ARB, 100n * E18, 100, [99n * E6]],
+    ['18 to 18', USD18_BASE, USD18_ARB, 100n * E18, 50, [995n * 10n ** 17n]],
+    // Rescaling down rounds up: one wei of an 18-decimal cap still owes a unit.
+    ['18 to 6, one wei', USD18_BASE, USDC_ARB, 1n, 0, [1n]],
+    [
+      '18 to 6, a unit and a wei',
+      USD18_BASE,
+      USDC_ARB,
+      10n ** 12n + 1n,
+      0,
+      [2n],
+    ],
+    [
+      '18 to 6, a dust cap at 9999 bps',
+      USD18_BASE,
+      USDC_ARB,
+      3n * 10n ** 12n,
+      9_999,
+      [1n],
+    ],
+  ] as const)('%s', (_, from, to, cap, maxFeeBps, expected) => {
+    const ctx = {
+      ...base,
+      settlement: WITH_18,
+      sourceTokens: [from],
+      destinations: [{ chainId: 42161, token: to, recipient: ACCOUNT }],
+      cap,
+      maxFeeBps,
+    }
+    // Both the route amount and the transfer amount carry the floor.
+    expect(floors(ctx)).toEqual([...expected, ...expected])
+  })
+
+  test('6 to 18 admits the floor and refuses a wei under it', () => {
+    const ctx = {
+      ...base,
+      settlement: WITH_18,
+      destinations: [{ chainId: 42161, token: USD18_ARB, recipient: ACCOUNT }],
+      cap: 100n * E6,
+    }
+    const action = scopeEco(ctx)
+    const at = (delivered: bigint) =>
+      publish({ routeToken: USD18_ARB, delivered, reward: 100n * E6 })
+    expect(holds(action, at(99n * E18))).toBe(true)
+    expect(holds(action, at(99n * E18 - 1n))).toBe(false)
+    // The unscaled 6-decimal floor is dust in 18 decimals.
+    expect(holds(action, at(99n * E6))).toBe(false)
+  })
+
+  test.each([
+    [
+      'an unserved `from` token',
+      { sourceTokens: [OTHER] },
+      'ECO_IE moves only USD stablecoins; the `from` token',
+    ],
+    [
+      'an unserved `to` token',
+      {
+        destinations: [{ chainId: 42161, token: WETH_ARB, recipient: ACCOUNT }],
+      },
+      'ECO_IE moves only USD stablecoins; the `to` token',
+    ],
+    [
+      'an Eco token with no served decimals',
+      {
+        settlement: {
+          ...SETTLEMENT_CATALOG,
+          42161: {
+            ...SETTLEMENT_CATALOG[42161],
+            eco: {
+              ...SETTLEMENT_CATALOG[42161].eco!,
+              stablecoins: [WETH_ARB],
+            },
+          },
+        },
+        destinations: [{ chainId: 42161, token: WETH_ARB, recipient: ACCOUNT }],
+      },
+      'the orchestrator serves no usdStablecoins entry for it',
+    ],
+    [
+      'an unserved `to` token, even with a to.minAmount',
+      {
+        destinations: [
+          {
+            chainId: 42161,
+            token: WETH_ARB,
+            recipient: ACCOUNT,
+            minAmount: 1n,
+          },
+        ],
+      },
+      'ECO_IE moves only USD stablecoins; the `to` token',
+    ],
+  ] as const)('refuses %s', (_, overrides, message) => {
+    expect(() =>
+      scopeEco({ ...base, ...overrides } as SettlementContext),
+    ).toThrow(message)
+  })
+})
+
+describe('to.minAmount floors delivery in the `to` token', () => {
+  const WETH_FLOOR = 4n * 10n ** 16n
+  const cross = {
+    ...base,
+    maxFeeBps: undefined,
+    cap: 100n * E6,
+    destinations: [
+      {
+        chainId: 42161,
+        token: WETH_ARB,
+        recipient: ACCOUNT,
+        minAmount: WETH_FLOOR,
+      },
+    ],
+  }
+  const toWeth = (delivered: bigint, reward = 100n * E6) =>
+    publish({ routeToken: WETH_ARB, delivered, reward })
+
+  test('admits any pair at or above the floor, and refuses below it', () => {
+    const action = scopeEco(cross)
+    expect(floors(cross)).toEqual([WETH_FLOOR, WETH_FLOOR])
+    expect(holds(action, toWeth(WETH_FLOOR))).toBe(true)
+    expect(holds(action, toWeth(WETH_FLOOR + 1n))).toBe(true)
+    expect(holds(action, toWeth(WETH_FLOOR - 1n))).toBe(false)
+  })
+
+  test("an unserved `from` token is priced by the owner's floor", () => {
+    const FROM = '0x4444444444444444444444444444444444444444' as Address
+    const action = scopeEco({ ...cross, sourceTokens: [FROM] })
+    expect(
+      holds(
+        action,
+        publish({
+          routeToken: WETH_ARB,
+          delivered: WETH_FLOOR,
+          rewardToken: FROM,
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  test.each([
+    ['a minAmount above the fee floor', 99_500_000n, 99_500_000n],
+    ['a minAmount below the fee floor', 1n, 99n * E6],
+    ['a minAmount equal to the fee floor', 99n * E6, 99n * E6],
+  ])(
+    'with maxFeeBps too, the stricter floor applies: %s',
+    (_, minAmount, floor) => {
+      const ctx = {
+        ...base,
+        cap: 100n * E6,
+        destinations: [
+          { chainId: 42161, token: USDC_ARB, recipient: ACCOUNT, minAmount },
+        ],
+      }
+      expect(floors(ctx)).toEqual([floor, floor])
+    },
+  )
+
+  test('each leg keeps its own floor', () => {
+    const ctx = {
+      ...cross,
+      destinations: [
+        {
+          chainId: 42161,
+          token: WETH_ARB,
+          recipient: ACCOUNT,
+          minAmount: WETH_FLOOR,
+        },
+        {
+          chainId: 10,
+          token: USDC_OP,
+          recipient: ACCOUNT,
+          minAmount: 98n * E6,
+        },
+      ],
+    }
+    const action = scopeEco(ctx)
+    const toOp = (delivered: bigint) =>
+      publish({
+        destination: 10n,
+        routeToken: USDC_OP,
+        delivered,
+        reward: 100n * E6,
+      })
+    expect(holds(action, toWeth(WETH_FLOOR))).toBe(true)
+    expect(holds(action, toOp(98n * E6))).toBe(true)
+    expect(holds(action, toOp(98n * E6 - 1n))).toBe(false)
+    // The WETH floor in raw units is no floor for USDC.
+    expect(holds(action, toOp(WETH_FLOOR))).toBe(true)
+  })
+
+  test.each([
+    [
+      'a zero minAmount',
+      { destinations: [{ ...cross.destinations[0], minAmount: 0n }] },
+      'ECO_IE needs a positive `to.minAmount`',
+    ],
+    [
+      'a negative minAmount',
+      { destinations: [{ ...cross.destinations[0], minAmount: -1n }] },
+      'ECO_IE needs a positive `to.minAmount`',
+    ],
+    [
+      'a leg with no minAmount and no maxFeeBps',
+      {
+        destinations: [
+          cross.destinations[0],
+          { chainId: 10, token: USDC_OP, recipient: ACCOUNT },
+        ],
+      },
+      'a `to.minAmount` on every leg',
+    ],
+    ['no cap', { cap: undefined }, 'ECO_IE needs maxAmount'],
+    [
+      'a bad maxFeeBps beside a minAmount',
+      { maxFeeBps: 10_000 },
+      'maxFeeBps must be an integer',
+    ],
+  ] as const)('refuses %s', (_, overrides, message) => {
+    expect(() =>
+      scopeEco({ ...cross, ...overrides } as SettlementContext),
+    ).toThrow(message)
+  })
+})
+
+describe('a hostile key filling its own intent', () => {
+  const modes = {
+    'maxFeeBps, 6 to 6': {
+      ctx: { ...base, cap: 100n * E6 },
+      token: USDC_ARB,
+      floor: 99n * E6,
+    },
+    'maxFeeBps, 6 to 18': {
+      ctx: {
+        ...base,
+        settlement: WITH_18,
+        cap: 100n * E6,
+        destinations: [
+          { chainId: 42161, token: USD18_ARB, recipient: ACCOUNT },
+        ],
+      },
+      token: USD18_ARB,
+      floor: 99n * E18,
+    },
+    'to.minAmount, cross-token': {
+      ctx: {
+        ...base,
+        maxFeeBps: undefined,
+        cap: 100n * E6,
+        destinations: [
+          {
+            chainId: 42161,
+            token: WETH_ARB,
+            recipient: ACCOUNT,
+            minAmount: 4n * 10n ** 16n,
+          },
+        ],
+      },
+      token: WETH_ARB,
+      floor: 4n * 10n ** 16n,
+    },
+  }
+
+  for (const [mode, { ctx, token, floor }] of Object.entries(modes)) {
+    describe(mode, () => {
+      const action = scopeEco(ctx as SettlementContext)
+      const fill = (o: Parameters<typeof publish>[0]) =>
+        holds(action, publish({ routeToken: token, reward: 100n * E6, ...o }))
+
+      test('admits the honest publish', () => {
+        expect(fill({ delivered: floor })).toBe(true)
+      })
+
+      test.each([
+        ['delivers one unit for the whole cap', { delivered: 1n }],
+        ['delivers nothing for the whole cap', { delivered: 0n }],
+        ['delivers a unit under the floor', { delivered: floor - 1n }],
+        ['rewards past the cap', { delivered: floor, reward: 100n * E6 + 1n }],
+        ['delivers to itself', { delivered: floor, recipient: OTHER }],
+        [
+          'delivers another token',
+          { delivered: floor, routeToken: OTHER, callTarget: OTHER },
+        ],
+      ] as const)('refuses a publish that %s', (_, o) => {
+        expect(fill(o)).toBe(false)
+      })
+    })
+  }
 })

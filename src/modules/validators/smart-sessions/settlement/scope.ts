@@ -257,9 +257,10 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  if (!sameChainOnly && permit.to?.some((leg) => leg.minAmount !== undefined)) {
+  const minAmount = permit.to?.some((leg) => leg.minAmount !== undefined)
+  if (minAmount && !sameChainOnly && !requested.includes('ECO_IE')) {
     throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or ECO_IE',
     )
   }
   const fees = permit.allowFees
@@ -353,6 +354,11 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && ecoSkipped !== undefined) {
     throw new Error(
       `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
+    )
+  }
+  if (minAmount && ecoSkipped !== undefined) {
+    throw new Error(
+      `crossChainPermits: \`to.minAmount\` asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
     )
   }
   if (scopedLayers.length === 0) {
