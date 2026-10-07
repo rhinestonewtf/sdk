@@ -481,16 +481,6 @@ function resolveSession(
         `Claim policies take over the session's ERC-1271 list, so \`signing\` cannot also be configured — its policy and validity window would be dropped. Drop \`signing\` or the claim policies.`,
       )
     }
-    // Every claim policy resolves to the same policy contract, and enabling
-    // stores one config per contract, so a second would overwrite the first
-    // while the signing path still builds calldata for both. Refuse rather than
-    // enforce one of N and report success. One permit per session until the
-    // policy can express them together.
-    if (claimPolicies.length > 1) {
-      throw new Error(
-        `A session can declare one Permit2 claim policy, not ${claimPolicies.length}: they share a policy contract on-chain, so only the last would be installed. Split them across sessions.`,
-      )
-    }
     // Replace rather than append. The list is an AND, so a permissive sudo entry
     // alongside cannot weaken it — but it would be dead config that reads as a
     // signing capability the session no longer has.
@@ -498,6 +488,22 @@ function resolveSession(
       ? [...claimPolicies, onceErc1271Policy]
       : claimPolicies
     claimPolicies = []
+  }
+  // Same hazard on the ERC-1271 list: it is an AddressSet keyed by policy, and
+  // the config is keyed per (policy, configId), so a repeat address stores once
+  // and keeps only the last config. Every Permit2 claim policy resolves to the
+  // same contract, so several declared permits land here.
+  {
+    const seen = new Set<string>()
+    for (const { policy } of erc1271Policies) {
+      const key = policy.toLowerCase()
+      if (seen.has(key)) {
+        throw new Error(
+          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
+        )
+      }
+      seen.add(key)
+    }
   }
   // Enabling keeps one config per policy contract and action, so a second
   // entry for the same policy would overwrite the first instead of ANDing.
