@@ -75,6 +75,7 @@ describe('OFT send offsets', () => {
       eid: 30383,
       to: OTHER,
       amount: 7n,
+      minAmount: 6n,
       refund: ACCOUNT,
       lzTokenFee: 9n,
     })
@@ -84,6 +85,7 @@ describe('OFT send offsets', () => {
     expect(word(calldata, SEND.dstEid)).toBe(30383n)
     expect(word(calldata, SEND.to)).toBe(BigInt(OTHER))
     expect(word(calldata, SEND.amountLD)).toBe(7n)
+    expect(word(calldata, SEND.minAmountLD)).toBe(6n)
     expect(word(calldata, SEND.extraOptionsPointer)).toBe(0xe0n)
     expect(word(calldata, SEND.composeMsgPointer)).toBe(0x100n)
     expect(word(calldata, SEND.oftCmdPointer)).toBe(0x120n)
@@ -340,6 +342,111 @@ describe('scopeOft against the frozen builder', () => {
           )
         }
       }
+    },
+  )
+})
+
+describe('scopeOft with to.minAmount', () => {
+  const floored = scopeOft({
+    ...base,
+    destinations: [
+      {
+        chainId: 9745,
+        token: USDT0_PLASMA,
+        recipient: ACCOUNT,
+        minAmount: 60n,
+      },
+    ],
+    cap: 100n,
+  })
+
+  test('admits a send whose minAmountLD meets the floor', () => {
+    expect(holds(floored, send({ amount: 100n, minAmount: 99n }))).toBe(true)
+    expect(holds(floored, send({ amount: 60n, minAmount: 60n }))).toBe(true)
+  })
+
+  test('refuses a send whose minAmountLD is below the floor', () => {
+    // A key that zeroes minAmountLD accepts any fee or dust the OFT takes.
+    expect(holds(floored, send({ minAmount: 0n }))).toBe(false)
+    expect(holds(floored, send({ minAmount: 59n }))).toBe(false)
+  })
+
+  test('floors each leg on its own', () => {
+    const twoLegs = scopeOft({
+      ...base,
+      destinations: [
+        {
+          chainId: 9745,
+          token: USDT0_PLASMA,
+          recipient: ACCOUNT,
+          minAmount: 50n,
+        },
+        { chainId: 10, token: USDT0_OP, recipient: OTHER, minAmount: 80n },
+      ],
+    })
+    expect(holds(twoLegs, send({ eid: 30383, minAmount: 60n }))).toBe(true)
+    expect(
+      holds(twoLegs, send({ eid: 30111, to: OTHER, minAmount: 60n })),
+    ).toBe(false)
+    expect(
+      holds(twoLegs, send({ eid: 30111, to: OTHER, minAmount: 80n })),
+    ).toBe(true)
+  })
+
+  test.each([
+    ['a zero floor', 0n, 'must be positive'],
+    ['a floor above the cap', 101n, 'above `maxAmount` admits no send'],
+  ])('refuses %s', (_, minAmount, message) => {
+    expect(() =>
+      scopeOft({
+        ...base,
+        destinations: [
+          { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT, minAmount },
+        ],
+        cap: 100n,
+      }),
+    ).toThrow(message)
+  })
+
+  // Against the frozen builder a floor only narrows: it admits exactly the
+  // frozen admissions whose minAmountLD meets the leg's floor.
+  const floors: Record<number, bigint> = { 30383: 50n, 30111: 80n }
+  const contexts = {
+    'one leg': [{ chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT }],
+    'two legs': [
+      { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+      { chainId: 10, token: USDT0_OP, recipient: OTHER },
+    ],
+  } as const
+  const eidOf = { 9745: 30383, 10: 30111 } as const
+
+  test.each(Object.entries(contexts))(
+    '%s: a strict narrowing of the frozen builder',
+    (_, legs) => {
+      const frozen = frozenScopeOft({ ...base, destinations: legs, cap: 100n })
+      const live = scopeOft({
+        ...base,
+        destinations: legs.map((leg) => ({
+          ...leg,
+          minAmount: floors[eidOf[leg.chainId]],
+        })),
+        cap: 100n,
+      })
+      let narrowed = 0
+      for (const eid of [30383, 30111, 30110]) {
+        for (const to of [ACCOUNT, OTHER]) {
+          for (const amount of [0n, 1n, 60n, 100n, 101n]) {
+            for (const minAmount of [0n, 1n, 49n, 50n, 79n, 80n, 100n]) {
+              const calldata = send({ eid, to, amount, minAmount })
+              const expected =
+                holds(frozen, calldata) && minAmount >= (floors[eid] ?? 0n)
+              expect(holds(live, calldata)).toBe(expected)
+              if (holds(frozen, calldata) && !expected) narrowed++
+            }
+          }
+        }
+      }
+      expect(narrowed).toBeGreaterThan(0)
     },
   )
 })

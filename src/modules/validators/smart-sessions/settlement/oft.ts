@@ -71,6 +71,7 @@ export const SEND = {
   dstEid: 128n,
   to: 160n,
   amountLD: 192n,
+  minAmountLD: 224n,
   extraOptionsPointer: 256n,
   composeMsgPointer: 288n,
   oftCmdPointer: 320n,
@@ -79,7 +80,13 @@ export const SEND = {
   oftCmdLength: 416n,
 } as const
 
-/** The mesh moves only USDT0, so any other token names a route it cannot take. */
+/**
+ * The mesh moves only USDT0, so any other token names a route it cannot take.
+ * USDT0 takes no fee and removes no dust (6 local and 6 shared decimals), so
+ * `send` delivers exactly `amountLD` and an unfloored `minAmountLD` costs
+ * nothing. An OFT that takes a fee or removes dust delivers less, down to the
+ * key's `minAmountLD`: serving one needs `to.minAmount` on every leg.
+ */
 function requireUsdt0(
   settlement: SettlementCatalog,
   chainId: number,
@@ -90,6 +97,31 @@ function requireUsdt0(
     throw new SettlementLayerRefusal(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
+  }
+}
+
+/**
+ * `send` reverts unless it delivers at least `minAmountLD`, so a floor on that
+ * word floors the delivery. It is a fixed amount, since a rule compares with a
+ * constant, not with `amountLD`. `minAmountLD` is in the source token's
+ * decimals, which for USDT0 match the `to` leg's.
+ */
+function floorMinAmount(
+  minAmount: bigint,
+  cap: bigint | undefined,
+): UniversalActionPolicyParamRule {
+  if (minAmount <= 0n) {
+    throw new Error('crossChainPermits: an OFT `to.minAmount` must be positive')
+  }
+  if (cap !== undefined && minAmount > cap) {
+    throw new Error(
+      'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
+    )
+  }
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset: SEND.minAmountLD,
+    referenceValue: minAmount,
   }
 }
 
@@ -138,6 +170,9 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     ]
     if (leg.recipient !== undefined) {
       legRules.push(pinWord(SEND.to, pad(leg.recipient)))
+    }
+    if (leg.minAmount !== undefined) {
+      legRules.push(floorMinAmount(leg.minAmount, ctx.cap))
     }
     return legRules
   })

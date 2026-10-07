@@ -2,6 +2,7 @@ import {
   type Address,
   encodeFunctionData,
   erc20Abi,
+  pad,
   toFunctionSelector,
 } from 'viem'
 import {
@@ -30,7 +31,7 @@ import type { CrossChainPermissionInput, SessionDefinition } from '../types'
 import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
 import { PUBLISH_AND_FUND_SELECTOR } from './eco'
 import { LZ_EXECUTE_SELECTOR } from './lz'
-import { OFT_SEND_SELECTOR } from './oft'
+import { OFT_SEND_SELECTOR, oftAbi } from './oft'
 import { resolveSettlementScope } from './scope'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
@@ -234,6 +235,60 @@ describe('settlement-scoped crossChainPermits', () => {
       })
     expect(satisfiesRules(action, approve(OFT_ARB.adapter))).toBe(true)
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  describe('OFT to.minAmount', () => {
+    const permit = (
+      settlementLayers: CrossChainPermissionInput['settlementLayers'],
+    ) =>
+      resolveCrossChainPermission({
+        from: { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
+        to: { chain: plasma, token: OFT_PLASMA.token, minAmount: 95n },
+        settlementLayers,
+      })
+    const options = {
+      chainId: arbitrum.id,
+      environment: 'production',
+      account: ACCOUNT,
+      oneTimeUse: true,
+      settlement: SETTLEMENT_CATALOG,
+    } as const
+    const send = (amountLD: bigint, minAmountLD: bigint) =>
+      encodeFunctionData({
+        abi: oftAbi,
+        functionName: 'send',
+        args: [
+          {
+            dstEid: OFT_PLASMA.eid,
+            to: pad(ACCOUNT),
+            amountLD,
+            minAmountLD,
+            extraOptions: '0x',
+            composeMsg: '0x',
+            oftCmd: '0x',
+          },
+          { nativeFee: 1n, lzTokenFee: 0n },
+          ACCOUNT,
+        ],
+      })
+
+    test('floors the send on an OFT-only permit', () => {
+      const action = resolveSettlementScope([permit(['OFT'])], options)
+        ?.actions[0]
+      if (action?.selector !== OFT_SEND_SELECTOR) throw new Error('no send')
+      expect(satisfiesRules(action, send(100n, 95n))).toBe(true)
+      expect(satisfiesRules(action, send(100n, 94n))).toBe(false)
+      expect(satisfiesRules(action, send(100n, 0n))).toBe(false)
+    })
+
+    test.each<[string, CrossChainPermissionInput['settlementLayers']]>([
+      ['beside another layer', ['OFT', 'CCTP']],
+      ["under 'all'", 'all'],
+    ])('is refused %s, where it would bind only the OFT send', (_, layers) => {
+      expect(() => resolveSettlementScope([permit(layers)], options)).toThrow(
+        'applies only to a SAME_CHAIN_IE swap or an OFT-only permit',
+      )
+    })
   })
 
   test('an LZ permit restricts the session to execute and the TransferDelegate approve', () => {

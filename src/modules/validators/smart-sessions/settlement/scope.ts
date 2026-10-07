@@ -257,9 +257,13 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  if (!sameChainOnly && permit.to?.some((leg) => leg.minAmount !== undefined)) {
+  // Only a SAME_CHAIN_IE swap and an OFT send floor their delivery; with another
+  // layer beside OFT the floor would bind only the OFT send.
+  const floors =
+    sameChainOnly || (requested.length === 1 && requested[0] === 'OFT')
+  if (!floors && permit.to?.some((leg) => leg.minAmount !== undefined)) {
     throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or an OFT-only permit',
     )
   }
   const fees = permit.allowFees

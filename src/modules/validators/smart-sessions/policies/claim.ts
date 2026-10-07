@@ -34,7 +34,7 @@ export function expandCrossChainPermit(
   }
   if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
     throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or an OFT-only permit',
     )
   }
   const sourceTokens = permit.from?.length

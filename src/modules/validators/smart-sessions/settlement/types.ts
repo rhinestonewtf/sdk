@@ -62,12 +62,13 @@ export interface SettlementContext {
   readonly sourceTokens: readonly Address[]
   /**
    * One entry per `to` leg. `recipient` undefined means the recipient is left
-   * open (`'any'`).
+   * open (`'any'`). `minAmount` is the owner's delivery floor (`OFT` only here).
    */
   readonly destinations: readonly {
     readonly chainId: number
     readonly token: Address
     readonly recipient?: Address
+    readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
   readonly cap?: bigint
