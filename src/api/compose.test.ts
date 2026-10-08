@@ -20,6 +20,7 @@ import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
+import { UNIVERSAL_ACTION_POLICY_ADDRESS } from '../modules/validators/smart-sessions/policies/addresses'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { SWAP_EXACT_IN_SELECTOR } from '../modules/validators/smart-sessions/swap/rhinestone'
 import { createCoreComposition } from './compose'
@@ -828,6 +829,93 @@ describe('internal core composition', () => {
         owners: { type: 'ecdsa', accounts: [owner] },
       }),
     ).rejects.toThrow('no wrapped-native token')
+  })
+
+  describe('createSession with universalActionCopies', () => {
+    const uap = UNIVERSAL_ACTION_POLICY_ADDRESS
+    const copies: Address[] = [
+      '0x00000000000000000000000000000000000000c1',
+      '0x00000000000000000000000000000000000000c2',
+    ]
+    const UAP_CODE = '0x6080604052'
+    const withCode = (code: Record<string, Hex | undefined>) => {
+      const base = fixture()
+      const getCode = vi.fn(async (_: unknown, address: Address) => ({
+        code: code[address.toLowerCase()],
+      }))
+      const composition = createCoreComposition(base.context.sdk, {
+        ...base.dependencies,
+        orchestrator: {
+          ...base.orchestrator,
+          getChainCatalog: vi.fn(
+            async () =>
+              new ChainCatalog({
+                [baseChain.id]: {
+                  name: 'Base',
+                  testnet: false,
+                  supportedTokens: 'all',
+                  wrappedNativeToken: {
+                    symbol: 'WETH',
+                    address: '0x4200000000000000000000000000000000000006',
+                    decimals: 18,
+                  },
+                },
+              }),
+          ),
+        },
+        rpc: {
+          forChain: () => ({
+            ...base.dependencies.rpc.forChain(),
+            getCode,
+          }),
+        },
+      })
+      const create = (universalActionCopies?: Address[]) =>
+        composition.project.createSession({
+          chain: baseChain,
+          owners: { type: 'ecdsa', accounts: [owner] },
+          ...(universalActionCopies
+            ? { policyAddresses: { universalActionCopies } }
+            : {}),
+        })
+      return { create, getCode }
+    }
+    const codes = (copyCode: (i: number) => Hex | undefined) =>
+      Object.fromEntries([
+        [uap.toLowerCase(), UAP_CODE as Hex],
+        ...copies.map((c, i) => [c.toLowerCase(), copyCode(i)]),
+      ])
+
+    test('accepts copies holding the UniversalActionPolicy code', async () => {
+      const { create, getCode } = withCode(codes(() => UAP_CODE))
+      await expect(create(copies)).resolves.toBeDefined()
+      expect(getCode.mock.calls.map(([, address]) => address)).toEqual([
+        uap,
+        ...copies,
+      ])
+    })
+
+    test('reads no code when no copy is configured', async () => {
+      const { create, getCode } = withCode({})
+      await expect(create()).resolves.toBeDefined()
+      expect(getCode).not.toHaveBeenCalled()
+    })
+
+    test('refuses a copy with other code or none', async () => {
+      for (const other of ['0x6080604053', undefined, '0x'] as const) {
+        const { create } = withCode(
+          codes((i) => (i === 1 ? (other as Hex | undefined) : UAP_CODE)),
+        )
+        await expect(create(copies)).rejects.toThrow(
+          `universalActionCopies ${copies[1]} does not hold the code of universalAction`,
+        )
+      }
+    })
+
+    test('refuses when universalAction itself has no code', async () => {
+      const { create } = withCode({})
+      await expect(create(copies)).rejects.toThrow('has no code on chain')
+    })
   })
 
   test('createSession hands the served USD stablecoins to a stableFloor swap scope', async () => {

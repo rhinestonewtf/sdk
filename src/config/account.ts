@@ -780,6 +780,19 @@ type PermissionsForAbis<TAbis extends readonly Abi[]> = {
 interface SessionPolicyAddresses {
   sudo?: Address
   universalAction?: Address
+  /**
+   * Further deployments of the canonical UniversalActionPolicy bytecode, each
+   * deployed on the session's chain, distinct from `universalAction`, from
+   * each other and from every other policy address. When set, an action's
+   * ArgPolicy whose expression only ANDs rules is installed as
+   * UniversalActionPolicy configs of up to 16 rules each, one per deployment,
+   * which can lower the storage written at enable. An action keeps its
+   * ArgPolicy when there are not enough deployments. `sdk.createSession`
+   * checks that each copy holds the same code as `universalAction`; `toSession`
+   * cannot, so check the deployments before using it. Not available with
+   * `saltMode: 'v1'`. Defaults to none.
+   */
+  universalActionCopies?: readonly Address[]
   argPolicy?: Address
   spendingLimits?: Address
   timeFrame?: Address

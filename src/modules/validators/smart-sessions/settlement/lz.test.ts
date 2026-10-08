@@ -281,6 +281,8 @@ describe('scopeLz', () => {
       // Free fields exist, so some flips must pass: the check is not vacuous.
       expect(accepted).toBeGreaterThan(0)
     },
+    // Two flips per byte of the batch: past the 5s default under coverage.
+    30_000,
   )
 
   test('binds only the leg its own route delivers', () => {
