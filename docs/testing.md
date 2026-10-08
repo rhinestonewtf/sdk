@@ -115,8 +115,9 @@ offline. The command validates:
   here explicitly because runtime export-key checks cannot observe them;
 - compatibility probes preserve address-only init data, legacy module shapes,
   and public error identity;
-- optional-peer behavior — the root imports without `jose`/`express`, and
-  `/jwt-server` works without `express` but fails cleanly without `jose`;
+- optional-peer behavior — the root imports without `jose`, and `/jwt-server`
+  declares no `express` peer, never imports it, and fails cleanly without
+  `jose`;
 - public error constructor identity survives across the package boundary;
 - `publint` metadata validity;
 - the per-entry `size-limit` gate for every published subpath.

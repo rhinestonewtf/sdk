@@ -98,12 +98,10 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
   })
   // One destination keeps its pins in the shared AND; several become an OR of
   // (domain, recipient) pairs so a recipient is only valid on its own chain.
-  const action =
-    legs.length === 1
-      ? swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, [
-          ...rules,
-          ...legs[0],
-        ])
-      : swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, rules, legs)
-  return { ...action, policies: [...(action.policies ?? []), ...ctx.timeFrame] }
+  return legs.length === 1
+    ? swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, [
+        ...rules,
+        ...legs[0],
+      ])
+    : swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, rules, legs)
 }

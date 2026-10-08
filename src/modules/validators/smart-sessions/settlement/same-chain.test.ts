@@ -21,11 +21,6 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
 const THIRD = '0x3333333333333333333333333333333333333333' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
-const WINDOW = {
-  type: 'time-frame',
-  validAfter: 1_900_000_000_000,
-  validUntil: 2_000_000_000_000,
-} as const
 
 const base = {
   chainId: 8453,
@@ -34,7 +29,6 @@ const base = {
   sourceTokens: [USDC],
   destinations: [{ chainId: 8453, token: USDC, recipient: OTHER }],
   cap: 100n,
-  timeFrame: [],
 } as const
 
 const transfer = (to: Address, amount = 100n) =>
@@ -95,19 +89,6 @@ describe('scopeSameChain', () => {
       expect(holds(open, transfer(THIRD))).toBe(true)
       expect(holds(open, transfer(THIRD, 101n))).toBe(false)
     })
-
-    test('the validity window bounds the transfer', () => {
-      const timeFrame = {
-        type: 'time-frame',
-        validAfter: 1,
-        validUntil: 2,
-      } as const
-      const [bounded] = scopeSameChain({
-        ...base,
-        timeFrame: [timeFrame],
-      }).actions
-      expect(bounded.policies).toContainEqual(timeFrame)
-    })
   })
 
   describe('a different token: the Swapper swap', () => {
@@ -116,9 +97,6 @@ describe('scopeSameChain', () => {
       destinations: [
         { chainId: 8453, token: WETH, recipient: OTHER, minAmount: 5n },
       ],
-      validAfter: 1_900_000_000n,
-      validUntil: 2_000_000_000n,
-      timeFrame: [WINDOW],
     })
 
     test('reuses the swap scope: an approve permission and the Swapper actions', () => {
@@ -175,18 +153,6 @@ describe('scopeSameChain', () => {
         expect(holds(action, swapCall(fn, 5n, { amount: 101n }))).toBe(false)
       },
     )
-
-    test('the validity window bounds the swap and its approve', () => {
-      for (const action of swap.actions) {
-        expect(action.policies).toContainEqual(WINDOW)
-      }
-      const fns = Object.values(swap.permissions[0].functions)
-      expect(fns.length).toBeGreaterThan(0)
-      for (const fn of fns) {
-        expect(fn?.validAfter).toEqual(new Date(1_900_000_000_000))
-        expect(fn?.validUntil).toEqual(new Date(2_000_000_000_000))
-      }
-    })
   })
 
   test.each([
