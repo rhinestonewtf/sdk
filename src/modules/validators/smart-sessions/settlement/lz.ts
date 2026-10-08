@@ -29,7 +29,8 @@ import type { SettlementContext } from './types'
  * quoteId)`, whose nested calls pull the tokens, bridge them and sweep the rest
  * back. LZMultiCall runs any call it is handed, so every nested call is pinned:
  * the array length, each element offset, target, data pointer and
- * length-plus-selector, and each argument the key could redirect. The policy
+ * length-plus-selector, and each argument the key could redirect, except what
+ * LZMultiCall or the target already refuses (see `batch` and `pull`). The policy
  * accepts two of the API's routes, in three layouts:
  *
  * - CCTP: delegateTransferFrom, transfer(fee), approve(TokenMessengerV2),
@@ -76,8 +77,8 @@ interface NestedCall {
   readonly selector: Hex
   /** Calldata length, selector included. */
   readonly length: number
-  /** The send carries the messaging fee; every other call carries none. */
-  readonly payable?: boolean
+  /** LZMultiCall itself reverts on any other length or selector. */
+  readonly shapeChecked?: boolean
   readonly args: (at: At) => Rule[]
 }
 
@@ -112,17 +113,23 @@ function batch(calls: readonly NestedCall[]): {
     const start = 0x60n + relative
     const data = start + 128n
     const at: At = (offset) => data + 4n + offset
+    // No call's value is pinned: the send's is the messaging fee, and every
+    // other target reverts on value (a non-payable solc function, checked on
+    // every LZ source chain), which LZMultiCall bubbles.
     rules.push(
       pinValue(0x60n + BigInt(i) * 32n, relative),
       pin(start, call.target),
-      ...(call.payable ? [] : [pinValue(start + 32n, 0n)]),
       pinValue(start + 64n, 0x60n),
       // The word ending at the selector: the length's low 28 bytes, then the
       // selector. A length above 2^224 fails to decode, so this pins both.
-      pinValue(
-        data - 28n,
-        (BigInt(call.length) << 32n) | BigInt(call.selector),
-      ),
+      ...(call.shapeChecked
+        ? []
+        : [
+            pinValue(
+              data - 28n,
+              (BigInt(call.length) << 32n) | BigInt(call.selector),
+            ),
+          ]),
       ...call.args(at),
     )
     args.push(at)
@@ -171,15 +178,15 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   const recipient = (offset: bigint, leg: Leg) =>
     leg.recipient === undefined ? [] : [pinWord(offset, pad(leg.recipient))]
 
+  // LZMultiCall routes a call to its own TransferDelegate through
+  // `_handleTransfer`, which reverts unless the data is 132 bytes of
+  // `delegateTransferFrom` pulling from the caller, the account.
   const pull: NestedCall = {
     target: transferDelegate,
     selector: DELEGATE_TRANSFER_FROM,
     length: 132,
-    args: (at) => [
-      pin(at(0n), token),
-      pin(at(32n), account),
-      pin(at(64n), multiCall),
-    ],
+    shapeChecked: true,
+    args: (at) => [pin(at(0n), token), pin(at(64n), multiCall)],
   }
   const sweep: NestedCall = {
     target: multiCall,
@@ -217,7 +224,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       target: stargate.pool,
       selector: OFT_SEND_SELECTOR,
       length: 484,
-      payable: true,
       args: (at) => [
         pinValue(at(SEND.sendParamPointer), 0x80n),
         // The fee is native only; the refund returns to LZMultiCall, whose
@@ -271,8 +277,10 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       target: LZ_CCTP_TOKEN_MESSENGER,
       selector: DEPOSIT_FOR_BURN,
       length: 228,
+      // `burnToken` is not pinned: the pull and the sweep are pinned to this
+      // token and the account, so another burn token can only spend what a
+      // third party left in LZMultiCall, and the pull is swept back.
       args: (at) => [
-        pin(at(96n), token),
         // A non-zero destinationCaller restricts who may mint; the API never
         // sets one.
         pinValue(at(128n), 0n),

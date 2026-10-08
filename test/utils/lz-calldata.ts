@@ -1,4 +1,15 @@
-import { type Address, encodeFunctionData, type Hex, pad, parseAbi } from 'viem'
+import {
+  type Address,
+  decodeFunctionData,
+  encodeFunctionData,
+  type Hex,
+  isAddressEqual,
+  pad,
+  parseAbi,
+  size,
+  slice,
+  toFunctionSelector,
+} from 'viem'
 import type { SettlementContext } from '../../src/modules/validators/smart-sessions/settlement/types'
 import { SETTLEMENT_CATALOG } from './settlement-catalog'
 
@@ -128,4 +139,84 @@ export function context(
     cap: CAP,
     ...overrides,
   }
+}
+
+/**
+ * Base's non-payable nested calls, `target:selector`. Each reverts on non-zero
+ * `msg.value` (solc callvalue guard; verified on every LZ source chain), and
+ * LZMultiCall bubbles the revert.
+ */
+const NON_PAYABLE = new Set(
+  [
+    [TD, 'delegateTransferFrom'],
+    [MC, 'sweep'],
+    [USDC_BASE, 'approve'],
+    [USDC_BASE, 'transfer'],
+    [TOKEN_MESSENGER, 'depositForBurn'],
+  ].map(([target, name]) =>
+    `${target}:${toFunctionSelector(abi.find((f) => f.name === name)!)}`.toLowerCase(),
+  ),
+)
+
+/**
+ * Whether LZMultiCall reverts the batch whoever signs it: a call to its
+ * TransferDelegate must be 132 bytes of `delegateTransferFrom` pulling from the
+ * caller, and value sent to a non-payable call reverts. So does a `bytes` that
+ * runs past calldata or past 2^64, which solc's calldata decoder refuses.
+ */
+export function multiCallReverts(data: Hex, caller: Address): boolean {
+  let calls: readonly Call[]
+  try {
+    const { args } = decodeFunctionData({ abi, data })
+    ;[calls] = args as unknown as [readonly Call[]]
+  } catch (error) {
+    const name = (error as Error).name
+    if (
+      name === 'PositionOutOfBoundsError' ||
+      name === 'IntegerOutOfRangeError'
+    )
+      return true
+    throw error
+  }
+  return calls.some((c) => {
+    const selector = slice(c.data, 0, 4)
+    if (isAddressEqual(c.target, TD)) {
+      if (
+        size(c.data) !== 132 ||
+        selector !== toFunctionSelector(abi[1]) ||
+        !isAddressEqual(slice(c.data, 48, 68), caller)
+      )
+        return true
+    }
+    return (
+      c.value !== 0n && NON_PAYABLE.has(`${c.target}:${selector}`.toLowerCase())
+    )
+  })
+}
+
+/**
+ * The batch with its burn's `burnToken` set to `token`, or undefined unless
+ * the batch is the canonical encoding of one with a CCTP burn.
+ */
+export function withBurnToken(data: Hex, token: Address): Hex | undefined {
+  let calls: readonly Call[]
+  try {
+    const { args } = decodeFunctionData({ abi, data })
+    ;[calls] = args as unknown as [readonly Call[]]
+    if (execute([...calls], args[1] as Hex) !== data) return undefined
+  } catch {
+    return undefined
+  }
+  let swapped = false
+  const next = calls.map((c) => {
+    if (slice(c.data, 0, 4) !== toFunctionSelector(abi[5])) return c
+    const inner = decodeFunctionData({ abi, data: c.data })
+    const a = [...(inner.args as readonly unknown[])]
+    a[3] = token
+    swapped = true
+    return { ...c, data: fn('depositForBurn', a) }
+  })
+  return swapped
+    ? execute(next as Call[], decodeFunctionData({ abi, data }).args[1] as Hex)
+    : undefined
 }
