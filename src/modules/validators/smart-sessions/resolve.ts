@@ -20,6 +20,7 @@ import {
   CONSUME_FOR_SELECTOR,
   CONSUME_SELECTOR,
   oneTimeUseIdErc1271Policy,
+  sessionWindowRefusal,
 } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
@@ -44,6 +45,7 @@ import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
   IntentExecutorSettlementLayer,
+  Permission,
   ResolvedAction,
   ResolvedERC7739Policies,
   ResolvedPolicy,
@@ -68,6 +70,83 @@ function minDefined(a?: bigint, b?: bigint): bigint | undefined {
   if (a === undefined) return b
   if (b === undefined) return a
   return a < b ? a : b
+}
+
+/**
+ * Each validUntil the session's actions set, in seconds. A session's time window
+ * is expressed as the one-time-use deadline, so a window without oneTimeUse, or
+ * any validAfter, is refused.
+ */
+function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
+  const deadlines: bigint[] = []
+  const take = (field: string, validUntil: unknown, hasValidAfter: boolean) => {
+    if (hasValidAfter || (validUntil !== undefined && !definition.oneTimeUse)) {
+      throw new Error(sessionWindowRefusal(field))
+    }
+    if (validUntil === undefined) return
+    // As for oneTimeUse.validUntil: 0 or less would read as "never expires".
+    if (
+      !(
+        validUntil instanceof Date &&
+        Number.isFinite(validUntil.getTime()) &&
+        validUntil.getTime() > Date.now()
+      )
+    ) {
+      throw new Error(`${field}: validUntil must be a valid Date in the future`)
+    }
+    deadlines.push(BigInt(Math.floor(validUntil.getTime() / 1000)))
+  }
+  for (const { address, functions } of definition.permissions ?? []) {
+    for (const [name, config] of Object.entries(functions)) {
+      if (config) {
+        take(
+          `permissions[${address}].${name}`,
+          config.validUntil,
+          config.validAfter !== undefined,
+        )
+      }
+    }
+  }
+  for (const { target, selector, policies } of definition.actions ?? []) {
+    for (const policy of policies ?? []) {
+      if (policy.type === 'time-frame') {
+        take(
+          `actions[${target}:${selector}]`,
+          typeof policy.validUntil === 'number'
+            ? new Date(policy.validUntil)
+            : policy.validUntil,
+          policy.validAfter !== 0,
+        )
+      }
+    }
+  }
+  // An IntentExecutor-layer permit's window is resolved with its scope.
+  for (const [index, permit] of (
+    definition.crossChainPermits ?? []
+  ).entries()) {
+    if (!isSettlementScopedPermit(permit)) {
+      take(
+        `crossChainPermits[${index}]`,
+        permit.validUntil,
+        permit.validAfter !== undefined,
+      )
+    }
+  }
+  return deadlines
+}
+
+/** The permission without its window, which the session carries as its deadline. */
+function withoutWindow(permission: Permission): Permission {
+  return {
+    ...permission,
+    functions: Object.fromEntries(
+      Object.entries(permission.functions).map(([name, config]) => {
+        if (!config) return [name, config]
+        const { validUntil: _until, validAfter: _after, ...rest } = config
+        return [name, rest]
+      }),
+    ),
+  } as Permission
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -129,6 +208,7 @@ function resolveSession(
         options.settlement?.[definition.chain.id]?.usdStablecoins,
       )
     : undefined
+  const windowDeadlines = sessionWindowDeadlines(definition)
   const stableFloor = definition.swap?.stableFloor !== undefined
   if (stableFloor && definition.swap) {
     assertStableFloorIsolated({
@@ -201,7 +281,7 @@ function resolveSession(
     swapScope !== undefined ||
     settlementScope !== undefined
   const permissions = [
-    ...(definition.permissions ?? []),
+    ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []),
   ]
@@ -209,15 +289,24 @@ function resolveSession(
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
+  // A time-frame policy is carried as the deadline; an action left with no
+  // policy is sudo, as a permission with only a window is.
   const rawActions = [
-    ...(definition.actions ?? []),
+    ...(definition.actions ?? []).map((action): ScopedAction => {
+      if (!action.policies?.some((policy) => policy.type === 'time-frame')) {
+        return action
+      }
+      const { policies, ...rest } = action
+      const kept = policies.filter((policy) => policy.type !== 'time-frame')
+      return kept.length ? { ...rest, policies: kept } : rest
+    }),
     ...(swapScope?.actions ?? []),
     ...(settlementScope?.actions ?? []),
   ]
   // A restricted session drops the fallback action, which is also where a
-  // cross-chain permit's spending-limit / time-frame guardrails live — so a
-  // restricted session combined with a permit would keep claim signing but lose
-  // maxAmount/deadline enforcement. These are different authorization surfaces;
+  // cross-chain permit's spending-limit guardrails live — so a restricted
+  // session combined with a permit would keep claim signing but lose maxAmount
+  // enforcement. These are different authorization surfaces;
   // reject the combination rather than silently drop the guardrails.
   // A settlement-scoped permit carries its guardrails on its own actions, so it
   // is the one permit shape a restricted session can hold.
@@ -228,7 +317,7 @@ function resolveSession(
   ) {
     throw new Error(
       'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
-        'dropping the fallback also drops the permit guardrails (spending/time ' +
+        'dropping the fallback also drops the permit guardrails (spending ' +
         'limits). Use a restricted scoped-action session or a permit session, ' +
         'not both.',
     )
@@ -248,6 +337,24 @@ function resolveSession(
       "universalActionCopies cannot use saltMode 'v1': a 1.x session has no split policies to reproduce",
     )
   }
+  const validUntil = definition.oneTimeUse?.validUntil
+  // A deadline that rounds to 0 would read as "never expires"; a past one only
+  // fails at enable, as an opaque signature error.
+  if (
+    validUntil !== undefined &&
+    !(
+      Number.isFinite(validUntil.getTime()) && validUntil.getTime() > Date.now()
+    )
+  ) {
+    throw new Error('oneTimeUse.validUntil must be a valid Date in the future')
+  }
+  // Every other validUntil on the session joins it as the session deadline.
+  const onceDeadline = definition.oneTimeUse
+    ? [settlementScope?.onceDeadline, ...windowDeadlines].reduce(
+        minDefined,
+        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+      )
+    : undefined
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -284,7 +391,7 @@ function resolveSession(
     )
   }
   const expandedPermits = permit2Permits.map((permit) =>
-    expandCrossChainPermit(permit, environment),
+    expandCrossChainPermit(permit, environment, onceDeadline),
   )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
@@ -316,23 +423,29 @@ function resolveSession(
         ]
       : []),
     ...(restricted ? [] : [fallbackAction]),
-    {
-      target: DUMMY_PRECLAIMOP_TARGET,
-      selector: DUMMY_PRECLAIMOP_SELECTOR,
-      // The real pre-claim op carries no value, so cap it for a restricted
-      // session rather than granting sudo, which would let this injected action
-      // send native value to the dummy target.
-      //
-      // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer` does
-      // `require(valueLimit != 0)`, so a zero limit reverts while the policy is
-      // being installed. That made every restricted session impossible to
-      // enable — the revert surfaces as `InvalidSignature()` from the emissary,
-      // which reads as a signature problem rather than a policy-init one.
-      // 1 wei is the smallest limit that installs, and the op carries no value.
-      policies: restricted
-        ? [{ type: 'value-limit', limit: 1n }]
-        : [{ type: 'sudo' }],
-    },
+    // A one-time-use session enables with its burn, which replaces the dummy op.
+    ...(definition.oneTimeUse
+      ? []
+      : [
+          {
+            target: DUMMY_PRECLAIMOP_TARGET,
+            selector: DUMMY_PRECLAIMOP_SELECTOR,
+            // The real pre-claim op carries no value, so cap it for a
+            // restricted session rather than granting sudo, which would let
+            // this injected action send native value to the dummy target.
+            //
+            // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer`
+            // does `require(valueLimit != 0)`, so a zero limit reverts while
+            // the policy is being installed. That made every restricted
+            // session impossible to enable — the revert surfaces as
+            // `InvalidSignature()` from the emissary, which reads as a
+            // signature problem rather than a policy-init one. 1 wei is the
+            // smallest limit that installs, and the op carries no value.
+            policies: restricted
+              ? [{ type: 'value-limit', limit: 1n }]
+              : [{ type: 'sudo' }],
+          } satisfies ScopedAction,
+        ]),
   ]
   if (restricted && !userActions.length && !rawActions.length) {
     throw new Error(
@@ -381,7 +494,7 @@ function resolveSession(
         }))
       : userActions
   let actions: ResolvedAction[] =
-    userActions.length || rawActions.length || permitFallbackPolicies.length
+    userActions.length || rawActions.length || expandedPermits.length
       ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
           (action): ResolvedAction => ({
             actionTargetSelector:
@@ -468,28 +581,10 @@ function resolveSession(
         'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
       )
     }
-    const validUntil = definition.oneTimeUse.validUntil
-    // A deadline that rounds to 0 would read as "never expires"; a past one only
-    // fails at enable, as an opaque signature error.
-    if (
-      validUntil !== undefined &&
-      !(
-        Number.isFinite(validUntil.getTime()) &&
-        validUntil.getTime() > Date.now()
-      )
-    ) {
-      throw new Error(
-        'oneTimeUse.validUntil must be a valid Date in the future',
-      )
-    }
-    // A settlement-scoped permit's validUntil joins it as the session deadline.
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline: minDefined(
-        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
-        settlementScope?.onceDeadline,
-      ),
+      deadline: onceDeadline,
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via
