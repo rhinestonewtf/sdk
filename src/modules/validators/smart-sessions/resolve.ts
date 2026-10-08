@@ -1185,6 +1185,9 @@ export function toSession(
           chainId: definition.chain.id,
           environment,
         }).oneTimeUseId as Address,
+        ...(definition.policyAddresses?.oneTimeUseId === undefined
+          ? { defaultPolicy: true as const }
+          : {}),
       },
     }),
   }

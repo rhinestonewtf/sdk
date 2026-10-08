@@ -417,10 +417,18 @@ describe('resolveSessionData — default OneTimeUseIdPolicy address', () => {
         { ...definition, policyAddresses: { oneTimeUseId: address } },
         { environment },
       )
-      expect(byDefault).toEqual(explicit)
+      // Only the marker that an intent should check the deployment differs.
+      expect({ ...byDefault, oneTimeUse: explicit.oneTimeUse }).toEqual(
+        explicit,
+      )
       expect(byDefault.permissionId).toBe(explicit.permissionId)
       expect(getSessionData(byDefault)).toEqual(getSessionData(explicit))
-      expect(byDefault.oneTimeUse).toEqual({ id: 42n, policy: address })
+      expect(byDefault.oneTimeUse).toEqual({
+        id: 42n,
+        policy: address,
+        defaultPolicy: true,
+      })
+      expect(explicit.oneTimeUse).toEqual({ id: 42n, policy: address })
       expect(
         byDefault.actions.filter((action) => action.actionTarget === address),
       ).toHaveLength(2)
