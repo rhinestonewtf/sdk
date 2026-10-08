@@ -38,28 +38,25 @@ export function createExpressRouter(
 
   return (req, res, next) => {
     const path = routePath(req.url)
-    let work: (() => Promise<void>) | undefined
+    let pending: ReturnType<typeof handleAccessToken>
 
     if (
       (req.method === 'GET' || req.method === 'HEAD') &&
       path === '/access-token'
     ) {
-      work = async () => {
-        const result = await handleAccessToken()
-        res.status(result.status).json(result.body)
-      }
+      pending = handleAccessToken()
     } else if (req.method === 'POST' && path === '/extension-token') {
-      work = async () => {
-        const body = req.body as Record<string, unknown> | undefined
-        const result = await handleExtensionToken(body?.intentInput)
-        res.status(result.status).json(result.body)
-      }
-    }
-
-    if (!work) {
+      const body = req.body as Record<string, unknown> | undefined
+      pending = handleExtensionToken(body?.intentInput)
+    } else {
       next()
       return
     }
-    work().catch(next)
+
+    pending
+      .then((result) => {
+        res.status(result.status).json(result.body)
+      })
+      .catch(next)
   }
 }
