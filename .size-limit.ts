@@ -116,7 +116,7 @@ const limits = [
     path: `${packageRoot}/jwt-server/index.js`,
     limit: '2 kB',
     import: '*',
-    ignore: ['express', 'express/*', 'jose', 'jose/*', ...viem],
+    ignore: ['jose', 'jose/*', ...viem],
     modifyEsbuildConfig: (config: BuildOptions): BuildOptions => ({
       ...config,
       format: 'esm',
