@@ -500,7 +500,13 @@ function resolveSession(
         expansionRefused = true
         refuse(error, { permitIndex })
       },
-      () => expandCrossChainPermit(permit, environment, onceDeadline),
+      () =>
+        expandCrossChainPermit(
+          permit,
+          environment,
+          onceDeadline,
+          definition.account,
+        ),
     )
     return expanded === undefined ? [] : [expanded]
   })

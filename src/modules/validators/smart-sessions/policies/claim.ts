@@ -1,9 +1,10 @@
-import { isAddressEqual } from 'viem'
+import { type Address, isAddressEqual } from 'viem'
 import { getArbitersForSettlementLayers } from '../../policies/claim/arbiters'
 import type {
   InternalPermit2ClaimPolicy,
   Permit2ClaimMessage,
 } from '../../policies/claim/permit2'
+import { recipientNotAllowed } from '../cross-chain-permits'
 import { refusal } from '../refusals'
 import type {
   CrossChainPermit,
@@ -15,6 +16,7 @@ export function expandCrossChainPermit(
   permit: CrossChainPermit,
   environment: 'production' | 'development',
   onceDeadline?: bigint,
+  account?: Address,
 ): {
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
@@ -42,6 +44,18 @@ export function expandCrossChainPermit(
       'MIN_AMOUNT_ON_PERMIT2_LAYER',
       'crossChainPermits: `to.minAmount` does not apply to Permit2 layers',
     )
+  }
+  // recipientIsSponsor pins every recipient to the account, so a leg pinned
+  // anywhere else could never settle.
+  if (permit.recipientIsAccount ?? true) {
+    const leg = permit.to?.find(
+      ({ recipient }) =>
+        recipient === 'any' ||
+        (recipient !== undefined &&
+          account !== undefined &&
+          !isAddressEqual(recipient, account)),
+    )
+    if (leg?.recipient !== undefined) throw recipientNotAllowed(leg.recipient)
   }
   const sourceTokens = permit.from?.length
     ? permit.from.map(({ chain, token }) => ({ chain, address: token }))
