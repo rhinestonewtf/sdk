@@ -36,7 +36,8 @@ function fingerprint(definition: SessionDefinition) {
   }
 }
 
-// Sessions that set no time window on an action must not move.
+// Sessions that set no time window on an action must not move, except the
+// Permit2 permit without maxAmount (below).
 const WINDOWLESS: Record<string, SessionDefinition> = {
   sudo: { chain: base, owners },
   'permissions, strict salt': {
@@ -68,6 +69,19 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
         target: TARGET,
         selector: '0x12345678',
         policies: [{ type: 'usage-limit', limit: 2n }],
+      },
+    ],
+  },
+  // Moved in this change: its fallback now always carries the intent-execution
+  // policy (main: 0x99711685…e5d2).
+  'Permit2 crossChainPermit, no maxAmount': {
+    chain: base,
+    owners,
+    crossChainPermits: [
+      {
+        from: { chain: base, token: USDC },
+        to: { chain: arbitrum, token: USDC_ARB },
+        settlementLayers: ['ACROSS'],
       },
     ],
   },
@@ -142,6 +156,11 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
     permissionId:
       '0x5e76b37831e3aba8f394e9fe12df02a8fdec55174e1b27c29adc810b8a5cc844',
     data: '0x4538d4956dfb324c2488d867a58f9388bd835707cd03ec2b271b5b59c68f1505',
+  },
+  'Permit2 crossChainPermit, no maxAmount': {
+    permissionId:
+      '0x1bed04f1dab12e3ccb1ec7e62815b8ca9d92440c556ff58049254998e580556b',
+    data: '0xfaa25e62e2082e19eac4f4bff88dc195f5e459f9aa3985f6b8b057edbc24e018',
   },
   'Permit2 crossChainPermit, oneTimeUse': {
     permissionId:

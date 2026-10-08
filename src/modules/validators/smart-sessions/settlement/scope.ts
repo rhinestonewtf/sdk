@@ -45,6 +45,8 @@ const LAYERS: Record<
      * a reusable session could repeat dust sends until the balance is gone.
      */
     readonly requiresOneTimeUse?: true
+    /** Enforces the leg's `to.minAmount` on what its call delivers. */
+    readonly floorsDelivery?: true
   }
 > = {
   CCTP: {
@@ -56,10 +58,12 @@ const LAYERS: Record<
     target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
     requiresOneTimeUse: true,
+    floorsDelivery: true,
   },
   ECO_IE: {
     target: (settlement, chainId) => served(settlement, chainId, 'eco').portal,
     scope: scopeEco,
+    floorsDelivery: true,
   },
   LZ: {
     target: (settlement, chainId) =>
@@ -253,18 +257,9 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  // A SAME_CHAIN_IE swap, ECO_IE and OFT floor their own delivery. ECO_IE may sit
-  // beside other layers and floors only its route; OFT must be named alone, since
-  // beside another layer its floor would bind only the OFT send.
+  // Every layer in the permit must enforce `to.minAmount`, or the key would
+  // settle around it: scopeLayer refuses one that cannot (CCTP never can).
   const minAmount = permit.to?.some((leg) => leg.minAmount !== undefined)
-  const onlyLayer = !all && requested.length === 1 ? requested[0] : undefined
-  const floors =
-    sameChainOnly || requested.includes('ECO_IE') || onlyLayer === 'OFT'
-  if (minAmount && !floors) {
-    throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap, ECO_IE or an OFT-only permit',
-    )
-  }
   // Each source chain's session floors its own capped reward with the same
   // absolute amount, so it bounds the rate only where every cap is the same.
   const sourceCaps = new Set(
@@ -321,6 +316,11 @@ export function resolveSettlementScope(
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: an ${layer} permit requires oneTimeUse`,
+      )
+    }
+    if (minAmount && !LAYERS[layer].floorsDelivery) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
       )
     }
     const target = LAYERS[layer].target(settlement, options.chainId)

@@ -120,15 +120,17 @@ function floorMinAmount(
   const from = decimals(ctx.chainId, ctx.sourceTokens[0])
   const to = decimals(leg.chainId, leg.token)
   if (from === undefined || from !== to) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: an OFT \`to.minAmount\` needs served, equal decimals for the \`from\` token on chain ${ctx.chainId} (${from ?? 'not served'}) and the \`to\` token on chain ${leg.chainId} (${to ?? 'not served'})`,
     )
   }
   if (minAmount <= 0n) {
-    throw new Error('crossChainPermits: an OFT `to.minAmount` must be positive')
+    throw new SettlementLayerRefusal(
+      'crossChainPermits: an OFT `to.minAmount` must be positive',
+    )
   }
   if (ctx.cap !== undefined && minAmount > ctx.cap) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
     )
   }
@@ -184,7 +186,7 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
           other.minAmount !== leg.minAmount,
       )
     if (twin) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: two OFT \`to\` legs on chain ${leg.chainId} admit the same send but set different \`minAmount\`s`,
       )
     }
