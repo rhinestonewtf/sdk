@@ -571,6 +571,131 @@ describe('intent workflow', () => {
     expect(read).toHaveBeenCalledTimes(3)
   })
 
+  test('forces verify-execution mode for an already-enabled one-time-use session', async () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      claimPolicies: [
+        {
+          type: 'permit2',
+          spenders: ['0x00000000000000000000000000000000000000ab'],
+        },
+      ],
+      oneTimeUse: { id: 42n },
+      policyAddresses: {
+        oneTimeUseId: '0x00000000000000000000000000000000000000aa',
+      },
+    })
+    const workflow = context({
+      checkpoints: {
+        read: vi.fn(async (checkpoint) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: true,
+          },
+        ]),
+      },
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: { kind: 'smart-session', byChain: { 1: { session } } },
+    })
+    // A permission-less session enabled on-chain would normally drop to
+    // signatureMode 1 (see the multi-factor/passkey enabled cases → 0x00). A
+    // one-time-use session must stay in mode 5 so checkAction keeps running on
+    // the executor route — otherwise the contract's action-surface guard is inert.
+    expect(prepared.request.options.signatureMode).toBe(5)
+    // source: cast calldata "consumeFor(uint256,uint256)" 42 0
+    expect(prepared.request.preClaimExecutions?.[1]?.[0]).toMatchObject({
+      to: '0x00000000000000000000000000000000000000aa',
+      value: 0n,
+      data: '0x96301d72000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000',
+    })
+    // Same-chain: the source's burn already leads the batch, so the destination
+    // calls must not carry a second one (the orchestrator refuses two).
+    expect(
+      (prepared.request.destinationExecutions ?? []).map((call) =>
+        call.to.toLowerCase(),
+      ),
+    ).not.toContain('0x00000000000000000000000000000000000000aa')
+    expect(prepared.request.destinationExecutions?.length).toBe(
+      input.calls.length,
+    )
+  })
+
+  describe('one-time-use destination burn', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    // source: cast calldata "consumeFor(uint256,uint256)" 42 0
+    const BURN =
+      '0x96301d72000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000'
+    const baseChain = toEvmChainReference(base.id)
+    const sessionOn = (id: number) =>
+      toSession({
+        chain: id === base.id ? base : mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+    const enabledWorkflow = () =>
+      context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            {
+              kind: 'session-enabled' as const,
+              id: checkpoint.id,
+              enabled: true,
+            },
+          ]),
+        },
+      })
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: {
+        [base.id]: { session: sessionOn(base.id) },
+        [mainnet.id]: { session: sessionOn(mainnet.id) },
+      },
+    }
+
+    test("leads a cross-chain destination's calls with the burn", async () => {
+      const prepared = await prepareIntent(enabledWorkflow(), {
+        ...input,
+        sourceChains: [baseChain],
+        signers,
+      })
+      const destination = prepared.request.destinationExecutions ?? []
+      expect(destination).toHaveLength(input.calls.length + 1)
+      expect(destination[0]).toMatchObject({ to: POLICY, data: BURN })
+    })
+
+    test('adds no destination burn when there are no destination calls', async () => {
+      const prepared = await prepareIntent(enabledWorkflow(), {
+        ...input,
+        calls: [],
+        sourceChains: [baseChain],
+        signers,
+      })
+      expect(prepared.request.destinationExecutions ?? []).toHaveLength(0)
+    })
+
+    test('rejects an intent that does not list its sources', async () => {
+      const { sourceChains: _omitted, ...withoutSources } = input
+      await expect(
+        prepareIntent(enabledWorkflow(), { ...withoutSources, signers }),
+      ).rejects.toThrow(/list its sourceChains/)
+    })
+
+    test('rejects destination calls on a chain that is also one of several sources', async () => {
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [baseChain, chain],
+          signers,
+        }),
+      ).rejects.toThrow(/also one of several sources/)
+    })
+  })
+
   test('uses each prepared stage chain for a shorthand cross-chain session', () => {
     const source = toEvmChainReference(base.id)
     const destination = toEvmChainReference(arbitrum.id)

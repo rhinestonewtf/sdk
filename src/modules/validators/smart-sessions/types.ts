@@ -152,6 +152,18 @@ export interface SwapScopeInput {
    * explicitly only for flows where the account calls a router directly.
    */
   readonly via?: readonly SwapVenue[]
+  /** Opt-in rate floor for a stable-to-stable swap. See `SwapScope.stableFloor`. */
+  readonly stableFloor?: StableSwapFloor
+}
+
+/** `true` for the default 100 bps slippage, or an explicit tolerance. */
+export type StableSwapFloor = true | { readonly maxSlippageBps: number }
+
+/** A USD stablecoin the orchestrator serves as 1:1 (`/chains` `settlement.usdStablecoins`). */
+export interface ServedStablecoin {
+  readonly address: Address
+  readonly symbol: string
+  readonly decimals: number
 }
 
 export interface FallbackAction {
@@ -197,18 +209,45 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
+  // Required when a session sets `oneTimeUse`; no default until the policy has a
+  // canonical deployment.
+  readonly oneTimeUseId?: Address
 }
 
-export type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+/** Layers a permit settles through the Permit2 claim path (arbiter allowlist). */
+export type Permit2SettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+
+/**
+ * Layers the account settles by executing the bridge call itself. Naming one
+ * compiles the permit to scoped, argument-pinned actions and restricts the
+ * session to them.
+ */
+export type IntentExecutorSettlementLayer =
+  | 'CCTP'
+  | 'OFT'
+  | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
+  | 'LZ'
+
+export type CrossChainSettlementLayer =
+  | Permit2SettlementLayer
+  | IntentExecutorSettlementLayer
 
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
+  to?: {
+    chain: Chain
+    token: Address
+    recipient?: Address | 'any'
+    minAmount?: bigint
+  }[]
   validUntil?: bigint
   validAfter?: bigint
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   recipientIsAccount?: boolean
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
+  maxFeeBps?: number
+  allowFees?: boolean
 }
 
 export interface FromLeg {
@@ -221,6 +260,7 @@ export interface ToLeg {
   chain: Chain
   token: Address
   recipient?: Address | 'any'
+  minAmount?: bigint
 }
 
 export interface CrossChainPermissionInput {
@@ -230,7 +270,9 @@ export interface CrossChainPermissionInput {
   validAfter?: Date
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   allowRecipientNotAccount?: boolean
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
+  maxFeeBps?: number
+  allowFees?: boolean
 }
 
 export interface Permit2ClaimPolicy {
@@ -312,6 +354,19 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
+  // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
+  // config/account.ts for the full contract.
+  oneTimeUse?: OneTimeUseSessionConfig
+  // The account the session is for. Required when an IntentExecutor-layer
+  // `crossChainPermits` entry pins its recipient to the account (the default).
+  account?: Address
+}
+
+export interface OneTimeUseSessionConfig {
+  readonly id: bigint
+  // After this the id can no longer be spent; omit for never. The policy rejects
+  // a time already in the past at session enable (DeadlineInPast).
+  readonly validUntil?: Date
 }
 
 export interface ResolvedPolicy {
@@ -350,6 +405,12 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
+  /** The IntentExecutor layers the session's permit was scoped to, so a caller
+   *  can restrict an intent to them. Metadata only, like `swap`. */
+  settlementLayers?: readonly IntentExecutorSettlementLayer[]
+  // A one-time-use session (RHI-5798): its id and policy, so every intent can
+  // carry the burn and run in verify-execution mode (see prepareIntentSessions).
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 export interface SessionData {

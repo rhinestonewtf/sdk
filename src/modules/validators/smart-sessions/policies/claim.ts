@@ -18,6 +18,25 @@ export function expandCrossChainPermit(
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
 } {
+  // Unreachable ('all' is settlement-scoped); narrows the type for the arbiters.
+  if (permit.settlementLayers === 'all') {
+    throw new Error(
+      "crossChainPermits: settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
+    )
+  }
+  if (permit.maxFeeBps !== undefined) {
+    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
+  }
+  if (permit.allowFees) {
+    throw new Error(
+      'crossChainPermits: allowFees applies only to IntentExecutor layers',
+    )
+  }
+  if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
+    throw new Error(
+      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+    )
+  }
   const sourceTokens = permit.from?.length
     ? permit.from.map(({ chain, token }) => ({ chain, address: token }))
     : undefined

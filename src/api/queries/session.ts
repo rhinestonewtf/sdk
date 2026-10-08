@@ -26,5 +26,6 @@ export async function createSession(input: {
   return toSession(input.definition, {
     wrappedNativeToken,
     environment: input.environment,
+    settlement: catalog.getSettlementCatalog(),
   })
 }

@@ -401,4 +401,55 @@ describe('orchestrator client', () => {
       traceId: 'trace-error',
     } satisfies Partial<RateLimitedError>)
   })
+
+  describe('chain catalog', () => {
+    const chains = (name: string) =>
+      new Response(
+        JSON.stringify({
+          'eip155:8453': { name, testnet: false, supportedTokens: [] },
+        }),
+      )
+    const clientWith = (fetch: () => Promise<Response>) =>
+      createOrchestratorClient({
+        url: 'https://orchestrator.example',
+        auth: createOrchestratorAuth({ kind: 'api-key', apiKey: 'secret' }),
+        fetch,
+      })
+
+    test('reuses the catalog within the TTL and refetches after it', async () => {
+      vi.useFakeTimers()
+      try {
+        const fetch = vi
+          .fn()
+          .mockResolvedValueOnce(chains('first'))
+          .mockResolvedValueOnce(chains('second'))
+        const client = clientWith(fetch)
+        const name = async () =>
+          (await client.getChainCatalog()).getChainInfo(8453)?.name
+        expect(await name()).toBe('first')
+        vi.advanceTimersByTime(10 * 60 * 1000 - 1)
+        expect(await name()).toBe('first')
+        expect(fetch).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(1)
+        expect(await name()).toBe('second')
+        expect(fetch).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test('does not cache a failed fetch', async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ message: 'down' }), { status: 503 }),
+        )
+        .mockResolvedValueOnce(chains('back'))
+      const client = clientWith(fetch)
+      await expect(client.getChainCatalog()).rejects.toThrow()
+      const catalog = await client.getChainCatalog()
+      expect(catalog.getChainInfo(8453)?.name).toBe('back')
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+  })
 })
