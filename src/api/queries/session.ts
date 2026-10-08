@@ -4,14 +4,14 @@ import type { ChainCatalogPort } from '../../clients/orchestrator/port'
 import type { RpcPort } from '../../clients/rpc/port'
 import { resolvePolicyAddresses } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
-  type CrossChainPermitRefusal,
+  type CrossChainPermitValidation,
   collectRefusals,
   refusal,
 } from '../../modules/validators/smart-sessions/refusals'
 import {
-  collectSessionRefusals,
   sessionPolicyAddresses,
   toSession,
+  validateSessionDefinition,
 } from '../../modules/validators/smart-sessions/resolve'
 import type {
   Session,
@@ -57,13 +57,13 @@ export async function createSession(input: {
   })
 }
 
-/** Every refusal `createSession` would throw for `definition`, from the same `/chains` inputs. */
+/** The dry run of `createSession` for `definition`, from the same `/chains` and code reads. */
 export async function validateCrossChainPermits(input: {
   readonly orchestrator: ChainCatalogPort
   readonly rpc: RpcPort
   readonly environment: 'production' | 'development'
   readonly definition: SessionDefinition
-}): Promise<CrossChainPermitRefusal[]> {
+}): Promise<CrossChainPermitValidation> {
   const copies = await assertUniversalActionCopies(
     input.rpc,
     input.definition,
@@ -84,15 +84,15 @@ export async function validateCrossChainPermits(input: {
       input.definition.chain.id,
     )
   })
-  return [
-    ...copies,
-    ...unserved,
-    ...collectSessionRefusals(input.definition, {
-      environment: input.environment,
-      settlement: catalog.getSettlementCatalog(),
-      ...(wrappedNativeToken ? { wrappedNativeToken } : {}),
-    }),
-  ]
+  const session = validateSessionDefinition(input.definition, {
+    environment: input.environment,
+    settlement: catalog.getSettlementCatalog(),
+    ...(wrappedNativeToken ? { wrappedNativeToken } : {}),
+  })
+  const before = [...copies, ...unserved]
+  return before.length
+    ? { refusals: [...before, ...session.refusals] }
+    : session
 }
 
 /**

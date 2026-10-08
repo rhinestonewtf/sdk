@@ -41,12 +41,13 @@ import {
   CROSS_CHAIN_PERMIT_REFUSAL_CODES,
   type CrossChainPermitRefusal,
   type CrossChainPermitRefusalCode,
+  type CrossChainPermitValidation,
 } from '../modules/validators/smart-sessions/refusals'
 import {
-  collectSessionRefusals,
   toSession as resolveSession,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+  validateSessionDefinition,
 } from '../modules/validators/smart-sessions/resolve'
 import type {
   SettlementAddresses,
@@ -102,8 +103,10 @@ function toSession<
 /**
  * Dry-run a session definition and return every refusal `toSession` and
  * `createSession` would throw for it, instead of throwing the first. Runs the
- * same resolution code, so the two cannot disagree: the first entry is the
- * error they throw, and the list is empty exactly when they succeed.
+ * same resolution code, so the two cannot disagree: the first refusal is the
+ * error they throw, and `refusals` is empty exactly when they succeed. Then the
+ * result also carries the session's `access` and, for a settlement-scoped
+ * permit, its `settlementCoverage`.
  *
  * Problems that do not depend on each other are all reported. Within one
  * settlement layer only its first refusal is, as are refusals that leave
@@ -115,7 +118,7 @@ function toSession<
  * @param options.settlement The orchestrator's settlement addresses by chain id
  * @param options.wrappedNativeToken The chain's wrapped-native token, as `createSession` adds it
  * @param options.useDevContracts Resolve against the development deployments
- * @returns Each refusal with its stable `code`; empty when the session resolves
+ * @returns `refusals`, each with its stable `code`, and once none remain the session's `access` and `settlementCoverage`
  */
 function validateCrossChainPermits<
   const TAbis extends readonly Abi[],
@@ -127,8 +130,8 @@ function validateCrossChainPermits<
     wrappedNativeToken?: Address
     useDevContracts?: boolean
   } = {},
-): readonly CrossChainPermitRefusal[] {
-  return collectSessionRefusals(definition as DomainSessionDefinition, {
+): CrossChainPermitValidation {
+  return validateSessionDefinition(definition as DomainSessionDefinition, {
     environment: environment(options.useDevContracts),
     ...(options.wrappedNativeToken
       ? { wrappedNativeToken: options.wrappedNativeToken }
@@ -181,6 +184,7 @@ export type {
   ChainDigest,
   CrossChainPermitRefusal,
   CrossChainPermitRefusalCode,
+  CrossChainPermitValidation,
   FyndChainId,
   FyndVenue,
   RhinestoneSwapVenue,

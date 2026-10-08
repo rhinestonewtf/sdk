@@ -128,6 +128,7 @@ export type {
 export type {
   CrossChainPermitRefusal,
   CrossChainPermitRefusalCode,
+  CrossChainPermitValidation,
 } from './modules/validators/smart-sessions/refusals'
 export type {
   OwnerPasskeySignature,

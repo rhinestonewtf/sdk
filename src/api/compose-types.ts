@@ -18,7 +18,7 @@ import type {
   AccountInvocationContext,
   ResolvedSdkConfig,
 } from '../config/resolved'
-import type { CrossChainPermitRefusal } from '../modules/validators/smart-sessions/refusals'
+import type { CrossChainPermitValidation } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
@@ -83,7 +83,7 @@ export interface ProjectWorkflows {
   readonly createSession: (definition: SessionDefinition) => Promise<Session>
   readonly validateCrossChainPermits: (
     definition: SessionDefinition,
-  ) => Promise<readonly CrossChainPermitRefusal[]>
+  ) => Promise<CrossChainPermitValidation>
 }
 
 export interface AccountWorkflows<CompatibilityConfig = unknown> {

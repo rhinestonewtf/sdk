@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Address, Chain } from 'viem'
-import { arbitrum, base } from 'viem/chains'
+import { arbitrum, base, plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
@@ -16,9 +19,14 @@ import {
   collectSessionRefusals,
   type ResolveSessionOptions,
   toSession,
+  validateSessionDefinition,
 } from './resolve'
 import { SettlementLayerRefusal } from './settlement/served'
-import type { CrossChainPermissionInput, SessionDefinition } from './types'
+import type {
+  CrossChainPermissionInput,
+  SessionAccess,
+  SessionDefinition,
+} from './types'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
@@ -508,5 +516,200 @@ describe('collectRefusals', () => {
       throw new Error('plain')
     }) as CrossChainPermitRefusal[]
     expect(Object.keys(entry)).toEqual(['code', 'message'])
+  })
+})
+
+describe('refusal code coverage', () => {
+  const root = fileURLToPath(new URL('../../..', import.meta.url))
+  const sources = readdirSync(root, { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+    .map((file) => readFileSync(join(root, file), 'utf8'))
+    // Only modules that raise refusals; `code` means other things elsewhere.
+    .filter((source) => /refusals'|SettlementLayerRefusal/.test(source))
+  const used = new Set(
+    sources.flatMap((source) =>
+      [...source.matchAll(/(?:code: |refusal\(\s*)'([A-Z0-9_]+)'/g)].map(
+        ([, code]) => code,
+      ),
+    ),
+  )
+
+  test('every code src raises is listed', () => {
+    expect(used.size).toBeGreaterThan(40)
+    for (const code of used) {
+      expect(CROSS_CHAIN_PERMIT_REFUSAL_CODES).toHaveProperty(code)
+    }
+  })
+
+  test('every listed code is raised somewhere in src', () => {
+    const listed = Object.keys(CROSS_CHAIN_PERMIT_REFUSAL_CODES).filter(
+      (code) => code !== 'SESSION_REFUSED',
+    )
+    expect(listed.filter((code) => !used.has(code))).toEqual([])
+  })
+
+  test('every SettlementLayerRefusal names a code', () => {
+    for (const source of sources) {
+      for (const [call] of source.matchAll(
+        /new SettlementLayerRefusal\([^;]*?\n\s*\)/g,
+      )) {
+        expect(call).toMatch(/code: '[A-Z0-9_]+'/)
+      }
+    }
+  })
+})
+
+describe("refusals under settlementLayers 'all'", () => {
+  const USDT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!.token
+  const VALID_UNTIL = new Date(2_000_000_000_000)
+  // Each drops at least one layer; together they reach every floor refusal.
+  const permits: [string, Chain, CrossChainPermissionInput][] = [
+    [
+      'a floor on a leg LZ reaches over CCTP',
+      base,
+      cctp({
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        to: { chain: arbitrum, token: USDC_ARB, minAmount: 98n },
+        validUntil: VALID_UNTIL,
+        settlementLayers: 'all',
+      }),
+    ],
+    [
+      'an OFT floor without validUntil',
+      arbitrum,
+      {
+        from: { chain: arbitrum, token: USDT_ARB, maxAmount: 100n },
+        to: { chain: plasma, token: USDT_PLASMA, minAmount: 95n },
+        settlementLayers: 'all',
+      },
+    ],
+    [
+      'no floor and no maxFeeBps',
+      base,
+      cctp({
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        settlementLayers: 'all',
+      }),
+    ],
+  ]
+
+  test.each(permits)(
+    '%s: each dropped layer, named alone, is refused with a code',
+    (_, chain, permit) => {
+      const definition = session([permit], {
+        ...oneTimeUse,
+        chain,
+      } as Partial<SessionDefinition>)
+      const validation = validateSessionDefinition(definition, OPTIONS)
+      expect(validation.refusals).toEqual([])
+      const dropped = validation.settlementCoverage?.dropped ?? []
+      expect(dropped.length).toBeGreaterThan(0)
+      for (const { layer, reason } of dropped) {
+        const [first] = collectSessionRefusals(
+          session([{ ...permit, settlementLayers: [layer] }], {
+            ...oneTimeUse,
+            chain,
+          } as Partial<SessionDefinition>),
+          OPTIONS,
+        )
+        expect(first.code).not.toBe('SESSION_REFUSED')
+        expect(first).toMatchObject({
+          message: `crossChainPermits: ${reason}`,
+          layer,
+        })
+      }
+    },
+  )
+
+  test('the dry run lists the floor drops createSession records', () => {
+    const [, chain, permit] = permits[0]
+    const definition = session([permit], {
+      ...oneTimeUse,
+      chain,
+    } as Partial<SessionDefinition>)
+    const validation = validateSessionDefinition(definition, OPTIONS)
+    expect(validation.settlementCoverage).toEqual(
+      toSession(definition, OPTIONS).settlementCoverage,
+    )
+    expect(validation.settlementCoverage?.dropped).toEqual([
+      { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
+      { layer: 'OFT', reason: `OFT does not route to chain ${base.id}` },
+      {
+        layer: 'LZ',
+        reason: `LZ pins \`to.minAmount\` only on a Stargate send, and chain ${arbitrum.id} is reached over CCTP`,
+      },
+    ])
+    const codes = (layer: 'CCTP' | 'LZ') =>
+      collectSessionRefusals(
+        session([{ ...permit, settlementLayers: [layer] }], oneTimeUse),
+        OPTIONS,
+      ).map(({ code }) => code)
+    expect(codes('CCTP')).toEqual(['MIN_AMOUNT_NOT_ENFORCEABLE'])
+    expect(codes('LZ')).toEqual(['LZ_FLOOR_ON_CCTP_ROUTE'])
+  })
+
+  // Remove with ECO_NEEDS_VALID_UNTIL once ECO_IE takes a permit without validUntil.
+  test('the dry run lists ECO_IE dropped for a missing validUntil', () => {
+    const [, chain, permit] = permits[1]
+    const extra = { ...oneTimeUse, chain } as Partial<SessionDefinition>
+    const validation = validateSessionDefinition(
+      session([permit], extra),
+      OPTIONS,
+    )
+    expect(
+      validation.settlementCoverage?.dropped.find(
+        ({ layer }) => layer === 'ECO_IE',
+      ),
+    ).toEqual({
+      layer: 'ECO_IE',
+      reason:
+        'ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
+    })
+    expect(
+      collectSessionRefusals(
+        session([{ ...permit, settlementLayers: ['ECO_IE'] }], extra),
+        OPTIONS,
+      ).map(({ code }) => code),
+    ).toEqual(['ECO_NEEDS_VALID_UNTIL'])
+  })
+})
+
+describe('validateSessionDefinition access', () => {
+  test.each<[string, SessionDefinition, SessionAccess]>([
+    [
+      'a Permit2 permit',
+      session([permit2()]),
+      {
+        kind: 'open',
+        reason:
+          'Permit2-route permit (ACROSS) keeps the intent-execution fallback',
+      },
+    ],
+    [
+      'a settlement-scoped permit',
+      session([cctp()]),
+      { kind: 'scoped', reason: 'settlement-scoped permit (CCTP)' },
+    ],
+  ])('reports %s as createSession would', (_, definition, access) => {
+    const validation = validateSessionDefinition(definition, OPTIONS)
+    expect(validation).toMatchObject({ refusals: [], access })
+    expect(validation.access).toEqual(toSession(definition, OPTIONS).access)
+  })
+
+  test('a refused definition reports no access or coverage', () => {
+    // Resolution runs to the end past this refusal, so the session is built.
+    const signing = session([cctp({ settlementLayers: 'all' })], {
+      signing: { mode: 'unrestricted' },
+    } as Partial<SessionDefinition>)
+    expect(validateSessionDefinition(signing, OPTIONS)).toEqual({
+      refusals: [
+        expect.objectContaining({
+          code: 'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
+        }),
+      ],
+    })
+    expect(
+      validateSessionDefinition(session([cctp({ to: undefined })]), OPTIONS),
+    ).toEqual({ refusals: [expect.objectContaining({ code: 'MISSING_TO' })] })
   })
 })

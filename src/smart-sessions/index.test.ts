@@ -83,7 +83,7 @@ describe('validateCrossChainPermits', () => {
         },
       ],
     }
-    const refusals = validateCrossChainPermits(definition, {
+    const { refusals } = validateCrossChainPermits(definition, {
       useDevContracts: true,
       wrappedNativeToken: account,
     })
@@ -96,7 +96,9 @@ describe('validateCrossChainPermits', () => {
       },
     ])
     expect(() => toSession(definition)).toThrow(refusals[0].message)
-    expect(validateCrossChainPermits(definition, { settlement: {} })).toEqual([
+    expect(
+      validateCrossChainPermits(definition, { settlement: {} }).refusals,
+    ).toEqual([
       expect.objectContaining({ code: 'LAYER_NOT_SERVED', layer: 'CCTP' }),
     ])
   })

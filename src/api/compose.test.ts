@@ -930,7 +930,7 @@ describe('internal core composition', () => {
         ],
       }
 
-      const refusals =
+      const { refusals } =
         await composition.project.validateCrossChainPermits(definition)
       const thrown = await composition.project
         .createSession(definition)

@@ -1,4 +1,8 @@
-import type { IntentExecutorSettlementLayer } from './types'
+import type {
+  IntentExecutorSettlementLayer,
+  SessionAccess,
+  SettlementCoverage,
+} from './types'
 
 /**
  * Every stable code a `crossChainPermits` refusal carries, with what it means.
@@ -115,6 +119,16 @@ export interface CrossChainPermitRefusal {
   readonly layer?: IntentExecutorSettlementLayer
   readonly chainId?: number
   readonly leg?: 'from' | 'to'
+}
+
+/** What a dry run of `createSession` reports for a session definition. */
+export interface CrossChainPermitValidation {
+  /** Every refusal, the first being the one `createSession` throws; empty exactly when it succeeds. */
+  readonly refusals: readonly CrossChainPermitRefusal[]
+  /** The created session's `access`; present only when nothing is refused. */
+  readonly access?: SessionAccess
+  /** The created session's `settlementCoverage`; present only when nothing is refused and a permit is settlement-scoped. */
+  readonly settlementCoverage?: SettlementCoverage
 }
 
 type RefusalContext = Omit<CrossChainPermitRefusal, 'code' | 'message'>

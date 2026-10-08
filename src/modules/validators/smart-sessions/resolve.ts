@@ -37,6 +37,7 @@ import { encodeActionPolicies } from './policies/encode'
 import {
   type CollectRefusal,
   type CrossChainPermitRefusal,
+  type CrossChainPermitValidation,
   collectRefusals,
   RefusalCollectionHalted,
   type Refuse,
@@ -220,9 +221,24 @@ export function collectSessionRefusals(
   definition: SessionDefinition,
   options: ResolveSessionOptions = {},
 ): CrossChainPermitRefusal[] {
-  return collectRefusals((collect) => {
-    resolveSession(definition, options, collect)
+  return [...validateSessionDefinition(definition, options).refusals]
+}
+
+/**
+ * The dry run of `toSession`: every refusal it meets and, when there is none,
+ * the `access` and `settlementCoverage` the session gets. Never throws a refusal.
+ */
+export function validateSessionDefinition(
+  definition: SessionDefinition,
+  options: ResolveSessionOptions = {},
+): CrossChainPermitValidation {
+  let resolved: ReturnType<typeof resolveSession> | undefined
+  const refusals = collectRefusals((collect) => {
+    resolved = resolveSession(definition, options, collect)
   })
+  if (refusals.length || resolved === undefined) return { refusals }
+  const { access, settlementCoverage } = resolved
+  return { refusals, access, ...(settlementCoverage && { settlementCoverage }) }
 }
 
 /**

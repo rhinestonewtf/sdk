@@ -8,7 +8,7 @@ import type {
   RhinestoneSDKConfig,
 } from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
-import type { CrossChainPermitRefusal } from '../modules/validators/smart-sessions/refusals'
+import type { CrossChainPermitValidation } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
@@ -137,20 +137,23 @@ class RhinestoneSDK {
   /**
    * Dry-run a session definition and return every refusal `createSession`
    * would throw for it, each with a stable `code`, instead of throwing the
-   * first. Fetches the orchestrator's chain catalog (`GET /chains`) the way
-   * `createSession` does and runs the same resolution, so the first entry is
-   * the error `createSession` throws and the list is empty exactly when it
-   * succeeds. A failed catalog fetch still throws.
+   * first. Fetches the orchestrator's chain catalog (`GET /chains`) and reads
+   * the UniversalActionPolicy copies' code the way `createSession` does and
+   * runs the same resolution, so the first refusal is the error
+   * `createSession` throws and `refusals` is empty exactly when it succeeds.
+   * Then the result also carries the session's `access` and, for a
+   * settlement-scoped permit, its `settlementCoverage`. A failed fetch still
+   * throws.
    *
    * Problems that do not depend on each other are all reported; within one
    * settlement layer only its first refusal is. For a fully offline check, use
    * the standalone `validateCrossChainPermits` from `@rhinestone/sdk/smart-sessions`.
    * @param definition The session definition
-   * @returns Each refusal; empty when `createSession` would succeed
+   * @returns `refusals`, empty when `createSession` would succeed, and then the session's `access` and `settlementCoverage`
    */
   validateCrossChainPermits(
     definition: SessionDefinition,
-  ): Promise<readonly CrossChainPermitRefusal[]> {
+  ): Promise<CrossChainPermitValidation> {
     return this.#sdk.composition.project.validateCrossChainPermits(definition)
   }
 }
