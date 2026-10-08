@@ -187,6 +187,11 @@ function resolveSession(
       'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
     )
   }
+  if (settlementScope !== undefined && definition.saltMode === 'v1') {
+    throw new Error(
+      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
+    )
+  }
   const restricted =
     definition.restrictToActions === true ||
     swapScope !== undefined ||
@@ -252,9 +257,23 @@ function resolveSession(
       )
     }
   }
-  const expandedPermits = resolvedPermits
-    .filter((permit) => !isSettlementScopedPermit(permit))
-    .map((permit) => expandCrossChainPermit(permit, environment))
+  const permit2Permits = resolvedPermits.filter(
+    (permit) => !isSettlementScopedPermit(permit),
+  )
+  // A Permit2-route maxAmount is enforced together with oneTimeUse.
+  if (
+    !definition.oneTimeUse &&
+    permit2Permits.some((permit) =>
+      permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
+    )
+  ) {
+    throw new Error(
+      "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+    )
+  }
+  const expandedPermits = permit2Permits.map((permit) =>
+    expandCrossChainPermit(permit, environment),
+  )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -503,16 +522,6 @@ function resolveSession(
         `Claim policies take over the session's ERC-1271 list, so \`signing\` cannot also be configured — its policy and validity window would be dropped. Drop \`signing\` or the claim policies.`,
       )
     }
-    // Every claim policy resolves to the same policy contract, and enabling
-    // stores one config per contract, so a second would overwrite the first
-    // while the signing path still builds calldata for both. Refuse rather than
-    // enforce one of N and report success. One permit per session until the
-    // policy can express them together.
-    if (claimPolicies.length > 1) {
-      throw new Error(
-        `A session can declare one Permit2 claim policy, not ${claimPolicies.length}: they share a policy contract on-chain, so only the last would be installed. Split them across sessions.`,
-      )
-    }
     // Replace rather than append. The list is an AND, so a permissive sudo entry
     // alongside cannot weaken it — but it would be dead config that reads as a
     // signing capability the session no longer has.
@@ -520,6 +529,22 @@ function resolveSession(
       ? [...claimPolicies, onceErc1271Policy]
       : claimPolicies
     claimPolicies = []
+  }
+  // Same hazard on the ERC-1271 list: it is an AddressSet keyed by policy, and
+  // the config is keyed per (policy, configId), so a repeat address stores once
+  // and keeps only the last config. Every Permit2 claim policy resolves to the
+  // same contract, so several declared permits land here.
+  {
+    const seen = new Set<string>()
+    for (const { policy } of erc1271Policies) {
+      const key = policy.toLowerCase()
+      if (seen.has(key)) {
+        throw new Error(
+          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
+        )
+      }
+      seen.add(key)
+    }
   }
   // Enabling keeps one config per policy contract and action, so a second
   // entry for the same policy would overwrite the first instead of ANDing.
@@ -539,14 +564,18 @@ function resolveSession(
   const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use, stable-floor or claim-policy session must never share a
-    // permissionId with another session: enabling it would union with that
-    // session's policies, and for a floor that means the unfloored swap actions.
+    // A one-time-use, stable-floor, settlement-scoped or claim-policy session
+    // must never share a permissionId with another session: enabling it would
+    // union with that session's policies, and for a floor or a settlement scope
+    // that means the unscoped actions.
     // A claim-policy session is never `restricted`, so without this it would
     // salt to zeroHash and collide with any plain session for the same signer,
     // leaving that session's signing policy beside the claim policy.
     salt: sessionSalt(
-      definition.oneTimeUse || stableFloor || claimPoliciesMoved
+      definition.oneTimeUse ||
+        stableFloor ||
+        claimPoliciesMoved ||
+        settlementScope !== undefined
         ? 'strict'
         : definition.saltMode,
       restricted || Boolean(definition.oneTimeUse) || claimPoliciesMoved,

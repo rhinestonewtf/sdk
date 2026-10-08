@@ -213,8 +213,8 @@ describe('multi-layer settlement permits', () => {
     expect(digests).toMatchInlineSnapshot(`
       {
         "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0xa6533b46c8986ff17e94fa85e88ed46a22a8436e3320971cc89b64d65534fe6c",
-        "ECO_IE": "0x7a4abefe796cb5d864b27df6ee3ff2b723a065dbf0131537e382859ae3177d8e",
+        "CCTP with fees": "0x57a3aac93df5f7b3ba14ded8535ca4b0f8e55561b3ccb00aa5fdcf10dc97361c",
+        "ECO_IE": "0x6a4314356d9baddd6cfdd6f681535801acf11d160136c6f19a7fb9da4088662b",
         "LZ": "0xd43889c3e9ec91179abefe75255724b8aba43f4661ffe361034eac3fd58ded1c",
         "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",
       }
