@@ -89,6 +89,7 @@ function requireUsdt0(
   if (!isAddressEqual(token, served(settlement, chainId, 'oft').token)) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
 }
@@ -98,12 +99,14 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: OFT sends one token (USDT0) per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   requireUsdt0(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: OFT refunds its LayerZero fee to the account, so the session definition needs `account`',
+      { code: 'ACCOUNT_REQUIRED' },
     )
   }
   const rules: UniversalActionPolicyParamRule[] = [

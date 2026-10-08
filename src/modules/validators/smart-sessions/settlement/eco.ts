@@ -103,6 +103,7 @@ function requireStablecoin(
   ) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
   const usd = settlement[chainId]?.usdStablecoins?.find((t) =>
@@ -111,6 +112,7 @@ function requireStablecoin(
   if (usd?.decimals !== ECO_DECIMALS) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served ${ECO_DECIMALS}-decimal USD stablecoin; ${usd === undefined ? 'the orchestrator serves no usdStablecoins entry for it' : `it has ${usd.decimals} decimals`}`,
+      { code: 'ECO_STABLECOIN_DECIMALS', chainId, leg },
     )
   }
 }
@@ -151,12 +153,14 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   requireStablecoin(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
+      { code: 'ACCOUNT_REQUIRED' },
     )
   }
   // The key sets the delivery against the reward; only a floor stops it from
@@ -164,6 +168,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.cap === undefined || ctx.maxFeeBps === undefined) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
+      { code: 'ECO_NEEDS_MAX_AMOUNT_AND_FEE' },
     )
   }
   if (
@@ -173,6 +178,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
+      { code: 'MAX_FEE_BPS_OUT_OF_RANGE' },
     )
   }
   // An unfillable intent is refundable only after its reward deadline, so an
@@ -180,6 +186,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.validUntil === undefined) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
+      { code: 'ECO_NEEDS_VALID_UNTIL' },
     )
   }
   // Measured from when the session can first act: a later validAfter moves
@@ -190,6 +197,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.validUntil < firstUse + ECO_MIN_VALIDITY_SECONDS) {
     throw new SettlementLayerRefusal(
       "crossChainPermits: ECO_IE needs validUntil at least 7 days after it can first act (now or validAfter): Eco's reward deadline is ~7 days out and the session pins it",
+      { code: 'ECO_VALIDITY_TOO_SHORT' },
     )
   }
   const cap = ctx.cap
@@ -235,12 +243,14 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     if (leg.recipient === undefined) {
       throw new SettlementLayerRefusal(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
+        { code: 'RECIPIENT_ANY_UNPINNABLE', chainId: leg.chainId, leg: 'to' },
       )
     }
     const provers = proversBetween(ctx.settlement, ctx.chainId, leg.chainId)
     if (provers.length === 0) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: no Eco prover is deployed on both chain ${ctx.chainId} and chain ${leg.chainId}`,
+        { code: 'ECO_NO_SHARED_PROVER', chainId: leg.chainId, leg: 'to' },
       )
     }
     const legRules: UniversalActionPolicyParamRule[] = [

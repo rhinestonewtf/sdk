@@ -5,6 +5,7 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { resolvePermissions } from '../../permissions'
+import { refusal } from '../refusals'
 import { allOf, anyOf, cumulativeCap, pin } from '../swap/rules'
 import type {
   ArgPolicyExpression,
@@ -46,14 +47,17 @@ export function servedFees(
   sourceTokens: readonly Address[],
 ): Fees {
   if (settlement === undefined) {
-    throw new Error(
+    throw refusal(
+      'ALLOW_FEES_CATALOG_MISSING',
       "crossChainPermits: allowFees needs the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
   const chain = settlement[chainId]
   if (chain?.fees === undefined) {
-    throw new Error(
+    throw refusal(
+      'FEES_NOT_SERVED',
       `crossChainPermits: the orchestrator serves no fee addresses on chain ${chainId}, so allowFees cannot be scoped there`,
+      { chainId },
     )
   }
   // The cap is a USD amount, so it only bounds the stablecoins the layers serve
@@ -67,8 +71,10 @@ export function servedFees(
   ].filter((token): token is Address => token !== undefined)
   for (const token of sourceTokens) {
     if (!stables.some((stable) => isAddressEqual(stable, token))) {
-      throw new Error(
+      throw refusal(
+        'ALLOW_FEES_NON_STABLECOIN',
         `crossChainPermits: allowFees caps fees in USD, so every \`from\` token must be a served USD stablecoin; ${token} on chain ${chainId} is not`,
+        { chainId },
       )
     }
   }
@@ -87,20 +93,23 @@ export function swapApprovesAsActions(
   if (permissions.length === 0) return []
   // scopeSameChain refuses an uncapped swap first; this keeps the cap from being dropped.
   if (cap === undefined) {
-    throw new Error(
+    throw refusal(
+      'SAME_CHAIN_SWAP_NEEDS_MAX_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap with allowFees needs maxAmount',
     )
   }
   return resolvePermissions([...permissions]).map((action) => {
     if (!('target' in action) || action.selector !== APPROVE_SELECTOR) {
-      throw new Error(
+      throw refusal(
+        'SCOPE_INVARIANT',
         'crossChainPermits: allowFees expected only approve permissions from the swap scope',
       )
     }
     const policies = action.policies ?? []
     // Dropping the spending limit is only safe with a params policy to carry the cap.
     if (!policies.some(isParamsPolicy)) {
-      throw new Error(
+      throw refusal(
+        'SCOPE_INVARIANT',
         'crossChainPermits: a swap approve has no params policy to carry its cap',
       )
     }
@@ -147,7 +156,8 @@ function addFeeBranch(
   const policies = existing.policies ?? []
   const layer = policies.find(isParamsPolicy)
   if (layer === undefined) {
-    throw new Error(
+    throw refusal(
+      'SCOPE_INVARIANT',
       `crossChainPermits: the (${target}, ${selector}) action has no params policy for allowFees to join`,
     )
   }

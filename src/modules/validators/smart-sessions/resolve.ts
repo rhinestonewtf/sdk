@@ -31,6 +31,15 @@ import {
 } from './policies/claim'
 import { encodeSessionPolicy } from './policies/encode'
 import {
+  type CollectRefusal,
+  type CrossChainPermitRefusal,
+  collectRefusals,
+  RefusalCollectionHalted,
+  recover,
+  refusal,
+  refuser,
+} from './refusals'
+import {
   isSettlementScopedPermit,
   resolveSettlementScope,
 } from './settlement/scope'
@@ -86,10 +95,27 @@ export function resolveSessionData(
   return resolveSession(definition, options).data
 }
 
-/** The session data and the IntentExecutor layers its actions were scoped to. */
+/**
+ * Every refusal resolving `definition` meets, in the order it meets them, from
+ * the same checks `toSession` runs. Never throws a refusal.
+ */
+export function collectSessionRefusals(
+  definition: SessionDefinition,
+  options: ResolveSessionOptions = {},
+): CrossChainPermitRefusal[] {
+  return collectRefusals((collect) => {
+    resolveSession(definition, options, collect)
+  })
+}
+
+/**
+ * The session data and the IntentExecutor layers its actions were scoped to.
+ * With `collect`, a dry run: independent refusals are recorded, not thrown.
+ */
 function resolveSession(
   definition: SessionDefinition,
   options: ResolveSessionOptions,
+  collect?: CollectRefusal,
 ): {
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
@@ -146,8 +172,12 @@ function resolveSession(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
+  const refuse = refuser(collect)
   const resolvedPermits = (definition.crossChainPermits ?? []).map(
-    resolveCrossChainPermission,
+    (permit, permitIndex) =>
+      resolveCrossChainPermission(permit, (error) =>
+        refuse(error, { permitIndex }),
+      ),
   )
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
@@ -157,6 +187,7 @@ function resolveSession(
     account: definition.account,
     oneTimeUse: Boolean(definition.oneTimeUse),
     ...(options.settlement ? { settlement: options.settlement } : {}),
+    ...(collect ? { collect } : {}),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
   // none of the calldata pins ever see.
@@ -165,8 +196,11 @@ function resolveSession(
     definition.signing !== undefined &&
     definition.signing.mode !== 'disabled'
   ) {
-    throw new Error(
-      'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+    refuse(
+      refusal(
+        'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
+        'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+      ),
     )
   }
   const restricted =
@@ -199,11 +233,14 @@ function resolveSession(
     ((definition.crossChainPermits?.length && settlementScope === undefined) ||
       definition.claimPolicies?.length)
   ) {
-    throw new Error(
-      'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
-        'dropping the fallback also drops the permit guardrails (spending/time ' +
-        'limits). Use a restricted scoped-action session or a permit session, ' +
-        'not both.',
+    refuse(
+      refusal(
+        'RESTRICTED_WITH_PERMIT2_PERMIT',
+        'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
+          'dropping the fallback also drops the permit guardrails (spending/time ' +
+          'limits). Use a restricted scoped-action session or a permit session, ' +
+          'not both.',
+      ),
     )
   }
   if (definition.oneTimeUse) {
@@ -234,9 +271,20 @@ function resolveSession(
       )
     }
   }
-  const expandedPermits = resolvedPermits
-    .filter((permit) => !isSettlementScopedPermit(permit))
-    .map((permit) => expandCrossChainPermit(permit, environment))
+  let expansionRefused = false
+  const expandedPermits = resolvedPermits.flatMap((permit, permitIndex) => {
+    if (isSettlementScopedPermit(permit)) return []
+    const expanded = recover(
+      (error) => {
+        expansionRefused = true
+        refuse(error, { permitIndex })
+      },
+      () => expandCrossChainPermit(permit, environment),
+    )
+    return expanded === undefined ? [] : [expanded]
+  })
+  // The claims a dry run dropped feed the checks below, so it stops here.
+  if (expansionRefused) throw new RefusalCollectionHalted()
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -360,10 +408,11 @@ function resolveSession(
     definition.saltMode === 'v1' &&
     environment === 'development' &&
     definition.swap !== undefined
-      ? resolveSessionData(definition, {
-          ...options,
-          environment: 'production',
-        }).actions
+      ? resolveSession(
+          definition,
+          { ...options, environment: 'production' },
+          collect,
+        ).data.actions
       : undefined
   const rawClaimPolicies = [
     ...(definition.claimPolicies ?? []),
@@ -753,8 +802,8 @@ export function toSession(
       : {}),
     ...(options.settlement ? { settlement: options.settlement } : {}),
   })
-  const resolvedPermits = (definition.crossChainPermits ?? []).map(
-    resolveCrossChainPermission,
+  const resolvedPermits = (definition.crossChainPermits ?? []).map((permit) =>
+    resolveCrossChainPermission(permit),
   )
   const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
   const expandedClaims = resolvedPermits
