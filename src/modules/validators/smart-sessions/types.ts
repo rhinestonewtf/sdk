@@ -236,8 +236,9 @@ export type CrossChainSettlementLayer =
 
 /** A layer `settlementLayers: 'all'` left out of the session, and why. */
 export interface DroppedSettlementLayer {
-  readonly layer: IntentExecutorSettlementLayer
-  /** The refusal that dropped it, as an explicit list would have thrown it. */
+  /** `'all'` never includes `SAME_CHAIN_IE`, so it never drops it either. */
+  readonly layer: 'CCTP' | 'OFT' | 'ECO_IE' | 'LZ'
+  /** The refusal an explicit list naming the layer throws, without its `crossChainPermits: ` prefix. */
   readonly reason: string
 }
 
@@ -249,12 +250,13 @@ export interface SettlementCoverage {
 
 /**
  * Whether a session's key is held to the session's own actions. `'open'` keeps
- * the wildcard intent-execution fallback, so the key may also call any target
- * the global intent-execution whitelist allows.
+ * the wildcard fallback action: with intent-execution, the key may also call
+ * any target the global intent-execution whitelist allows; a session with no
+ * actions, permissions or permits has a sudo fallback instead.
  */
 export interface SessionAccess {
   readonly kind: 'scoped' | 'open'
-  /** What made it so, e.g. `restrictToActions` or the permit that kept the fallback. */
+  /** What made it so, for people to read. Its wording is not a stable contract: branch on `kind`. */
   readonly reason: string
 }
 
