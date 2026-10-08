@@ -1029,11 +1029,18 @@ function narrowQuoterPin(
   return { include: narrowed }
 }
 
+const PERMIT2_LAYERS: ReadonlySet<string> = new Set([
+  'SAME_CHAIN',
+  'ECO',
+  'ACROSS',
+])
+
 /**
- * The settlement layers a session's permit admits, narrowed by any explicit
- * filter. Like the quoter pin, an explicit filter can only narrow: a route
- * outside the session's layers would fail its action policies, or its Permit2
- * arbiter allowlist, on-chain.
+ * The settlement layers a session admits, narrowed by any explicit filter. A
+ * settlement-scoped session admits only its own layers. A Permit2 session keeps
+ * the intent-execution fallback, so it admits every route except the Permit2
+ * arbiters its permit does not name. Like the quoter pin, an explicit filter
+ * can only narrow.
  */
 function settlementLayerPin(
   signers: SignerSet | undefined,
@@ -1052,34 +1059,50 @@ function settlementLayerPin(
     NonNullable<Transaction['settlementLayers']>,
     { include: unknown }
   >['include'][number]
+  // The orchestrator layers that settle through a Permit2 arbiter. Permit2's
+  // SAME_CHAIN and ECO are retired arbiters the orchestrator no longer routes
+  // a smart account through (its ECO is ECO_IE's solver network).
+  const permit2Arbiters: readonly Layer[] = ['ACROSS']
   // The session's layer names are the SDK's; the filter speaks the
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
   // no bridge, and the orchestrator refuses same-chain layers in the filter,
   // so it narrows nothing; its session refuses cross-chain calls on-chain.
-  // Permit2's SAME_CHAIN and ECO are retired arbiters (ECO is not the
-  // orchestrator's ECO), so no route they sign is left.
-  const isRetired = (layer: string): layer is 'SAME_CHAIN' | 'ECO' =>
-    layer === 'SAME_CHAIN' || layer === 'ECO'
-  const toFilter = (
-    layer: NonNullable<Session['settlementLayers']>[number],
-  ): Layer[] => {
-    if (layer === 'SAME_CHAIN_IE' || isRetired(layer)) return []
-    return [layer === 'ECO_IE' ? 'ECO' : layer]
-  }
-  const scoped = sessions.flatMap((session) => {
-    const named = session.settlementLayers ?? []
-    if (named.length && named.every(isRetired)) {
-      throw new Error(
-        `settlementLayers: no settlement layer is left to settle the intent; the session permits only retired Permit2 layers (${named.join(', ')}), so name ECO_IE or SAME_CHAIN_IE in its permit instead`,
-      )
+  const includes: Set<Layer>[] = []
+  const excluded = new Set<Layer>()
+  for (const session of sessions) {
+    const named: readonly string[] = session.settlementLayers ?? []
+    // A Permit2 permit never shares a session with IntentExecutor layers.
+    if (named.some((layer) => PERMIT2_LAYERS.has(layer))) {
+      for (const arbiter of permit2Arbiters) {
+        if (!named.includes(arbiter)) excluded.add(arbiter)
+      }
+      continue
     }
-    const layers = named.flatMap(toFilter)
-    return layers.length ? [new Set<Layer>(layers)] : []
-  })
-  // An unscoped session admits every layer, so it narrows nothing.
-  if (scoped.length === 0) return explicit
-  const derived = [...scoped[0]].filter((layer) =>
-    scoped.every((layers) => layers.has(layer)),
+    const layers = named.flatMap((layer): Layer[] =>
+      layer === 'SAME_CHAIN_IE'
+        ? []
+        : [layer === 'ECO_IE' ? 'ECO' : (layer as Layer)],
+    )
+    if (layers.length) includes.push(new Set(layers))
+  }
+  if (includes.length === 0) {
+    if (excluded.size === 0) return explicit
+    if (explicit && 'include' in explicit) {
+      const include = explicit.include.filter((layer) => !excluded.has(layer))
+      if (include.length === 0) {
+        throw new Error(
+          `settlementLayers: no settlement layer is left to settle the intent; the session cannot sign ${[...excluded].join(', ')}`,
+        )
+      }
+      return { include }
+    }
+    return {
+      exclude: [...new Set([...(explicit?.exclude ?? []), ...excluded])],
+    }
+  }
+  const derived = [...includes[0]].filter(
+    (layer) =>
+      !excluded.has(layer) && includes.every((layers) => layers.has(layer)),
   )
   const include = !explicit
     ? derived
