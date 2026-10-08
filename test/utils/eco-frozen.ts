@@ -20,7 +20,8 @@ import type {
 /**
  * ECO_IE's `scopeEco` frozen as of 366001ca, so the differential test can show
  * the live builder emits the same policy wherever its behaviour is unchanged.
- * Self-contained: nothing here moves when the live helpers do.
+ * Self-contained: nothing here moves when the live helpers do, except the
+ * validUntil check, which follows the live builder since validAfter was removed.
  */
 
 const PUBLISH = {
