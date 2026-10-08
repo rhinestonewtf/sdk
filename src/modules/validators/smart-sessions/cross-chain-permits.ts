@@ -1,3 +1,4 @@
+import { type Refuse, refusal, refuser } from './refusals'
 import type { CrossChainPermissionInput, CrossChainPermit } from './types'
 
 function seconds(input: Date): bigint {
@@ -16,6 +17,7 @@ function normalizeLegs<T>(
 // so legs pass through directly; only the `Date` bounds are converted.
 export function resolveCrossChainPermission(
   input: CrossChainPermissionInput,
+  refuse: Refuse = refuser(),
 ): CrossChainPermit {
   const from = normalizeLegs(input.from)?.map((leg) => ({
     chain: leg.chain,
@@ -35,8 +37,11 @@ export function resolveCrossChainPermission(
     validAfter !== undefined &&
     validAfter > validUntil
   ) {
-    throw new Error(
-      `crossChainPermits: validAfter (${validAfter}) is greater than validUntil (${validUntil})`,
+    refuse(
+      refusal(
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+        `crossChainPermits: validAfter (${validAfter}) is greater than validUntil (${validUntil})`,
+      ),
     )
   }
   return {

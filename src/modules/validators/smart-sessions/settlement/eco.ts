@@ -131,6 +131,7 @@ function requireServed(
   ) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
 }
@@ -152,6 +153,7 @@ function stableDecimals(
   const refuse = (why: string) =>
     new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served USD stablecoin with known decimals; ${why}`,
+      { code: 'ECO_IE_STABLECOIN_DECIMALS', chainId, leg },
     )
   if (usd.length === 0) {
     throw refuse('the orchestrator serves no usdStablecoins entry for it')
@@ -234,6 +236,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   // `maxFeeBps` prices the reward 1:1 against delivery; without it every leg's
@@ -246,6 +249,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
+      { code: 'ACCOUNT_REQUIRED' },
     )
   }
   // The key fills its own intent and names itself claimant, so a floor on
@@ -257,6 +261,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver (or maxAmount and a `to.minAmount` on every leg)',
+      { code: 'ECO_IE_NEEDS_MAX_AMOUNT_AND_FEE' },
     )
   }
   if (
@@ -266,6 +271,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs a positive `to.minAmount`',
+      { code: 'MIN_AMOUNT_NOT_POSITIVE', leg: 'to' },
     )
   }
   if (
@@ -276,6 +282,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
+      { code: 'MAX_FEE_BPS_OUT_OF_RANGE' },
     )
   }
   // `validUntil` is the session's earliest deadline. Both deadlines stay
@@ -287,6 +294,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (validUntil !== undefined && validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
     throw new SettlementLayerRefusal(
       "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
+      { code: 'ECO_IE_VALIDITY_TOO_SHORT' },
     )
   }
   // Each source chain's session floors its own capped reward with the same
@@ -294,6 +302,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.maxFeeBps === undefined && new Set(ctx.fromCaps ?? []).size > 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
+      { code: 'ECO_IE_FLOOR_NEEDS_EQUAL_CAPS' },
     )
   }
   const cap = ctx.cap
@@ -341,6 +350,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (twin) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE names the \`to\` leg ${twin.token} on chain ${twin.chainId} twice with different \`to.minAmount\`; give it once`,
+      { code: 'CONFLICTING_LEG_FLOORS', chainId: twin.chainId, leg: 'to' },
     )
   }
   const legs = ctx.destinations.map((leg) => {
@@ -364,12 +374,14 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     if (leg.recipient === undefined) {
       throw new SettlementLayerRefusal(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
+        { code: 'RECIPIENT_ANY_UNPINNABLE', chainId: leg.chainId, leg: 'to' },
       )
     }
     const provers = proversBetween(ctx.settlement, ctx.chainId, leg.chainId)
     if (provers.length === 0) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: no Eco prover is deployed on both chain ${ctx.chainId} and chain ${leg.chainId}`,
+        { code: 'ECO_IE_NO_SHARED_PROVER', chainId: leg.chainId, leg: 'to' },
       )
     }
     const legRules: UniversalActionPolicyParamRule[] = [

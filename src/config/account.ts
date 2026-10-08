@@ -1054,7 +1054,9 @@ interface SessionDefinition<
    * `SpendingLimitsPolicy` guardrail.
    * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
    * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
-   * it pins from the orchestrator's `GET /chains`.
+   * it pins from the orchestrator's `GET /chains`. To see every refusal at
+   * once, each with a stable `code`, call `sdk.validateSession`
+   * (or `validateSession` from `@rhinestone/sdk/smart-sessions`).
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
   /**

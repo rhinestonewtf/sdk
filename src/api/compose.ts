@@ -116,7 +116,7 @@ import type {
 import { signRuntimeMessage, signRuntimeTypedData } from './direct-signing'
 import { getAppFeeBalances } from './queries/app-fees'
 import { getPortfolio } from './queries/portfolio'
-import { createSession } from './queries/session'
+import { createSession, validateSession } from './queries/session'
 
 export type {
   AccountComposition,
@@ -154,6 +154,13 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
     getAppFeeBalances: () => getAppFeeBalances(dependencies.orchestrator),
     createSession: (definition) =>
       createSession({
+        orchestrator: dependencies.orchestrator,
+        rpc: dependencies.rpc,
+        environment: config.environment,
+        definition,
+      }),
+    validateSession: (definition) =>
+      validateSession({
         orchestrator: dependencies.orchestrator,
         rpc: dependencies.rpc,
         environment: config.environment,

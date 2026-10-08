@@ -98,6 +98,7 @@ function requireUsdt0(
   if (!isAddressEqual(token, served(settlement, chainId, 'oft').token)) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
 }
@@ -123,11 +124,13 @@ function floorMinAmount(
   if (from === undefined || from !== to) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: an OFT \`to.minAmount\` needs served, equal decimals for the \`from\` token on chain ${ctx.chainId} (${from ?? 'not served'}) and the \`to\` token on chain ${leg.chainId} (${to ?? 'not served'})`,
+      { code: 'FLOOR_DECIMALS_MISMATCH', chainId: leg.chainId, leg: 'to' },
     )
   }
   if (minAmount <= 0n) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: an OFT `to.minAmount` must be positive',
+      { code: 'MIN_AMOUNT_NOT_POSITIVE', chainId: leg.chainId, leg: 'to' },
     )
   }
   // USDT0 sends amounts as uint64 in shared decimals; a larger floor admits no
@@ -135,6 +138,7 @@ function floorMinAmount(
   if (minAmount > maxUint64) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: an OFT `to.minAmount` above uint64 cannot be met by any send',
+      { code: 'MIN_AMOUNT_ABOVE_UINT64', chainId: leg.chainId, leg: 'to' },
     )
   }
   return atLeast(SEND.minAmountLD, minAmount)
@@ -145,12 +149,14 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: OFT sends one token (USDT0) per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   requireUsdt0(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: OFT refunds its LayerZero fee to the account, so the session definition needs `account`',
+      { code: 'ACCOUNT_REQUIRED' },
     )
   }
   const rules: UniversalActionPolicyParamRule[] = [
@@ -191,6 +197,7 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     if (twin) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: two OFT \`to\` legs on chain ${leg.chainId} admit the same send but set different \`minAmount\`s`,
+        { code: 'CONFLICTING_LEG_FLOORS', chainId: leg.chainId, leg: 'to' },
       )
     }
   })

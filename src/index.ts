@@ -126,6 +126,11 @@ export type {
   WebauthnValidatorConfig,
 } from './config/account'
 export type {
+  SessionRefusal,
+  SessionRefusalCode,
+  SessionValidation,
+} from './modules/validators/smart-sessions/refusals'
+export type {
   OwnerPasskeySignature,
   OwnerSignature,
   OwnerSignatureData,

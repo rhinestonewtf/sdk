@@ -869,6 +869,94 @@ describe('internal core composition', () => {
     ).rejects.toThrow('no wrapped-native token')
   })
 
+  // The default UniversalActionPolicy copies are checked first, as createSession does.
+  const dryRun = (copyCode: () => Promise<Hex | undefined>) => {
+    const base = fixture()
+    const getCode = vi.fn(async (_: unknown, address: Address) => ({
+      code:
+        address.toLowerCase() === UNIVERSAL_ACTION_POLICY_ADDRESS.toLowerCase()
+          ? ('0x6080604052' as Hex)
+          : await copyCode(),
+    }))
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                name: 'Base',
+                testnet: false,
+                supportedTokens: 'all',
+                settlement: SETTLEMENT_CATALOG[baseChain.id],
+              },
+              [arbitrum.id]: {
+                name: 'Arbitrum',
+                testnet: false,
+                supportedTokens: 'all',
+                settlement: SETTLEMENT_CATALOG[arbitrum.id],
+              },
+            }),
+        ),
+      },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      account: '0x1111111111111111111111111111111111111111' as const,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 1n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP' as const],
+        },
+      ],
+    }
+    return {
+      validate: () => composition.project.validateSession(definition),
+      create: () => composition.project.createSession(definition),
+    }
+  }
+
+  test.each([
+    ['0x6080604052', []],
+    [undefined, ['UNIVERSAL_ACTION_COPY_CODE_MISMATCH']],
+  ] as const)(
+    'validateSession reports what createSession throws, then the rest (copy code %s)',
+    async (copyCode, first) => {
+      const { validate, create } = dryRun(async () => copyCode)
+      const { refusals } = await validate()
+      const thrown = await create().catch((error: Error) => error.message)
+
+      expect(refusals.map(({ code }) => code)).toEqual([
+        ...first,
+        'WRAPPED_NATIVE_TOKEN_UNSERVED',
+        'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+      ])
+      expect(refusals[0].message).toBe(thrown)
+    },
+  )
+
+  test('validateSession throws a failed code read, as createSession does', async () => {
+    const outage = new Error('rpc unavailable')
+    const { validate, create } = dryRun(async () => {
+      throw outage
+    })
+    await expect(validate()).rejects.toBe(outage)
+    await expect(create()).rejects.toBe(outage)
+  })
+
   describe('createSession with universalActionCopies', () => {
     const uap = UNIVERSAL_ACTION_POLICY_ADDRESS
     const copies: Address[] = [

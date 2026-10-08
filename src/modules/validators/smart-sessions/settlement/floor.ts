@@ -1,3 +1,4 @@
+import { refusal } from '../refusals'
 import { floorFor } from '../swap/rules'
 import type { CrossChainPermit } from '../types'
 import { knownDecimals } from './eco'
@@ -29,8 +30,10 @@ export function requireFloorsWithinCaps(
       const at = (num: bigint, den: bigint) =>
         floorFor(cap, num, den, fromDecimals, toDecimals)
       if (to.minAmount < at(1n, 2n) || to.minAmount > at(1n, 1n)) {
-        throw new Error(
+        throw refusal(
+          'MIN_AMOUNT_OUTSIDE_CAP',
           `crossChainPermits: \`to.minAmount\` ${to.minAmount} on chain ${to.chain.id} must be between half of and all of the chain ${from.chain.id} maxAmount; give it in the \`to\` token's smallest units (${toDecimals} decimals)`,
+          { chainId: to.chain.id, leg: 'to' },
         )
       }
     }

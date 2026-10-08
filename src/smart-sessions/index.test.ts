@@ -8,6 +8,7 @@ import {
   ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
   toSession,
+  validateSession,
 } from './index'
 
 const reads = vi.hoisted(() => vi.fn())
@@ -86,4 +87,37 @@ describe('Smart Sessions compatibility facade', () => {
       expect(session.oneTimeUse?.policy).toBe(address)
     },
   )
+})
+
+describe('validateSession', () => {
+  test('reports the refusal toSession throws, without throwing', () => {
+    const definition = {
+      chain: base,
+      owners: { type: 'ecdsa' as const, accounts: [accountA] },
+      account,
+      crossChainPermits: [
+        {
+          from: { chain: base, token: account },
+          to: { chain: base, token: account },
+          settlementLayers: ['CCTP' as const],
+        },
+      ],
+    }
+    const { refusals } = validateSession(definition, {
+      useDevContracts: true,
+      wrappedNativeToken: account,
+    })
+
+    expect(refusals).toEqual([
+      {
+        code: 'SETTLEMENT_CATALOG_MISSING',
+        message: expect.stringContaining('settlement addresses'),
+        permitIndex: 0,
+      },
+    ])
+    expect(() => toSession(definition)).toThrow(refusals[0].message)
+    expect(validateSession(definition, { settlement: {} }).refusals).toEqual([
+      expect.objectContaining({ code: 'LAYER_NOT_SERVED', layer: 'CCTP' }),
+    ])
+  })
 })

@@ -1,5 +1,6 @@
 import { type Address, isAddressEqual } from 'viem'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
+import { refusal } from '../refusals'
 import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
@@ -167,12 +168,14 @@ export function resolvePolicyAddresses(
   for (const copy of copies) {
     const other = others.get(copy.toLowerCase())
     if (other) {
-      throw new Error(
+      throw refusal(
+        'UNIVERSAL_ACTION_COPY_INVALID',
         `universalActionCopies: ${copy} is the ${other} policy, not a UniversalActionPolicy deployment`,
       )
     }
     if (seen.has(copy.toLowerCase())) {
-      throw new Error(
+      throw refusal(
+        'UNIVERSAL_ACTION_COPY_INVALID',
         `universalActionCopies must be distinct from universalAction and from each other; ${copy} repeats`,
       )
     }
