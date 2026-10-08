@@ -486,6 +486,21 @@ function resolveSession(
     }
     const hasWindow =
       signing?.validAfter !== undefined || signing?.validUntil !== undefined
+    // The 1271 list is the only authorization surface a claim-policy session
+    // has, so an expired window is not a narrow session but a dead one: it
+    // enables and then fails every signature. Refuse it the way oneTimeUse does
+    // rather than hand back something that can never settle.
+    if (
+      signing?.validUntil !== undefined &&
+      !(
+        Number.isFinite(signing.validUntil.getTime()) &&
+        signing.validUntil.getTime() > Date.now()
+      )
+    ) {
+      throw new Error(
+        'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
+      )
+    }
     erc1271Policies = [
       ...claimPolicies,
       ...(hasWindow ? erc1271Policies : []),

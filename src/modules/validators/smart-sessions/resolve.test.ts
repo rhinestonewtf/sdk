@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import { size, zeroHash } from 'viem'
+import { encodePacked, size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
@@ -457,7 +457,7 @@ describe('Permit2 claim policy placement', () => {
     },
   ] as const)('rejects claim policies with $mode signing', (signing) => {
     expect(() => toSession({ ...definition, signing })).toThrow(
-      /cannot also be configured/,
+      new RegExp(`signing.mode: '${signing.mode}'`),
     )
   })
 
@@ -471,7 +471,31 @@ describe('Permit2 claim policy placement', () => {
       PERMIT2_CLAIM_POLICY_ADDRESS,
       TIME_FRAME_POLICY_ADDRESS,
     ])
+    // Packed `uint48 validUntil, uint48 validAfter` — pins the bounds, not just
+    // that some timeframe policy was carried.
+    expect(windowed[1].initData).toBe(
+      encodePacked(['uint48', 'uint48'], [1893456000, 0]),
+    )
   })
+
+  // The 1271 list is the only surface a claim-policy session has, so a window
+  // that is already closed enables fine and then fails every signature.
+  // 'invalid' is refused upstream by the date encoder, the others by the guard.
+  test.each([
+    { label: 'past', validUntil: new Date('2020-01-01') },
+    { label: 'epoch', validUntil: new Date(0) },
+    { label: 'invalid', validUntil: new Date('nonsense') },
+  ])(
+    'rejects a $label validUntil alongside claim policies',
+    ({ validUntil }) => {
+      expect(() =>
+        toSession({
+          ...definition,
+          signing: { mode: 'unrestricted', validUntil },
+        }),
+      ).toThrow(/validUntil/)
+    },
+  )
 
   test('drops a windowless signing policy alongside claim policies', () => {
     const policies = toSession({
