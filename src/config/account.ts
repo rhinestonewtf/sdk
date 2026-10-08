@@ -301,9 +301,10 @@ interface Permit2ClaimPolicy {
  *   on its own, so an allowance the account already gave one of those
  *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
  *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
- *   combined with another layer, and `maxFeeBps` (or `to.minAmount` outside
- *   `SAME_CHAIN_IE`) needs `ECO_IE` among the layers, where it floors only the
- *   Eco delivery. With `ECO_IE` among several layers, an intent settles over
+ *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
+ *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE` and
+ *   `OFT` floor their own delivery, and naming a layer that cannot (`CCTP`
+ *   never can) is refused. With `ECO_IE` among several layers, an intent settles over
  *   Eco only when it delivers at least its floor: the higher of
  *   `maxAmount × (1 − maxFeeBps / 10000)`, rescaled to the `to` token's
  *   decimals, and `to.minAmount`. Both are fixed against `maxAmount`, so the
@@ -314,10 +315,10 @@ interface Permit2ClaimPolicy {
  *   `LZ` that can settle the permit on the session's chain, and silently
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
- *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`). Setting
- *   `maxFeeBps` or `to.minAmount` asks for `ECO_IE`, so a dropped `ECO_IE` is
- *   then refused with its reason; either one floors only the `ECO_IE` call,
- *   not the other layers kept. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
+ *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`), or cannot
+ *   enforce a `to.minAmount` (always `CCTP`). Setting `maxFeeBps` or
+ *   `to.minAmount` asks for `ECO_IE`, so a dropped `ECO_IE` is then refused
+ *   with its reason; `maxFeeBps` floors only the `ECO_IE` call. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
  *   no layer qualifies. It resolves against the orchestrator's `GET /chains`
  *   and the clock when the session is created, so store the created session
  *   (its `settlementLayers` lists the layers kept) and reuse it rather than
@@ -448,7 +449,7 @@ interface ToLeg {
   token: Address
   recipient?: Address | 'any'
   /**
-   * `SAME_CHAIN_IE` swaps, `ECO_IE` and `OFT`-only permits: the least amount of
+   * `SAME_CHAIN_IE` swaps, `ECO_IE` and `OFT`: the least amount of
    * `token` the swap, the Eco route or the OFT send must deliver, in `token`'s
    * smallest units (its own decimals, e.g. `99_000_000n` for 99 of a 6-decimal
    * stablecoin). Required for
@@ -462,7 +463,10 @@ interface ToLeg {
    * leg must give the same `maxAmount`, and a `to` leg named twice must give the
    * same `minAmount`.
    *
-   * On an `OFT`-only permit it is optional and floors the send's `minAmountLD`,
+   * Every layer in the permit enforces it: one that cannot (`CCTP`) is
+   * refused when named and dropped under `'all'`.
+   *
+   * On `OFT` it is optional and floors the send's `minAmountLD`,
    * so it also refuses any send smaller than it; both tokens need served, equal
    * decimals. The orchestrator sends at 1% slippage, so set it at most 99% of
    * the amount you expect to send.
