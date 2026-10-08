@@ -33,7 +33,6 @@ import type {
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 import type {
   DroppedSettlementLayer,
-  IntentExecutorSettlementLayer,
   SessionAccess,
   SettlementCoverage,
   StableSwapFloor,
@@ -427,6 +426,15 @@ interface CrossChainPermit {
    *
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.
+   *
+   * Intents signed with the session are restricted to the layers it kept, so
+   * the orchestrator cannot pick one the session would refuse: `['ACROSS']`
+   * sends `settlementLayers: { include: ['ACROSS'] }`. `SAME_CHAIN`,
+   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter, and an intent with
+   * a session naming only `SAME_CHAIN` or `ECO` throws: use `SAME_CHAIN_IE`
+   * or `ECO_IE`. An intent's own `settlementLayers` can only narrow the
+   * filter, and one that leaves no layer throws. Omitting the field leaves
+   * intents unrestricted.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -573,6 +581,15 @@ interface CrossChainPermissionInput {
    *
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.
+   *
+   * Intents signed with the session are restricted to the layers it kept, so
+   * the orchestrator cannot pick one the session would refuse: `['ACROSS']`
+   * sends `settlementLayers: { include: ['ACROSS'] }`. `SAME_CHAIN`,
+   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter, and an intent with
+   * a session naming only `SAME_CHAIN` or `ECO` throws: use `SAME_CHAIN_IE`
+   * or `ECO_IE`. An intent's own `settlementLayers` can only narrow the
+   * filter, and one that leaves no layer throws. Omitting the field leaves
+   * intents unrestricted.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -1147,10 +1164,14 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
-  /** The IntentExecutor layers a settlement-scoped permit restricted the session
-   *  to. Metadata only — intents with the session are limited to them
-   *  (`SAME_CHAIN_IE` adds no bridge filter). */
-  settlementLayers?: readonly IntentExecutorSettlementLayer[]
+  /** The layers the session's cross-chain permit names: the IntentExecutor
+   *  layers a settlement-scoped permit restricted it to, or the Permit2 layers
+   *  a Permit2 permit lists (absent when it lists none, which admits them all).
+   *  Metadata only — intents with the session are limited to them
+   *  (`SAME_CHAIN_IE`, `SAME_CHAIN` and the retired `ECO` arbiter add no
+   *  bridge filter; a session naming only `SAME_CHAIN` or `ECO` refuses
+   *  intents). */
+  settlementLayers?: readonly CrossChainSettlementLayer[]
   /** The layers `settlementLayers: 'all'` left out of a settlement-scoped permit
    *  on the session's chain, each with the refusal that dropped it; the kept
    *  ones are in `settlementLayers`. Metadata only — it does not change the

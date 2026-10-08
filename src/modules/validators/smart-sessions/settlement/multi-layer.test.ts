@@ -547,28 +547,6 @@ describe('settlement coverage', () => {
     })
   })
 
-  // Remove with ECO_NEEDS_VALID_UNTIL once ECO_IE takes a permit without validUntil.
-  test("'all' drops ECO_IE for a permit without validUntil", () => {
-    const permit = {
-      from: { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
-      to: { chain: plasma, token: OFT_PLASMA.token, minAmount: 95n },
-      settlementLayers: 'all',
-    } as const
-    const { settlementLayers } = toSession(definition(permit, arbitrum), {
-      settlement: SETTLEMENT_CATALOG,
-    })
-    expect(settlementLayers).toEqual(['OFT'])
-    expect(
-      expectExplicitRefusals(arbitrum, permit)?.dropped.find(
-        ({ layer }) => layer === 'ECO_IE',
-      ),
-    ).toEqual({
-      layer: 'ECO_IE',
-      reason:
-        'ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
-    })
-  })
-
   test('an explicit list that every layer settles drops none', () => {
     expect(
       session({ settlementLayers: ['CCTP', 'LZ'] }).settlementCoverage,
