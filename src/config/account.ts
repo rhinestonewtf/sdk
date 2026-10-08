@@ -792,8 +792,8 @@ interface SessionPolicyAddresses {
    * cannot, so check the deployments before using it. Not available with
    * `saltMode: 'v1'`. Defaults to the three deployed copies for a session with
    * an IntentExecutor-layer `crossChainPermits` entry on a chain that has them,
-   * unless `universalAction` is overridden or `saltMode` is `'v1'`; otherwise
-   * to none. Set `[]` to opt out.
+   * unless `universalAction` is overridden; otherwise to none. Set `[]` to opt
+   * out.
    */
   universalActionCopies?: readonly Address[]
   argPolicy?: Address
