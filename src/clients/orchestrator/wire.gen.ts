@@ -320,6 +320,54 @@ export interface operations {
                 /** @example /tx/ */
                 txPath: string
               } | null
+              /** @description What an SDK session pins on this chain: the contracts each settlement layer calls, and the USD stablecoins a stable-swap floor treats as 1:1. A layer appears only when every address it needs is known. Absent when the chain has none of these. */
+              settlement?: {
+                cctp?: {
+                  domain: number
+                  tokenMessenger: string
+                  usdc: string
+                }
+                oft?: {
+                  adapter: string
+                  eid: number
+                  token: string
+                }
+                eco?: {
+                  portal: string
+                  provers: string[]
+                  stablecoins: string[]
+                }
+                lz?: {
+                  multiCall: string
+                  transferDelegate: string
+                  stargateUsdc?: {
+                    pool: string
+                    token: string
+                    eid: number
+                  }
+                  cctp?: {
+                    domain: number
+                    token: string
+                    feeReceiver: string
+                    /** @enum {boolean} */
+                    feeless?: true
+                  }
+                }
+                swapper?: {
+                  swapper: string
+                  proxy: string
+                }
+                fees?: {
+                  appFeeCollector: string
+                  paymaster: string
+                }
+                /** @description The USD stablecoins (6 or 18 decimals) a session stable-swap floor treats as 1:1. */
+                usdStablecoins?: {
+                  address: string
+                  symbol: string
+                  decimals: number
+                }[]
+              }
             }
           }
         }
@@ -1040,7 +1088,7 @@ export interface operations {
                */
               createdAt: number
               /**
-               * @description Time from creation to the latest leg landing, in ms. Null until any leg lands.
+               * @description Milliseconds from recorded creation to the latest included receipt; null without receipts. Negative intervals clamp to zero, not evidence of instant execution. Receipt times use chain time (possibly second-precision) or server-observation fallbacks. This is not final completion latency or a guarantee of millisecond accuracy.
                * @example 8100
                */
               latencyMs: number | null
@@ -1236,7 +1284,7 @@ export interface operations {
                  */
                 sponsored: boolean
                 /**
-                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time. On an allocation-backed intent this is the sum of its per-operation allocations, which is where reconciliation writes executed gas.
+                 * @description Sponsored value actually charged, in integer micro-USD (1 USD = 1,000,000 units). Once the intent executes this is reconciled from the receipt (planned gas replaced by executed), so it matches the sponsorship balance and the usage/billing reads rather than the amount reserved at quote time. On an allocation-backed intent this is the sum of its per-operation allocations, which is where reconciliation writes executed gas. Includes Relay's subsidy of its own bridge fee, charged at par.
                  * @example 210000
                  */
                 sponsoredValue?: string
@@ -1246,7 +1294,7 @@ export interface operations {
                  */
                 protocolFee?: string
                 /**
-                 * @description Rhinestone's surcharge on the sponsored relayer coverage, in integer micro-USD — the pure surcharge slice of `protocolFee` and reconciled with it, as `sponsorSurcharge` on a quote. Omitted where the charge was recorded without the split, which is never inferred by subtraction.
+                 * @description Rhinestone's surcharge on the sponsored coverage, in integer micro-USD — the pure surcharge slice of `protocolFee` and reconciled with it, as `sponsorSurcharge` on a quote. Omitted where the charge was recorded without the split, which is never inferred by subtraction.
                  * @example 10000
                  */
                 sponsorSurcharge?: string
@@ -2189,7 +2237,7 @@ export interface operations {
                */
               toChain?: number
               /**
-               * @description Intent value token. The token delivered on the destination chain, or the spent token for same-chain intents (which have no persisted delivery).
+               * @description Intent value token. Prefers the planned token delivered on the destination chain; falls back to the spent token when historical same-chain output accounting is unavailable.
                * @example 0x0b2c639c533813f4aa9d7837caf62653d097ff85
                */
               token?: string
@@ -2204,7 +2252,7 @@ export interface operations {
                */
               decimals?: number | null
               /**
-               * @description Intent value in base units — delivered on the destination chain, or spent for same-chain intents (which have no persisted delivery; for same-chain swaps this is the input, not the received amount).
+               * @description Intent value in base units — the planned destination output when available, or the spent amount when historical same-chain output accounting is unavailable.
                * @example 1000000
                */
               amount?: string
@@ -2937,6 +2985,123 @@ export interface operations {
       }
       /** @description The quoted intent has expired or was already submitted. Request a new route to retry. */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+              }
+        }
+      }
+      /** @description The intent or its shared sponsorship authorization was already used. */
+      409: {
         headers: {
           [name: string]: unknown
         }
@@ -4728,15 +4893,19 @@ export interface operations {
                   | 'WOKB'
                   | 'HYPE'
                   | 'WHYPE'
+                  | 'RON'
+                  | 'WRON'
                   | 'USDG'
                   | 'XPL'
                   | 'WXPL'
                   | 'AVAX'
                   | 'WAVAX'
                   | 'MockUSD'
+                  | 'USDC_TEST'
                   | 'XLM'
                   | 'ensUSDC'
                   | 'ensUSDC2'
+                  | 'ensUSDC3'
                   | 'TRX'
                   | 'WTRX'
                   | 'SOL'
@@ -4774,15 +4943,19 @@ export interface operations {
                     | 'WOKB'
                     | 'HYPE'
                     | 'WHYPE'
+                    | 'RON'
+                    | 'WRON'
                     | 'USDG'
                     | 'XPL'
                     | 'WXPL'
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'USDC_TEST'
                     | 'XLM'
                     | 'ensUSDC'
                     | 'ensUSDC2'
+                    | 'ensUSDC3'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -4827,15 +5000,19 @@ export interface operations {
                     | 'WOKB'
                     | 'HYPE'
                     | 'WHYPE'
+                    | 'RON'
+                    | 'WRON'
                     | 'USDG'
                     | 'XPL'
                     | 'WXPL'
                     | 'AVAX'
                     | 'WAVAX'
                     | 'MockUSD'
+                    | 'USDC_TEST'
                     | 'XLM'
                     | 'ensUSDC'
                     | 'ensUSDC2'
+                    | 'ensUSDC3'
                     | 'TRX'
                     | 'WTRX'
                     | 'SOL'
@@ -4873,15 +5050,19 @@ export interface operations {
                       | 'WOKB'
                       | 'HYPE'
                       | 'WHYPE'
+                      | 'RON'
+                      | 'WRON'
                       | 'USDG'
                       | 'XPL'
                       | 'WXPL'
                       | 'AVAX'
                       | 'WAVAX'
                       | 'MockUSD'
+                      | 'USDC_TEST'
                       | 'XLM'
                       | 'ensUSDC'
                       | 'ensUSDC2'
+                      | 'ensUSDC3'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -5338,6 +5519,8 @@ export interface operations {
                      * @enum {string}
                      */
                     type: 'ECO'
+                    /** @description Eco v1 quote ID for detailed delivery and refund tracking. */
+                    quoteId?: string
                     /** @description Eco Portal intent hash. Use against Eco's intent status API to resolve the destination delivery transaction. */
                     intentHash: string
                     /** @description Eco's own id for the delivery chain, present only where it differs from `destinationChainId` (non-EVM destinations). Eco's status API reports fulfilment against this id. */
@@ -5389,6 +5572,11 @@ export interface operations {
                     type: 'RHINO'
                     /** @description Rhino.fi commitment ID. Use against Rhino.fi's status API to track the destination-chain fill. */
                     commitmentId: string
+                    /**
+                     * @description Rhino.fi API key variant the commitment was quoted under. Rhino.fi answers a status lookup only under that key, so the fill-tracker asks for the same variant.
+                     * @enum {string}
+                     */
+                    keyVariant?: 'user_fee'
                   }
                 | {
                     /** @description Destination chain ID for the bridge fill */
@@ -5841,7 +6029,7 @@ export interface operations {
            */
           accountType?: 'EOA' | 'SMART_ACCOUNT'
           /**
-           * @description Whether the smart account is already deployed on the source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup) for a smart account when omitted — the conservative direction. Ignored for EOAs.
+           * @description Whether the smart account is already deployed on the source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup) for a smart account when omitted — the conservative direction. Ignored for EOAs and for a Solana source.
            * @example true
            */
           accountDeployed?: boolean

@@ -284,8 +284,8 @@ interface Permit2ClaimPolicy {
  *   retired Standard Eco arbiter).
  *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
  *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (USD stablecoins, Eco's solver
- *   network), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
+ * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor), `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
+ *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
  *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
  *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
  *   account executing the call. Naming any of them makes the permit
@@ -301,20 +301,23 @@ interface Permit2ClaimPolicy {
  *   on its own, so an allowance the account already gave one of those
  *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
  *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
- *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
- *   layers. With `ECO_IE` among several layers, an intent settles over Eco
- *   only when it moves close to `maxAmount`: the delivery floor is
- *   `maxAmount × (1 − maxFeeBps / 10000)`, so the orchestrator may route a
- *   smaller intent through another layer, or the intent fails if Eco is
- *   picked.
+ *   combined with another layer, and `maxFeeBps` (or `to.minAmount` outside
+ *   `SAME_CHAIN_IE`) needs `ECO_IE` among the layers, where it floors only the
+ *   Eco delivery. With `ECO_IE` among several layers, an intent settles over
+ *   Eco only when it delivers at least its floor: the higher of
+ *   `maxAmount × (1 − maxFeeBps / 10000)`, rescaled to the `to` token's
+ *   decimals, and `to.minAmount`. Both are fixed against `maxAmount`, so the
+ *   orchestrator may route a smaller intent through another layer, or the
+ *   intent fails if Eco is picked.
  *
  *   `settlementLayers: 'all'` names every one of `CCTP`, `OFT`, `ECO_IE` and
  *   `LZ` that can settle the permit on the session's chain, and silently
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
  *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`). Setting
- *   `maxFeeBps` asks for `ECO_IE`, so a dropped `ECO_IE` is then refused with
- *   its reason. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
+ *   `maxFeeBps` or `to.minAmount` asks for `ECO_IE`, so a dropped `ECO_IE` is
+ *   then refused with its reason; either one floors only the `ECO_IE` call,
+ *   not the other layers kept. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
  *   no layer qualifies. It resolves against the orchestrator's `GET /chains`
  *   and the clock when the session is created, so store the created session
  *   (its `settlementLayers` lists the layers kept) and reuse it rather than
@@ -324,10 +327,14 @@ interface Permit2ClaimPolicy {
  *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
  *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount`, `maxFeeBps` and `validUntil`; `validUntil` at least 7 days
- *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
- *   quotes that ~7 days out; and `from` and `to` tokens the orchestrator
- *   serves as 6-decimal USD stablecoins. `OFT` and `LZ` require `oneTimeUse`.
+ *   `maxAmount`, a delivery floor and `validUntil`; `validUntil` at least 7 days
+ *   from now, since the session pins Eco's reward deadline under it and Eco
+ *   quotes that ~7 days out. Both tokens must be ones the orchestrator serves
+ *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
+ *   served, or a `to.minAmount` on every leg, for any two such tokens; given
+ *   both, the higher applies. Without `maxFeeBps`, every `from` leg must give
+ *   the same `maxAmount`: each source chain's session pins the same
+ *   `to.minAmount` against its own cap. `OFT` and `LZ` require `oneTimeUse`.
  *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
@@ -360,7 +367,8 @@ interface CrossChainPermit {
    * Allowed source legs: chain + token (+ optional max amount cap).
    * Omit for no source-token restriction (any token on any chain may be
    * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
-   * flag then constrain the source side.
+   * flag then constrain the source side. On a Permit2-route permit,
+   * `maxAmount` requires `oneTimeUse`.
    */
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   /**
@@ -395,8 +403,10 @@ interface CrossChainPermit {
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
-   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
-   * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
+   * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
+   * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
+   * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
+   * reward actually sent.
    */
   maxFeeBps?: number
   /**
@@ -405,9 +415,10 @@ interface CrossChainPermit {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - The collector transfer and the paymaster approve are each capped at 5 USD
-   *   cumulative per `from` token, so up to 10 USD per token including gas. The
-   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
+   *   collector transfer and the paymaster approve one per `from` token, the
+   *   paymaster callback one shared across tokens. So one token can pay up to
+   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
@@ -424,6 +435,11 @@ interface CrossChainPermit {
 interface FromLeg {
   chain: Chain
   token: Address
+  /**
+   * Cap on the amount the session may move from this leg. On a Permit2-route
+   * permit (`SAME_CHAIN`, `ECO`, `ACROSS`, or `settlementLayers` omitted) it
+   * requires `oneTimeUse`; without it the session is refused.
+   */
   maxAmount?: bigint
 }
 
@@ -432,9 +448,24 @@ interface ToLeg {
   token: Address
   recipient?: Address | 'any'
   /**
-   * `SAME_CHAIN_IE` swaps only: the least amount of `token` the swap must deliver.
-   * Required there (with `maxAmount`), since the session key otherwise sets the
-   * swap's output bound; `maxAmount : minAmount` is the worst rate accepted.
+   * `SAME_CHAIN_IE` swaps, `ECO_IE` and `OFT`-only permits: the least amount of
+   * `token` the swap, the Eco route or the OFT send must deliver, in `token`'s
+   * smallest units (its own decimals, e.g. `99_000_000n` for 99 of a 6-decimal
+   * stablecoin). Required for
+   * a swap (with `maxAmount`), since the session key otherwise sets the swap's
+   * output bound; `maxAmount : minAmount` is the worst rate accepted.
+   *
+   * On `ECO_IE` it prices any pair of tokens the orchestrator serves for
+   * `ECO_IE`, and stands in for `maxFeeBps` (given both, the higher floor
+   * applies). When both tokens' decimals are served, a value under half of
+   * `maxAmount` is refused as a units mistake. Without `maxFeeBps`, every `from`
+   * leg must give the same `maxAmount`, and a `to` leg named twice must give the
+   * same `minAmount`.
+   *
+   * On an `OFT`-only permit it is optional and floors the send's `minAmountLD`,
+   * so it also refuses any send smaller than it; both tokens need served, equal
+   * decimals. The orchestrator sends at 1% slippage, so set it at most 99% of
+   * the amount you expect to send.
    */
   minAmount?: bigint
 }
@@ -462,9 +493,12 @@ interface CrossChainPermissionInput {
    * the recipient.
    */
   to?: ToLeg | ToLeg[]
-  /** Upper bound on the permit deadline. */
+  /**
+   * Upper bound on the permit deadline. On an IntentExecutor-layer permit it
+   * requires `oneTimeUse` and becomes the one-time-use deadline.
+   */
   validUntil?: Date
-  /** Lower bound on the permit deadline. */
+  /** Lower bound on the permit deadline. Refused on an IntentExecutor-layer permit. */
   validAfter?: Date
   /** Per-destination fill-deadline windows. */
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
@@ -491,8 +525,10 @@ interface CrossChainPermissionInput {
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
-   * `ECO_IE` only: the most the solver may keep, in basis points of `maxAmount`.
-   * The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`.
+   * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
+   * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
+   * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
+   * reward actually sent.
    */
   maxFeeBps?: number
   /**
@@ -501,9 +537,10 @@ interface CrossChainPermissionInput {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - The collector transfer and the paymaster approve are each capped at 5 USD
-   *   cumulative per `from` token, so up to 10 USD per token including gas. The
-   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
+   *   collector transfer and the paymaster approve one per `from` token, the
+   *   paymaster callback one shared across tokens. So one token can pay up to
+   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
@@ -985,6 +1022,8 @@ interface SessionDefinition<
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it. Unrestricted
    * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
+   * A settlement-scoped session (a `crossChainPermits` entry naming an
+   * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
@@ -997,6 +1036,9 @@ interface SessionDefinition<
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
    * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
+   * An IntentExecutor-layer permit's `validUntil` bounds it too (the earlier one
+   * applies), and either deadline bounds the whole session, including its
+   * `permissions` and `actions`.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }

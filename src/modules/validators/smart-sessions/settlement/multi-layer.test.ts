@@ -203,6 +203,8 @@ describe('multi-layer settlement permits', () => {
   // Captured on main before multi-layer permits: a changed digest would be a
   // HashMismatch for every single-layer session already signed. Opted out of
   // the default UniversalActionPolicy copies, which re-encode some of them.
+  // Update a digest only for a deliberate, unreleased change, and say so in its
+  // changeset.
   test('a single-layer permit compiles to the same actions as before', () => {
     const digests = Object.fromEntries(
       Object.entries(SINGLE).map(([name, def]) => [
@@ -222,8 +224,8 @@ describe('multi-layer settlement permits', () => {
     expect(digests).toMatchInlineSnapshot(`
       {
         "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0xa6533b46c8986ff17e94fa85e88ed46a22a8436e3320971cc89b64d65534fe6c",
-        "ECO_IE": "0x40a80286b70a1379ee475a836b9372354f7de17501602c9cb4df352d18cd77cd",
+        "CCTP with fees": "0x57a3aac93df5f7b3ba14ded8535ca4b0f8e55561b3ccb00aa5fdcf10dc97361c",
+        "ECO_IE": "0x6a4314356d9baddd6cfdd6f681535801acf11d160136c6f19a7fb9da4088662b",
         "LZ": "0x42e887f586a6d642c4ffe53f8b694cf25b333eb1eb5516543c3cbd78287d6df0",
         "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",
       }
@@ -291,13 +293,13 @@ describe('multi-layer settlement permits', () => {
     expect(resolve(['CCTP', 'CCTP'])).toEqual(resolve(['CCTP']))
   })
 
-  test('every action carries the once-policy, and the approve the time frame', () => {
+  test('every action carries the once-policy and no time frame', () => {
     const def = definition({
       settlementLayers: ['CCTP', 'LZ'],
       validUntil: VALID_UNTIL,
     })
     const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
-    for (const action of data.actions.slice(0, 3)) {
+    for (const action of data.actions) {
       expect(action.actionPolicies.map((p) => p.policy)).toContain(ONE_TIME_USE)
     }
     const resolved = scope({
@@ -305,8 +307,24 @@ describe('multi-layer settlement permits', () => {
       validUntil: VALID_UNTIL,
     })
     for (const action of resolved.actions) {
-      expect(action.policies?.map((p) => p.type)).toContain('time-frame')
+      expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
     }
+  })
+
+  test("'all' refuses validAfter outright rather than dropping a layer", () => {
+    expect(() =>
+      scope({
+        settlementLayers: 'all',
+        validUntil: VALID_UNTIL,
+        validAfter: new Date(1_000_000_000_000),
+      }),
+    ).toThrow('does not support validAfter')
+  })
+
+  test('refuses a validUntil that would read as no deadline', () => {
+    expect(() =>
+      scope({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+    ).toThrow('validUntil must be a valid Date in the future')
   })
 
   test('refuses an approve to a layer the permit did not name', () => {
