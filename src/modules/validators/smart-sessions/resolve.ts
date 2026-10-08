@@ -234,9 +234,23 @@ function resolveSession(
       )
     }
   }
-  const expandedPermits = resolvedPermits
-    .filter((permit) => !isSettlementScopedPermit(permit))
-    .map((permit) => expandCrossChainPermit(permit, environment))
+  const permit2Permits = resolvedPermits.filter(
+    (permit) => !isSettlementScopedPermit(permit),
+  )
+  // A Permit2-route maxAmount is enforced together with oneTimeUse.
+  if (
+    !definition.oneTimeUse &&
+    permit2Permits.some((permit) =>
+      permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
+    )
+  ) {
+    throw new Error(
+      "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+    )
+  }
+  const expandedPermits = permit2Permits.map((permit) =>
+    expandCrossChainPermit(permit, environment),
+  )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )

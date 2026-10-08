@@ -367,7 +367,8 @@ interface CrossChainPermit {
    * Allowed source legs: chain + token (+ optional max amount cap).
    * Omit for no source-token restriction (any token on any chain may be
    * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
-   * flag then constrain the source side.
+   * flag then constrain the source side. On a Permit2-route permit,
+   * `maxAmount` requires `oneTimeUse`.
    */
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   /**
@@ -433,6 +434,11 @@ interface CrossChainPermit {
 interface FromLeg {
   chain: Chain
   token: Address
+  /**
+   * Cap on the amount the session may move from this leg. On a Permit2-route
+   * permit (`SAME_CHAIN`, `ECO`, `ACROSS`, or `settlementLayers` omitted) it
+   * requires `oneTimeUse`; without it the session is refused.
+   */
   maxAmount?: bigint
 }
 
