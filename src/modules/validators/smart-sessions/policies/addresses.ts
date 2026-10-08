@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
 import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
@@ -53,9 +54,28 @@ export function defaultOneTimeUseIdPolicy(
     : undefined
 }
 
+// CREATE2 deployments of the canonical UniversalActionPolicy bytecode, at the
+// same addresses on every chain in UNIVERSAL_ACTION_POLICY_COPY_CHAINS.
+export const UNIVERSAL_ACTION_POLICY_COPIES: readonly Address[] = Object.freeze(
+  [
+    '0x68744D25604872d2F81FAa864963353F3ee9b4d2',
+    '0x8a026acb4DF6EFbc9BD4664D1E8750D470E7dD9F',
+    '0x6EB915A22F2015A776eec56F11EF96cda1EDCC54',
+  ],
+)
+// Static so the encoding never depends on an RPC read.
+export const UNIVERSAL_ACTION_POLICY_COPY_CHAINS: ReadonlySet<number> = new Set(
+  [
+    1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+    8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
+  ],
+)
+
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
   readonly universalAction: Address
+  // Only present when configured or defaulted for a settlement-scoped session.
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy: Address
   readonly spendingLimits: Address
   readonly timeFrame: Address
@@ -86,7 +106,7 @@ export function resolvePolicyAddresses(
     overrides?.oneTimeUseId ??
     (deployment &&
       defaultOneTimeUseIdPolicy(deployment.chainId, deployment.environment))
-  return {
+  const resolved: ResolvedPolicyAddresses = {
     sudo: overrides?.sudo ?? DEFAULT_POLICY_ADDRESSES.sudo,
     universalAction:
       overrides?.universalAction ?? DEFAULT_POLICY_ADDRESSES.universalAction,
@@ -98,4 +118,34 @@ export function resolvePolicyAddresses(
     valueLimit: overrides?.valueLimit ?? DEFAULT_POLICY_ADDRESSES.valueLimit,
     ...(oneTimeUseId ? { oneTimeUseId } : {}),
   }
+  const copies = overrides?.universalActionCopies ?? []
+  if (!copies.length) return resolved
+  // A copy receives UniversalActionPolicy initData, so any other policy there
+  // would install the rules as something else.
+  const others = new Map<string, string>()
+  for (const [name, address] of [
+    ...Object.entries(DEFAULT_POLICY_ADDRESSES),
+    ...Object.entries(resolved),
+    ['intent-execution', INTENT_EXECUTION_POLICY_ADDRESS],
+    ['intent-execution (dev)', INTENT_EXECUTION_POLICY_ADDRESS_DEV],
+    ['Permit2 claim', PERMIT2_CLAIM_POLICY_ADDRESS],
+  ] as [string, Address][]) {
+    if (name !== 'universalAction') others.set(address.toLowerCase(), name)
+  }
+  const seen = new Set([resolved.universalAction.toLowerCase()])
+  for (const copy of copies) {
+    const other = others.get(copy.toLowerCase())
+    if (other) {
+      throw new Error(
+        `universalActionCopies: ${copy} is the ${other} policy, not a UniversalActionPolicy deployment`,
+      )
+    }
+    if (seen.has(copy.toLowerCase())) {
+      throw new Error(
+        `universalActionCopies must be distinct from universalAction and from each other; ${copy} repeats`,
+      )
+    }
+    seen.add(copy.toLowerCase())
+  }
+  return { ...resolved, universalActionCopies: copies }
 }

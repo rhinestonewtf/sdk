@@ -1,51 +1,62 @@
-import { createRequire } from 'node:module'
 import {
   createCoreAccessTokenHandler,
   createCoreExtensionTokenHandler,
   type JwtHandlerConfig,
 } from './handlers'
 
-const require = createRequire(import.meta.url)
-
 interface ExpressRequest {
+  method: string
+  url: string
   body?: unknown
 }
 
 interface ExpressResponse {
   status(code: number): ExpressResponse
-  json(body: unknown): void
+  json(body: unknown): unknown
 }
 
-type ExpressHandler = (req: ExpressRequest, res: ExpressResponse) => void
+type ExpressNext = (error?: unknown) => void
 
-interface ExpressRouter {
-  get(path: string, handler: ExpressHandler): ExpressRouter
-  post(path: string, handler: ExpressHandler): ExpressRouter
+type ExpressMiddleware = (
+  req: ExpressRequest,
+  res: ExpressResponse,
+  next: ExpressNext,
+) => void
+
+// Mirrors Express Router's default matching (case-insensitive, optional
+// trailing slash, query ignored) without importing express.
+function routePath(url: string): string {
+  const path = url.split('?')[0].toLowerCase()
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
 }
 
-export function createExpressRouter(config: JwtHandlerConfig): ExpressRouter {
-  // Dynamic import avoidance: we type the router interface manually
-  // so express doesn't need to be installed unless this function is called.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Router } = require('express') as {
-    Router: () => ExpressRouter
-  }
-  const router = Router()
-
+export function createExpressRouter(
+  config: JwtHandlerConfig,
+): ExpressMiddleware {
   const handleAccessToken = createCoreAccessTokenHandler(config)
   const handleExtensionToken = createCoreExtensionTokenHandler(config)
 
-  router.get('/access-token', async (_req, res) => {
-    const result = await handleAccessToken()
-    res.status(result.status).json(result.body)
-  })
+  return (req, res, next) => {
+    const path = routePath(req.url)
+    let pending: ReturnType<typeof handleAccessToken>
 
-  router.post('/extension-token', async (req, res) => {
-    const body = req.body as Record<string, unknown> | undefined
-    const intentInput = body?.intentInput
-    const result = await handleExtensionToken(intentInput)
-    res.status(result.status).json(result.body)
-  })
+    if (
+      (req.method === 'GET' || req.method === 'HEAD') &&
+      path === '/access-token'
+    ) {
+      pending = handleAccessToken()
+    } else if (req.method === 'POST' && path === '/extension-token') {
+      const body = req.body as Record<string, unknown> | undefined
+      pending = handleExtensionToken(body?.intentInput)
+    } else {
+      next()
+      return
+    }
 
-  return router
+    pending
+      .then((result) => {
+        res.status(result.status).json(result.body)
+      })
+      .catch(next)
+  }
 }

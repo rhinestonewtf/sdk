@@ -1,8 +1,9 @@
 import { decodeAbiParameters, zeroHash } from 'viem'
-import { base, linea, sepolia } from 'viem/chains'
+import { arbitrum, base, linea, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
 import { accountA } from '../../../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionData } from './digest'
 import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
@@ -11,6 +12,7 @@ import {
   ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
 } from './policies/addresses'
 import { resolveSessionData, toSession } from './resolve'
+import type { CrossChainPermissionInput, SessionDefinition } from './types'
 
 // Kept out of resolve.test.ts because that file imports fast-check (declared in
 // package.json but not installed in every working copy); these are plain
@@ -459,3 +461,99 @@ describe('resolveSessionData — default OneTimeUseIdPolicy address', () => {
 function bigintJson(_key: string, value: unknown) {
   return typeof value === 'bigint' ? value.toString() : value
 }
+
+describe('resolveSessionData — Permit2-route permit maxAmount', () => {
+  const POLICY = '0x00000000000000000000000000000000000000aa' as const
+  const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
+  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+  const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  const REFUSAL =
+    "a Permit2-route permit's maxAmount is enforced only with oneTimeUse"
+  const withOnce = {
+    oneTimeUse: { id: 7n },
+    policyAddresses: { oneTimeUseId: POLICY },
+  } as const
+
+  function resolve(
+    permit: Partial<CrossChainPermissionInput>,
+    extra: Partial<SessionDefinition> = {},
+  ) {
+    return resolveSessionData(
+      {
+        chain: base,
+        owners,
+        account: ACCOUNT,
+        crossChainPermits: [
+          {
+            from: { chain: base, token: USDC },
+            to: { chain: arbitrum, token: USDC_ARB },
+            ...permit,
+          },
+        ],
+        ...extra,
+      },
+      { settlement: SETTLEMENT_CATALOG },
+    )
+  }
+
+  test.each<[string, Partial<CrossChainPermissionInput>]>([
+    ['ACROSS', { settlementLayers: ['ACROSS'] }],
+    ['omitted settlementLayers', {}],
+  ])('refuses %s with maxAmount and no oneTimeUse', (_, layers) => {
+    expect(() =>
+      resolve({
+        ...layers,
+        from: { chain: base, token: USDC, maxAmount: 1_000n },
+      }),
+    ).toThrow(REFUSAL)
+  })
+
+  test('refuses a zero maxAmount too', () => {
+    expect(() =>
+      resolve({
+        settlementLayers: ['ACROSS'],
+        from: { chain: base, token: USDC, maxAmount: 0n },
+      }),
+    ).toThrow(REFUSAL)
+  })
+
+  test('refuses a maxAmount on a leg of another chain', () => {
+    expect(() =>
+      resolve({
+        settlementLayers: ['ACROSS'],
+        from: [
+          { chain: base, token: USDC },
+          { chain: arbitrum, token: USDC_ARB, maxAmount: 1_000n },
+        ],
+      }),
+    ).toThrow(REFUSAL)
+  })
+
+  test('accepts ACROSS with maxAmount and oneTimeUse', () => {
+    expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 1_000n },
+        },
+        withOnce,
+      ),
+    ).not.toThrow()
+  })
+
+  test('accepts ACROSS without maxAmount and without oneTimeUse', () => {
+    expect(() => resolve({ settlementLayers: ['ACROSS'] })).not.toThrow()
+  })
+
+  test('leaves an IntentExecutor-layer permit to its own maxAmount rule', () => {
+    const cctp: Partial<CrossChainPermissionInput> = {
+      settlementLayers: ['CCTP'],
+      from: { chain: base, token: USDC, maxAmount: 1_000n },
+    }
+    expect(() => resolve(cctp)).toThrow(
+      'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
+    )
+    expect(() => resolve(cctp, withOnce)).not.toThrow()
+  })
+})

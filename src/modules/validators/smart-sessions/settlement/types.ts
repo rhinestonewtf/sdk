@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import type { ServedStablecoin, SessionPolicy } from '../types'
+import type { ServedStablecoin } from '../types'
 
 /**
  * The per-chain addresses a settlement-scoped session pins, as the
@@ -68,15 +68,18 @@ export interface SettlementContext {
     readonly chainId: number
     readonly token: Address
     readonly recipient?: Address
+    /**
+     * `ECO_IE`, `OFT` and LZ's Stargate send: the owner's floor on delivery, in
+     * this leg's token. CCTP cannot enforce it.
+     */
+    readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
   readonly cap?: bigint
-  /** The permit's validity window, installed on every scoped action. */
-  readonly timeFrame: readonly SessionPolicy[]
-  /** `ECO_IE` only: the solver's maximum cut, in basis points of the cap. */
+  /** Every `from` leg's `maxAmount`, on every chain. */
+  readonly fromCaps?: readonly (bigint | undefined)[]
+  /** `ECO_IE` only: the most of the cap the solver may keep, in basis points. */
   readonly maxFeeBps?: number
-  /** The permit's `validAfter`, in seconds. */
-  readonly validAfter?: bigint
   /** The permit's `validUntil`, in seconds. */
   readonly validUntil?: bigint
 }
