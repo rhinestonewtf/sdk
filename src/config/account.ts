@@ -1176,9 +1176,9 @@ interface Session {
    *  stored before this field existed. */
   settlementCoverage?: SettlementCoverage
   /** Whether the session's key is held to its own actions (`'scoped'`) or keeps
-   *  the wildcard intent-execution fallback (`'open'`), with the reason.
-   *  Metadata only — it does not change the permission id. Absent on sessions
-   *  stored before this field existed. */
+   *  the wildcard fallback action (`'open'`), with a human-readable reason that
+   *  is not a stable contract. Metadata only — it does not change the
+   *  permission id. Absent on sessions stored before this field existed. */
   access?: SessionAccess
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }

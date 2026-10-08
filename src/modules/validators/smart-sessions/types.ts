@@ -250,12 +250,13 @@ export interface SettlementCoverage {
 
 /**
  * Whether a session's key is held to the session's own actions. `'open'` keeps
- * the wildcard intent-execution fallback, so the key may also call any target
- * the global intent-execution whitelist allows.
+ * the wildcard fallback action: with intent-execution, the key may also call
+ * any target the global intent-execution whitelist allows; a session with no
+ * actions, permissions or permits has a sudo fallback instead.
  */
 export interface SessionAccess {
   readonly kind: 'scoped' | 'open'
-  /** What made it so, e.g. `restrictToActions` or the permit that kept the fallback. */
+  /** What made it so, for people to read. Its wording is not a stable contract: branch on `kind`. */
   readonly reason: string
 }
 

@@ -513,24 +513,29 @@ function resolveSession(
           policies: v1PolicyOrder(action.policies),
         }))
       : userActions
-  let actions: ResolvedAction[] =
-    userActions.length || rawActions.length || expandedPermits.length
-      ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
-          (action): ResolvedAction => ({
-            actionTargetSelector:
-              'selector' in action
-                ? action.selector
-                : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-            actionTarget:
-              'target' in action
-                ? action.target
-                : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: action.policies
-              ? encodeActionPolicies(action.policies, environment, addresses)
-              : [{ policy: addresses.sudo, initData: '0x' }],
-          }),
-        )
-      : [sudoAction]
+  // With nothing to scope, the wildcard fallback carries sudo, not intent-execution.
+  const sudoFallback = !(
+    userActions.length ||
+    rawActions.length ||
+    expandedPermits.length
+  )
+  let actions: ResolvedAction[] = !sudoFallback
+    ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
+        (action): ResolvedAction => ({
+          actionTargetSelector:
+            'selector' in action
+              ? action.selector
+              : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+          actionTarget:
+            'target' in action
+              ? action.target
+              : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+          actionPolicies: action.policies
+            ? encodeActionPolicies(action.policies, environment, addresses)
+            : [{ policy: addresses.sudo, initData: '0x' }],
+        }),
+      )
+    : [sudoAction]
   // 1.x salts a swap-scoped session over its PRODUCTION venues even when built
   // for dev, so the salt — and the permissionId with it — does not move between
   // environments. Reproducing one means reproducing that, and the cheapest
@@ -722,7 +727,14 @@ function resolveSession(
     settlementCoverage: settlementScope && {
       dropped: settlementScope.dropped,
     },
-    access,
+    access: sudoFallback
+      ? {
+          kind: 'open',
+          reason: definition.claimPolicies?.length
+            ? 'claimPolicies only; the wildcard fallback is sudo'
+            : 'no restriction set; the wildcard fallback is sudo',
+        }
+      : access,
   }
 }
 
