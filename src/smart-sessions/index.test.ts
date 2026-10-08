@@ -4,6 +4,8 @@ import { accountA } from '../../test/consts'
 import {
   getSessionDetails,
   isSessionEnabled,
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
   toSession,
 } from './index'
@@ -66,4 +68,22 @@ describe('Smart Sessions compatibility facade', () => {
       }),
     )
   })
+
+  test.each([
+    [false, ONE_TIME_USE_ID_POLICY_ADDRESS],
+    [true, ONE_TIME_USE_ID_POLICY_ADDRESS_DEV],
+  ] as const)(
+    'the exported one-time-use address is the default (useDevContracts: %s)',
+    (useDevContracts, address) => {
+      const session = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          oneTimeUse: { id: 1n },
+        },
+        { useDevContracts },
+      )
+      expect(session.oneTimeUse?.policy).toBe(address)
+    },
+  )
 })
