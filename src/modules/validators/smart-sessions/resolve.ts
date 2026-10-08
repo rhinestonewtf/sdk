@@ -631,21 +631,40 @@ function resolveSession(
   // policy bounding the spender.
   const claimPoliciesMoved = claimPolicies.length > 0
   if (claimPoliciesMoved) {
-    // The claim policies take over the 1271 list, so anything the caller asked
-    // for on that surface would be dropped: a validity window lives on the
-    // signing policy, and a scoped or disabled mode decides the 7739 content the
-    // claim policy is reached through. Refuse rather than silently discard it.
-    if (definition.signing !== undefined) {
+    const signing = definition.signing
+    // `scoped` and `disabled` rewrite `allowedERC7739Content`, the gate the claim
+    // policy is reached through, so the policy would never be consulted. A
+    // validity window instead lowers to a TimeFramePolicy, which ANDs with the
+    // claim policies and leaves the gate alone, so it is carried; a windowless
+    // signing policy is sudo and is dropped rather than advertising a capability
+    // the session no longer has.
+    if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw new Error(
-        `Claim policies take over the session's ERC-1271 list, so \`signing\` cannot also be configured — its policy and validity window would be dropped. Drop \`signing\` or the claim policies.`,
+        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
       )
     }
-    // Replace rather than append. The list is an AND, so a permissive sudo entry
-    // alongside cannot weaken it — but it would be dead config that reads as a
-    // signing capability the session no longer has.
-    erc1271Policies = onceErc1271Policy
-      ? [...claimPolicies, onceErc1271Policy]
-      : claimPolicies
+    const hasWindow =
+      signing?.validAfter !== undefined || signing?.validUntil !== undefined
+    // The 1271 list is the only authorization surface a claim-policy session
+    // has, so an expired window is not a narrow session but a dead one: it
+    // enables and then fails every signature. Refuse it the way oneTimeUse does
+    // rather than hand back something that can never settle.
+    if (
+      signing?.validUntil !== undefined &&
+      !(
+        Number.isFinite(signing.validUntil.getTime()) &&
+        signing.validUntil.getTime() > Date.now()
+      )
+    ) {
+      throw new Error(
+        'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
+      )
+    }
+    erc1271Policies = [
+      ...claimPolicies,
+      ...(hasWindow ? erc1271Policies : []),
+      ...(onceErc1271Policy ? [onceErc1271Policy] : []),
+    ]
     claimPolicies = []
   }
   // Same hazard on the ERC-1271 list: it is an AddressSet keyed by policy, and
