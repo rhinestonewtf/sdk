@@ -49,6 +49,7 @@ import type {
   SessionAction,
   SessionData,
   SessionDefinition,
+  SettlementCoverage,
 } from './types'
 
 export const SMART_SESSIONS_FALLBACK_TARGET_FLAG: Address =
@@ -93,6 +94,7 @@ function resolveSession(
 ): {
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
+  readonly settlementCoverage: SettlementCoverage | undefined
 } {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
@@ -544,7 +546,14 @@ function resolveSession(
     actions,
     claimPolicies,
   }
-  return { data, settlementLayers: settlementScope?.settlementLayers ?? [] }
+  return {
+    data,
+    settlementLayers: settlementScope?.settlementLayers ?? [],
+    settlementCoverage: settlementScope && {
+      layers: settlementScope.settlementLayers,
+      dropped: settlementScope.dropped,
+    },
+  }
 }
 
 const POLICY_COMPONENTS = [
@@ -746,13 +755,16 @@ export function toSession(
   const environment = options.environment ?? 'production'
   // One resolution: 'all' depends on the clock and the catalog, so a second
   // could keep a different set of layers than the session's actions.
-  const { data, settlementLayers } = resolveSession(definition, {
-    environment,
-    ...(options.wrappedNativeToken
-      ? { wrappedNativeToken: options.wrappedNativeToken }
-      : {}),
-    ...(options.settlement ? { settlement: options.settlement } : {}),
-  })
+  const { data, settlementLayers, settlementCoverage } = resolveSession(
+    definition,
+    {
+      environment,
+      ...(options.wrappedNativeToken
+        ? { wrappedNativeToken: options.wrappedNativeToken }
+        : {}),
+      ...(options.settlement ? { settlement: options.settlement } : {}),
+    },
+  )
   const resolvedPermits = (definition.crossChainPermits ?? []).map(
     resolveCrossChainPermission,
   )
@@ -789,6 +801,7 @@ export function toSession(
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(settlementLayers.length ? { settlementLayers } : {}),
+    ...(settlementCoverage ? { settlementCoverage } : {}),
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,
