@@ -203,7 +203,7 @@ describe('scopeSameChain', () => {
           { chainId: 8453, token: USDC, recipient: OTHER, minAmount: 1n },
         ],
       },
-      'applies only to a SAME_CHAIN_IE swap',
+      'a SAME_CHAIN_IE transfer cannot enforce `to.minAmount`',
     ],
     [
       'a transfer to the account itself',
