@@ -1,13 +1,6 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
 import { sessionWindowRefusal } from '../one-time-use'
-import {
-  allOf,
-  anyOf,
-  cumulativeCap,
-  floorFor,
-  pin,
-  swapAction,
-} from '../swap/rules'
+import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -16,8 +9,9 @@ import type {
   ScopedAction,
 } from '../types'
 import { scopeCctp } from './cctp'
-import { knownDecimals, scopeEco } from './eco'
+import { scopeEco } from './eco'
 import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
+import { requireFloorsWithinCaps } from './floor'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -267,39 +261,8 @@ export function resolveSettlementScope(
   // Every layer in the permit must enforce `to.minAmount`, or the key would
   // settle around it: scopeLayer refuses one that cannot (CCTP never can).
   const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
-  // Every bridged token is a USD stablecoin, so a floor outside
-  // [maxAmount / 2, maxAmount] of any capped `from` leg is a units mistake. It
-  // is a hard error, never a dropped layer: 'all' must not keep a floor of dust.
   if (minAmount && !sameChainOnly && options.settlement) {
-    for (const to of permit.to) {
-      const toDecimals = knownDecimals(
-        options.settlement,
-        to.chain.id,
-        to.token,
-      )
-      for (const from of permit.from ?? []) {
-        const fromDecimals = knownDecimals(
-          options.settlement,
-          from.chain.id,
-          from.token,
-        )
-        if (
-          to.minAmount === undefined ||
-          from.maxAmount === undefined ||
-          toDecimals === undefined ||
-          fromDecimals === undefined
-        ) {
-          continue
-        }
-        const at = (num: bigint, den: bigint) =>
-          floorFor(from.maxAmount ?? 0n, num, den, fromDecimals, toDecimals)
-        if (to.minAmount < at(1n, 2n) || to.minAmount > at(1n, 1n)) {
-          throw new Error(
-            `crossChainPermits: \`to.minAmount\` ${to.minAmount} on chain ${to.chain.id} must be between half of and all of the chain ${from.chain.id} maxAmount; give it in the \`to\` token's smallest units (${toDecimals} decimals)`,
-          )
-        }
-      }
-    }
+    requireFloorsWithinCaps(permit, options.settlement)
   }
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
