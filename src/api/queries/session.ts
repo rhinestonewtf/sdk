@@ -3,7 +3,10 @@ import { toEvmChainReference } from '../../chains/caip2'
 import type { ChainCatalogPort } from '../../clients/orchestrator/port'
 import type { RpcPort } from '../../clients/rpc/port'
 import { resolvePolicyAddresses } from '../../modules/validators/smart-sessions/policies/addresses'
-import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import {
+  sessionPolicyAddresses,
+  toSession,
+} from '../../modules/validators/smart-sessions/resolve'
 import type {
   Session,
   SessionDefinition,
@@ -44,7 +47,7 @@ async function assertUniversalActionCopies(
   rpc: RpcPort,
   definition: SessionDefinition,
 ): Promise<void> {
-  const addresses = resolvePolicyAddresses(definition.policyAddresses)
+  const addresses = resolvePolicyAddresses(sessionPolicyAddresses(definition))
   const copies = addresses.universalActionCopies
   if (!copies) return
   const chain = toEvmChainReference(definition.chain.id)
