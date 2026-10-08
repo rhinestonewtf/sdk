@@ -9,14 +9,20 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
   toSession,
 } from './resolve'
-import type { Session, SessionDefinition } from './types'
+import type {
+  CrossChainPermissionInput,
+  Session,
+  SessionDefinition,
+} from './types'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 const USDT = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2' as const
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
 const owners = { type: 'ecdsa', accounts: [accountA] } as const
-const permit = (settlementLayers?: readonly string[]) => ({
+const permit = (
+  settlementLayers?: CrossChainPermissionInput['settlementLayers'],
+): CrossChainPermissionInput => ({
   from: { chain: base, token: USDC },
   to: { chain: arbitrum, token: USDC_ARB },
   ...(settlementLayers ? { settlementLayers } : {}),
