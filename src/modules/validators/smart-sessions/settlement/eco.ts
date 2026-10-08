@@ -34,8 +34,8 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * `abi.encode(route)` and reverts `InvalidHash`, so only canonical bytes are
  * fillable, and canonical bytes with these counts have exactly the layout the
  * offsets assume. Any other layout is never filled and refunds to the pinned
- * creator after the reward deadline. This assumes EVM destinations and a Portal
- * that keeps re-encoding.
+ * creator after the reward deadline, which only a deadline on the session
+ * bounds. This assumes EVM destinations and a Portal that keeps re-encoding.
  *
  * The route's token count is not pinned either: the pinned route token, call
  * count and transfer head leave 3 as the only other canonical count, whose
@@ -278,8 +278,10 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
     )
   }
-  // No validUntil leaves both deadlines unpinned, as nothing else in the
-  // session is time-bound: an unfilled reward then has no refund deadline.
+  // `validUntil` is the session's earliest deadline. Both deadlines stay
+  // unpinned only when the session has no deadline at all (no validUntil on the
+  // permit and none on the session): an unfilled reward then has no refund
+  // deadline.
   const validUntil = ctx.validUntil
   const now = BigInt(Math.floor(Date.now() / 1000))
   if (validUntil !== undefined && validUntil < now + ECO_MIN_VALIDITY_SECONDS) {

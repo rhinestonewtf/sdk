@@ -390,11 +390,11 @@ describe('scopeEco', () => {
   })
 
   describe('without validUntil', () => {
-    const open = scopeEco({ ...base, validUntil: undefined })
+    const open = () => scopeEco({ ...base, validUntil: undefined })
     const MAX_UINT64 = 2n ** 64n - 1n
 
     test('pins neither deadline', () => {
-      const policy = open.policies?.[0]
+      const policy = open().policies?.[0]
       if (policy?.type !== 'arg-policy')
         throw new Error('expected an arg policy')
       const offsets = rulesOf(policy.expression).map((r) => r.calldataOffset)
@@ -410,18 +410,18 @@ describe('scopeEco', () => {
       )
     })
 
-    test('admits a publish with either deadline at the uint64 maximum', () => {
-      expect(holds(open, publish())).toBe(true)
+    test('admits a publish with both deadlines at the uint64 maximum', () => {
+      expect(holds(open(), publish())).toBe(true)
       expect(
         holds(
-          open,
+          open(),
           publish({ deadline: MAX_UINT64, routeDeadline: MAX_UINT64 }),
         ),
       ).toBe(true)
     })
 
     test('still refuses a reward over the cap', () => {
-      expect(holds(open, publish({ reward: 101n }))).toBe(false)
+      expect(holds(open(), publish({ reward: 101n }))).toBe(false)
     })
   })
 

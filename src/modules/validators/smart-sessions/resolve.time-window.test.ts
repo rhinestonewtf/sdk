@@ -61,7 +61,8 @@ function fingerprint(definition: SessionDefinition) {
 // Pinned sessions without an action window. The released shapes (sudo,
 // permissions, raw actions, signing window) equal main; the oneTimeUse and
 // CCTP rows are unreleased snapshots, and the Permit2 permit without
-// maxAmount moved from main (below).
+// maxAmount moved from main (below). The ECO_IE and 'all' rows with validUntil
+// equal main; the ECO_IE row without one is a new snapshot.
 const WINDOWLESS: Record<string, SessionDefinition> = {
   sudo: { chain: base, owners },
   'permissions, strict salt': {

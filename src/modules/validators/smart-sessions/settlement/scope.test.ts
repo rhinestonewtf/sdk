@@ -831,7 +831,7 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
-    test('requires oneTimeUse, through its mandatory validUntil and maxAmount', () => {
+    test('requires oneTimeUse, through its validUntil and maxAmount', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
       ).toThrow('a session time window requires oneTimeUse')
@@ -963,7 +963,75 @@ describe('settlement-scoped crossChainPermits', () => {
       // ECO_IE cannot pin an open recipient, so no layer can enforce the floor.
       test('is refused when ECO_IE cannot settle it either', () => {
         expect(() => resolveSessionData(all(99n, 'any'))).toThrow(
-          /no IntentExecutor layer can settle this permit.*CCTP: CCTP cannot enforce `to.minAmount`/,
+          /no IntentExecutor layer can settle this permit.*CCTP: CCTP cannot enforce `to.minAmount`.*ECO_IE: ECO_IE needs a concrete recipient/,
+        )
+      })
+    })
+
+    // Eco's deadlines are unpinned only when the session has no deadline at all.
+    describe('the session deadline bounds ECO_IE', () => {
+      const LATER = new Date(2_000_000_000_000)
+      const EARLIER = new Date(1_990_000_000_000)
+      const session = (
+        permitUntil: Date | undefined,
+        sessionUntil: Date | undefined,
+        permit: Partial<CrossChainPermissionInput> = {},
+      ) =>
+        definition(
+          {
+            from: { chain: base, token: USDC, maxAmount: 100n },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ECO_IE'],
+            maxFeeBps: 50,
+            ...(permitUntil === undefined ? {} : { validUntil: permitUntil }),
+            ...permit,
+          },
+          {
+            ...withOnce,
+            oneTimeUse: {
+              id: 7n,
+              ...(sessionUntil === undefined
+                ? {}
+                : { validUntil: sessionUntil }),
+            },
+          },
+        )
+
+      test('oneTimeUse.validUntil alone pins both deadlines as a permit validUntil does', () => {
+        expect(resolveSessionData(session(undefined, LATER))).toEqual(
+          resolveSessionData(session(LATER, undefined)),
+        )
+      })
+
+      test('a later permit validUntil pins the earlier session deadline', () => {
+        expect(resolveSessionData(session(LATER, EARLIER))).toEqual(
+          resolveSessionData(session(EARLIER, undefined)),
+        )
+      })
+
+      test('a session deadline under 7 days ahead is refused', () => {
+        const soon = new Date(Date.now() + 86_400_000)
+        expect(() => resolveSessionData(session(undefined, soon))).toThrow(
+          'ECO_IE needs validUntil at least 7 days ahead',
+        )
+        // A later permit validUntil does not lift it.
+        expect(() => resolveSessionData(session(LATER, soon))).toThrow(
+          'ECO_IE needs validUntil at least 7 days ahead',
+        )
+      })
+
+      test("a session deadline under 7 days ahead drops ECO_IE under 'all'", () => {
+        const floored = (sessionUntil: Date) =>
+          session(undefined, sessionUntil, {
+            to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+            maxFeeBps: undefined,
+            settlementLayers: 'all',
+          })
+        expect(toSession(floored(LATER)).settlementLayers).toContain('ECO_IE')
+        expect(() =>
+          resolveSessionData(floored(new Date(Date.now() + 86_400_000))),
+        ).toThrow(
+          /no IntentExecutor layer can settle this permit.*ECO_IE: ECO_IE needs validUntil at least 7 days ahead/,
         )
       })
     })
