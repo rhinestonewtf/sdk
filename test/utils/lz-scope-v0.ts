@@ -1,3 +1,7 @@
+// Frozen copy of `scopeLz` before RHI-8045 shrank its policy. The differential
+// test in lz-policy-size.test.ts holds the live one to refuse all it refused,
+// and pins this copy's compiled initData by hash, so a change to the live
+// helpers it imports cannot move both sides together. Do not edit.
 import {
   type Address,
   type Hex,
@@ -7,21 +11,24 @@ import {
   toFunctionSelector,
 } from 'viem'
 import {
+  OFT_SEND_SELECTOR,
+  SEND,
+} from '../../src/modules/validators/smart-sessions/settlement/oft'
+import { served } from '../../src/modules/validators/smart-sessions/settlement/served'
+import type { SettlementContext } from '../../src/modules/validators/smart-sessions/settlement/types'
+import {
   allOf,
   anyOf,
   cumulativeCap,
   pin,
   pinValue,
   pinWord,
-} from '../swap/rules'
+} from '../../src/modules/validators/smart-sessions/swap/rules'
 import type {
   ArgPolicyExpression,
   ScopedAction,
   UniversalActionPolicyParamRule,
-} from '../types'
-import { OFT_SEND_SELECTOR, SEND } from './oft'
-import { SettlementLayerRefusal, served } from './served'
-import type { SettlementContext } from './types'
+} from '../../src/modules/validators/smart-sessions/types'
 
 /**
  * LZ — USDC over the LayerZero Value Transfer API. The orchestrator forwards the
@@ -29,15 +36,12 @@ import type { SettlementContext } from './types'
  * quoteId)`, whose nested calls pull the tokens, bridge them and sweep the rest
  * back. LZMultiCall runs any call it is handed, so every nested call is pinned:
  * the array length, each element offset, target, data pointer and
- * length-plus-selector, and each argument the key could redirect. The policy
- * accepts two of the API's routes, in three layouts:
+ * length-plus-selector, and each argument the key could redirect. The API picks
+ * one of three routes, so the policy accepts exactly these layouts:
  *
+ * - Stargate TAXI or BUS: delegateTransferFrom, approve(pool), pool.send, sweep.
  * - CCTP: delegateTransferFrom, transfer(fee), approve(TokenMessengerV2),
  *   depositForBurn, sweep; to Plasma without the fee transfer.
- * - Stargate TAXI: delegateTransferFrom, approve(pool), pool.send, sweep; only
- *   into a leg no CCTP route reaches. Where both exist CCTP is cheaper and
- *   faster, and the orchestrator must not plan Stargate. BUS, which the
- *   orchestrator does not plan, is refused.
  */
 
 /**
@@ -52,9 +56,9 @@ const LZ_CCTP_TOKEN_MESSENGER: Address =
  * The most relay fee the key may send LayerZero's receiver, in USDC units: ~10x
  * the live fee into Ethereum (0.098 USDC), the dearest destination.
  */
-export const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
+const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
 
-export const LZ_EXECUTE_SELECTOR = toFunctionSelector(
+const LZ_EXECUTE_SELECTOR = toFunctionSelector(
   'execute((address,uint256,bytes)[],bytes32)',
 )
 const DELEGATE_TRANSFER_FROM = toFunctionSelector(
@@ -82,20 +86,6 @@ interface NestedCall {
 }
 
 const ceil32 = (n: number) => BigInt(Math.ceil(n / 32) * 32)
-
-const and = (terms: ArgPolicyExpression[]): ArgPolicyExpression =>
-  terms.reduceRight((right, left) => ({ type: 'and', left, right }))
-
-/**
- * The same check on the same word. A usage-limited rule is never the same: one
- * hoisted out of an OR would count on every call, not only when its branch runs.
- */
-export const sameRule = (a: Rule, b: Rule) =>
-  a.usageLimit === undefined &&
-  b.usageLimit === undefined &&
-  a.condition === b.condition &&
-  a.calldataOffset === b.calldataOffset &&
-  BigInt(a.referenceValue) === BigInt(b.referenceValue)
 
 /**
  * The pins of an `execute` batch under the canonical encoding, below the
@@ -135,8 +125,8 @@ type Leg = SettlementContext['destinations'][number]
 
 interface Route {
   readonly rules: Rule[]
-  /** How many nested calls the batch makes. */
-  readonly calls: number
+  /** Only for Stargate: TAXI or BUS. */
+  readonly modes?: Rule[][]
   /** Pins a leg this route delivers; undefined for one it cannot. */
   readonly leg: (leg: Leg) => Rule[] | undefined
   /** Whether this route reaches the leg's chain at all, whatever its token. */
@@ -149,15 +139,15 @@ interface Route {
 }
 
 /** The execute call, pinned to the permit's destinations, recipients and cap. */
-export function scopeLz(ctx: SettlementContext): ScopedAction {
+export function scopeLzV0(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
-    throw new SettlementLayerRefusal(
+    throw new Error(
       'crossChainPermits: LZ moves one token (USDC) per chain; give exactly one `from` token on this chain',
     )
   }
   const account = ctx.account
   if (!account) {
-    throw new SettlementLayerRefusal(
+    throw new Error(
       'crossChainPermits: LZ sweeps what it does not bridge back to the account, so the session definition needs `account`',
     )
   }
@@ -200,17 +190,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     args: (at) => [pin(at(0n), spender)],
   })
   const routes: Route[] = []
-  const cctp = source.cctp
-  const cctpFrom = cctp !== undefined && isAddressEqual(token, cctp.token)
-  // A route exists where both chains carry its block.
-  const cctpLinks = (leg: Leg) =>
-    cctpFrom && crossChain(leg) && servedLz(leg)?.cctp !== undefined
-  // A leg whose token CCTP does not mint, such as a Stargate USDC, stays
-  // Stargate's.
-  const cctpReaches = (leg: Leg) => {
-    const dst = servedLz(leg)?.cctp
-    return cctpLinks(leg) && !!dst && isAddressEqual(leg.token, dst.token)
-  }
   const stargate = source.stargateUsdc
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
@@ -236,23 +215,29 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     const calls = [pull, approve(stargate.pool), send, sweep]
     const { rules, args } = batch(calls)
     const s = args[2]
-    // TAXI: extraOptions 0x0003, composeMsg and oftCmd empty. No native drop,
-    // no compose.
-    rules.push(
+    // TAXI: extraOptions 0x0003, composeMsg and oftCmd empty. BUS: extraOptions
+    // and composeMsg empty, oftCmd 0x01. No native drop, no compose.
+    const taxi = [
       pinValue(s(SEND.composeMsgPointer), 0x120n),
       pinValue(s(SEND.oftCmdPointer), 0x140n),
       pinValue(s(0x160n), 2n),
       pinValue(s(0x180n), 0x0003n << 240n),
       pinValue(s(0x1a0n), 0n),
       pinValue(s(0x1c0n), 0n),
-    )
+    ]
+    const bus = [
+      pinValue(s(SEND.composeMsgPointer), 0x100n),
+      pinValue(s(SEND.oftCmdPointer), 0x120n),
+      pinValue(s(0x160n), 0n),
+      pinValue(s(0x180n), 0n),
+      pinValue(s(0x1a0n), 1n),
+      pinValue(s(0x1c0n), 0x01n << 248n),
+    ]
     const reaches = (leg: Leg) =>
-      crossChain(leg) &&
-      servedLz(leg)?.stargateUsdc !== undefined &&
-      !cctpReaches(leg)
+      crossChain(leg) && servedLz(leg)?.stargateUsdc !== undefined
     routes.push({
       rules,
-      calls: calls.length,
+      modes: [taxi, bus],
       reaches,
       leg: (leg) => {
         const dst = servedLz(leg)?.stargateUsdc
@@ -266,7 +251,8 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       limits: cap(args[0](96n)),
     })
   }
-  if (cctpFrom) {
+  const cctp = source.cctp
+  if (cctp !== undefined && isAddressEqual(token, cctp.token)) {
     const burn: NestedCall = {
       target: LZ_CCTP_TOKEN_MESSENGER,
       selector: DEPOSIT_FOR_BURN,
@@ -295,10 +281,11 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       const { rules, args } = batch(calls)
       const b = args[calls.indexOf(burn)]
       const reaches = (leg: Leg) =>
-        cctpLinks(leg) && (servedLz(leg)?.cctp?.feeless === true) === feeless
+        crossChain(leg) &&
+        servedLz(leg)?.cctp !== undefined &&
+        (servedLz(leg)?.cctp?.feeless === true) === feeless
       routes.push({
         rules,
-        calls: calls.length,
         reaches,
         leg: (leg) => {
           const dst = servedLz(leg)?.cctp
@@ -319,7 +306,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     }
   }
   if (routes.length === 0) {
-    throw new SettlementLayerRefusal(
+    throw new Error(
       `crossChainPermits: LZ moves only USDC; the \`from\` token on chain ${ctx.chainId} is ${token}`,
     )
   }
@@ -331,50 +318,31 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   )
   for (const leg of legs) {
     if (routes.every((route) => route.leg(leg) === undefined)) {
-      throw new SettlementLayerRefusal(
+      throw new Error(
         `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
       )
     }
   }
-  const branches = routes.flatMap((route) => {
+  const branches = routes.flatMap((route): ArgPolicyExpression[] => {
     const pinned = legs.flatMap((leg) => {
       const rules = route.leg(leg)
       return rules ? [rules] : []
     })
     if (pinned.length === 0) return []
     return [
-      {
-        route,
-        rest: [
-          anyOf(pinned.map(allOf)),
-          ...(route.limits.length ? [allOf(route.limits)] : []),
-        ],
-      },
+      [
+        allOf(route.rules),
+        ...(route.modes ? [anyOf(route.modes.map(allOf))] : []),
+        anyOf(pinned.map(allOf)),
+        ...(route.limits.length ? [allOf(route.limits)] : []),
+      ].reduceRight((right, left) => ({ type: 'and', left, right })),
     ]
   })
   if (branches.length === 0) {
-    throw new SettlementLayerRefusal(
+    throw new Error(
       `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
     )
   }
-  // A pure pin that every branch of a group carries (`group.every`) is checked
-  // once, ahead of their OR; that alone makes it sound. Grouping by call count
-  // only picks the batches likely to share pins.
-  const groups = [...new Set(branches.map(({ route }) => route.calls))].map(
-    (calls) => {
-      const group = branches.filter(({ route }) => route.calls === calls)
-      const shared = group[0].route.rules.filter((rule) =>
-        group.every(({ route }) => route.rules.some((r) => sameRule(r, rule))),
-      )
-      const own = group.map(({ route, rest }) => {
-        const left = route.rules.filter(
-          (r) => !shared.some((s) => sameRule(s, r)),
-        )
-        return and([...(left.length ? [allOf(left)] : []), ...rest])
-      })
-      return and([...(shared.length ? [allOf(shared)] : []), anyOf(own)])
-    },
-  )
   return {
     target: multiCall,
     selector: LZ_EXECUTE_SELECTOR,
@@ -392,7 +360,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           // stale TransferDelegate allowance could fund a second route, and a
           // second Stargate send would pay another native fee.
           left: allOf([{ ...pinValue(0n, 0x40n), usageLimit: 0x40n }]),
-          right: anyOf(groups),
+          right: anyOf(branches),
         },
       },
     ],
