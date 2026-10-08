@@ -226,7 +226,8 @@ describe('with oneTimeUse, the permit validUntil is the once-policy deadline', (
   test.each(cases)('%s', (_, shape, once) => {
     const actions = resolve(shape, { validUntil: UNTIL }, once)
     const expected = once !== undefined && once < UNTIL ? once : UNTIL
-    // The burns and the dummy pre-claim op are actions like any other.
+    // The burns are actions like any other; the burn enables the session, so
+    // there is no dummy pre-claim action.
     expect(
       actions.some((a) => isAddressEqual(a.actionTarget, ONE_TIME_USE)),
     ).toBe(true)
@@ -234,7 +235,7 @@ describe('with oneTimeUse, the permit validUntil is the once-policy deadline', (
       actions.some((a) =>
         isAddressEqual(a.actionTarget, DUMMY_PRECLAIMOP_TARGET),
       ),
-    ).toBe(true)
+    ).toBe(false)
     for (const action of actions) {
       expect(hasTimeFrame(action)).toBe(false)
       expect(deadlineOf(action)).toBe(expected)
