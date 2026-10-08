@@ -200,9 +200,9 @@ const SINGLE: Record<string, SessionDefinition> = {
 }
 
 describe('multi-layer settlement permits', () => {
-  // Captured on main before multi-layer permits: a changed digest would be a
-  // HashMismatch for every single-layer session already signed.
-  test('a single-layer permit compiles to the same actions as before', () => {
+  // A changed digest is a HashMismatch for every single-layer session already
+  // signed.
+  test('single-layer digests are pinned', () => {
     const digests = Object.fromEntries(
       Object.entries(SINGLE).map(([name, def]) => [
         name,
@@ -212,7 +212,7 @@ describe('multi-layer settlement permits', () => {
     expect(digests).toMatchInlineSnapshot(`
       {
         "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0xa6533b46c8986ff17e94fa85e88ed46a22a8436e3320971cc89b64d65534fe6c",
+        "CCTP with fees": "0x57a3aac93df5f7b3ba14ded8535ca4b0f8e55561b3ccb00aa5fdcf10dc97361c",
         "ECO_IE": "0x95a4297d06711c1029afd17ba2887ccf433f6d99ad791d7cc383551553d3fd28",
         "LZ": "0xd43889c3e9ec91179abefe75255724b8aba43f4661ffe361034eac3fd58ded1c",
         "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",

@@ -415,9 +415,10 @@ interface CrossChainPermit {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - The collector transfer and the paymaster approve are each capped at 5 USD
-   *   cumulative per `from` token, so up to 10 USD per token including gas. The
-   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
+   *   collector transfer and the paymaster approve one per `from` token, the
+   *   paymaster callback one shared across tokens. So one token can pay up to
+   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
@@ -527,9 +528,10 @@ interface CrossChainPermissionInput {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - The collector transfer and the paymaster approve are each capped at 5 USD
-   *   cumulative per `from` token, so up to 10 USD per token including gas. The
-   *   paymaster callback has one 5 USD budget shared across tokens.
+   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
+   *   collector transfer and the paymaster approve one per `from` token, the
+   *   paymaster callback one shared across tokens. So one token can pay up to
+   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
