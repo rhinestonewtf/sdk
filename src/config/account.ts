@@ -747,9 +747,8 @@ type SpendingLimitField<TFn extends AbiFunction> =
     ? { spendingLimit?: { token: Address; amount: bigint } }
     : { spendingLimit?: never }
 
-type ValueLimitField<TFn extends AbiFunction> = IsPayable<TFn> extends true
-  ? { valueLimit?: bigint }
-  : { valueLimit?: never }
+type ValueLimitField<TFn extends AbiFunction> =
+  IsPayable<TFn> extends true ? { valueLimit?: bigint } : { valueLimit?: never }
 
 type PermissionFunctionConfig<TFn extends AbiFunction> = {
   /** `valueLimitPerUse` embedded in universal/arg-policy `ActionConfig`. */
@@ -1013,7 +1012,7 @@ interface SessionDefinition<
   permissions?: readonly [...PermissionsForAbis<TAbis>]
   /**
    * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
-   * expands to this plus the spending-limit and timeframe guardrails, takes
+   * expands to this plus a `maxAmount` spending limit (with `oneTimeUse`), takes
    * `Date`s rather than raw deadlines, and defaults to bridge-to-self
    * (`allowRecipientNotAccount: false`) rather than leaving the recipient open.
    *
