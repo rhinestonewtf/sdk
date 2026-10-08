@@ -1,7 +1,6 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
 import { sessionWindowRefusal } from '../one-time-use'
 import {
-  type CollectRefusal,
   RefusalCollectionHalted,
   type Refuse,
   recover,
@@ -124,7 +123,7 @@ export interface SettlementScopeOptions {
   /** The orchestrator's `/chains` settlement addresses; IntentExecutor layers need them. */
   readonly settlement?: SettlementCatalog
   /** Dry run only: receives each independent refusal instead of throwing it. */
-  readonly collect?: CollectRefusal
+  readonly collect?: Refuse
   /** The earliest deadline set elsewhere on the session, in seconds. */
   readonly sessionDeadline?: bigint
 }
@@ -161,25 +160,23 @@ export function resolveSettlementScope(
     throw refusal(
       'MULTIPLE_INTENT_EXECUTOR_PERMITS',
       'crossChainPermits: give at most one IntentExecutor-layer permit per session',
-      { permitIndex: 1 },
+      { permitIndex: permits.indexOf(scoped[1]) },
     )
   }
   const [permit] = scoped
-  const collect = options.collect
-  if (collect === undefined) return scopePermit(permit, options, refuser())
+  const permitIndex = permits.indexOf(permit)
+  const refuse = refuser(options.collect, { permitIndex })
   // A refusal that leaves nothing valid to scope ends the dry run here.
-  try {
-    return scopePermit(permit, options, refuser(collect, { permitIndex: 0 }))
-  } catch (error) {
-    if (!(error instanceof RefusalCollectionHalted)) {
-      collect(error, { permitIndex: 0 })
-    }
-    throw new RefusalCollectionHalted()
-  }
+  const scope = recover(refuse, () =>
+    scopePermit(permit, permitIndex, options, refuse),
+  )
+  if (scope === undefined) throw new RefusalCollectionHalted()
+  return scope
 }
 
 function scopePermit(
   permit: CrossChainPermit,
+  permitIndex: number,
   options: SettlementScopeOptions,
   refuse: Refuse,
 ): ResolvedSettlementScope {
@@ -192,7 +189,7 @@ function scopePermit(
     refuse(
       refusal(
         'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
-        sessionWindowRefusal('crossChainPermits[0]'),
+        sessionWindowRefusal(`crossChainPermits[${permitIndex}]`),
       ),
     )
   }
@@ -210,7 +207,7 @@ function scopePermit(
   // SAME_CHAIN_IE's transfer or swap shares no call shape with a bridge.
   if (requested.length > 1 && requested.includes('SAME_CHAIN_IE')) {
     throw refusal(
-      'SAME_CHAIN_WITH_OTHER_LAYERS',
+      'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
       'crossChainPermits: SAME_CHAIN_IE cannot share a permit with other IntentExecutor layers',
     )
   }
@@ -234,7 +231,7 @@ function scopePermit(
   if (caps.length && !options.oneTimeUse) {
     refuse(
       refusal(
-        'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+        'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
         'crossChainPermits: maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
       ),
     )
@@ -321,7 +318,7 @@ function scopePermit(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     refuse(
       refusal(
-        'MAX_FEE_BPS_ONLY_ECO',
+        'MAX_FEE_BPS_ONLY_ECO_IE',
         'crossChainPermits: maxFeeBps applies only to ECO_IE',
       ),
     )
@@ -443,7 +440,7 @@ function scopePermit(
   if (permit.maxFeeBps !== undefined && ecoSkipped !== undefined) {
     refuse(
       refusal(
-        'MAX_FEE_BPS_ECO_UNAVAILABLE',
+        'MAX_FEE_BPS_ECO_IE_UNAVAILABLE',
         `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
         { layer: 'ECO_IE' },
       ),

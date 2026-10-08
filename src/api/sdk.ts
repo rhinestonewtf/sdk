@@ -8,7 +8,7 @@ import type {
   RhinestoneSDKConfig,
 } from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
-import type { CrossChainPermitValidation } from '../modules/validators/smart-sessions/refusals'
+import type { SessionValidation } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
@@ -135,26 +135,32 @@ class RhinestoneSDK {
   }
 
   /**
-   * Dry-run a session definition and return every refusal `createSession`
-   * would throw for it, each with a stable `code`, instead of throwing the
-   * first. Fetches the orchestrator's chain catalog (`GET /chains`) and reads
-   * the UniversalActionPolicy copies' code the way `createSession` does and
-   * runs the same resolution, so the first refusal is the error
-   * `createSession` throws and `refusals` is empty exactly when it succeeds.
-   * Then the result also carries the session's `access` and, for a
-   * settlement-scoped permit, its `settlementCoverage`. A failed fetch still
-   * throws.
+   * Dry-run `createSession`: return every refusal it would throw for a session
+   * definition, each with a stable `code`, instead of throwing the first. It
+   * makes the same reads as `createSession` (the UniversalActionPolicy copies'
+   * code, then `GET /chains`) and runs the same resolution, so the first
+   * refusal is the error `createSession` throws and `refusals` is empty
+   * exactly when it succeeds. When nothing is refused, the result also has the
+   * session's `access` and, for a settlement-scoped permit, its
+   * `settlementCoverage`. A failed read throws, as it does in `createSession`.
    *
    * Problems that do not depend on each other are all reported; within one
-   * settlement layer only its first refusal is. For a fully offline check, use
-   * the standalone `validateCrossChainPermits` from `@rhinestone/sdk/smart-sessions`.
+   * settlement layer only its first refusal is. To check without network
+   * calls, pass the settlement catalog to the standalone `validateSession`
+   * from `@rhinestone/sdk/smart-sessions`.
    * @param definition The session definition
-   * @returns `refusals`, empty when `createSession` would succeed, and then the session's `access` and `settlementCoverage`
+   * @returns The refusals and, when there are none, the session's `access` and `settlementCoverage`
+   * @example
+   * ```ts
+   * const { refusals, access } = await sdk.validateSession(definition)
+   * for (const { code, message, permitIndex } of refusals) {
+   *   console.warn(code, permitIndex, message)
+   * }
+   * if (access?.kind === 'open') console.warn('the session keeps the wildcard fallback')
+   * ```
    */
-  validateCrossChainPermits(
-    definition: SessionDefinition,
-  ): Promise<CrossChainPermitValidation> {
-    return this.#sdk.composition.project.validateCrossChainPermits(definition)
+  validateSession(definition: SessionDefinition): Promise<SessionValidation> {
+    return this.#sdk.composition.project.validateSession(definition)
   }
 }
 

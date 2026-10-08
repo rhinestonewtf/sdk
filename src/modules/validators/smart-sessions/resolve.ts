@@ -36,15 +36,14 @@ import {
 } from './policies/claim'
 import { encodeActionPolicies } from './policies/encode'
 import {
-  type CollectRefusal,
-  type CrossChainPermitRefusal,
-  type CrossChainPermitValidation,
   collectRefusals,
   RefusalCollectionHalted,
   type Refuse,
   recover,
   refusal,
+  type refusalLog,
   refuser,
+  type SessionValidation,
 } from './refusals'
 import {
   isSettlementScopedPermit,
@@ -216,30 +215,20 @@ export function resolveSessionData(
 }
 
 /**
- * Every refusal resolving `definition` meets, in the order it meets them, from
- * the same checks `toSession` runs. Never throws a refusal.
- */
-export function collectSessionRefusals(
-  definition: SessionDefinition,
-  options: ResolveSessionOptions = {},
-): CrossChainPermitRefusal[] {
-  return [...validateSessionDefinition(definition, options).refusals]
-}
-
-/**
  * The dry run of `toSession`: every refusal it meets and, when there is none,
  * the `access` and `settlementCoverage` the session gets. Never throws a refusal.
  */
 export function validateSessionDefinition(
   definition: SessionDefinition,
   options: ResolveSessionOptions = {},
-): CrossChainPermitValidation {
-  let resolved: ReturnType<typeof resolveSession> | undefined
-  const refusals = collectRefusals((collect) => {
-    resolved = resolveSession(definition, options, collect)
-  })
-  if (refusals.length || resolved === undefined) return { refusals }
-  const { access, settlementCoverage } = resolved
+  log?: ReturnType<typeof refusalLog>,
+): SessionValidation {
+  const { refusals, result } = collectRefusals(
+    (collect) => resolveSession(definition, options, collect),
+    log,
+  )
+  if (result === undefined) return { refusals }
+  const { access, settlementCoverage } = result
   return { refusals, access, ...(settlementCoverage && { settlementCoverage }) }
 }
 
@@ -250,7 +239,7 @@ export function validateSessionDefinition(
 function resolveSession(
   definition: SessionDefinition,
   options: ResolveSessionOptions,
-  collect?: CollectRefusal,
+  collect?: Refuse,
 ): {
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
@@ -424,7 +413,7 @@ function resolveSession(
   ) {
     refuse(
       refusal(
-        'RESTRICTED_WITH_PERMIT2_PERMIT',
+        'RESTRICTED_WITH_PERMIT2_GRANTS',
         'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
           'dropping the fallback also drops the permit guardrails (spending ' +
           'limits). Use a restricted scoped-action session or a permit session, ' +
@@ -775,7 +764,8 @@ function resolveSession(
     for (const { policy } of erc1271Policies) {
       const key = policy.toLowerCase()
       if (seen.has(key)) {
-        throw new Error(
+        throw refusal(
+          'DUPLICATE_ERC1271_POLICY',
           `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
         )
       }

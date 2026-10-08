@@ -104,23 +104,21 @@ export function swapApprovesAsActions(
   // scopeSameChain refuses an uncapped swap first; this keeps the cap from being dropped.
   if (cap === undefined) {
     throw refusal(
-      'SAME_CHAIN_SWAP_NEEDS_MAX_AMOUNT',
+      'SAME_CHAIN_IE_SWAP_NEEDS_MAX_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap with allowFees needs maxAmount',
     )
   }
   return resolvePermissions([...permissions]).map((action) => {
     if (!('target' in action) || action.selector !== APPROVE_SELECTOR) {
-      throw refusal(
-        'SCOPE_INVARIANT',
-        'crossChainPermits: allowFees expected only approve permissions from the swap scope',
+      throw new Error(
+        'crossChainPermits (internal): allowFees expected only approve permissions from the swap scope',
       )
     }
     const policies = action.policies ?? []
     // Dropping the spending limit is only safe with a params policy to carry the cap.
     if (!policies.some(isParamsPolicy)) {
-      throw refusal(
-        'SCOPE_INVARIANT',
-        'crossChainPermits: a swap approve has no params policy to carry its cap',
+      throw new Error(
+        'crossChainPermits (internal): a swap approve has no params policy to carry its cap',
       )
     }
     return {
@@ -163,9 +161,8 @@ function addFeeBranch(
   const policies = existing.policies ?? []
   const layer = policies.find(isParamsPolicy)
   if (layer === undefined) {
-    throw refusal(
-      'SCOPE_INVARIANT',
-      `crossChainPermits: the (${target}, ${selector}) action has no params policy for allowFees to join`,
+    throw new Error(
+      `crossChainPermits (internal): the (${target}, ${selector}) action has no params policy for allowFees to join`,
     )
   }
   const layerExpression =

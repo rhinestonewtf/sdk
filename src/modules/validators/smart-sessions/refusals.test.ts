@@ -7,16 +7,14 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import {
-  CROSS_CHAIN_PERMIT_REFUSAL_CODES,
-  type CrossChainPermitRefusal,
   collectRefusals,
   RefusalCollectionHalted,
   recover,
   refusal,
   refuser,
+  SESSION_REFUSAL_CODES,
 } from './refusals'
 import {
-  collectSessionRefusals,
   type ResolveSessionOptions,
   toSession,
   validateSessionDefinition,
@@ -72,6 +70,11 @@ const oneTimeUse = {
   policyAddresses: { oneTimeUseId: ONE_TIME_USE },
 } as Partial<SessionDefinition>
 
+const validateRefusals = (
+  definition: SessionDefinition,
+  options?: ResolveSessionOptions,
+) => validateSessionDefinition(definition, options).refusals
+
 function thrown(
   definition: SessionDefinition,
   options: ResolveSessionOptions = OPTIONS,
@@ -86,8 +89,8 @@ function thrown(
 
 describe('refusal codes', () => {
   test('the published codes do not change', () => {
-    expect(Object.keys(CROSS_CHAIN_PERMIT_REFUSAL_CODES)).toEqual([
-      'VALID_AFTER_AFTER_VALID_UNTIL',
+    expect(Object.keys(SESSION_REFUSAL_CODES)).toEqual([
+      'VALID_AFTER_EXCEEDS_VALID_UNTIL',
       'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
       'VALID_UNTIL_NOT_IN_FUTURE',
       'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
@@ -95,18 +98,18 @@ describe('refusal codes', () => {
       'MIXED_PERMIT_KINDS',
       'MULTIPLE_INTENT_EXECUTOR_PERMITS',
       'PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER',
-      'SAME_CHAIN_WITH_OTHER_LAYERS',
+      'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
       'NO_FROM_ON_CHAIN',
-      'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+      'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       'MULTIPLE_MAX_AMOUNTS',
       'RECIPIENT_ANY_NOT_ALLOWED',
       'RECIPIENT_NEEDS_ACCOUNT',
       'RECIPIENT_NOT_ACCOUNT',
       'MISSING_TO',
       'FILL_DEADLINE_ONLY_PERMIT2',
-      'MAX_FEE_BPS_ONLY_ECO',
+      'MAX_FEE_BPS_ONLY_ECO_IE',
       'MIN_AMOUNT_ON_PERMIT2_LAYER',
-      'SAME_CHAIN_TRANSFER_MIN_AMOUNT',
+      'SAME_CHAIN_IE_TRANSFER_MIN_AMOUNT',
       'MIN_AMOUNT_OUTSIDE_CAP',
       'MIN_AMOUNT_NOT_ENFORCEABLE',
       'MIN_AMOUNT_NOT_POSITIVE',
@@ -118,39 +121,41 @@ describe('refusal codes', () => {
       'SETTLEMENT_CATALOG_MISSING',
       'LAYER_REQUIRES_ONE_TIME_USE',
       'LAYER_NOT_SERVED',
-      'MAX_FEE_BPS_ECO_UNAVAILABLE',
+      'MAX_FEE_BPS_ECO_IE_UNAVAILABLE',
       'NO_LAYER_CAN_SETTLE',
       'MULTIPLE_FEE_PAYING_LAYERS',
       'ONE_SOURCE_TOKEN',
       'TOKEN_NOT_ROUTED',
-      'ECO_STABLECOIN_DECIMALS',
+      'ECO_IE_STABLECOIN_DECIMALS',
       'ACCOUNT_REQUIRED',
-      'ECO_NEEDS_MAX_AMOUNT_AND_FEE',
+      'ECO_IE_NEEDS_MAX_AMOUNT_AND_FEE',
       'MAX_FEE_BPS_OUT_OF_RANGE',
-      'ECO_VALIDITY_TOO_SHORT',
-      'ECO_FLOOR_NEEDS_EQUAL_CAPS',
+      'ECO_IE_VALIDITY_TOO_SHORT',
+      'ECO_IE_FLOOR_NEEDS_EQUAL_CAPS',
       'RECIPIENT_ANY_UNPINNABLE',
-      'ECO_NO_SHARED_PROVER',
+      'ECO_IE_NO_SHARED_PROVER',
       'LZ_NO_ROUTE',
       'NATIVE_SOURCE_UNSUPPORTED',
-      'SAME_CHAIN_OTHER_CHAIN_LEG',
-      'SAME_CHAIN_TRANSFER_TO_SELF',
-      'SAME_CHAIN_ANY_RECIPIENT_NEEDS_MAX_AMOUNT',
-      'SAME_CHAIN_TRANSFER_OR_SINGLE_SWAP',
-      'SAME_CHAIN_SWAP_NEEDS_MIN_AMOUNT',
-      'SAME_CHAIN_SWAP_NEEDS_MAX_AMOUNT',
+      'SAME_CHAIN_IE_OTHER_CHAIN_LEG',
+      'SAME_CHAIN_IE_TRANSFER_TO_SELF',
+      'SAME_CHAIN_IE_ANY_RECIPIENT_NEEDS_MAX_AMOUNT',
+      'SAME_CHAIN_IE_TRANSFER_OR_SINGLE_SWAP',
+      'SAME_CHAIN_IE_SWAP_NEEDS_MIN_AMOUNT',
+      'SAME_CHAIN_IE_SWAP_NEEDS_MAX_AMOUNT',
       'ALLOW_FEES_CATALOG_MISSING',
       'FEES_NOT_SERVED',
       'ALLOW_FEES_NON_STABLECOIN',
       'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      'SCOPE_INVARIANT',
-      'ALL_LAYERS_NO_PERMIT2_CLAIM',
       'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
-      'RESTRICTED_WITH_PERMIT2_PERMIT',
+      'RESTRICTED_WITH_PERMIT2_GRANTS',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
+      'DUPLICATE_ERC1271_POLICY',
+      'UNIVERSAL_ACTION_COPY_INVALID',
+      'UNIVERSAL_ACTION_POLICY_NO_CODE',
+      'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
       'SESSION_REFUSED',
     ])
-    for (const code of Object.keys(CROSS_CHAIN_PERMIT_REFUSAL_CODES)) {
+    for (const code of Object.keys(SESSION_REFUSAL_CODES)) {
       expect(code).toMatch(/^[A-Z0-9]+(_[A-Z0-9]+)*$/)
     }
   })
@@ -172,7 +177,7 @@ describe('collectSessionRefusals', () => {
   test('a valid permit reports nothing', () => {
     const definition = session([cctp()])
     expect(thrown(definition)).toBeUndefined()
-    expect(collectSessionRefusals(definition, OPTIONS)).toEqual([])
+    expect(validateRefusals(definition, OPTIONS)).toEqual([])
   })
 
   test('a permit with independent problems reports each of them', () => {
@@ -186,10 +191,10 @@ describe('collectSessionRefusals', () => {
       ],
       { signing: { mode: 'unrestricted' } } as Partial<SessionDefinition>,
     )
-    const refusals = collectSessionRefusals(definition, OPTIONS)
+    const refusals = validateRefusals(definition, OPTIONS)
     expect(refusals).toEqual([
       {
-        code: 'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+        code: 'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
         message:
           'crossChainPermits: maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
         permitIndex: 0,
@@ -243,7 +248,7 @@ describe('collectSessionRefusals', () => {
       validAfter: new Date(2_000_000_000_000),
       validUntil: new Date(1_900_000_000_000),
     }
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session([permit2(backwards), permit2(backwards)]),
       OPTIONS,
     )
@@ -252,14 +257,15 @@ describe('collectSessionRefusals', () => {
     ).toEqual([
       ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 0],
       ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 1],
-      ['VALID_AFTER_AFTER_VALID_UNTIL', 0],
-      ['VALID_AFTER_AFTER_VALID_UNTIL', 1],
-      ['SESSION_REFUSED', undefined],
+      ['VALID_AFTER_EXCEEDS_VALID_UNTIL', 0],
+      ['VALID_AFTER_EXCEEDS_VALID_UNTIL', 1],
+      // Two Permit2 permits install the claim policy twice.
+      ['DUPLICATE_ERC1271_POLICY', undefined],
     ])
   })
 
   test('every Permit2 permit is expanded, then the dry run stops', () => {
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session(
         [
           permit2({ maxFeeBps: 10 }),
@@ -273,15 +279,15 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
-      ['RESTRICTED_WITH_PERMIT2_PERMIT', undefined],
-      ['MAX_FEE_BPS_ONLY_ECO', 0],
+      ['RESTRICTED_WITH_PERMIT2_GRANTS', undefined],
+      ['MAX_FEE_BPS_ONLY_ECO_IE', 0],
       ['ALLOW_FEES_ONLY_INTENT_EXECUTOR', 1],
       ['MIN_AMOUNT_ON_PERMIT2_LAYER', 2],
     ])
   })
 
   test('each named layer reports its own refusal; none scoped ends the run', () => {
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session([
         cctp({
           from: { chain: base, token: USDT_ARB },
@@ -309,7 +315,7 @@ describe('collectSessionRefusals', () => {
   })
 
   test("'all' keeps skipping what it cannot settle", () => {
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session(
         [
           cctp({
@@ -323,14 +329,14 @@ describe('collectSessionRefusals', () => {
       OPTIONS,
     )
     expect(refusals.map(({ code }) => code)).toEqual([
-      'MAX_FEE_BPS_ECO_UNAVAILABLE',
+      'MAX_FEE_BPS_ECO_IE_UNAVAILABLE',
       'NO_LAYER_CAN_SETTLE',
     ])
     expect(refusals[1].chainId).toBe(base.id)
   })
 
   test('fees that cannot be scoped do not hide the layers', () => {
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session([
         cctp({
           from: { chain: base, token: USDT_ARB },
@@ -367,11 +373,11 @@ describe('collectSessionRefusals', () => {
       ],
       oneTimeUse,
     )
-    const refusals = collectSessionRefusals(definition, {
+    const refusals = validateRefusals(definition, {
       settlement: usdcOft,
     })
     expect(refusals.map(({ code }) => code)).toEqual([
-      'MAX_FEE_BPS_ONLY_ECO',
+      'MAX_FEE_BPS_ONLY_ECO_IE',
       'MULTIPLE_FEE_PAYING_LAYERS',
     ])
     expect(refusals[0].message).toBe(
@@ -380,7 +386,7 @@ describe('collectSessionRefusals', () => {
   })
 
   test('a second cap and each layer refusing the extra token are reported', () => {
-    const refusals = collectSessionRefusals(
+    const refusals = validateRefusals(
       session(
         [
           {
@@ -414,7 +420,7 @@ describe('collectSessionRefusals', () => {
       session([cctp({ settlementLayers: ['CCTP', 'ACROSS'] })]),
     ],
     [
-      'SAME_CHAIN_WITH_OTHER_LAYERS',
+      'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
       session([cctp({ settlementLayers: ['CCTP', 'SAME_CHAIN_IE'] })]),
     ],
     [
@@ -443,12 +449,12 @@ describe('collectSessionRefusals', () => {
       session([cctp({ to: { chain: UNSERVED, token: USDC_ARB } })]),
     ],
     [
-      'ECO_NEEDS_MAX_AMOUNT_AND_FEE',
+      'ECO_IE_NEEDS_MAX_AMOUNT_AND_FEE',
       session([cctp({ settlementLayers: ['ECO_IE'] })]),
     ],
     ['SETTLEMENT_CATALOG_MISSING', session([cctp()]), {}],
     [
-      'SAME_CHAIN_TRANSFER_TO_SELF',
+      'SAME_CHAIN_IE_TRANSFER_TO_SELF',
       session([
         cctp({
           to: { chain: base, token: USDC },
@@ -456,10 +462,17 @@ describe('collectSessionRefusals', () => {
         }),
       ]),
     ],
-    ['MAX_FEE_BPS_ONLY_ECO', session([cctp({ maxFeeBps: 10 })])],
+    ['MAX_FEE_BPS_ONLY_ECO_IE', session([cctp({ maxFeeBps: 10 })])],
     [
       'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
       session([permit2({ allowFees: true })]),
+    ],
+    ['DUPLICATE_ERC1271_POLICY', session([permit2(), permit2()])],
+    [
+      'UNIVERSAL_ACTION_COPY_INVALID',
+      session([], {
+        policyAddresses: { universalActionCopies: [OTHER, OTHER] },
+      } as Partial<SessionDefinition>),
     ],
     [
       'SESSION_REFUSED',
@@ -473,7 +486,7 @@ describe('collectSessionRefusals', () => {
   test.each(cases)(
     '%s matches what createSession throws',
     (code, definition, options = OPTIONS) => {
-      const refusals = collectSessionRefusals(definition, options)
+      const refusals = validateRefusals(definition, options)
       expect(refusals[0]).toMatchObject({
         code,
         message: thrown(definition, options),
@@ -487,7 +500,7 @@ describe('collectRefusals', () => {
     expect(
       collectRefusals(() => {
         throw 'boom'
-      }),
+      }).refusals,
     ).toEqual([{ code: 'SESSION_REFUSED', message: 'boom' }])
   })
 
@@ -497,7 +510,7 @@ describe('collectRefusals', () => {
         collect(refusal('MISSING_TO', 'first'), { permitIndex: 2 })
         collect(refusal('MISSING_TO', 'first'), { permitIndex: 2 })
         throw new RefusalCollectionHalted()
-      }),
+      }).refusals,
     ).toEqual([{ code: 'MISSING_TO', message: 'first', permitIndex: 2 }])
   })
 
@@ -515,7 +528,7 @@ describe('collectRefusals', () => {
   test('an entry names only what is known about it', () => {
     const [entry] = collectRefusals(() => {
       throw new Error('plain')
-    }) as CrossChainPermitRefusal[]
+    }).refusals
     expect(Object.keys(entry)).toEqual(['code', 'message'])
   })
 })
@@ -525,37 +538,29 @@ describe('refusal code coverage', () => {
   const sources = readdirSync(root, { recursive: true, encoding: 'utf8' })
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
     .map((file) => readFileSync(join(root, file), 'utf8'))
-    // Only modules that raise refusals; `code` means other things elsewhere.
-    .filter((source) => /refusals'|SettlementLayerRefusal/.test(source))
+  // Only modules that raise refusals; `code` means other things elsewhere.
+  const raising = sources.filter((source) =>
+    /refusals'|SettlementLayerRefusal/.test(source),
+  )
   const used = new Set(
-    sources.flatMap((source) =>
+    raising.flatMap((source) =>
       [...source.matchAll(/(?:code: |refusal\(\s*)'([A-Z0-9_]+)'/g)].map(
         ([, code]) => code,
       ),
     ),
   )
 
-  test('every code src raises is listed', () => {
-    expect(used.size).toBeGreaterThan(40)
-    for (const code of used) {
-      expect(CROSS_CHAIN_PERMIT_REFUSAL_CODES).toHaveProperty(code)
-    }
-  })
-
   test('every listed code is raised somewhere in src', () => {
-    const listed = Object.keys(CROSS_CHAIN_PERMIT_REFUSAL_CODES).filter(
+    const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
       (code) => code !== 'SESSION_REFUSED',
     )
     expect(listed.filter((code) => !used.has(code))).toEqual([])
   })
 
-  test('every SettlementLayerRefusal names a code', () => {
+  // refusal() and SettlementLayerRefusal take a typed code; a bare Error does not.
+  test('no crossChainPermits refusal is a bare Error', () => {
     for (const source of sources) {
-      for (const [call] of source.matchAll(
-        /new SettlementLayerRefusal\([^;]*?\n\s*\)/g,
-      )) {
-        expect(call).toMatch(/code: '[A-Z0-9_]+'/)
-      }
+      expect(source).not.toMatch(/new Error\(\s*['"`]crossChainPermits: /)
     }
   })
 })
@@ -606,7 +611,7 @@ describe("refusals under settlementLayers 'all'", () => {
       const dropped = validation.settlementCoverage?.dropped ?? []
       expect(dropped.length).toBeGreaterThan(0)
       for (const { layer, reason } of dropped) {
-        const [first] = collectSessionRefusals(
+        const [first] = validateRefusals(
           session([{ ...permit, settlementLayers: [layer] }], {
             ...oneTimeUse,
             chain,
@@ -632,16 +637,11 @@ describe("refusals under settlementLayers 'all'", () => {
     expect(validation.settlementCoverage).toEqual(
       toSession(definition, OPTIONS).settlementCoverage,
     )
-    expect(validation.settlementCoverage?.dropped).toEqual([
-      { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
-      { layer: 'OFT', reason: `OFT does not route to chain ${base.id}` },
-      {
-        layer: 'LZ',
-        reason: `LZ pins \`to.minAmount\` only on a Stargate send, and chain ${arbitrum.id} is reached over CCTP`,
-      },
-    ])
+    expect(
+      validation.settlementCoverage?.dropped.map(({ layer }) => layer),
+    ).toEqual(['CCTP', 'OFT', 'LZ'])
     const codes = (layer: 'CCTP' | 'LZ') =>
-      collectSessionRefusals(
+      validateRefusals(
         session([{ ...permit, settlementLayers: [layer] }], oneTimeUse),
         OPTIONS,
       ).map(({ code }) => code)

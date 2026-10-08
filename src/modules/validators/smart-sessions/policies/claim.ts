@@ -21,14 +21,13 @@ export function expandCrossChainPermit(
 } {
   // Unreachable ('all' is settlement-scoped); narrows the type for the arbiters.
   if (permit.settlementLayers === 'all') {
-    throw refusal(
-      'ALL_LAYERS_NO_PERMIT2_CLAIM',
-      "crossChainPermits: settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
+    throw new Error(
+      "crossChainPermits (internal): settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
     )
   }
   if (permit.maxFeeBps !== undefined) {
     throw refusal(
-      'MAX_FEE_BPS_ONLY_ECO',
+      'MAX_FEE_BPS_ONLY_ECO_IE',
       'crossChainPermits: maxFeeBps applies only to ECO_IE',
     )
   }

@@ -139,7 +139,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   const elsewhere = ctx.destinations.find((leg) => leg.chainId !== ctx.chainId)
   if (elsewhere) {
     throw refusal(
-      'SAME_CHAIN_OTHER_CHAIN_LEG',
+      'SAME_CHAIN_IE_OTHER_CHAIN_LEG',
       `crossChainPermits: SAME_CHAIN_IE settles on chain ${ctx.chainId}; a \`to\` leg names chain ${elsewhere.chainId}`,
       { chainId: elsewhere.chainId, leg: 'to' },
     )
@@ -151,7 +151,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   if (sameToken.every(Boolean)) {
     if (ctx.destinations.some((leg) => leg.minAmount !== undefined)) {
       throw refusal(
-        'SAME_CHAIN_TRANSFER_MIN_AMOUNT',
+        'SAME_CHAIN_IE_TRANSFER_MIN_AMOUNT',
         'crossChainPermits: a SAME_CHAIN_IE transfer cannot enforce `to.minAmount`; it applies to a swap',
       )
     }
@@ -165,7 +165,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       recipients.every((r) => r !== undefined && isAddressEqual(r, account))
     ) {
       throw refusal(
-        'SAME_CHAIN_TRANSFER_TO_SELF',
+        'SAME_CHAIN_IE_TRANSFER_TO_SELF',
         'crossChainPermits: a SAME_CHAIN_IE transfer to the account itself never settles; name another recipient',
       )
     }
@@ -176,7 +176,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       : []
     if (pinned.length === 0 && rules.length === 0) {
       throw refusal(
-        'SAME_CHAIN_ANY_RECIPIENT_NEEDS_MAX_AMOUNT',
+        'SAME_CHAIN_IE_ANY_RECIPIENT_NEEDS_MAX_AMOUNT',
         "crossChainPermits: a SAME_CHAIN_IE transfer to 'any' recipient needs maxAmount; otherwise it authorises every transfer of the token",
       )
     }
@@ -198,7 +198,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   }
   if (sameToken.some(Boolean) || ctx.destinations.length !== 1) {
     throw refusal(
-      'SAME_CHAIN_TRANSFER_OR_SINGLE_SWAP',
+      'SAME_CHAIN_IE_TRANSFER_OR_SINGLE_SWAP',
       'crossChainPermits: SAME_CHAIN_IE either transfers the `from` token or swaps it into exactly one `to` token',
     )
   }
@@ -213,7 +213,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   // floor it could route the pulled input anywhere and accept nothing back.
   if (leg.minAmount === undefined || leg.minAmount <= 0n) {
     throw refusal(
-      'SAME_CHAIN_SWAP_NEEDS_MIN_AMOUNT',
+      'SAME_CHAIN_IE_SWAP_NEEDS_MIN_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap needs a positive `to.minAmount` to bound what the swap must deliver',
     )
   }
@@ -221,7 +221,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   // maxAmount : minAmount bound the rate, and the cap brings oneTimeUse.
   if (ctx.cap === undefined) {
     throw refusal(
-      'SAME_CHAIN_SWAP_NEEDS_MAX_AMOUNT',
+      'SAME_CHAIN_IE_SWAP_NEEDS_MAX_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap needs maxAmount; the floor bounds the rate only against a capped input',
     )
   }
@@ -254,9 +254,8 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
           (p) => p.type === 'universal-action' || p.type === 'arg-policy',
         )
       ) {
-        throw refusal(
-          'SCOPE_INVARIANT',
-          'crossChainPermits: a SAME_CHAIN_IE swap action has no params policy to carry its floor',
+        throw new Error(
+          'crossChainPermits (internal): a SAME_CHAIN_IE swap action has no params policy to carry its floor',
         )
       }
       return {

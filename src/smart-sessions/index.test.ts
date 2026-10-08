@@ -8,7 +8,7 @@ import {
   ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
   toSession,
-  validateCrossChainPermits,
+  validateSession,
 } from './index'
 
 const reads = vi.hoisted(() => vi.fn())
@@ -89,7 +89,7 @@ describe('Smart Sessions compatibility facade', () => {
   )
 })
 
-describe('validateCrossChainPermits', () => {
+describe('validateSession', () => {
   test('reports the refusal toSession throws, without throwing', () => {
     const definition = {
       chain: base,
@@ -103,7 +103,7 @@ describe('validateCrossChainPermits', () => {
         },
       ],
     }
-    const { refusals } = validateCrossChainPermits(definition, {
+    const { refusals } = validateSession(definition, {
       useDevContracts: true,
       wrappedNativeToken: account,
     })
@@ -116,9 +116,7 @@ describe('validateCrossChainPermits', () => {
       },
     ])
     expect(() => toSession(definition)).toThrow(refusals[0].message)
-    expect(
-      validateCrossChainPermits(definition, { settlement: {} }).refusals,
-    ).toEqual([
+    expect(validateSession(definition, { settlement: {} }).refusals).toEqual([
       expect.objectContaining({ code: 'LAYER_NOT_SERVED', layer: 'CCTP' }),
     ])
   })

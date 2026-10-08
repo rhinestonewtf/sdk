@@ -40,10 +40,10 @@ import {
   VALUE_LIMIT_POLICY_ADDRESS,
 } from '../modules/validators/smart-sessions/policies/addresses'
 import {
-  CROSS_CHAIN_PERMIT_REFUSAL_CODES,
-  type CrossChainPermitRefusal,
-  type CrossChainPermitRefusalCode,
-  type CrossChainPermitValidation,
+  SESSION_REFUSAL_CODES,
+  type SessionRefusal,
+  type SessionRefusalCode,
+  type SessionValidation,
 } from '../modules/validators/smart-sessions/refusals'
 import {
   toSession as resolveSession,
@@ -102,37 +102,42 @@ function toSession<
   }) as Session
 }
 
+/** Inputs `createSession` takes from `/chains`, for the standalone {@link validateSession}. */
+interface SessionValidationOptions {
+  /** The orchestrator's settlement addresses by chain id. */
+  settlement?: SettlementCatalog
+  /** The chain's wrapped-native token, as `createSession` adds it. */
+  wrappedNativeToken?: Address
+  /** Resolve against the development deployments. */
+  useDevContracts?: boolean
+}
+
 /**
- * Dry-run a session definition and return every refusal `toSession` and
- * `createSession` would throw for it, instead of throwing the first. Runs the
- * same resolution code, so the two cannot disagree: the first refusal is the
- * error they throw, and `refusals` is empty exactly when they succeed. Then the
- * result also carries the session's `access` and, for a settlement-scoped
- * permit, its `settlementCoverage`.
+ * Dry-run the resolution `createSession` runs, without network calls: return
+ * every refusal it would throw for a session definition instead of throwing
+ * the first. Given the same `settlement` and `wrappedNativeToken` as
+ * `createSession` gets from `/chains`, the first refusal is the error that
+ * resolution throws and `refusals` is empty exactly when it succeeds. When
+ * nothing is refused, the result also has the session's `access` and, for a
+ * settlement-scoped permit, its `settlementCoverage`.
  *
- * Problems that do not depend on each other are all reported. Within one
- * settlement layer only its first refusal is, as are refusals that leave
- * nothing to check after them (e.g. a missing `to`).
- *
- * Pass the orchestrator's `/chains` settlement addresses as `settlement`;
- * `RhinestoneSDK.validateCrossChainPermits` fetches them for you.
- * @param definition The session definition, as for `toSession`
- * @param options.settlement The orchestrator's settlement addresses by chain id
- * @param options.wrappedNativeToken The chain's wrapped-native token, as `createSession` adds it
- * @param options.useDevContracts Resolve against the development deployments
- * @returns `refusals`, each with its stable `code`, and once none remain the session's `access` and `settlementCoverage`
+ * Unlike `RhinestoneSDK.validateSession`, it does not read the
+ * UniversalActionPolicy copies' code or check that `/chains` serves a
+ * wrapped-native token; `createSession` does both. Problems that do not depend
+ * on each other are all reported. Within one settlement layer only its first
+ * refusal is, as are refusals that leave nothing to check after them (e.g. a
+ * missing `to`).
+ * @param definition The session definition
+ * @param options What `createSession` would take from `/chains`
+ * @returns The refusals, each with its stable `code`, and, when there are none, the session's `access` and `settlementCoverage`
  */
-function validateCrossChainPermits<
+function validateSession<
   const TAbis extends readonly Abi[],
   const TChain extends Chain,
 >(
   definition: SessionDefinition<TAbis, TChain>,
-  options: {
-    settlement?: SettlementCatalog
-    wrappedNativeToken?: Address
-    useDevContracts?: boolean
-  } = {},
-): CrossChainPermitValidation {
+  options: SessionValidationOptions = {},
+): SessionValidation {
   return validateSessionDefinition(definition as DomainSessionDefinition, {
     environment: environment(options.useDevContracts),
     ...(options.wrappedNativeToken
@@ -184,9 +189,10 @@ async function isSessionEnabled(
 
 export type {
   ChainDigest,
-  CrossChainPermitRefusal,
-  CrossChainPermitRefusalCode,
-  CrossChainPermitValidation,
+  SessionRefusal,
+  SessionRefusalCode,
+  SessionValidation,
+  SessionValidationOptions,
   FyndChainId,
   FyndVenue,
   RhinestoneSwapVenue,
@@ -201,7 +207,7 @@ export type {
 }
 export {
   ARG_POLICY_ADDRESS,
-  CROSS_CHAIN_PERMIT_REFUSAL_CODES,
+  SESSION_REFUSAL_CODES,
   FYND_CHAIN_IDS,
   fynd,
   getPermissionId,
@@ -225,7 +231,7 @@ export {
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
-  validateCrossChainPermits,
+  validateSession,
   // Venue-scoped swap sessions (RHI-6286)
   ZEROX_CHAIN_IDS,
   zeroEx,

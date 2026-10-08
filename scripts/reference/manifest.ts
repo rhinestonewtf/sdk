@@ -122,7 +122,7 @@ export const manifest: Group[] = [
       },
       {
         kind: 'symbol',
-        symbol: 'validateCrossChainPermits',
+        symbol: 'validateSession',
         source: '.',
         container: 'RhinestoneSDK',
         callStyle: 'sdkMethod',

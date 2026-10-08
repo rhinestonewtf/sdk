@@ -4,11 +4,16 @@ import type { ChainCatalogPort } from '../../clients/orchestrator/port'
 import type { RpcPort } from '../../clients/rpc/port'
 import { resolvePolicyAddresses } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
-  type CrossChainPermitValidation,
-  collectRefusals,
+  isCodedRefusal,
+  type Refuse,
+  recover,
   refusal,
+  refusalLog,
+  refuser,
+  type SessionValidation,
 } from '../../modules/validators/smart-sessions/refusals'
 import {
+  type ResolveSessionOptions,
   sessionPolicyAddresses,
   toSession,
   validateSessionDefinition,
@@ -39,60 +44,53 @@ function servedWrappedNativeToken(
   return wrappedNativeToken
 }
 
-export async function createSession(input: {
+interface SessionInput {
   readonly orchestrator: ChainCatalogPort
   readonly rpc: RpcPort
   readonly environment: 'production' | 'development'
   readonly definition: SessionDefinition
-}): Promise<Session> {
-  await assertUniversalActionCopies(input.rpc, input.definition)
-  const catalog = await input.orchestrator.getChainCatalog()
-  return toSession(input.definition, {
-    wrappedNativeToken: servedWrappedNativeToken(
-      catalog,
-      input.definition.chain.id,
-    ),
-    environment: input.environment,
-    settlement: catalog.getSettlementCatalog(),
-  })
 }
 
-/** The dry run of `createSession` for `definition`, from the same `/chains` and code reads. */
-export async function validateCrossChainPermits(input: {
-  readonly orchestrator: ChainCatalogPort
-  readonly rpc: RpcPort
-  readonly environment: 'production' | 'development'
-  readonly definition: SessionDefinition
-}): Promise<CrossChainPermitValidation> {
-  const copies = await assertUniversalActionCopies(
-    input.rpc,
-    input.definition,
-  ).then(
-    () => [],
-    (error: unknown) =>
-      collectRefusals(() => {
-        throw error
-      }),
+/**
+ * createSession's reads before it resolves: the UniversalActionPolicy copies'
+ * code, then `/chains`. A coded refusal goes to `refuse`; anything else, such
+ * as a failed read, throws.
+ */
+async function sessionOptions(
+  input: SessionInput,
+  refuse: Refuse,
+): Promise<ResolveSessionOptions> {
+  await assertUniversalActionCopies(input.rpc, input.definition).catch(
+    (error: unknown) => {
+      if (!isCodedRefusal(error)) throw error
+      refuse(error)
+    },
   )
   const catalog = await input.orchestrator.getChainCatalog()
-  let wrappedNativeToken: Address | undefined
-  // The token only adds an unrestricted session's `deposit()`, so the session
-  // checks still run without it.
-  const unserved = collectRefusals(() => {
-    wrappedNativeToken = servedWrappedNativeToken(
-      catalog,
-      input.definition.chain.id,
-    )
-  })
-  const session = validateSessionDefinition(input.definition, {
+  // The token only adds an unrestricted session's `deposit()`, so a dry run
+  // still resolves the session without it.
+  const wrappedNativeToken = recover(refuse, () =>
+    servedWrappedNativeToken(catalog, input.definition.chain.id),
+  )
+  return {
     environment: input.environment,
     settlement: catalog.getSettlementCatalog(),
     ...(wrappedNativeToken ? { wrappedNativeToken } : {}),
-  })
-  const before = [...copies, ...unserved]
-  return before.length
-    ? { refusals: [...before, ...session.refusals] }
-    : session
+  }
+}
+
+export async function createSession(input: SessionInput): Promise<Session> {
+  return toSession(input.definition, await sessionOptions(input, refuser()))
+}
+
+/** The dry run of `createSession`: the same reads and resolution, every refusal recorded. */
+export async function validateSession(
+  input: SessionInput,
+): Promise<SessionValidation> {
+  // One log, so a refusal met before resolving stays first, as createSession throws it.
+  const log = refusalLog()
+  const options = await sessionOptions(input, refuser(log.collect))
+  return validateSessionDefinition(input.definition, options, log)
 }
 
 /**
@@ -115,13 +113,15 @@ async function assertUniversalActionCopies(
     ),
   )
   if (!canonical || canonical === '0x') {
-    throw new Error(
+    throw refusal(
+      'UNIVERSAL_ACTION_POLICY_NO_CODE',
       `createSession: universalAction ${addresses.universalAction} has no code on chain ${chain.id}`,
     )
   }
   copies.forEach((copy, i) => {
     if (codes[i] !== canonical) {
-      throw new Error(
+      throw refusal(
+        'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
         `createSession: universalActionCopies ${copy} does not hold the code of universalAction ${addresses.universalAction} on chain ${chain.id}`,
       )
     }
