@@ -209,8 +209,8 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
-  // Required when a session sets `oneTimeUse`; no default until the policy has a
-  // canonical deployment.
+  // Used by `oneTimeUse` sessions. Defaults to the deployed OneTimeUseIdPolicy on
+  // chains that have one; required elsewhere.
   readonly oneTimeUseId?: Address
 }
 

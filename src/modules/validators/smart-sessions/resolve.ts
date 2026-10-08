@@ -98,7 +98,10 @@ function resolveSession(
     throw new Error('ENS owners are not supported for smart sessions')
   }
   const environment = options.environment ?? 'production'
-  const addresses = resolvePolicyAddresses(definition.policyAddresses)
+  const addresses = resolvePolicyAddresses(definition.policyAddresses, {
+    chainId: definition.chain.id,
+    environment,
+  })
   const validator = resolveValidator(
     defineValidator(definition.owners, 'session-validator'),
   )
@@ -312,9 +315,8 @@ function resolveSession(
     // would share their action id.
     if (
       definition.oneTimeUse &&
-      definition.policyAddresses?.oneTimeUseId &&
-      a.target.toLowerCase() ===
-        definition.policyAddresses.oneTimeUseId.toLowerCase()
+      addresses.oneTimeUseId &&
+      a.target.toLowerCase() === addresses.oneTimeUseId.toLowerCase()
     ) {
       throw new Error(
         'oneTimeUse sessions authorise their own burn; do not add an action on the policy',
@@ -416,7 +418,9 @@ function resolveSession(
   if (definition.oneTimeUse) {
     if (!addresses.oneTimeUseId) {
       throw new Error(
-        'oneTimeUse requires policyAddresses.oneTimeUseId (no canonical deployment yet)',
+        `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${definition.chain.id}` +
+          (environment === 'development' ? ' (development contracts)' : '') +
+          '; pass its address as policyAddresses.oneTimeUseId',
       )
     }
     const validUntil = definition.oneTimeUse.validUntil
@@ -792,8 +796,10 @@ export function toSession(
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,
-        policy: resolvePolicyAddresses(definition.policyAddresses)
-          .oneTimeUseId as Address,
+        policy: resolvePolicyAddresses(definition.policyAddresses, {
+          chainId: definition.chain.id,
+          environment,
+        }).oneTimeUseId as Address,
       },
     }),
   }

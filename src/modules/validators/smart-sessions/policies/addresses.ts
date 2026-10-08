@@ -19,6 +19,39 @@ export const INTENT_EXECUTION_POLICY_ADDRESS: Address =
   '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
 export const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
   '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
+// The constructor takes the IntentExecutor, so each environment has its own.
+export const ONE_TIME_USE_ID_POLICY_ADDRESS: Address =
+  '0x630CEbCf54C7471154CF659088CC4197872Cf5FD'
+export const ONE_TIME_USE_ID_POLICY_ADDRESS_DEV: Address =
+  '0x86F7cB4E25626d6a07cfED305c38816F30d07224'
+
+// Chains where the address has code, checked with eth_getCode. A chain absent
+// here gets no default, so a session never points at an empty address.
+const ONE_TIME_USE_ID_POLICY_CHAINS_DEV: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 42161, 43114, 57073, 84532, 421614, 747474,
+]
+const ONE_TIME_USE_ID_POLICY_CHAINS: readonly number[] = [
+  ...ONE_TIME_USE_ID_POLICY_CHAINS_DEV,
+  9746,
+  11155111,
+  11155420,
+]
+
+/** The deployed OneTimeUseIdPolicy on a chain, or undefined where there is none. */
+export function defaultOneTimeUseIdPolicy(
+  chainId: number,
+  environment: 'production' | 'development',
+): Address | undefined {
+  if (environment === 'development') {
+    return ONE_TIME_USE_ID_POLICY_CHAINS_DEV.includes(chainId)
+      ? ONE_TIME_USE_ID_POLICY_ADDRESS_DEV
+      : undefined
+  }
+  return ONE_TIME_USE_ID_POLICY_CHAINS.includes(chainId)
+    ? ONE_TIME_USE_ID_POLICY_ADDRESS
+    : undefined
+}
 
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
@@ -28,7 +61,7 @@ export interface ResolvedPolicyAddresses {
   readonly timeFrame: Address
   readonly usageLimit: Address
   readonly valueLimit: Address
-  // No canonical deployment yet, so no default — only present when overridden.
+  // Absent when neither overridden nor deployed on the session's chain.
   readonly oneTimeUseId?: Address
 }
 
@@ -44,7 +77,15 @@ export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
 
 export function resolvePolicyAddresses(
   overrides?: SessionPolicyAddresses,
+  deployment?: {
+    readonly chainId: number
+    readonly environment: 'production' | 'development'
+  },
 ): ResolvedPolicyAddresses {
+  const oneTimeUseId =
+    overrides?.oneTimeUseId ??
+    (deployment &&
+      defaultOneTimeUseIdPolicy(deployment.chainId, deployment.environment))
   return {
     sudo: overrides?.sudo ?? DEFAULT_POLICY_ADDRESSES.sudo,
     universalAction:
@@ -55,8 +96,6 @@ export function resolvePolicyAddresses(
     timeFrame: overrides?.timeFrame ?? DEFAULT_POLICY_ADDRESSES.timeFrame,
     usageLimit: overrides?.usageLimit ?? DEFAULT_POLICY_ADDRESSES.usageLimit,
     valueLimit: overrides?.valueLimit ?? DEFAULT_POLICY_ADDRESSES.valueLimit,
-    ...(overrides?.oneTimeUseId
-      ? { oneTimeUseId: overrides.oneTimeUseId }
-      : {}),
+    ...(oneTimeUseId ? { oneTimeUseId } : {}),
   }
 }
