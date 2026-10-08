@@ -109,6 +109,7 @@ export type {
   Recovery,
   RhinestoneAccountConfig,
   Session,
+  SessionAccess,
   SessionDefinition,
   SessionSigning,
   SessionSigningContent,
