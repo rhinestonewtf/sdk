@@ -1,5 +1,19 @@
+import type { Address } from 'viem'
 import { type Refuse, refusal, refuser } from './refusals'
 import type { CrossChainPermissionInput, CrossChainPermit } from './types'
+
+/** The refusal for a recipient `allowRecipientNotAccount` has not opened, on either route. */
+export function recipientNotAllowed(recipient: Address | 'any'): Error {
+  return recipient === 'any'
+    ? refusal(
+        'RECIPIENT_ANY_NOT_ALLOWED',
+        "crossChainPermits: recipient 'any' requires allowRecipientNotAccount",
+      )
+    : refusal(
+        'RECIPIENT_NOT_ACCOUNT',
+        'crossChainPermits: a recipient other than the account requires allowRecipientNotAccount',
+      )
+}
 
 function seconds(input: Date): bigint {
   return BigInt(Math.floor(input.getTime() / 1000))
