@@ -2,6 +2,7 @@ import {
   type Address,
   encodeFunctionData,
   erc20Abi,
+  maxUint64,
   pad,
   toFunctionSelector,
   zeroHash,
@@ -44,6 +45,7 @@ import { PUBLISH_AND_FUND_SELECTOR } from './eco'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { OFT_SEND_SELECTOR, oftAbi } from './oft'
 import { resolveSettlementScope } from './scope'
+import { SettlementLayerRefusal } from './served'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
 const withSettlement = (options: ResolveSessionOptions = {}) => ({
@@ -332,21 +334,108 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(100n, 94n))).toBe(false)
     })
 
-    test("drops OFT under 'all' when it cannot meet the floor", () => {
-      // ECO_IE takes a floor above maxAmount; OFT admits no send under it.
-      const over = { to: { ...permit('all').to![0], minAmount: 101n } }
-      expect(
-        resolveSettlementScope(
-          [permit('all', { ...withEco, ...over })],
-          options,
-        )?.settlementLayers,
-      ).toEqual(['ECO_IE'])
-      expect(() =>
-        resolveSettlementScope(
-          [permit(['ECO_IE', 'OFT'], { ...withEco, ...over })],
-          options,
+    // Plasma serving no decimals for USDT0: ECO_IE still settles on a floor.
+    const noPlasmaDecimals: SettlementCatalog = {
+      ...SETTLEMENT_CATALOG,
+      [plasma.id]: {
+        ...SETTLEMENT_CATALOG[plasma.id],
+        usdStablecoins: SETTLEMENT_CATALOG[plasma.id].usdStablecoins?.filter(
+          (t) => t.address.toLowerCase() !== OFT_PLASMA.token.toLowerCase(),
         ),
-      ).toThrow('an OFT `to.minAmount` above `maxAmount` admits no send')
+      },
+    }
+    const plasmaLeg = (minAmount: bigint) => ({
+      chain: plasma,
+      token: OFT_PLASMA.token,
+      minAmount,
+    })
+    const uncapped = { chain: arbitrum, token: OFT_ARB.token }
+    test.each([
+      [
+        'unserved decimals',
+        { ...withEco },
+        noPlasmaDecimals,
+        'needs served, equal decimals',
+      ],
+      [
+        'a zero floor',
+        { from: uncapped, to: plasmaLeg(0n) },
+        SETTLEMENT_CATALOG,
+        'must be positive',
+      ],
+      [
+        'a floor above uint64',
+        { from: uncapped, to: plasmaLeg(maxUint64 + 1n) },
+        SETTLEMENT_CATALOG,
+        'above uint64',
+      ],
+      [
+        'twin legs with different floors',
+        { to: [plasmaLeg(95n), plasmaLeg(94n)] },
+        SETTLEMENT_CATALOG,
+        'admit the same send but set different',
+      ],
+    ] as [
+      string,
+      Partial<CrossChainPermissionInput>,
+      SettlementCatalog,
+      string,
+    ][])(
+      "drops OFT under 'all' on %s, and refuses it named",
+      (_, extra, settlement, reason) => {
+        const scoped = (
+          layers: CrossChainPermissionInput['settlementLayers'],
+        ) =>
+          resolveSettlementScope([permit(layers, extra)], {
+            ...options,
+            settlement,
+          })
+        expect(() => scoped(['OFT'])).toThrow(SettlementLayerRefusal)
+        expect(() => scoped(['OFT'])).toThrow(reason)
+        // Dropped: either the permit settles without OFT, or no layer is left
+        // and OFT's reason is listed.
+        try {
+          expect(scoped('all')?.settlementLayers).not.toContain('OFT')
+        } catch (error) {
+          expect(String(error)).toContain('no IntentExecutor layer can settle')
+          expect(String(error)).toContain('OFT: ')
+          expect(String(error)).toContain(reason)
+        }
+      },
+    )
+
+    describe('from legs with different caps, which ECO_IE cannot floor alike', () => {
+      const spread = (
+        layers: CrossChainPermissionInput['settlementLayers'],
+        extra: Partial<CrossChainPermissionInput> = {},
+      ) =>
+        resolveSettlementScope(
+          [
+            permit(layers, {
+              from: [
+                { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
+                { chain: plasma, token: OFT_PLASMA.token, maxAmount: 200n },
+              ],
+              to: plasmaLeg(100n),
+              ...extra,
+            }),
+          ],
+          options,
+        )
+
+      test.each([
+        ['without validUntil', {}],
+        ['with validUntil', withEco],
+      ])("'all' drops ECO_IE and settles over OFT, %s", (_, extra) => {
+        expect(spread('all', extra)?.settlementLayers).toEqual(['OFT'])
+      })
+
+      test('an explicit list naming ECO_IE is refused', () => {
+        expect(spread(['OFT'])?.settlementLayers).toEqual(['OFT'])
+        expect(() => spread(['ECO_IE', 'OFT'], withEco)).toThrow(
+          '`from` legs with different maxAmount need maxFeeBps',
+        )
+      })
     })
   })
 
@@ -577,7 +666,7 @@ describe('settlement-scoped crossChainPermits', () => {
       )
     })
 
-    test('refuses to.minAmount on another layer', () => {
+    test('refuses to.minAmount on CCTP and on Permit2 layers', () => {
       expect(() =>
         resolveSessionData(
           definition({
@@ -770,14 +859,47 @@ describe('settlement-scoped crossChainPermits', () => {
       })
     })
 
-    // USDC to USDT0 without validUntil: only ECO_IE could floor it, and 'all'
-    // drops it.
+    // Base to Arbitrum USDC without validUntil settles over CCTP until a floor
+    // is set, which only ECO_IE could enforce here.
     test("refuses a to.minAmount under 'all' when no layer can enforce it", () => {
-      expect(() =>
-        resolveSessionData(
-          eco({ ...toUsdt, settlementLayers: 'all', validUntil: undefined }),
-        ),
-      ).toThrow('no IntentExecutor layer can settle this permit')
+      const all = (minAmount?: bigint) =>
+        eco({
+          to: { chain: arbitrum, token: USDC_ARB, minAmount },
+          maxFeeBps: undefined,
+          settlementLayers: 'all',
+          validUntil: undefined,
+        })
+      expect(toSession(all()).settlementLayers).toContain('CCTP')
+      expect(() => resolveSessionData(all(99n))).toThrow(
+        /no IntentExecutor layer can settle this permit.*CCTP: CCTP cannot enforce `to.minAmount`/,
+      )
+    })
+
+    // A floor on any leg is a floor CCTP could route around on that leg.
+    describe('a floor on one of two legs', () => {
+      const USDC_OP = SETTLEMENT_CATALOG[optimism.id].eco!.stablecoins[0]
+      const twoLegs = (
+        settlementLayers: CrossChainPermissionInput['settlementLayers'],
+      ) =>
+        eco({
+          to: [
+            { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+            { chain: optimism, token: USDC_OP },
+          ],
+          maxFeeBps: 100,
+          settlementLayers,
+        })
+
+      test('refuses CCTP when named', () => {
+        expect(() => resolveSessionData(twoLegs(['CCTP', 'ECO_IE']))).toThrow(
+          'CCTP cannot enforce `to.minAmount`',
+        )
+      })
+
+      test("drops CCTP under 'all'", () => {
+        expect(toSession(twoLegs('all')).settlementLayers).not.toContain('CCTP')
+        expect(toSession(twoLegs('all')).settlementLayers).toContain('ECO_IE')
+      })
     })
 
     describe('a to.minAmount across source chains with different caps', () => {
@@ -1001,6 +1123,112 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(() => resolveSessionData(twice)).toThrow(
       'at most one IntentExecutor-layer permit per session',
     )
+  })
+})
+
+describe('a to.minAmount outside [maxAmount / 2, maxAmount]', () => {
+  const OFT_ARB_TOKEN = SETTLEMENT_CATALOG[arbitrum.id].oft!.token
+  const OFT_PLASMA_TOKEN = SETTLEMENT_CATALOG[plasma.id].oft!.token
+  const USD18_ARB = '0x8181818181818181818181818181818181818181' as Address
+  const with18: SettlementCatalog = {
+    ...SETTLEMENT_CATALOG,
+    [arbitrum.id]: {
+      ...SETTLEMENT_CATALOG[arbitrum.id],
+      eco: {
+        ...SETTLEMENT_CATALOG[arbitrum.id].eco!,
+        stablecoins: [
+          ...SETTLEMENT_CATALOG[arbitrum.id].eco!.stablecoins,
+          USD18_ARB,
+        ],
+      },
+      usdStablecoins: [
+        ...(SETTLEMENT_CATALOG[arbitrum.id].usdStablecoins ?? []),
+        { address: USD18_ARB, symbol: 'USD18', decimals: 18 },
+      ],
+    },
+  }
+  const scoped = (
+    permit: Partial<CrossChainPermissionInput>,
+    chainId: number = arbitrum.id,
+    settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+  ) =>
+    resolveSettlementScope(
+      [
+        resolveCrossChainPermission({
+          from: { chain: arbitrum, token: OFT_ARB_TOKEN, maxAmount: 100n },
+          validUntil: new Date(2_000_000_000_000),
+          ...permit,
+        }),
+      ],
+      {
+        chainId,
+        environment: 'production',
+        account: ACCOUNT,
+        oneTimeUse: true,
+        settlement,
+      },
+    )
+  const toPlasma = (minAmount: bigint) => ({
+    to: { chain: plasma, token: OFT_PLASMA_TOKEN, minAmount },
+  })
+
+  // A units mistake is never a dropped layer: 'all' throws too.
+  test.each([
+    ['under half', 49n],
+    ['above', 101n],
+  ])('is refused %s the cap, on every layer list', (_, minAmount) => {
+    for (const settlementLayers of [['OFT'], ['ECO_IE'], 'all'] as const) {
+      expect(() =>
+        scoped({
+          ...toPlasma(minAmount),
+          settlementLayers:
+            settlementLayers === 'all' ? 'all' : [...settlementLayers],
+        }),
+      ).toThrow('must be between half of and all of the chain 42161 maxAmount')
+    }
+  })
+
+  test('admits the bounds', () => {
+    for (const minAmount of [50n, 100n]) {
+      expect(
+        scoped({ ...toPlasma(minAmount), settlementLayers: 'all' })
+          ?.settlementLayers,
+      ).toEqual(['OFT', 'ECO_IE'])
+    }
+  })
+
+  test('with different caps, the floor must fit every one', () => {
+    const spread = (minAmount: bigint) => () =>
+      scoped({
+        from: [
+          { chain: arbitrum, token: OFT_ARB_TOKEN, maxAmount: 100n },
+          { chain: plasma, token: OFT_PLASMA_TOKEN, maxAmount: 200n },
+        ],
+        ...toPlasma(minAmount),
+        settlementLayers: ['OFT'],
+      })
+    expect(spread(100n)).not.toThrow()
+    expect(spread(99n)).toThrow('chain 9745 maxAmount')
+    expect(spread(101n)).toThrow('chain 42161 maxAmount')
+  })
+
+  test("rescales the cap into the `to` token's decimals", () => {
+    const to18 = (minAmount: bigint) => () =>
+      scoped(
+        {
+          from: { chain: base, token: USDC, maxAmount: 100n * 10n ** 6n },
+          to: { chain: arbitrum, token: USD18_ARB, minAmount },
+          settlementLayers: ['ECO_IE'],
+        },
+        base.id,
+        with18,
+      )
+    // 99 USD meant, 99e-12 USD pinned: the key would keep the whole cap.
+    expect(to18(99n * 10n ** 6n)).toThrow(
+      "give it in the `to` token's smallest units (18 decimals)",
+    )
+    expect(to18(50n * 10n ** 18n)).not.toThrow()
+    expect(to18(50n * 10n ** 18n - 1n)).toThrow('must be between half of')
   })
 })
 

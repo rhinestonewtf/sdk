@@ -2,6 +2,7 @@ import {
   type Abi,
   type Address,
   isAddressEqual,
+  maxUint64,
   maxUint256,
   pad,
   toFunctionSelector,
@@ -129,9 +130,11 @@ function floorMinAmount(
       'crossChainPermits: an OFT `to.minAmount` must be positive',
     )
   }
-  if (ctx.cap !== undefined && minAmount > ctx.cap) {
+  // USDT0 sends amounts as uint64 in shared decimals; a larger floor admits no
+  // send.
+  if (minAmount > maxUint64) {
     throw new SettlementLayerRefusal(
-      'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
+      'crossChainPermits: an OFT `to.minAmount` above uint64 cannot be met by any send',
     )
   }
   return atLeast(SEND.minAmountLD, minAmount)

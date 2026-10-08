@@ -69,13 +69,15 @@ export interface SettlementContext {
     readonly token: Address
     readonly recipient?: Address
     /**
-     * `SAME_CHAIN_IE`, `ECO_IE`, `OFT` and LZ's Stargate send: the owner's floor
-     * on delivery, in this leg's token. CCTP cannot enforce it.
+     * `ECO_IE`, `OFT` and LZ's Stargate send: the owner's floor on delivery, in
+     * this leg's token. CCTP cannot enforce it.
      */
     readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
   readonly cap?: bigint
+  /** Every `from` leg's `maxAmount`, on every chain. */
+  readonly fromCaps?: readonly (bigint | undefined)[]
   /** `ECO_IE` only: the most of the cap the solver may keep, in basis points. */
   readonly maxFeeBps?: number
   /** The permit's `validUntil`, in seconds. */
