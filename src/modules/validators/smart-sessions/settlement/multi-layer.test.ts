@@ -200,22 +200,33 @@ const SINGLE: Record<string, SessionDefinition> = {
 }
 
 describe('multi-layer settlement permits', () => {
-  // Captured on main before multi-layer permits: a changed digest would be a
-  // HashMismatch for every single-layer session already signed.
-  test('a single-layer permit compiles to the same actions as before', () => {
+  // A changed digest is a HashMismatch for every single-layer session already
+  // signed. Opted out of the default UniversalActionPolicy copies, which
+  // re-encode some of them. Update a digest only for a deliberate, unreleased
+  // change, and say so in its changeset.
+  test('single-layer digests are pinned', () => {
     const digests = Object.fromEntries(
       Object.entries(SINGLE).map(([name, def]) => [
         name,
-        digest(def, WITH_FEES),
+        digest(
+          {
+            ...def,
+            policyAddresses: {
+              ...def.policyAddresses,
+              universalActionCopies: [],
+            },
+          },
+          WITH_FEES,
+        ),
       ]),
     )
     expect(digests).toMatchInlineSnapshot(`
       {
-        "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0xa6533b46c8986ff17e94fa85e88ed46a22a8436e3320971cc89b64d65534fe6c",
-        "ECO_IE": "0x40a80286b70a1379ee475a836b9372354f7de17501602c9cb4df352d18cd77cd",
-        "LZ": "0xd43889c3e9ec91179abefe75255724b8aba43f4661ffe361034eac3fd58ded1c",
-        "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",
+        "CCTP": "0x579b4c3f004b4df034c8e28b13a5f5aadca12060696a508e3c33d921d58a27f7",
+        "CCTP with fees": "0xa39eff6593ad08ecc8aec6c71910b8cc19d30364dca8088889d8d2231c1de4bf",
+        "ECO_IE": "0xf88bcf66cc02f04fc5ac6cfd8026a8d813b416cdc1edc0d9b7ea24b9cd23795c",
+        "LZ": "0x782b98c47fd0664eeacb6907c683cfd622aacb2713dfd65322b96b0437146d85",
+        "OFT": "0xafb81473b9789f2853937b3fd3fc384cb4832bec534fd853d45830f27aec0c45",
       }
     `)
   })
@@ -281,13 +292,13 @@ describe('multi-layer settlement permits', () => {
     expect(resolve(['CCTP', 'CCTP'])).toEqual(resolve(['CCTP']))
   })
 
-  test('every action carries the once-policy, and the approve the time frame', () => {
+  test('every action carries the once-policy and no time frame', () => {
     const def = definition({
       settlementLayers: ['CCTP', 'LZ'],
       validUntil: VALID_UNTIL,
     })
     const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
-    for (const action of data.actions.slice(0, 3)) {
+    for (const action of data.actions) {
       expect(action.actionPolicies.map((p) => p.policy)).toContain(ONE_TIME_USE)
     }
     const resolved = scope({
@@ -295,8 +306,27 @@ describe('multi-layer settlement permits', () => {
       validUntil: VALID_UNTIL,
     })
     for (const action of resolved.actions) {
-      expect(action.policies?.map((p) => p.type)).toContain('time-frame')
+      expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
     }
+  })
+
+  test("'all' refuses validAfter outright rather than dropping a layer", () => {
+    expect(() =>
+      scope({
+        settlementLayers: 'all',
+        validUntil: VALID_UNTIL,
+        validAfter: new Date(1_000_000_000_000),
+      }),
+    ).toThrow('validAfter is not supported')
+  })
+
+  test('refuses a validUntil that would read as no deadline', () => {
+    expect(() =>
+      resolveSessionData(
+        definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+        { settlement: SETTLEMENT_CATALOG },
+      ),
+    ).toThrow('validUntil must be a valid Date in the future')
   })
 
   test('refuses an approve to a layer the permit did not name', () => {
@@ -411,13 +441,23 @@ describe('multi-layer settlement permits', () => {
     ],
     [
       "maxFeeBps where 'all' drops ECO_IE",
-      { settlementLayers: 'all', maxFeeBps: 50 },
-      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil',
+      {
+        settlementLayers: 'all',
+        maxFeeBps: 50,
+        validUntil: new Date(Date.now() + 86_400_000),
+      },
+      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil at least 7 days ahead',
     ],
   ] as const)('refuses %s', (_, permit, message) => {
     expect(() => scope(permit as Partial<CrossChainPermissionInput>)).toThrow(
       message,
     )
+  })
+
+  test("'all' keeps ECO_IE without validUntil", () => {
+    expect(
+      scope({ settlementLayers: 'all', maxFeeBps: 50 }).settlementLayers,
+    ).toContain('ECO_IE')
   })
 
   test('allowFees joins the paymaster to the shared approve', () => {

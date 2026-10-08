@@ -1,5 +1,5 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
-import { FAR_FUTURE_MS } from '../../permissions'
+import { sessionWindowRefusal } from '../one-time-use'
 import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
@@ -7,11 +7,11 @@ import type {
   IntentExecutorSettlementLayer,
   Permission,
   ScopedAction,
-  SessionPolicy,
 } from '../types'
 import { scopeCctp } from './cctp'
 import { scopeEco } from './eco'
 import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
+import { requireFloorsWithinCaps } from './floor'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -46,6 +46,8 @@ const LAYERS: Record<
      * a reusable session could repeat dust sends until the balance is gone.
      */
     readonly requiresOneTimeUse?: true
+    /** Enforces the leg's `to.minAmount` on what its call delivers. */
+    readonly floorsDelivery?: true
   }
 > = {
   CCTP: {
@@ -57,10 +59,12 @@ const LAYERS: Record<
     target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
     requiresOneTimeUse: true,
+    floorsDelivery: true,
   },
   ECO_IE: {
     target: (settlement, chainId) => served(settlement, chainId, 'eco').portal,
     scope: scopeEco,
+    floorsDelivery: true,
   },
   LZ: {
     target: (settlement, chainId) =>
@@ -69,6 +73,7 @@ const LAYERS: Record<
       served(settlement, chainId, 'lz').transferDelegate,
     scope: scopeLz,
     requiresOneTimeUse: true,
+    floorsDelivery: true,
   },
 }
 
@@ -91,7 +96,9 @@ export function isIntentExecutorLayer(
 /** The bridging layers, in the order a session compiles them; `'all'` names each. */
 const CROSS_CHAIN_LAYERS = ['CCTP', 'OFT', 'ECO_IE', 'LZ'] as const
 
-export function isSettlementScopedPermit(permit: CrossChainPermit): boolean {
+export function isSettlementScopedPermit(
+  permit: Pick<CrossChainPermit, 'settlementLayers'>,
+): boolean {
   return (
     permit.settlementLayers === 'all' ||
     (permit.settlementLayers?.some(isIntentExecutorLayer) ?? false)
@@ -107,6 +114,8 @@ export interface SettlementScopeOptions {
   readonly oneTimeUse: boolean
   /** The orchestrator's `/chains` settlement addresses; IntentExecutor layers need them. */
   readonly settlement?: SettlementCatalog
+  /** The earliest deadline set elsewhere on the session, in seconds. */
+  readonly sessionDeadline?: bigint
 }
 
 export interface ResolvedSettlementScope {
@@ -114,6 +123,8 @@ export interface ResolvedSettlementScope {
   /** ABI-sugar permissions the layer adds (the SAME_CHAIN_IE swap's approve). */
   readonly permissions: Permission[]
   readonly settlementLayers: IntentExecutorSettlementLayer[]
+  /** The latest deadline the once-policy may carry: the permit's validUntil. */
+  readonly onceDeadline?: bigint
 }
 
 export function resolveSettlementScope(
@@ -133,6 +144,16 @@ export function resolveSettlementScope(
     )
   }
   const permit = scoped[0]
+  // The one-time-use deadline bounds every action in time, so a window it cannot
+  // carry is refused. A hard error, never a per-layer skip.
+  if (
+    permit.validAfter !== undefined ||
+    (permit.validUntil !== undefined && !options.oneTimeUse)
+  ) {
+    throw new Error(
+      sessionWindowRefusal(`crossChainPermits[${permits.indexOf(permit)}]`),
+    )
+  }
   const named = permit.settlementLayers
   const all = named === 'all'
   const layers = all ? [...CROSS_CHAIN_LAYERS] : (named ?? [])
@@ -230,26 +251,9 @@ export function resolveSettlementScope(
     }),
   )
 
-  const timeFrame: SessionPolicy[] =
-    permit.validAfter !== undefined || permit.validUntil !== undefined
-      ? [
-          {
-            type: 'time-frame',
-            validUntil:
-              permit.validUntil === undefined
-                ? FAR_FUTURE_MS
-                : Number(permit.validUntil * 1000n),
-            validAfter:
-              permit.validAfter === undefined
-                ? 0
-                : Number(permit.validAfter * 1000n),
-          },
-        ]
-      : []
-  const withTimeFrame = (action: ScopedAction): ScopedAction => ({
-    ...action,
-    policies: [...(action.policies ?? []), ...timeFrame],
-  })
+  // resolve has refused a validUntil that is not in the future.
+  const onceDeadline =
+    permit.validUntil === undefined ? {} : { onceDeadline: permit.validUntil }
 
   const sameChainOnly = requested[0] === 'SAME_CHAIN_IE'
   // Only ECO_IE prices its delivery against the reward; elsewhere the field would
@@ -257,10 +261,11 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  if (!sameChainOnly && permit.to?.some((leg) => leg.minAmount !== undefined)) {
-    throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
-    )
+  // Every layer in the permit must enforce `to.minAmount`, or the key would
+  // settle around it: scopeLayer refuses one that cannot (CCTP never can).
+  const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
+  if (minAmount && !sameChainOnly && options.settlement) {
+    requireFloorsWithinCaps(permit, options.settlement)
   }
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
@@ -274,15 +279,10 @@ export function resolveSettlementScope(
       sourceTokens,
       destinations,
       cap,
-      timeFrame,
-      ...(permit.validAfter === undefined
-        ? {}
-        : { validAfter: permit.validAfter }),
-      ...(permit.validUntil === undefined
-        ? {}
-        : { validUntil: permit.validUntil }),
     })
-    if (fees === undefined) return { ...sameChain, settlementLayers }
+    if (fees === undefined) {
+      return { ...sameChain, settlementLayers, ...onceDeadline }
+    }
     // A swap's approve is a permission; as a raw action the paymaster approve can
     // join it. Only the swap shape has permissions.
     const actions = [
@@ -290,9 +290,10 @@ export function resolveSettlementScope(
       ...swapApprovesAsActions(sameChain.permissions, cap),
     ]
     return {
-      actions: withFeeActions(actions, sourceTokens, fees, timeFrame),
+      actions: withFeeActions(actions, sourceTokens, fees),
       permissions: [],
       settlementLayers,
+      ...onceDeadline,
     }
   }
   // No bundled fallback: the orchestrator is the one source for these addresses.
@@ -303,10 +304,23 @@ export function resolveSettlementScope(
       "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
+  const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
+  // ECO_IE pins Eco's deadlines under the session's earliest deadline.
+  const validUntil =
+    permit.validUntil === undefined ||
+    (options.sessionDeadline !== undefined &&
+      options.sessionDeadline < permit.validUntil)
+      ? options.sessionDeadline
+      : permit.validUntil
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: an ${layer} permit requires oneTimeUse`,
+      )
+    }
+    if (minAmount && !LAYERS[layer].floorsDelivery) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
       )
     }
     const target = LAYERS[layer].target(settlement, options.chainId)
@@ -320,16 +334,11 @@ export function resolveSettlementScope(
       sourceTokens,
       destinations,
       cap,
-      timeFrame,
+      fromCaps,
       ...(permit.maxFeeBps === undefined
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
-      ...(permit.validAfter === undefined
-        ? {}
-        : { validAfter: permit.validAfter }),
-      ...(permit.validUntil === undefined
-        ? {}
-        : { validUntil: permit.validUntil }),
+      ...(validUntil === undefined ? {} : { validUntil }),
     })
     return { layer, spender, action }
   }
@@ -388,8 +397,8 @@ export function resolveSettlementScope(
   // per-call bound would let repeated approves grant the cap many times.
   const capRules = cap === undefined ? [] : [cumulativeCap(32n, cap)]
   const spenderPins = anyOf(spenders.map((s) => allOf([pin(0n, s)])))
-  const approveActions = sourceTokens.map((token) =>
-    withTimeFrame(
+  const approveActions = sourceTokens.map(
+    (token): ScopedAction =>
       spenders.length === 1
         ? swapAction(token, APPROVE_SELECTOR, [
             pin(0n, spenders[0]),
@@ -415,7 +424,6 @@ export function resolveSettlementScope(
               },
             ],
           },
-    ),
   )
   const actions = [
     ...scopedLayers.map(({ action }) => action),
@@ -425,8 +433,9 @@ export function resolveSettlementScope(
     actions:
       fees === undefined
         ? actions
-        : withFeeActions(actions, sourceTokens, fees, timeFrame),
+        : withFeeActions(actions, sourceTokens, fees),
     permissions: [],
     settlementLayers,
+    ...onceDeadline,
   }
 }

@@ -1,9 +1,17 @@
-import type { TypedDataDefinition } from 'viem'
+import {
+  type Hex,
+  isAddressEqual,
+  keccak256,
+  slice,
+  type TypedDataDefinition,
+  toHex,
+} from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../../test/utils/settlement-catalog'
 import type {
   AccountAdapter,
   AccountRuntime,
@@ -20,7 +28,12 @@ import {
   getQuorumMerkleRootSignableHash,
   getQuorumSignableHash,
 } from '../../modules/validators/quorum'
-import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+  toSession,
+} from '../../modules/validators/smart-sessions/resolve'
+import type { SessionDefinition } from '../../modules/validators/smart-sessions/types'
 import { createAccountSigningContext } from '../../signing/context'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
@@ -693,6 +706,160 @@ describe('intent workflow', () => {
           signers,
         }),
       ).rejects.toThrow(/also one of several sources/)
+    })
+  })
+
+  describe('dummy pre-claim action', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+    const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
+    const DUMMY = {
+      to: DUMMY_PRECLAIMOP_TARGET,
+      data: DUMMY_PRECLAIMOP_SELECTOR,
+    } as const
+    // source: cast calldata "consume(uint256)" 42
+    const CONSUME =
+      '0x483f31ab000000000000000000000000000000000000000000000000000000000000002a'
+    const owners = { type: 'ecdsa' as const, accounts: [account] }
+    const once = {
+      oneTimeUse: { id: 42n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    }
+    const definitions = (
+      oneTimeUse: boolean,
+    ): Record<string, SessionDefinition> => {
+      const extra = oneTimeUse ? once : {}
+      return {
+        'settlement-scoped': {
+          chain: base,
+          owners,
+          account: address,
+          ...extra,
+          crossChainPermits: [
+            {
+              // An uncapped IntentExecutor-layer permit needs no oneTimeUse.
+              from: oneTimeUse
+                ? { chain: base, token: USDC, maxAmount: 100n }
+                : { chain: base, token: USDC },
+              to: { chain: arbitrum, token: USDC_ARB },
+              settlementLayers: ['CCTP'],
+            },
+          ],
+        },
+        restricted: {
+          chain: base,
+          owners,
+          ...extra,
+          restrictToActions: true,
+          actions: [{ target: address, selector: '0x12345678' }],
+        },
+        unrestricted: {
+          chain: base,
+          owners,
+          ...extra,
+          actions: [{ target: address, selector: '0x12345678' }],
+        },
+      }
+    }
+    const sessionOf = (definition: SessionDefinition) =>
+      toSession(definition, { settlement: SETTLEMENT_CATALOG })
+    // The emissary checks an op against the action keyed by its target and selector.
+    const hasAction = (
+      session: ReturnType<typeof toSession>,
+      op: { readonly to: Hex; readonly data: Hex },
+    ) =>
+      session.actions.some(
+        (action) =>
+          isAddressEqual(action.actionTarget, op.to) &&
+          action.actionTargetSelector === slice(op.data, 0, 4),
+      )
+    const prepareEnabling = (session: ReturnType<typeof toSession>) =>
+      prepareIntent(
+        context({
+          checkpoints: {
+            read: vi.fn(async (checkpoint) => [
+              {
+                kind: 'session-enabled' as const,
+                id: checkpoint.id,
+                enabled: false,
+              },
+            ]),
+          },
+        }),
+        {
+          ...input,
+          destination: toEvmChainReference(base.id),
+          sourceChains: [toEvmChainReference(base.id)],
+          calls: [],
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [base.id]: {
+                session,
+                enableData: {
+                  userSignature: signature,
+                  hashesAndChainIds: [
+                    {
+                      chainId: BigInt(base.id),
+                      sessionDigest: `0x${'22'.repeat(32)}`,
+                    },
+                  ],
+                  sessionToEnableIndex: 0,
+                },
+              },
+            },
+          },
+        },
+      )
+
+    test.each(Object.entries(definitions(true)))(
+      'a one-time-use %s session admits every op it enables with, and not the dummy',
+      async (_, definition) => {
+        const session = sessionOf(definition)
+        const prepared = await prepareEnabling(session)
+        const preClaim = prepared.request.preClaimExecutions?.[base.id] ?? []
+        expect(preClaim.length).toBeGreaterThan(0)
+        for (const op of preClaim) expect(hasAction(session, op)).toBe(true)
+        // The orchestrator rewrites a destination burn to `consume`.
+        expect(hasAction(session, { to: POLICY, data: CONSUME })).toBe(true)
+        expect(hasAction(session, DUMMY)).toBe(false)
+      },
+    )
+
+    test.each(Object.entries(definitions(false)))(
+      'a %s session without oneTimeUse still enables with the dummy op',
+      async (_, definition) => {
+        const session = sessionOf(definition)
+        const prepared = await prepareEnabling(session)
+        expect(prepared.request.preClaimExecutions?.[base.id]).toEqual([
+          { ...DUMMY, value: 0n },
+        ])
+        expect(hasAction(session, DUMMY)).toBe(true)
+      },
+    )
+
+    // Captured before oneTimeUse dropped the dummy: a changed digest would be a
+    // HashMismatch for every session without oneTimeUse already signed.
+    test('sessions without oneTimeUse keep their actions', () => {
+      const digests = Object.fromEntries(
+        Object.entries(definitions(false)).map(([name, definition]) => [
+          name,
+          keccak256(
+            toHex(
+              JSON.stringify(sessionOf(definition).actions, (_, v) =>
+                typeof v === 'bigint' ? v.toString() : v,
+              ),
+            ),
+          ),
+        ]),
+      )
+      expect(digests).toMatchInlineSnapshot(`
+        {
+          "restricted": "0xe553b8ac5e91ddd5049d20fb77ef35efeb92efd50c5537ffe594cdccb39df847",
+          "settlement-scoped": "0x40cfa455e95fb4899a29f5844cf5c6ee0147cd049ad0a6edea9261bbbb5fbda0",
+          "unrestricted": "0x97d438c046b92b5e3c80b4cc720d014a37c8548ed2c7144cac2a9681650df0f6",
+        }
+      `)
     })
   })
 
