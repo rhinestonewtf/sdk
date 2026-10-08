@@ -137,7 +137,6 @@ export function context(
     sourceTokens: [USDC_BASE],
     destinations: [{ chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }],
     cap: CAP,
-    timeFrame: [],
     ...overrides,
   }
 }

@@ -25,7 +25,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), jose and express (optional peers for `jwt-server`); the published package has no runtime dependencies
+- Dependencies: viem (peer), jose (optional peer for `jwt-server`); the published package has no runtime dependencies
 
 ## Structure
 
@@ -41,7 +41,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions)
 - `/src/hypercore` - HyperCore order builders and Hyperliquid market reads (`@rhinestone/sdk/hypercore`)
 - `/src/errors`, `/src/utils`, `/src/smart-sessions` - Published compatibility barrels
-- `/src/jwt-server` - Server-side JWT signer (Express + Web handlers)
+- `/src/jwt-server` - Server-side JWT signer (Express-compatible middleware + Web handlers)
 - `/test` - Unit helpers, type tests, and live integration tests
 
 See [docs/architecture.md](docs/architecture.md) for how these fit together and the transaction flow.

@@ -1,3 +1,6 @@
+// Frozen copy of settlement/oft.ts before minAmountLD could be floored: the
+// differential suite in oft.test.ts holds the live builder to its verdicts.
+
 import {
   type Abi,
   type Address,
@@ -7,16 +10,24 @@ import {
   toFunctionSelector,
 } from 'viem'
 import {
-  atLeast,
+  SettlementLayerRefusal,
+  served,
+} from '../../src/modules/validators/smart-sessions/settlement/served'
+import type {
+  SettlementCatalog,
+  SettlementContext,
+} from '../../src/modules/validators/smart-sessions/settlement/types'
+import {
   cumulativeCap,
   pin,
   pinValue,
   pinWord,
   swapAction,
-} from '../swap/rules'
-import type { ScopedAction, UniversalActionPolicyParamRule } from '../types'
-import { SettlementLayerRefusal, served } from './served'
-import type { SettlementCatalog, SettlementContext } from './types'
+} from '../../src/modules/validators/smart-sessions/swap/rules'
+import type {
+  ScopedAction,
+  UniversalActionPolicyParamRule,
+} from '../../src/modules/validators/smart-sessions/types'
 
 /**
  * OFT — USDT0 over LayerZero, `OFTAdapter.send` encoded by the orchestrator
@@ -72,7 +83,6 @@ export const SEND = {
   dstEid: 128n,
   to: 160n,
   amountLD: 192n,
-  minAmountLD: 224n,
   extraOptionsPointer: 256n,
   composeMsgPointer: 288n,
   oftCmdPointer: 320n,
@@ -81,13 +91,7 @@ export const SEND = {
   oftCmdLength: 416n,
 } as const
 
-/**
- * The mesh moves only USDT0, so any other token names a route it cannot take.
- * USDT0 takes no fee and removes no dust (6 local and 6 shared decimals), so
- * `send` delivers exactly `amountLD` and an unfloored `minAmountLD` costs
- * nothing. An OFT that takes a fee or removes dust delivers less, down to the
- * key's `minAmountLD`: serving one needs `to.minAmount` on every leg.
- */
+/** The mesh moves only USDT0, so any other token names a route it cannot take. */
 function requireUsdt0(
   settlement: SettlementCatalog,
   chainId: number,
@@ -99,40 +103,6 @@ function requireUsdt0(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
-}
-
-/**
- * `send` reverts unless it delivers at least `minAmountLD`, so a floor on that
- * word floors the delivery. It is a fixed amount, since a rule compares with a
- * constant, not with `amountLD`. `minAmountLD` is in the source token's
- * decimals and `to.minAmount` in the destination's, so both must be served
- * and equal.
- */
-function floorMinAmount(
-  ctx: SettlementContext,
-  leg: SettlementContext['destinations'][number],
-  minAmount: bigint,
-): UniversalActionPolicyParamRule {
-  const decimals = (chainId: number, token: Address) =>
-    ctx.settlement[chainId]?.usdStablecoins?.find((t) =>
-      isAddressEqual(t.address, token),
-    )?.decimals
-  const from = decimals(ctx.chainId, ctx.sourceTokens[0])
-  const to = decimals(leg.chainId, leg.token)
-  if (from === undefined || from !== to) {
-    throw new Error(
-      `crossChainPermits: an OFT \`to.minAmount\` needs served, equal decimals for the \`from\` token on chain ${ctx.chainId} (${from ?? 'not served'}) and the \`to\` token on chain ${leg.chainId} (${to ?? 'not served'})`,
-    )
-  }
-  if (minAmount <= 0n) {
-    throw new Error('crossChainPermits: an OFT `to.minAmount` must be positive')
-  }
-  if (ctx.cap !== undefined && minAmount > ctx.cap) {
-    throw new Error(
-      'crossChainPermits: an OFT `to.minAmount` above `maxAmount` admits no send',
-    )
-  }
-  return atLeast(SEND.minAmountLD, minAmount)
 }
 
 /** The send call, pinned to the permit's destinations, refund and cap. */
@@ -170,25 +140,6 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     },
   ]
   if (ctx.cap !== undefined) rules.push(cumulativeCap(SEND.amountLD, ctx.cap))
-  // Legs whose sends look alike are alternatives the key picks from, so a
-  // looser floor on one would open the other.
-  ctx.destinations.forEach((leg, i) => {
-    const twin = ctx.destinations
-      .slice(i + 1)
-      .find(
-        (other) =>
-          other.chainId === leg.chainId &&
-          (other.recipient === undefined ||
-            leg.recipient === undefined ||
-            isAddressEqual(other.recipient, leg.recipient)) &&
-          other.minAmount !== leg.minAmount,
-      )
-    if (twin) {
-      throw new Error(
-        `crossChainPermits: two OFT \`to\` legs on chain ${leg.chainId} admit the same send but set different \`minAmount\`s`,
-      )
-    }
-  })
   const legs = ctx.destinations.map((leg) => {
     requireUsdt0(ctx.settlement, leg.chainId, leg.token, 'to')
     const legRules = [
@@ -199,9 +150,6 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
     ]
     if (leg.recipient !== undefined) {
       legRules.push(pinWord(SEND.to, pad(leg.recipient)))
-    }
-    if (leg.minAmount !== undefined) {
-      legRules.push(floorMinAmount(ctx, leg, leg.minAmount))
     }
     return legRules
   })
