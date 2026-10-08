@@ -434,10 +434,6 @@ export function resolveSettlementScope(
         : withFeeActions(actions, sourceTokens, fees, timeFrame),
     permissions: [],
     settlementLayers,
-    dropped: [...skipped].map(([layer, reason]) => ({
-      layer,
-      chainId: options.chainId,
-      reason,
-    })),
+    dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),
   }
 }

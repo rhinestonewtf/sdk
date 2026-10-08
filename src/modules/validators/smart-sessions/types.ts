@@ -236,16 +236,12 @@ export type CrossChainSettlementLayer =
 /** A layer `settlementLayers: 'all'` left out of the session, and why. */
 export interface DroppedSettlementLayer {
   readonly layer: IntentExecutorSettlementLayer
-  /** The session's chain, where the layer could not settle the permit. */
-  readonly chainId: number
   /** The refusal that dropped it, as an explicit list would have thrown it. */
   readonly reason: string
 }
 
-/** Which IntentExecutor layers a settlement-scoped permit's session covers. */
+/** The layers a settlement-scoped permit left out; its session's `settlementLayers` lists the kept ones. */
 export interface SettlementCoverage {
-  /** The layers the session allows; the same as the session's `settlementLayers`. */
-  readonly layers: readonly IntentExecutorSettlementLayer[]
   /** Layers `'all'` left out. Always empty for an explicit list, which throws instead. */
   readonly dropped: readonly DroppedSettlementLayer[]
 }
@@ -425,8 +421,8 @@ export interface Session {
   /** The IntentExecutor layers the session's permit was scoped to, so a caller
    *  can restrict an intent to them. Metadata only, like `swap`. */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
-  /** The layers a settlement-scoped permit covers and those `'all'` dropped.
-   *  Metadata only, like `swap`; absent on sessions stored before it existed. */
+  /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
+   *  like `swap`; absent on sessions stored before it existed. */
   settlementCoverage?: SettlementCoverage
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).

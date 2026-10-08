@@ -550,7 +550,6 @@ function resolveSession(
     data,
     settlementLayers: settlementScope?.settlementLayers ?? [],
     settlementCoverage: settlementScope && {
-      layers: settlementScope.settlementLayers,
       dropped: settlementScope.dropped,
     },
   }

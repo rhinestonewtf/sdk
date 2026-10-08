@@ -441,53 +441,35 @@ describe('settlement coverage', () => {
   const session = (permit: Partial<CrossChainPermissionInput>) =>
     toSession(definition(permit), { settlement: SETTLEMENT_CATALOG })
 
-  /** Every field the session encodes or the SDK reads to transact. */
-  const encoding = (permit: Partial<CrossChainPermissionInput>) => {
-    const {
-      chain: _chain,
-      owners: _owners,
-      settlementCoverage: _coverage,
-      ...rest
-    } = session(permit)
-    return keccak256(
-      toHex(
-        JSON.stringify(rest, (_, v) =>
-          typeof v === 'bigint' ? v.toString() : v,
-        ),
-      ),
-    )
-  }
-
   test("'all' lists the layers it dropped, with the refusal an explicit list throws", () => {
-    const coverage = session({ settlementLayers: 'all' }).settlementCoverage
-    expect(coverage).toEqual({
-      layers: ['CCTP', 'LZ'],
+    const { settlementLayers, settlementCoverage } = session({
+      settlementLayers: 'all',
+    })
+    expect(settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(settlementCoverage).toEqual({
       dropped: [
-        {
-          layer: 'OFT',
-          chainId: base.id,
-          reason: 'OFT does not route to chain 8453',
-        },
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
         {
           layer: 'ECO_IE',
-          chainId: base.id,
           reason:
             'ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
         },
       ],
     })
-    for (const { layer, reason } of coverage?.dropped ?? []) {
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
       expect(() => scope({ settlementLayers: [layer] })).toThrow(
         `crossChainPermits: ${reason}`,
       )
     }
-    expect(JSON.parse(JSON.stringify(coverage))).toEqual(coverage)
+    expect(JSON.parse(JSON.stringify(settlementCoverage))).toEqual(
+      settlementCoverage,
+    )
   })
 
   test('an explicit list that every layer settles drops none', () => {
     expect(
       session({ settlementLayers: ['CCTP', 'LZ'] }).settlementCoverage,
-    ).toEqual({ layers: ['CCTP', 'LZ'], dropped: [] })
+    ).toEqual({ dropped: [] })
   })
 
   test('a session without a settlement-scoped permit carries no coverage', () => {
@@ -497,17 +479,25 @@ describe('settlement coverage', () => {
     )
   })
 
-  test('reporting coverage leaves the encoded session unchanged', () => {
-    // Pinned from the session before coverage existed.
-    expect(encoding({ settlementLayers: 'all' })).toBe(ALL_ENCODING)
-    expect(encoding({ settlementLayers: ['CCTP', 'LZ'] })).toBe(ALL_ENCODING)
-    expect(session({ settlementLayers: 'all' }).permissionId).toBe(
-      ALL_PERMISSION_ID,
-    )
-  })
+  test.each([
+    [{}, ['CCTP', 'LZ']],
+    [{ maxFeeBps: 50, validUntil: VALID_UNTIL }, ['CCTP', 'ECO_IE', 'LZ']],
+  ] as const)(
+    "'all' encodes the same session as the layers it kept (%o)",
+    (permit, kept) => {
+      const all = { ...permit, settlementLayers: 'all' } as const
+      const listed = { ...permit, settlementLayers: [...kept] }
+      expect(
+        resolveSessionData(definition(all), { settlement: SETTLEMENT_CATALOG }),
+      ).toEqual(
+        resolveSessionData(definition(listed), {
+          settlement: SETTLEMENT_CATALOG,
+        }),
+      )
+      const { settlementCoverage: _, ...fromAll } = session(all)
+      const { settlementCoverage: __, ...fromList } = session(listed)
+      expect(fromAll).toEqual(fromList)
+      expect(fromAll.permissionId).toBe(fromList.permissionId)
+    },
+  )
 })
-
-const ALL_ENCODING =
-  '0xe1fb413eb7f6408ea3264a6908fc428b5c10b744159662b085d836b94ac779f8'
-const ALL_PERMISSION_ID =
-  '0x9bb1f803fdf9ba99e5dd58945cacaf4d40cdfd30abe954e4eea4e6f7ef738280'
