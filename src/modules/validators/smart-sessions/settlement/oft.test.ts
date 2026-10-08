@@ -63,7 +63,6 @@ const base = {
   target: SETTLEMENT_CATALOG[42161].oft!.adapter,
   account: ACCOUNT,
   sourceTokens: [USDT0_ARB],
-  timeFrame: [],
 } as const
 
 describe('OFT send offsets', () => {
@@ -190,22 +189,6 @@ describe('scopeOft', () => {
 
   test('the send may carry the LayerZero fee in msg.value', () => {
     expect(action.policies?.[0]).toMatchObject({ valueLimitPerUse: maxUint256 })
-  })
-
-  test('the validity window bounds the send', () => {
-    const timeFrame = {
-      type: 'time-frame',
-      validAfter: 1,
-      validUntil: 2,
-    } as const
-    const bounded = scopeOft({
-      ...base,
-      destinations: [
-        { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
-      ],
-      timeFrame: [timeFrame],
-    })
-    expect(bounded.policies).toContainEqual(timeFrame)
   })
 
   test('pairs each recipient with its own destination', () => {

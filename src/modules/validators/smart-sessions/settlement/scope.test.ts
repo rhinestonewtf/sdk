@@ -4,12 +4,14 @@ import {
   erc20Abi,
   pad,
   toFunctionSelector,
+  zeroHash,
 } from 'viem'
 import {
   arbitrum,
   arbitrumSepolia,
   base,
   baseSepolia,
+  optimism,
   plasma,
 } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
@@ -281,12 +283,18 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(100n, 0n))).toBe(false)
     })
 
-    test.each<[string, CrossChainPermissionInput['settlementLayers']]>([
-      ['beside another layer', ['OFT', 'CCTP']],
-      ["under 'all'", 'all'],
-    ])('is refused %s, where it would bind only the OFT send', (_, layers) => {
-      expect(() => resolveSettlementScope([permit(layers)], options)).toThrow(
-        'applies only to a SAME_CHAIN_IE swap or an OFT-only permit',
+    test('is refused beside another layer, where it would bind only the OFT send', () => {
+      expect(() =>
+        resolveSettlementScope([permit(['OFT', 'CCTP'])], options),
+      ).toThrow(
+        'applies only to a SAME_CHAIN_IE swap, ECO_IE or an OFT-only permit',
+      )
+    })
+
+    // Under 'all' a floor asks for ECO_IE, which cannot settle this permit.
+    test("is refused under 'all'", () => {
+      expect(() => resolveSettlementScope([permit('all')], options)).toThrow(
+        '`to.minAmount` asks for ECO_IE, which cannot settle this permit',
       )
     })
   })
@@ -417,7 +425,7 @@ describe('settlement-scoped crossChainPermits', () => {
             settlementLayers: ['ACROSS'],
           }),
         ),
-      ).toThrow('applies only to a SAME_CHAIN_IE swap')
+      ).toThrow('`to.minAmount` does not apply to Permit2 layers')
     })
   })
 
@@ -492,12 +500,10 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
-    test('requires oneTimeUse, through its mandatory maxAmount', () => {
+    test('requires oneTimeUse, through its mandatory validUntil and maxAmount', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
-      ).toThrow(
-        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-      )
+      ).toThrow('supports validUntil only together with oneTimeUse')
     })
 
     test.each([
@@ -510,6 +516,116 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(() => resolveSessionData(def)).toThrow(
         'maxFeeBps applies only to ECO',
       )
+    })
+
+    const USDT0_ARB = SETTLEMENT_CATALOG[arbitrum.id].eco!.stablecoins[1]
+    const WETH_ARB = '0x82af49447d8a07e3bd95bd0d56f35241523fbab1' as Address
+    const toUsdt = {
+      to: { chain: arbitrum, token: USDT0_ARB, minAmount: 98n },
+      maxFeeBps: undefined,
+    }
+
+    test('takes a to.minAmount in place of maxFeeBps, for served tokens', () => {
+      expect(toSession(eco(toUsdt)).settlementLayers).toEqual(['ECO_IE'])
+      expect(() =>
+        resolveSessionData(
+          eco({ to: { ...toUsdt.to, token: WETH_ARB }, maxFeeBps: undefined }),
+        ),
+      ).toThrow('ECO_IE moves only USD stablecoins; the `to` token')
+    })
+
+    test('a to.minAmount beside another layer floors only ECO_IE', () => {
+      const scoped = (minAmount?: bigint) =>
+        resolveSettlementScope(
+          [
+            resolveCrossChainPermission(
+              eco({
+                to: { chain: arbitrum, token: USDC_ARB, minAmount },
+                maxFeeBps: 100,
+                settlementLayers: ['CCTP', 'ECO_IE'],
+              }).crossChainPermits?.[0] ?? {},
+            ),
+          ],
+          {
+            chainId: base.id,
+            environment: 'production',
+            account: ACCOUNT,
+            oneTimeUse: true,
+            settlement: SETTLEMENT_CATALOG,
+          },
+        )
+      const action = (minAmount: bigint | undefined, selector: string) => {
+        const found = scoped(minAmount)?.actions.find(
+          (a) => a.selector === selector,
+        )
+        if (!found) throw new Error(`no ${selector} action`)
+        return found
+      }
+      const floorsOf = (minAmount?: bigint) => {
+        const policy = action(minAmount, PUBLISH_AND_FUND_SELECTOR)
+          .policies?.[0]
+        if (policy?.type !== 'arg-policy') throw new Error('no arg policy')
+        const out: bigint[] = []
+        const walk = (e: typeof policy.expression): void => {
+          if (e.type === 'rule') {
+            if (e.rule.condition === 'greaterThanOrEqual')
+              out.push(BigInt(e.rule.referenceValue))
+          } else if (e.type === 'not') walk(e.child)
+          else {
+            walk(e.left)
+            walk(e.right)
+          }
+        }
+        walk(policy.expression)
+        return out
+      }
+      expect(action(100n, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR)).toEqual(
+        action(undefined, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR),
+      )
+      // cap 100 at 100 bps floors at 99; the owner's 100 is stricter.
+      expect(floorsOf()).toEqual([99n, 99n])
+      expect(floorsOf(100n)).toEqual([100n, 100n])
+    })
+
+    test("refuses a to.minAmount when 'all' drops ECO_IE", () => {
+      expect(() =>
+        resolveSessionData(
+          eco({ ...toUsdt, settlementLayers: 'all', validUntil: undefined }),
+        ),
+      ).toThrow('`to.minAmount` asks for ECO_IE, which cannot settle')
+    })
+
+    describe('a to.minAmount across source chains with different caps', () => {
+      const USDC_OP = SETTLEMENT_CATALOG[optimism.id].eco!.stablecoins[0]
+      const spread = (arbCap: bigint | undefined, maxFeeBps?: number) =>
+        eco({
+          from: [
+            { chain: base, token: USDC, maxAmount: 1000n * 10n ** 6n },
+            { chain: arbitrum, token: USDC_ARB, maxAmount: arbCap },
+          ],
+          to: { chain: optimism, token: USDC_OP, minAmount: 550n * 10n ** 6n },
+          maxFeeBps,
+        })
+
+      // A 550 USDC floor fits the Arbitrum cap of 600, and lets the Base key pay
+      // a 1000 USDC reward for 550.
+      test.each([
+        ['different caps', 600n * 10n ** 6n],
+        ['a leg with no cap', undefined],
+      ])('refuses %s without maxFeeBps', (_, arbCap) => {
+        expect(() => resolveSessionData(spread(arbCap))).toThrow(
+          '`from` legs with different maxAmount need maxFeeBps',
+        )
+      })
+
+      test('admits them with maxFeeBps, and equal caps without', () => {
+        expect(
+          toSession(spread(600n * 10n ** 6n, 100)).settlementLayers,
+        ).toEqual(['ECO_IE'])
+        expect(toSession(spread(1000n * 10n ** 6n)).settlementLayers).toEqual([
+          'ECO_IE',
+        ])
+      })
     })
   })
 
@@ -703,6 +819,45 @@ describe('settlement-scoped crossChainPermits', () => {
   })
 })
 
+describe('settlement-scoped session salt', () => {
+  const plain = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+  } as SessionDefinition
+
+  test('salts a settlement-scoped session without oneTimeUse or saltMode', () => {
+    const scoped = toSession(definition())
+    expect(scoped.salt).not.toBe(zeroHash)
+    expect(scoped.permissionId).not.toBe(toSession(plain).permissionId)
+  })
+
+  test('the salt is the strict one', () => {
+    expect(toSession(definition()).salt).toBe(
+      toSession(definition({}, { saltMode: 'strict' })).salt,
+    )
+    expect(toSession(definition({}, { saltMode: 'none' })).salt).toBe(
+      toSession(definition({}, { saltMode: 'strict' })).salt,
+    )
+  })
+
+  test("refuses saltMode 'v1'", () => {
+    expect(() => toSession(definition({}, { saltMode: 'v1' }))).toThrow(
+      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1'",
+    )
+  })
+
+  test('leaves a plain or restrictToActions session without saltMode on zeroHash', () => {
+    expect(toSession(plain).salt).toBe(zeroHash)
+    expect(
+      toSession({
+        ...plain,
+        restrictToActions: true,
+        actions: [{ target: USDC, selector: APPROVE }],
+      } as SessionDefinition).salt,
+    ).toBe(zeroHash)
+  })
+})
+
 describe('resolveSettlementScope', () => {
   const scope = (permit: Partial<CrossChainPermissionInput> = {}) => {
     const resolved = resolveSettlementScope(
@@ -745,34 +900,23 @@ describe('resolveSettlementScope', () => {
     expect(satisfiesRules(action, approve(OTHER))).toBe(false)
   })
 
-  test('the validity window bounds every action', () => {
-    const validAfter = new Date(1_900_000_000_000)
-    const validUntil = new Date(2_000_000_000_000)
-    const actions = scope({ validAfter, validUntil })
-    expect(actions).toHaveLength(2)
-    for (const action of actions) {
-      expect(action.policies).toContainEqual({
-        type: 'time-frame',
-        validAfter: validAfter.getTime(),
-        validUntil: validUntil.getTime(),
-      })
-    }
-  })
-
-  test('a one-sided window leaves the other bound open', () => {
-    const [afterOnly] = scope({ validAfter: new Date(1_900_000_000_000) })
-    expect(afterOnly.policies).toContainEqual(
-      expect.objectContaining({
-        type: 'time-frame',
-        validAfter: 1_900_000_000_000,
-      }),
+  test.each([
+    ['validAfter', { validAfter: new Date(1_900_000_000_000) }],
+    [
+      'validAfter with validUntil',
+      {
+        validAfter: new Date(1_900_000_000_000),
+        validUntil: new Date(2_000_000_000_000),
+      },
+    ],
+    [
+      'validUntil without oneTimeUse',
+      { validUntil: new Date(2_000_000_000_000) },
+    ],
+  ])('refuses %s, a window that needs oneTimeUse', (_, window) => {
+    expect(() => scope(window)).toThrow(
+      'supports validUntil only together with oneTimeUse, and does not support validAfter',
     )
-    const [untilOnly] = scope({ validUntil: new Date(2_000_000_000_000) })
-    expect(untilOnly.policies).toContainEqual({
-      type: 'time-frame',
-      validAfter: 0,
-      validUntil: 2_000_000_000_000,
-    })
   })
 
   test('refuses a permit with no `from` legs', () => {

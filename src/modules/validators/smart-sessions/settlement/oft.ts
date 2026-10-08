@@ -207,15 +207,13 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
   })
   // `msg.value` carries the LayerZero fee, whose size the session cannot know;
   // the refund pin returns any overpayment to the account.
-  const action =
-    legs.length === 1
-      ? swapAction(
-          ctx.target,
-          OFT_SEND_SELECTOR,
-          [...rules, ...legs[0]],
-          [],
-          maxUint256,
-        )
-      : swapAction(ctx.target, OFT_SEND_SELECTOR, rules, legs, maxUint256)
-  return { ...action, policies: [...(action.policies ?? []), ...ctx.timeFrame] }
+  return legs.length === 1
+    ? swapAction(
+        ctx.target,
+        OFT_SEND_SELECTOR,
+        [...rules, ...legs[0]],
+        [],
+        maxUint256,
+      )
+    : swapAction(ctx.target, OFT_SEND_SELECTOR, rules, legs, maxUint256)
 }

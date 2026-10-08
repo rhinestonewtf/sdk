@@ -60,6 +60,12 @@ export const DUMMY_PRECLAIMOP_TARGET =
   '0x0000000000000000000000000000000000000420' as const
 export const DUMMY_PRECLAIMOP_SELECTOR = '0x69123456' as const
 
+function minDefined(a?: bigint, b?: bigint): bigint | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return a < b ? a : b
+}
+
 function usesEns(definition: SessionDefinition['owners']): boolean {
   return (
     definition.type === 'ens' ||
@@ -146,9 +152,21 @@ function resolveSession(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
-  const resolvedPermits = (definition.crossChainPermits ?? []).map(
-    resolveCrossChainPermission,
-  )
+  const resolvedPermits = (definition.crossChainPermits ?? []).map((input) => {
+    const until = input.validUntil
+    // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
+    // and a past deadline only fails at enable, as an opaque signature error.
+    if (
+      until !== undefined &&
+      isSettlementScopedPermit(input) &&
+      !(Number.isFinite(until.getTime()) && until.getTime() > Date.now())
+    ) {
+      throw new Error(
+        'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
+      )
+    }
+    return resolveCrossChainPermission(input)
+  })
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -167,6 +185,11 @@ function resolveSession(
   ) {
     throw new Error(
       'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+    )
+  }
+  if (settlementScope !== undefined && definition.saltMode === 'v1') {
+    throw new Error(
+      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
     )
   }
   const restricted =
@@ -234,9 +257,23 @@ function resolveSession(
       )
     }
   }
-  const expandedPermits = resolvedPermits
-    .filter((permit) => !isSettlementScopedPermit(permit))
-    .map((permit) => expandCrossChainPermit(permit, environment))
+  const permit2Permits = resolvedPermits.filter(
+    (permit) => !isSettlementScopedPermit(permit),
+  )
+  // A Permit2-route maxAmount is enforced together with oneTimeUse.
+  if (
+    !definition.oneTimeUse &&
+    permit2Permits.some((permit) =>
+      permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
+    )
+  ) {
+    throw new Error(
+      "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+    )
+  }
+  const expandedPermits = permit2Permits.map((permit) =>
+    expandCrossChainPermit(permit, environment),
+  )
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -433,10 +470,14 @@ function resolveSession(
         'oneTimeUse.validUntil must be a valid Date in the future',
       )
     }
+    // A settlement-scoped permit's validUntil joins it as the session deadline.
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline: validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+      deadline: minDefined(
+        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+        settlementScope?.onceDeadline,
+      ),
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via
@@ -523,14 +564,18 @@ function resolveSession(
   const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use, stable-floor or claim-policy session must never share a
-    // permissionId with another session: enabling it would union with that
-    // session's policies, and for a floor that means the unfloored swap actions.
+    // A one-time-use, stable-floor, settlement-scoped or claim-policy session
+    // must never share a permissionId with another session: enabling it would
+    // union with that session's policies, and for a floor or a settlement scope
+    // that means the unscoped actions.
     // A claim-policy session is never `restricted`, so without this it would
     // salt to zeroHash and collide with any plain session for the same signer,
     // leaving that session's signing policy beside the claim policy.
     salt: sessionSalt(
-      definition.oneTimeUse || stableFloor || claimPoliciesMoved
+      definition.oneTimeUse ||
+        stableFloor ||
+        claimPoliciesMoved ||
+        settlementScope !== undefined
         ? 'strict'
         : definition.saltMode,
       restricted || Boolean(definition.oneTimeUse) || claimPoliciesMoved,
