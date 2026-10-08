@@ -234,6 +234,30 @@ export type CrossChainSettlementLayer =
   | Permit2SettlementLayer
   | IntentExecutorSettlementLayer
 
+/** A layer `settlementLayers: 'all'` left out of the session, and why. */
+export interface DroppedSettlementLayer {
+  readonly layer: IntentExecutorSettlementLayer
+  /** The refusal that dropped it, as an explicit list would have thrown it. */
+  readonly reason: string
+}
+
+/** The layers a settlement-scoped permit left out; its session's `settlementLayers` lists the kept ones. */
+export interface SettlementCoverage {
+  /** Layers `'all'` left out. Always empty for an explicit list, which throws instead. */
+  readonly dropped: readonly DroppedSettlementLayer[]
+}
+
+/**
+ * Whether a session's key is held to the session's own actions. `'open'` keeps
+ * the wildcard intent-execution fallback, so the key may also call any target
+ * the global intent-execution whitelist allows.
+ */
+export interface SessionAccess {
+  readonly kind: 'scoped' | 'open'
+  /** What made it so, e.g. `restrictToActions` or the permit that kept the fallback. */
+  readonly reason: string
+}
+
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   to?: {
@@ -411,6 +435,12 @@ export interface Session {
   /** The IntentExecutor layers the session's permit was scoped to, so a caller
    *  can restrict an intent to them. Metadata only, like `swap`. */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
+  /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
+   *  like `swap`; absent on sessions stored before it existed. */
+  settlementCoverage?: SettlementCoverage
+  /** Whether the session keeps the intent-execution fallback, and why. Metadata
+   *  only; absent on sessions stored before it existed. */
+  access?: SessionAccess
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }

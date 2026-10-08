@@ -12,6 +12,7 @@ import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
+  DroppedSettlementLayer,
   IntentExecutorSettlementLayer,
   Permission,
   ScopedAction,
@@ -131,6 +132,8 @@ export interface ResolvedSettlementScope {
   /** ABI-sugar permissions the layer adds (the SAME_CHAIN_IE swap's approve). */
   readonly permissions: Permission[]
   readonly settlementLayers: IntentExecutorSettlementLayer[]
+  /** The layers `'all'` dropped, with the refusal that dropped each. */
+  readonly dropped: DroppedSettlementLayer[]
   /** The latest deadline the once-policy may carry: the permit's validUntil. */
   readonly onceDeadline?: bigint
 }
@@ -345,7 +348,7 @@ function scopePermit(
       cap,
     })
     if (fees === undefined) {
-      return { ...sameChain, settlementLayers, ...onceDeadline }
+      return { ...sameChain, settlementLayers, dropped: [], ...onceDeadline }
     }
     // A swap's approve is a permission; as a raw action the paymaster approve can
     // join it. Only the swap shape has permissions.
@@ -357,6 +360,7 @@ function scopePermit(
       actions: withFeeActions(actions, sourceTokens, fees),
       permissions: [],
       settlementLayers,
+      dropped: [],
       ...onceDeadline,
     }
   }
@@ -407,7 +411,7 @@ function scopePermit(
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
   // only the layers that can; any other error still throws. A fixed order keeps
   // the session the same however the layers were listed.
-  const skipped = new Map<string, string>()
+  const skipped = new Map<(typeof CROSS_CHAIN_LAYERS)[number], string>()
   const scopedLayers = CROSS_CHAIN_LAYERS.filter((layer) =>
     requested.includes(layer),
   ).flatMap((layer) => {
@@ -515,6 +519,7 @@ function scopePermit(
         : withFeeActions(actions, sourceTokens, fees),
     permissions: [],
     settlementLayers,
+    dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),
     ...onceDeadline,
   }
 }

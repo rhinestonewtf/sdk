@@ -32,7 +32,10 @@ import type {
 } from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 import type {
+  DroppedSettlementLayer,
   IntentExecutorSettlementLayer,
+  SessionAccess,
+  SettlementCoverage,
   StableSwapFloor,
 } from '../modules/validators/smart-sessions/types'
 
@@ -334,7 +337,9 @@ interface Permit2ClaimPolicy {
  *   against the orchestrator's `GET /chains` and the clock when the session
  *   is created, so store the created session
  *   (its `settlementLayers` lists the layers kept) and reuse it rather than
- *   rebuilding it from `'all'`, which can keep a different set of layers.
+ *   rebuilding it from `'all'`, which can keep a different set of layers. The
+ *   created session's `settlementCoverage.dropped` lists each layer left out
+ *   with the reason it was dropped.
  *
  *   A settlement-scoped permit cannot be combined with the Permit2 layers,
  *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
@@ -1136,6 +1141,17 @@ interface Session {
    *  to. Metadata only — intents with the session are limited to them
    *  (`SAME_CHAIN_IE` adds no bridge filter). */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
+  /** The layers `settlementLayers: 'all'` left out of a settlement-scoped permit
+   *  on the session's chain, each with the refusal that dropped it; the kept
+   *  ones are in `settlementLayers`. Metadata only — it does not change the
+   *  permission id. Absent on sessions without such a permit and on sessions
+   *  stored before this field existed. */
+  settlementCoverage?: SettlementCoverage
+  /** Whether the session's key is held to its own actions (`'scoped'`) or keeps
+   *  the wildcard intent-execution fallback (`'open'`), with the reason.
+   *  Metadata only — it does not change the permission id. Absent on sessions
+   *  stored before this field existed. */
+  access?: SessionAccess
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
@@ -1544,6 +1560,7 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
+  DroppedSettlementLayer,
   ENSValidatorConfig,
   EoaAccount,
   FallbackAction,
@@ -1590,9 +1607,11 @@ export type {
   SessionEnableData,
   SessionInput,
   SessionPolicyAddresses,
+  SessionAccess,
   SessionSignerSet,
   SessionSigning,
   SessionSigningContent,
+  SettlementCoverage,
   SignerSet,
   SingleSessionSignerSet,
   SourceAssetInput,

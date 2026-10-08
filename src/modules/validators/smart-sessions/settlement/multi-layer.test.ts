@@ -466,3 +466,131 @@ describe('multi-layer settlement permits', () => {
     expect(satisfiesRules(action, approve(PAYMASTER, 1n), usage)).toBe(false)
   })
 })
+
+describe('settlement coverage', () => {
+  const session = (permit: Partial<CrossChainPermissionInput>) =>
+    toSession(definition(permit), { settlement: SETTLEMENT_CATALOG })
+
+  test("'all' lists the layers it dropped, with the refusal an explicit list throws", () => {
+    const { settlementLayers, settlementCoverage } = session({
+      settlementLayers: 'all',
+    })
+    expect(settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(settlementCoverage).toEqual({
+      dropped: [
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
+        {
+          layer: 'ECO_IE',
+          reason:
+            'ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver (or maxAmount and a `to.minAmount` on every leg)',
+        },
+      ],
+    })
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
+      expect(() => scope({ settlementLayers: [layer] })).toThrow(
+        `crossChainPermits: ${reason}`,
+      )
+    }
+    expect(JSON.parse(JSON.stringify(settlementCoverage))).toEqual(
+      settlementCoverage,
+    )
+  })
+
+  /** Each dropped reason is what naming that layer alone throws. */
+  const expectExplicitRefusals = (
+    sessionChain: Chain,
+    permit: Partial<CrossChainPermissionInput>,
+  ) => {
+    const { settlementCoverage } = toSession(definition(permit, sessionChain), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
+      expect(() =>
+        toSession(
+          definition({ ...permit, settlementLayers: [layer] }, sessionChain),
+          { settlement: SETTLEMENT_CATALOG },
+        ),
+      ).toThrow(`crossChainPermits: ${reason}`)
+    }
+    return settlementCoverage
+  }
+
+  test("'all' with a floor drops CCTP, and LZ for a leg it reaches over CCTP", () => {
+    const permit = {
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 98n },
+      validUntil: VALID_UNTIL,
+      settlementLayers: 'all',
+    } as const
+    const { settlementLayers } = toSession(definition(permit), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(settlementLayers).toEqual(['ECO_IE'])
+    expect(expectExplicitRefusals(base, permit)).toEqual({
+      dropped: [
+        { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
+        {
+          layer: 'LZ',
+          reason: `LZ pins \`to.minAmount\` only on a Stargate send, and chain ${arbitrum.id} is reached over CCTP`,
+        },
+      ],
+    })
+  })
+
+  // Remove with ECO_NEEDS_VALID_UNTIL once ECO_IE takes a permit without validUntil.
+  test("'all' drops ECO_IE for a permit without validUntil", () => {
+    const permit = {
+      from: { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
+      to: { chain: plasma, token: OFT_PLASMA.token, minAmount: 95n },
+      settlementLayers: 'all',
+    } as const
+    const { settlementLayers } = toSession(definition(permit, arbitrum), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(settlementLayers).toEqual(['OFT'])
+    expect(
+      expectExplicitRefusals(arbitrum, permit)?.dropped.find(
+        ({ layer }) => layer === 'ECO_IE',
+      ),
+    ).toEqual({
+      layer: 'ECO_IE',
+      reason:
+        'ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
+    })
+  })
+
+  test('an explicit list that every layer settles drops none', () => {
+    expect(
+      session({ settlementLayers: ['CCTP', 'LZ'] }).settlementCoverage,
+    ).toEqual({ dropped: [] })
+  })
+
+  test('a session without a settlement-scoped permit carries no coverage', () => {
+    const { crossChainPermits: _, ...plain } = definition({})
+    expect(toSession(plain as SessionDefinition)).not.toHaveProperty(
+      'settlementCoverage',
+    )
+  })
+
+  test.each([
+    [{}, ['CCTP', 'LZ']],
+    [{ maxFeeBps: 50, validUntil: VALID_UNTIL }, ['CCTP', 'ECO_IE', 'LZ']],
+  ] as const)(
+    "'all' encodes the same session as the layers it kept (%o)",
+    (permit, kept) => {
+      const all = { ...permit, settlementLayers: 'all' } as const
+      const listed = { ...permit, settlementLayers: [...kept] }
+      expect(
+        resolveSessionData(definition(all), { settlement: SETTLEMENT_CATALOG }),
+      ).toEqual(
+        resolveSessionData(definition(listed), {
+          settlement: SETTLEMENT_CATALOG,
+        }),
+      )
+      const { settlementCoverage: _, ...fromAll } = session(all)
+      const { settlementCoverage: __, ...fromList } = session(listed)
+      expect(fromAll).toEqual(fromList)
+      expect(fromAll.permissionId).toBe(fromList.permissionId)
+    },
+  )
+})
