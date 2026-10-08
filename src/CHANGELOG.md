@@ -1,5 +1,121 @@
 # @rhinestone/sdk
 
+## 2.17.0
+
+### Minor Changes
+
+- 83699bf: Add settlement-scoped cross-chain permits, starting with CCTP (RHI-7826). A `crossChainPermits` entry with `settlementLayers: ['CCTP']` compiles to argument-pinned actions instead of a Permit2 claim policy:
+
+  - CCTP moves only native USDC, so the `from` token and every `to` token must be USDC on its chain, or the permit throws. Each chain's USDC, CCTP domain and TokenMessengerV2 come from the orchestrator's `GET /chains` `settlement` block.
+  - The session is restricted to `USDC.approve(TokenMessengerV2)` and `TokenMessengerV2.depositForBurnWithHook`, with the `from` token, each `to` chain's CCTP domain paired with its recipient, a zero `destinationCaller` and `maxAmount` (cumulative) pinned in the calldata. `validAfter`/`validUntil` apply to each action.
+  - The recipient defaults to the account, so the session definition needs `account`. Another recipient, or `'any'`, requires `allowRecipientNotAccount`.
+  - It must name its `to` chains (an unpinned domain lets a burn go where the recipient cannot mint). `maxAmount` requires `oneTimeUse`, so the cap is a true total. It cannot be combined with `SAME_CHAIN`, `ECO` or `ACROSS`, with another permit, with `claimPolicies`, with `fillDeadline`, or with a `signing` mode other than `disabled`.
+  - Only sponsored intents without an app fee can settle through it: the paymaster and fee-carve calls are not authorised.
+  - Intents signed with the session are limited to its layers (`settlementLayers: { include: ['CCTP'] }`); an explicit filter can only narrow it.
+
+  Permits that name only `SAME_CHAIN`, `ECO` or `ACROSS` are unchanged.
+
+  `getArbitersForSettlementLayers` now throws on a layer with no Permit2 arbiter instead of returning an empty (any-arbiter) list.
+
+- 7a23e16: Add `ECO_IE` (Eco's solver network) as a settlement-scoped cross-chain permit layer (RHI-7826). `settlementLayers: ['ECO_IE']` restricts the session to `token.approve(Portal)` and `Portal.publishAndFund` (the encoded-route overload) on Eco's Portal. The Portal, provers and stablecoins per chain come from the orchestrator's `GET /chains` `settlement` block. `'ECO'` keeps its meaning (the retired Standard Eco Permit2 arbiter), so no existing permit changes:
+
+  - The route and reward are pinned to the one shape the orchestrator accepts: an ERC-20 reward and a single `transfer` delivery. Every pointer and length word is pinned, plus each `to` chain's Eco destination id, destination Portal, delivery token, the `transfer` selector and recipient, the reward creator (the account), the reward token, and a zero native amount on both sides.
+  - The reward's prover must be an Eco prover deployed on both chains of the leg (as the orchestrator serves them per chain). An unlisted prover could attest a fill that never happened; one with no code on the source chain would make `refund` revert. A leg with no shared prover throws.
+  - The key sets the delivery against the reward, so `ECO_IE` requires `maxAmount` (hence `oneTimeUse`) and a new `maxFeeBps`: the reward is capped at `maxAmount`, and the route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`. Set `maxAmount` close to the reward you expect to pay: a smaller reward still has to clear the floor computed from `maxAmount`, so it fails closed.
+  - `ECO_IE` requires `validUntil`, which bounds both the route deadline and the reward deadline: an unfilled reward is refundable after its deadline, so without it a key could lock the funds indefinitely. It can still stay locked until `validUntil`.
+  - Both legs must be USD stablecoins the orchestrator serves for Eco on that chain, with a concrete recipient (not `'any'`). The floor treats them 1:1, so a depeg between the two sides is borne on top of `maxFeeBps`.
+  - Intents signed with the session are limited to the orchestrator's `ECO` layer. `maxFeeBps` on any other layer throws.
+  - On every settlement-scoped permit with `maxAmount`, the layer approve is capped at `maxAmount`, so no larger allowance outlives the session.
+
+- 1245892: Drop the optional `express` peer dependency. `createExpressRouter` from `@rhinestone/sdk/jwt-server` now returns a plain middleware function instead of an Express router object, so the SDK no longer needs `express` installed. Mount it exactly as before — `app.use(path, express.json(), createExpressRouter(config))` — on Express 4 or 5; it now also type-checks against `@types/express`. If you added routes to the returned router, mount your own router alongside it instead.
+- 753237a: Add `LZ` as a settlement-scoped cross-chain permit layer (RHI-7826): USDC through the LayerZero Value Transfer API, which the orchestrator runs as `approve(TransferDelegate)` then `LZMultiCall.execute(calls, quoteId)`. `settlementLayers: ['LZ']` restricts the session to those two calls:
+
+  - Each chain's LZMultiCall, TransferDelegate, Stargate USDC pool and CCTP route (domain, token, fee receiver, feeless) come from the orchestrator's `GET /chains` `settlement` block. The CCTP route's TokenMessengerV2 is a constant, Circle's single mainnet address.
+  - The approve may only name the chain's TransferDelegate.
+  - LZMultiCall runs any call it is handed, so every nested call is pinned: the call count, each element offset, target, data pointer, length and selector, and the arguments that route funds. The pull may only move the `from` token from the account to LZMultiCall, and the sweep must return the token and native value to the account.
+  - The session accepts only the API's three USDC routes: Stargate TAXI or BUS (pool send to the leg's eid and recipient, refund to LZMultiCall, no native drop or compose), and CCTP (`depositForBurn` to the leg's domain and recipient, no destination caller, with the relay fee paid to LayerZero's receiver, at most 1 USDC and `maxAmount`; to Plasma without it). The session runs one `execute`, whatever the route, and `maxAmount` caps its pull: the one-time-use burn admits every later op in its transaction, so this keeps a stale TransferDelegate allowance from funding a second route and a second Stargate send from paying another native fee.
+  - Chains follow what the orchestrator serves: a route exists where both chains carry that route's block. A `to` leg no route from the session's chain reaches is left to the other chains' sessions; one it reaches with another token throws.
+  - An `LZ` permit requires `oneTimeUse`. A permit whose pins exceed the on-chain ArgPolicy's 128 rules fails to encode; name fewer `to` legs.
+
+  The approve of every IntentExecutor-layer permit now caps the total it grants at `maxAmount`, not each call: the one-time-use burn admits every later op in its transaction, so a per-call bound let repeated approves grant the cap several times.
+
+- c254b59: A settlement-scoped cross-chain permit may now name several IntentExecutor layers (RHI-7826), or `settlementLayers: 'all'`:
+
+  - `settlementLayers: ['CCTP', 'LZ']` (any of `CCTP`, `OFT`, `ECO_IE`, `LZ`) allows each layer's scoped settlement call, plus one approve of the `from` token whose spender may be any of those layers' contracts. `maxAmount` is one cumulative budget across those approves, not one per layer. Each layer's own call keeps its own `maxAmount` cap, so an allowance the account already gave one of those contracts can move more than `maxAmount` in total.
+  - A named list is strict: every layer must be able to settle the permit on the session's chain (routes there, moves the `from` token, has the fields it needs), or the session is refused with that layer's reason.
+  - `'all'` keeps every one of `CCTP`, `OFT`, `ECO_IE` and `LZ` that can settle the permit and silently drops the rest; it is refused, with each layer's reason, when none can. It never includes `SAME_CHAIN_IE`. The session's `settlementLayers`, and so the intent's settlement-layer filter, list only the layers it kept.
+  - `SAME_CHAIN_IE` still stands alone: combining it with another layer is refused. `OFT` and `LZ` cannot be combined either, since each pays a native LayerZero fee no pin bounds. `maxFeeBps` requires `ECO_IE` among the session's layers; with `'all'`, setting it asks for `ECO_IE`, so a dropped `ECO_IE` is refused with its reason.
+  - Layers compile in a fixed order, so `['LZ', 'CCTP']` and `['CCTP', 'LZ']` give the same session.
+  - `'all'` resolves against `GET /chains` and the clock when the session is created: store the created session and reuse it rather than rebuilding it from `'all'`.
+  - With `ECO_IE` among several layers, Eco's delivery floor (`maxAmount × (1 − maxFeeBps / 10000)`) means an intent settles over Eco only when it moves close to `maxAmount`.
+  - `allowFees` adds the paymaster as another branch of the same approve, with its own 5 USD budget.
+  - A single-layer permit compiles to the same session as before.
+
+- 66ad136: Add `OFT` (USDT0 over LayerZero) as a settlement-scoped cross-chain permit layer (RHI-7826). A `crossChainPermits` entry with `settlementLayers: ['OFT']` restricts the session to `USDT0.approve(adapter)` and the adapter's `send`, on the chains the USDT0 mesh reaches (each chain's adapter, eid and token come from the orchestrator's `GET /chains` `settlement` block):
+
+  - Pinned in `send`: the `to` chains' eids paired with their recipients, a non-zero `amountLD` capped by `maxAmount` (cumulative), `refundAddress` = the account, a zero LayerZero-token fee, and the canonical tuple layout with empty `extraOptions`, `composeMsg` and `oftCmd` — so no native drop or compose call can ride along.
+  - `send` may carry any `msg.value`: it pays the LayerZero fee, and the pinned refund address returns any excess to the account. The session definition therefore needs `account`.
+  - The `from` token and every `to` token must be USDT0 on its chain. Only `send` is authorised, so a route that needs an origin swap (or `sendMax`) cannot settle.
+  - An OFT permit requires `oneTimeUse`, and its session sends at most once: every `send` costs the account a native LayerZero fee, and the one-time-use burn admits every later op in its transaction, so without the one-send pin a batch could repeat dust sends until the balance is gone.
+
+- 4c2cce4: Add one-time-use session support (RHI-5798). `oneTimeUse: { id, validUntil? }` (requires `policyAddresses.oneTimeUseId`) makes a session settle at most once per chain:
+
+  - Every intent the SDK prepares for the session burns the id first on each chain it settles on (the policy refuses any settlement that does not), in verify-execution mode. Such intents must list `sourceChains` and cannot run destination calls on a chain that is also one of several sources.
+  - The OneTimeUseIdPolicy guards every action and authorises only the session's own burn; with `claimPolicies` it also sits on the ERC-1271 list next to the Permit2 claim policy.
+  - Its `claimPolicies` must each pin `spenders` (the Permit2 arbiter). Without `claimPolicies` the session has no signing surface, and a `signing` mode throws.
+  - `validUntil` must be a future `Date`. The session is always salted as in `saltMode: 'strict'`; `saltMode: 'v1'` throws.
+  - Exports `buildOneTimeUseBurnOp`, `oneTimeUseIdErc1271Policy`, `encodeOneTimeUseIdInitData` and the related types from `@rhinestone/sdk/smart-sessions`.
+
+- cc3dc4b: Refuse two `claimPolicies` / `crossChainPermits` configurations that previously resolved but could not be enforced. Declaring `signing` alongside them throws — the claim policies take over the session's ERC-1271 list, so a signing policy or validity window declared beside them would be dropped. Declaring more than one Permit2 claim policy (including a `claimPolicies` entry plus a `crossChainPermits` one) also throws: they resolve to the same policy contract, and enabling stores one config per contract, so only the last would be installed while the signing path still built calldata for the rest. Split them across sessions.
+
+  Permit2 claim policies are now enforced from the ERC-1271 policy list — the list Permit2's `isValidSignature` consults — for every session. Previously only one-time-use sessions placed them there. They replace the session's signing policy rather than joining it, since that list is an AND and a permissive entry alongside would be dead config advertising a capability the session no longer has.
+
+  A session carrying claim policies is now salted, so its permission id differs from a plain session for the same signer. Enabling adds to each on-chain policy list rather than replacing it, so without this the two would share a permission id and the plain session's signing policy would sit beside the claim policy.
+
+  Sessions enabled by an earlier version keep their existing configuration and are unaffected. Because the permission id changes, picking this up means enabling the new session rather than re-enabling the old one.
+
+- 8cd7853: Add `SAME_CHAIN_IE` as a settlement-scoped cross-chain permit layer (RHI-7826): a smart account settling on its own chain through the IntentExecutor. `'SAME_CHAIN'` keeps its meaning (the Permit2 samechain arbiter), so no existing permit changes. `settlementLayers: ['SAME_CHAIN_IE']` restricts the session to one of two shapes, and every `to` leg must be on the session's chain:
+
+  - **Same token in and out:** one `transfer` of the `from` token, with the recipients pinned (an OR across legs) and `maxAmount` as a cumulative cap. The recipient must be someone other than the account, so set `allowRecipientNotAccount`; an `'any'` recipient lifts the pin and then requires `maxAmount`, since it would otherwise authorise every transfer of the token.
+  - **A different token:** exactly one `to` leg with a concrete recipient and a new `to.minAmount`, compiled through the existing `swap` scope's Rhinestone Swapper venue (sell token with `maxAmount` as its `maxTotal`, buy token, recipient). The Swapper's output bound (`minAmountOut`, or `amountOut` for exact-out) is pinned at `to.minAmount` or above, inside the same policy as the swap's other pins. The key still chooses the route, so the floor is a worst rate, not a price: the swap requires `maxAmount` (and so `oneTimeUse`), and the session accepts selling up to `maxAmount` for at least `to.minAmount`. `maxAmount` caps each Swapper entrypoint and the approve, so a second pull in the same transaction needs an allowance to the Swapper proxy that already existed before the session. `validAfter`/`validUntil` bound the swap actions and the approve.
+  - Only a swap the orchestrator wraps in the Swapper can settle (today exact-in fynd, fynd-hosted and 1inch quotes, and exact-out velora or approximated quotes); a swap routed straight to an aggregator is refused. Only sponsored intents without an app fee, and only ERC-20 `from` tokens, can settle. A mix of transfer and swap legs throws, as does `to.minAmount` on any other layer.
+  - Intents signed with the session carry no bridge filter; its session refuses cross-chain calls on-chain.
+
+  Session resolution now refuses an action that carries the same policy contract twice. Enabling keeps one config per policy and action, so the second entry overwrote the first on-chain instead of adding to it; such a session never enforced what it listed. This refuses, for example, two cross-chain permits in one session that both carry `maxAmount` or a validity window, and a payable permission with both `valueLimit` and `valueLimitPerUse` and no `params`; merge them into one permit or policy.
+
+- 6aac23b: IntentExecutor-layer permits (`CCTP`, `OFT`, `ECO_IE`, `LZ`) read the addresses they pin from the orchestrator's `GET /chains` `settlement` block, so create such sessions with `sdk.createSession`; resolving one without those addresses throws. `SAME_CHAIN_IE` is unaffected.
+
+  - The orchestrator is trusted for these addresses: the pins bound a hostile session key, not a compromised orchestrator.
+  - `ECO_IE` provers and stablecoins follow the orchestrator's registry.
+
+- 2e7c74b: Settlement-scoped permits (`CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE`, `LZ`) can opt into paying an intent's app fee and unsponsored gas with `allowFees: true` ([RHI-7884](https://linear.app/rhinestone/issue/RHI-7884)).
+
+  - The session may then transfer the `from` token to the orchestrator's fee collector and approve the paymaster, each capped at 5 USD cumulative per `from` token (up to 10 USD per token including gas), and call the paymaster's `callbackAllowMaxAmount` for that token within one 5 USD budget shared across tokens.
+  - Every `from` token on the session's chain must be one the orchestrator serves for these layers (USD stablecoins today), and the chain's `GET /chains` `settlement.fees` block must be present, so create the session with `sdk.createSession`.
+  - The orchestrator sizes the paymaster approve and callback at the refund ceiling (about 1.8x the gas estimate) and the fee transfer at the full fee, so an intent whose ceiling or fee exceeds the remaining cap (e.g. Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable session that has used its budget) is refused: it fails closed.
+  - Off by default: sessions without `allowFees` are unchanged. `allowFees` on a Permit2-layer permit throws.
+
+- 3ec69a4: Add an opt-in `stableFloor` to the `swap` session scope (RHI-7883). With it on, every Rhinestone Swapper call must deliver at least `ceil(maxTotal × (1 − slippage))` of the buy token on an exact-in swap, and `ceil(maxTotal ÷ (1 + slippage))` on an exact-out one (where the tolerance bounds the input) (default 100 bps, or `{ maxSlippageBps }`) while selling at most `maxTotal`, so no call executes below floor/cap. A session key can no longer zero the Swapper's output bound and route the input away — closing RHI-7870 for sessions that opt in. Total sell is bounded by the approve's cumulative spending limit (`maxTotal`) plus any allowance to the Swapper proxy that existed before the session.
+
+  It requires one sell token, `sell.maxTotal`, both tokens among the USD stablecoins (6 or 18 decimals) the orchestrator serves for the chain (`/chains` `settlement.usdStablecoins`), and the Swapper as the only venue, so create the session with `sdk.createSession`. It refuses `signing`, `crossChainPermits`, `claimPolicies` and any other action on the sell token, Permit2 or the Swapper (an action on another contract that already holds an allowance on the sell token is not checked), and uses the strict salt so the session never shares a permissionId with an unfloored one. The floor is absolute, so a swap much smaller than `maxTotal` cannot meet it; in practice the session is single-use. Scopes without `stableFloor` are unchanged, down to the session digest.
+
+- 667340d: Startale now defaults to v1.0.1, which deploys a new implementation and factory and changes the default counterfactual account address. Existing v1.0.0 accounts must opt back in with `account: { type: 'startale', version: '1.0.0' }` to keep their address — including accounts passed as address-only `initData`, whose typed-data signatures would otherwise target the v1.0.1 domain. Accounts restored from `initData` with a `factory` keep their version automatically.
+
+### Patch Changes
+
+- 604fa81: Refuse a session that would carry the same ERC-1271 policy contract twice. The list is an address set and each config is keyed per `(policy, configId)`, so a repeated address stores once and keeps only the last config — the session would enforce one of the declared restrictions while reporting success for all of them. This replaces the count-based check on Permit2 claim policies, which was only incidentally correct: several declared permits collide because they share a policy contract, not because there is more than one of them. A future claim policy at a different address is unaffected.
+- 29dc8c6: Harden settlement-scoped permits (RHI-7826):
+
+  - Read `settlement.usdStablecoins` from the orchestrator's `GET /chains`, kept only when every entry is well-formed.
+  - `ECO_IE` prices the delivery against the reward 1:1 in raw units, so it now refuses a `from` or `to` token the orchestrator does not serve as a 6-decimal USD stablecoin, and refuses when `usdStablecoins` is absent.
+  - `ECO_IE` refuses a `validUntil` less than 7 days ahead: the session pins Eco's reward deadline under it, and Eco quotes that deadline about 7 days out, so a shorter session could never settle.
+  - An intent whose explicit `settlementLayers` filter removes every layer the session permits now throws instead of sending `{ include: [] }`.
+  - `SAME_CHAIN` and `ECO` are documented as deprecated in favor of `SAME_CHAIN_IE` and `ECO_IE`.
+
+- b2d26de: Point `PERMIT2_CLAIM_POLICY_ADDRESS` at the Permit2 claim policy's multi-chain deployment, `0x4F9FAbC867E196Ebb27E7D7FaeD8AF41B2021B0e`. The previous address existed on Base, Arbitrum and Optimism only, so a session declaring `claimPolicies` on any other chain referenced a contract with no code. The new address is deployed through yeet and is identical on every supported chain.
+
+  Sessions already enabled against the old address keep working — the permission id does not depend on the policy address, and the old contract is still deployed on those three chains. Only newly enabled sessions use the new one.
+
 ## 2.16.4
 
 ### Patch Changes
