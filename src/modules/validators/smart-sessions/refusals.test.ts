@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Address, Chain } from 'viem'
-import { arbitrum, base, plasma } from 'viem/chains'
+import { arbitrum, base, linea, plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
@@ -463,7 +463,9 @@ describe('collectSessionRefusals', () => {
     ],
     [
       'SESSION_REFUSED',
-      session([cctp()], {
+      // Linea has no OneTimeUseIdPolicy to default to.
+      session([], {
+        chain: linea,
         oneTimeUse: { id: 1n },
       } as Partial<SessionDefinition>),
     ],
