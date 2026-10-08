@@ -125,6 +125,8 @@ export interface SettlementScopeOptions {
   readonly settlement?: SettlementCatalog
   /** Dry run only: receives each independent refusal instead of throwing it. */
   readonly collect?: CollectRefusal
+  /** The earliest deadline set elsewhere on the session, in seconds. */
+  readonly sessionDeadline?: bigint
 }
 
 export interface ResolvedSettlementScope {
@@ -374,6 +376,13 @@ function scopePermit(
     )
   }
   const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
+  // ECO_IE pins Eco's deadlines under the session's earliest deadline.
+  const validUntil =
+    permit.validUntil === undefined ||
+    (options.sessionDeadline !== undefined &&
+      options.sessionDeadline < permit.validUntil)
+      ? options.sessionDeadline
+      : permit.validUntil
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
@@ -402,9 +411,7 @@ function scopePermit(
       ...(permit.maxFeeBps === undefined
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
-      ...(permit.validUntil === undefined
-        ? {}
-        : { validUntil: permit.validUntil }),
+      ...(validUntil === undefined ? {} : { validUntil }),
     })
     return { layer, spender, action }
   }

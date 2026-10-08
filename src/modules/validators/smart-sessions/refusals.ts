@@ -69,7 +69,6 @@ export const CROSS_CHAIN_PERMIT_REFUSAL_CODES = {
   ECO_NEEDS_MAX_AMOUNT_AND_FEE:
     'ECO_IE without maxAmount, or without maxFeeBps where a `to` leg has no `to.minAmount`',
   MAX_FEE_BPS_OUT_OF_RANGE: 'maxFeeBps outside the integers in [0, 10000)',
-  ECO_NEEDS_VALID_UNTIL: 'ECO_IE without validUntil',
   ECO_VALIDITY_TOO_SHORT: 'ECO_IE validUntil under 7 days from now',
   ECO_FLOOR_NEEDS_EQUAL_CAPS:
     'an ECO_IE `to.minAmount` without maxFeeBps across `from` legs with different maxAmount',

@@ -34,8 +34,8 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * `abi.encode(route)` and reverts `InvalidHash`, so only canonical bytes are
  * fillable, and canonical bytes with these counts have exactly the layout the
  * offsets assume. Any other layout is never filled and refunds to the pinned
- * creator after the pinned deadline. This assumes EVM destinations and a Portal
- * that keeps re-encoding.
+ * creator after the reward deadline, which only a deadline on the session
+ * bounds. This assumes EVM destinations and a Portal that keeps re-encoding.
  *
  * The route's token count is not pinned either: the pinned route token, call
  * count and transfer head leave 3 as the only other canonical count, whose
@@ -108,8 +108,9 @@ export const PUBLISH = {
 const BPS = 10_000n
 
 /**
- * How far ahead `validUntil` must reach: the session pins Eco's reward deadline
- * under it, and the orchestrator publishes Eco's quoted deadline about 7 days out.
+ * How far ahead a set `validUntil` must reach: the session pins Eco's reward
+ * deadline under it, and the orchestrator publishes Eco's quoted deadline about
+ * 7 days out.
  */
 export const ECO_MIN_VALIDITY_SECONDS = 7n * 24n * 60n * 60n
 
@@ -284,16 +285,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       { code: 'MAX_FEE_BPS_OUT_OF_RANGE' },
     )
   }
-  // An unfillable intent is refundable only after its reward deadline, so an
-  // unbounded one would lock the reward for good.
-  if (ctx.validUntil === undefined) {
-    throw new SettlementLayerRefusal(
-      'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
-      { code: 'ECO_NEEDS_VALID_UNTIL' },
-    )
-  }
+  // `validUntil` is the session's earliest deadline. Both deadlines stay
+  // unpinned only when the session has no deadline at all (no validUntil on the
+  // permit and none on the session): an unfilled reward then has no refund
+  // deadline.
+  const validUntil = ctx.validUntil
   const now = BigInt(Math.floor(Date.now() / 1000))
-  if (ctx.validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
+  if (validUntil !== undefined && validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
     throw new SettlementLayerRefusal(
       "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
       { code: 'ECO_VALIDITY_TOO_SHORT' },
@@ -319,18 +317,22 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     pinValue(PUBLISH.rewardTokensLength, 1n),
     pin(PUBLISH.rewardToken, ctx.sourceTokens[0]),
     cumulativeCap(PUBLISH.rewardAmount, cap),
-    {
-      condition: 'lessThanOrEqual',
-      calldataOffset: PUBLISH.rewardDeadline,
-      referenceValue: ctx.validUntil,
-    },
-    // The route deadline bounds when a solver may still fill; the session's
-    // window bounds the whole settlement, not just its refund.
-    {
-      condition: 'lessThanOrEqual',
-      calldataOffset: PUBLISH.routeDeadline,
-      referenceValue: ctx.validUntil,
-    },
+    ...(validUntil === undefined
+      ? []
+      : ([
+          {
+            condition: 'lessThanOrEqual',
+            calldataOffset: PUBLISH.rewardDeadline,
+            referenceValue: validUntil,
+          },
+          // The route deadline bounds when a solver may still fill; the
+          // session's window bounds the whole settlement, not just its refund.
+          {
+            condition: 'lessThanOrEqual',
+            calldataOffset: PUBLISH.routeDeadline,
+            referenceValue: validUntil,
+          },
+        ] satisfies UniversalActionPolicyParamRule[])),
   ]
   // Two legs that pin the same delivery become an OR, so the lower floor binds.
   const twin = ctx.destinations.find((leg, i) =>

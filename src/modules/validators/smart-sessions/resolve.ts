@@ -332,6 +332,16 @@ function resolveSession(
       )
     },
   )
+  // An invalid oneTimeUse.validUntil is left out here and refused below.
+  const otuUntil = definition.oneTimeUse?.validUntil
+  const sessionDeadline = windowDeadlines.reduce(
+    minDefined,
+    otuUntil !== undefined &&
+      Number.isFinite(otuUntil.getTime()) &&
+      otuUntil.getTime() > Date.now()
+      ? BigInt(Math.floor(otuUntil.getTime() / 1000))
+      : undefined,
+  )
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -341,6 +351,7 @@ function resolveSession(
     oneTimeUse: Boolean(definition.oneTimeUse),
     ...(options.settlement ? { settlement: options.settlement } : {}),
     ...(collect ? { collect } : {}),
+    ...(sessionDeadline === undefined ? {} : { sessionDeadline }),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
   // none of the calldata pins ever see.

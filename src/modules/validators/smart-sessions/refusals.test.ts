@@ -127,7 +127,6 @@ describe('refusal codes', () => {
       'ACCOUNT_REQUIRED',
       'ECO_NEEDS_MAX_AMOUNT_AND_FEE',
       'MAX_FEE_BPS_OUT_OF_RANGE',
-      'ECO_NEEDS_VALID_UNTIL',
       'ECO_VALIDITY_TOO_SHORT',
       'ECO_FLOOR_NEEDS_EQUAL_CAPS',
       'RECIPIENT_ANY_UNPINNABLE',
@@ -646,31 +645,6 @@ describe("refusals under settlementLayers 'all'", () => {
       ).map(({ code }) => code)
     expect(codes('CCTP')).toEqual(['MIN_AMOUNT_NOT_ENFORCEABLE'])
     expect(codes('LZ')).toEqual(['LZ_FLOOR_ON_CCTP_ROUTE'])
-  })
-
-  // Remove with ECO_NEEDS_VALID_UNTIL once ECO_IE takes a permit without validUntil.
-  test('the dry run lists ECO_IE dropped for a missing validUntil', () => {
-    const [, chain, permit] = permits[1]
-    const extra = { ...oneTimeUse, chain } as Partial<SessionDefinition>
-    const validation = validateSessionDefinition(
-      session([permit], extra),
-      OPTIONS,
-    )
-    expect(
-      validation.settlementCoverage?.dropped.find(
-        ({ layer }) => layer === 'ECO_IE',
-      ),
-    ).toEqual({
-      layer: 'ECO_IE',
-      reason:
-        'ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
-    })
-    expect(
-      collectSessionRefusals(
-        session([{ ...permit, settlementLayers: ['ECO_IE'] }], extra),
-        OPTIONS,
-      ).map(({ code }) => code),
-    ).toEqual(['ECO_NEEDS_VALID_UNTIL'])
   })
 })
 
