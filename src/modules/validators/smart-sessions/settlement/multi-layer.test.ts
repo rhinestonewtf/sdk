@@ -496,6 +496,69 @@ describe('settlement coverage', () => {
     )
   })
 
+  /** Each dropped reason is what naming that layer alone throws. */
+  const expectExplicitRefusals = (
+    sessionChain: Chain,
+    permit: Partial<CrossChainPermissionInput>,
+  ) => {
+    const { settlementCoverage } = toSession(definition(permit, sessionChain), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
+      expect(() =>
+        toSession(
+          definition({ ...permit, settlementLayers: [layer] }, sessionChain),
+          { settlement: SETTLEMENT_CATALOG },
+        ),
+      ).toThrow(`crossChainPermits: ${reason}`)
+    }
+    return settlementCoverage
+  }
+
+  test("'all' with a floor drops CCTP, and LZ for a leg it reaches over CCTP", () => {
+    const permit = {
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 98n },
+      validUntil: VALID_UNTIL,
+      settlementLayers: 'all',
+    } as const
+    const { settlementLayers } = toSession(definition(permit), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(settlementLayers).toEqual(['ECO_IE'])
+    expect(expectExplicitRefusals(base, permit)).toEqual({
+      dropped: [
+        { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
+        {
+          layer: 'LZ',
+          reason: `LZ pins \`to.minAmount\` only on a Stargate send, and chain ${arbitrum.id} is reached over CCTP`,
+        },
+      ],
+    })
+  })
+
+  // Remove with ECO_NEEDS_VALID_UNTIL once ECO_IE takes a permit without validUntil.
+  test("'all' drops ECO_IE for a permit without validUntil", () => {
+    const permit = {
+      from: { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
+      to: { chain: plasma, token: OFT_PLASMA.token, minAmount: 95n },
+      settlementLayers: 'all',
+    } as const
+    const { settlementLayers } = toSession(definition(permit, arbitrum), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(settlementLayers).toEqual(['OFT'])
+    expect(
+      expectExplicitRefusals(arbitrum, permit)?.dropped.find(
+        ({ layer }) => layer === 'ECO_IE',
+      ),
+    ).toEqual({
+      layer: 'ECO_IE',
+      reason:
+        'ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
+    })
+  })
+
   test('an explicit list that every layer settles drops none', () => {
     expect(
       session({ settlementLayers: ['CCTP', 'LZ'] }).settlementCoverage,
