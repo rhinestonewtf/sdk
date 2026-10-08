@@ -82,6 +82,42 @@ export function cumulativeCap(
 }
 
 /**
+ * `cumulativeCap` with only the usage limit, which stores one slot fewer.
+ *
+ * It still bounds each call because the policies count a limited rule under
+ * any condition with checked math: `used + value > limit` is refused, and a
+ * sum past 2^256 reverts, so both fail closed.
+ */
+export function cumulativeOnly(
+  calldataOffset: bigint,
+  cap: bigint,
+): UniversalActionPolicyParamRule {
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset,
+    referenceValue: 0n,
+    usageLimit: cap,
+  }
+}
+
+/**
+ * The least `to`-token amount worth `cap` `from` tokens at `numerator /
+ * denominator`, for two 1:1 assets, rescaled between their decimals. Rounded up,
+ * so the floor never admits a rate below the one asked for.
+ */
+export function floorFor(
+  cap: bigint,
+  numerator: bigint,
+  denominator: bigint,
+  fromDecimals: number,
+  toDecimals: number,
+): bigint {
+  const scaled = cap * numerator * 10n ** BigInt(toDecimals)
+  const unit = denominator * 10n ** BigInt(fromDecimals)
+  return (scaled + unit - 1n) / unit
+}
+
+/**
  * Wrap rules into the action's policy.
  *
  * `valueLimitPerUse: 0n` because the approve cap only bounds ERC-20 pulls —
