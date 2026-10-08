@@ -53,6 +53,7 @@ import type {
   ResolvedPolicy,
   ScopedAction,
   Session,
+  SessionAccess,
   SessionAction,
   SessionData,
   SessionDefinition,
@@ -186,6 +187,7 @@ function resolveSession(
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
   readonly settlementCoverage: SettlementCoverage | undefined
+  readonly access: SessionAccess
 } {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
@@ -291,10 +293,13 @@ function resolveSession(
       "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
     )
   }
-  const restricted =
-    definition.restrictToActions === true ||
-    swapScope !== undefined ||
-    settlementScope !== undefined
+  const access = sessionAccess(
+    definition,
+    resolvedPermits,
+    swapScope !== undefined,
+    settlementScope?.settlementLayers,
+  )
+  const restricted = access.kind === 'scoped'
   const permissions = [
     ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
@@ -508,24 +513,29 @@ function resolveSession(
           policies: v1PolicyOrder(action.policies),
         }))
       : userActions
-  let actions: ResolvedAction[] =
-    userActions.length || rawActions.length || expandedPermits.length
-      ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
-          (action): ResolvedAction => ({
-            actionTargetSelector:
-              'selector' in action
-                ? action.selector
-                : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
-            actionTarget:
-              'target' in action
-                ? action.target
-                : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: action.policies
-              ? encodeActionPolicies(action.policies, environment, addresses)
-              : [{ policy: addresses.sudo, initData: '0x' }],
-          }),
-        )
-      : [sudoAction]
+  // With nothing to scope, the wildcard fallback carries sudo, not intent-execution.
+  const sudoFallback = !(
+    userActions.length ||
+    rawActions.length ||
+    expandedPermits.length
+  )
+  let actions: ResolvedAction[] = !sudoFallback
+    ? [...v1CompatibleActions, ...rawActions, ...injectedActions].map(
+        (action): ResolvedAction => ({
+          actionTargetSelector:
+            'selector' in action
+              ? action.selector
+              : SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+          actionTarget:
+            'target' in action
+              ? action.target
+              : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+          actionPolicies: action.policies
+            ? encodeActionPolicies(action.policies, environment, addresses)
+            : [{ policy: addresses.sudo, initData: '0x' }],
+        }),
+      )
+    : [sudoAction]
   // 1.x salts a swap-scoped session over its PRODUCTION venues even when built
   // for dev, so the salt — and the permissionId with it — does not move between
   // environments. Reproducing one means reproducing that, and the cheapest
@@ -736,7 +746,46 @@ function resolveSession(
     settlementCoverage: settlementScope && {
       dropped: settlementScope.dropped,
     },
+    access: sudoFallback
+      ? {
+          kind: 'open',
+          reason: definition.claimPolicies?.length
+            ? 'claimPolicies only; the wildcard fallback is sudo'
+            : 'no restriction set; the wildcard fallback is sudo',
+        }
+      : access,
   }
+}
+
+/** Whether the session drops the intent-execution fallback, and what decided it. */
+function sessionAccess(
+  definition: SessionDefinition,
+  permits: readonly CrossChainPermit[],
+  swapScoped: boolean,
+  settlementLayers: readonly IntentExecutorSettlementLayer[] | undefined,
+): SessionAccess {
+  const scopedBy = [
+    ...(definition.restrictToActions === true ? ['restrictToActions'] : []),
+    ...(swapScoped ? ['swap scope'] : []),
+    ...(settlementLayers
+      ? [`settlement-scoped permit (${settlementLayers.join(', ')})`]
+      : []),
+  ]
+  if (scopedBy.length) return { kind: 'scoped', reason: scopedBy.join('; ') }
+  if (permits.length) {
+    const layers = permit2Layers(permits)
+    return {
+      kind: 'open',
+      reason: `Permit2-route permit (${layers.length ? layers.join(', ') : 'any layer'}) keeps the intent-execution fallback`,
+    }
+  }
+  if (definition.claimPolicies?.length) {
+    return {
+      kind: 'open',
+      reason: 'claimPolicies keep the intent-execution fallback',
+    }
+  }
+  return { kind: 'open', reason: 'no restriction set' }
 }
 
 const POLICY_COMPONENTS = [
@@ -982,7 +1031,7 @@ export function toSession(
   const environment = options.environment ?? 'production'
   // One resolution: 'all' depends on the clock and the catalog, so a second
   // could keep a different set of layers than the session's actions.
-  const { data, settlementLayers, settlementCoverage } = resolveSession(
+  const { data, settlementLayers, settlementCoverage, access } = resolveSession(
     definition,
     {
       environment,
@@ -1032,6 +1081,7 @@ export function toSession(
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(intentLayers.length ? { settlementLayers: intentLayers } : {}),
     ...(settlementCoverage ? { settlementCoverage } : {}),
+    access,
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,
