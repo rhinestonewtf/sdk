@@ -9,7 +9,8 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { compareHexValues } from '../../ordering'
-import { cumulativeCap, pin, pinValue, pinWord } from '../swap/rules'
+import { cumulativeCap, floorFor, pin, pinValue, pinWord } from '../swap/rules'
+import { STABLE_DECIMALS } from '../swap/stable-floor'
 import type {
   ArgPolicyExpression,
   ScopedAction,
@@ -25,7 +26,36 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * The recipient lives inside the vendor route, and the reward's offsets move
  * with the route's length, so the session pins the one shape the orchestrator
  * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
- * Every pointer and length word is pinned so no field can alias another.
+ * Every calldata pointer, the reward's tokens pointer and every other count is
+ * pinned so no field can alias another. The route's own pointers and byte length are
+ * not: the destination Portal
+ * (0xEC000769A73b70e16f361a442292500b3BCf4A85, verified source on Base
+ * Blockscout) checks every fill and cancel in `_validateRoute`, which hashes
+ * `abi.encode(route)` and reverts `InvalidHash`, so only canonical bytes are
+ * fillable, and canonical bytes with these counts have exactly the layout the
+ * offsets assume. Any other layout is never filled and refunds to the pinned
+ * creator after the pinned deadline. This assumes EVM destinations and a Portal
+ * that keeps re-encoding.
+ *
+ * The route's token count is not pinned either: the pinned route token, call
+ * count and transfer head leave 3 as the only other canonical count, whose
+ * second token is the call count pin, address 1. `_fulfill` pulls it with OZ
+ * 5.0 `safeTransferFrom`, which reverts on a code-less target. The call's
+ * value is not pinned: `Executor` bubbles the revert of every served
+ * stablecoin's non-payable `transfer`. Both were checked on every ECO chain.
+ *
+ * Neither native amount nor `allowPartial` is pinned. `valueLimitPerUse: 0`
+ * holds `msg.value` at 0, so `_fundNative` fills reward native only from a
+ * vault a third party pre-funded; partial funding pulls at most the capped
+ * reward and `Vault.withdraw` pays at most what the vault holds; route native
+ * comes from the solver. The account never pays more than the capped reward.
+ *
+ * Fills are permissionless and the filler names the claimant, so a key can fill
+ * its own intent: the delivery floor is the whole price bound. With `maxFeeBps`
+ * it is the cap less the most the solver may keep, rescaled between two served
+ * USD stablecoins' decimals. With `to.minAmount` it is the owner's own amount
+ * of the `to` token, for any two served stablecoins; given both, the higher
+ * floor applies.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -77,8 +107,6 @@ export const PUBLISH = {
 
 const BPS = 10_000n
 
-const ECO_DECIMALS = 6
-
 /**
  * How far ahead `validUntil` must reach: the session pins Eco's reward deadline
  * under it, and the orchestrator publishes Eco's quoted deadline about 7 days out.
@@ -86,11 +114,10 @@ const ECO_DECIMALS = 6
 export const ECO_MIN_VALIDITY_SECONDS = 7n * 24n * 60n * 60n
 
 /**
- * The delivery floor compares reward and delivery in raw units 1:1, which only
- * holds between USD stablecoins of the same decimals. Eco's bare address list
- * carries none, so the served `usdStablecoins` must vouch for 6.
+ * Eco's solvers deliver only the stablecoins it serves on a chain; any other
+ * token never fills and locks the reward until its deadline.
  */
-function requireStablecoin(
+function requireServed(
   settlement: SettlementCatalog,
   chainId: number,
   token: Address,
@@ -106,15 +133,53 @@ function requireStablecoin(
       { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
-  const usd = settlement[chainId]?.usdStablecoins?.find((t) =>
+}
+
+/**
+ * The decimals of a served Eco stablecoin the `maxFeeBps` floor prices 1:1, as
+ * the served `usdStablecoins` vouch for them. Eco's bare address list carries
+ * none, and the permit's own word is not taken.
+ */
+function stableDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+  leg: 'from' | 'to',
+): number {
+  const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
     isAddressEqual(t.address, token),
   )
-  if (usd?.decimals !== ECO_DECIMALS) {
-    throw new SettlementLayerRefusal(
-      `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served ${ECO_DECIMALS}-decimal USD stablecoin; ${usd === undefined ? 'the orchestrator serves no usdStablecoins entry for it' : `it has ${usd.decimals} decimals`}`,
+  const refuse = (why: string) =>
+    new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served USD stablecoin with known decimals; ${why}`,
       { code: 'ECO_STABLECOIN_DECIMALS', chainId, leg },
     )
+  if (usd.length === 0) {
+    throw refuse('the orchestrator serves no usdStablecoins entry for it')
   }
+  // Two entries could disagree, and the floor would take whichever came first.
+  if (usd.length > 1) {
+    throw refuse(`it appears ${usd.length} times in usdStablecoins`)
+  }
+  // A wrong scale moves the floor by orders of magnitude.
+  if (!STABLE_DECIMALS.has(usd[0].decimals)) {
+    throw refuse(`it has ${usd[0].decimals} decimals; expected 6 or 18`)
+  }
+  return usd[0].decimals
+}
+
+/** The token's served decimals when `stableDecimals` would accept them. */
+export function knownDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+): number | undefined {
+  const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
+    isAddressEqual(t.address, token),
+  )
+  return usd.length === 1 && STABLE_DECIMALS.has(usd[0].decimals)
+    ? usd[0].decimals
+    : undefined
 }
 
 /**
@@ -148,6 +213,23 @@ const allOf = (rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression =>
 const anyOf = (branches: ArgPolicyExpression[]): ArgPolicyExpression =>
   branches.reduce((left, right) => ({ type: 'or', left, right }))
 
+const allOfExpressions = (parts: ArgPolicyExpression[]): ArgPolicyExpression =>
+  parts.reduceRight((right, left) => ({ type: 'and', left, right }))
+
+/**
+ * The same check on the same word; a usage-limited rule is never the same, as
+ * hoisted out of the leg OR it would count calls its branch never admits.
+ */
+export const sameRule = (
+  a: UniversalActionPolicyParamRule,
+  b: UniversalActionPolicyParamRule,
+) =>
+  a.usageLimit === undefined &&
+  b.usageLimit === undefined &&
+  a.condition === b.condition &&
+  a.calldataOffset === b.calldataOffset &&
+  BigInt(a.referenceValue) === BigInt(b.referenceValue)
+
 /** The publish call, pinned to the permit's destinations, provers and prices. */
 export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
@@ -156,25 +238,46 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
-  requireStablecoin(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
+  // `maxFeeBps` prices the reward 1:1 against delivery; without it every leg's
+  // owner-set `to.minAmount` is the floor, in that leg's own token.
+  requireServed(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
+  const fromDecimals =
+    ctx.maxFeeBps === undefined
+      ? undefined
+      : stableDecimals(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
       { code: 'ACCOUNT_REQUIRED' },
     )
   }
-  // The key sets the delivery against the reward; only a floor stops it from
-  // paying a solver for next to nothing.
-  if (ctx.cap === undefined || ctx.maxFeeBps === undefined) {
+  // The key fills its own intent and names itself claimant, so a floor on
+  // delivery is all that stops a reward paying for next to nothing.
+  if (
+    ctx.cap === undefined ||
+    (ctx.maxFeeBps === undefined &&
+      ctx.destinations.some((leg) => leg.minAmount === undefined))
+  ) {
     throw new SettlementLayerRefusal(
-      'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
+      'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver (or maxAmount and a `to.minAmount` on every leg)',
       { code: 'ECO_NEEDS_MAX_AMOUNT_AND_FEE' },
     )
   }
   if (
-    !Number.isInteger(ctx.maxFeeBps) ||
-    ctx.maxFeeBps < 0 ||
-    ctx.maxFeeBps >= 10_000
+    ctx.destinations.some(
+      (leg) => leg.minAmount !== undefined && leg.minAmount <= 0n,
+    )
+  ) {
+    throw new SettlementLayerRefusal(
+      'crossChainPermits: ECO_IE needs a positive `to.minAmount`',
+      { code: 'MIN_AMOUNT_NOT_POSITIVE', leg: 'to' },
+    )
+  }
+  if (
+    ctx.maxFeeBps !== undefined &&
+    (!Number.isInteger(ctx.maxFeeBps) ||
+      ctx.maxFeeBps < 0 ||
+      ctx.maxFeeBps >= 10_000)
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
@@ -189,38 +292,29 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       { code: 'ECO_NEEDS_VALID_UNTIL' },
     )
   }
-  // Measured from when the session can first act: a later validAfter moves
-  // the first quote, and its ~7-day reward deadline, with it.
   const now = BigInt(Math.floor(Date.now() / 1000))
-  const firstUse =
-    ctx.validAfter !== undefined && ctx.validAfter > now ? ctx.validAfter : now
-  if (ctx.validUntil < firstUse + ECO_MIN_VALIDITY_SECONDS) {
+  if (ctx.validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
     throw new SettlementLayerRefusal(
-      "crossChainPermits: ECO_IE needs validUntil at least 7 days after it can first act (now or validAfter): Eco's reward deadline is ~7 days out and the session pins it",
+      "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
       { code: 'ECO_VALIDITY_TOO_SHORT' },
     )
   }
+  // Each source chain's session floors its own capped reward with the same
+  // absolute amount, so it bounds the rate only where every cap is the same.
+  if (ctx.maxFeeBps === undefined && new Set(ctx.fromCaps ?? []).size > 1) {
+    throw new SettlementLayerRefusal(
+      'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
+      { code: 'ECO_FLOOR_NEEDS_EQUAL_CAPS' },
+    )
+  }
   const cap = ctx.cap
-  // Round up: a floor rounded down would let the solver keep more than maxFeeBps.
-  const feeBps = BigInt(ctx.maxFeeBps)
-  const floor = (cap * (BPS - feeBps) + BPS - 1n) / BPS
+  const maxFeeBps = ctx.maxFeeBps
   const rules: UniversalActionPolicyParamRule[] = [
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
-    pinValue(PUBLISH.allowPartial, 0n),
-    pinValue(PUBLISH.routeLength, 0x260n),
-    pinValue(PUBLISH.routeTuplePointer, 0x20n),
-    pinValue(PUBLISH.routeNativeAmount, 0n),
-    pinValue(PUBLISH.routeTokensPointer, 0xc0n),
-    pinValue(PUBLISH.routeCallsPointer, 0x120n),
-    pinValue(PUBLISH.routeTokensLength, 1n),
     pinValue(PUBLISH.callsLength, 1n),
-    pinValue(PUBLISH.callPointer, 0x20n),
-    pinValue(PUBLISH.callDataPointer, 0x60n),
-    pinValue(PUBLISH.callValue, 0n),
     pinValue(PUBLISH.callDataLength, 0x44n),
     pin(PUBLISH.rewardCreator, ctx.account),
-    pinValue(PUBLISH.rewardNativeAmount, 0n),
     pinValue(PUBLISH.rewardTokensPointer, 0xa0n),
     pinValue(PUBLISH.rewardTokensLength, 1n),
     pin(PUBLISH.rewardToken, ctx.sourceTokens[0]),
@@ -238,8 +332,43 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       referenceValue: ctx.validUntil,
     },
   ]
-  const legs = ctx.destinations.map((leg): ArgPolicyExpression => {
-    requireStablecoin(ctx.settlement, leg.chainId, leg.token, 'to')
+  // Two legs that pin the same delivery become an OR, so the lower floor binds.
+  const twin = ctx.destinations.find((leg, i) =>
+    ctx.destinations.some(
+      (other, j) =>
+        j < i &&
+        other.chainId === leg.chainId &&
+        isAddressEqual(other.token, leg.token) &&
+        (other.recipient === undefined || leg.recipient === undefined
+          ? other.recipient === leg.recipient
+          : isAddressEqual(other.recipient, leg.recipient)) &&
+        other.minAmount !== leg.minAmount,
+    ),
+  )
+  if (twin) {
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE names the \`to\` leg ${twin.token} on chain ${twin.chainId} twice with different \`to.minAmount\`; give it once`,
+      { code: 'CONFLICTING_LEG_FLOORS', chainId: twin.chainId, leg: 'to' },
+    )
+  }
+  const legs = ctx.destinations.map((leg) => {
+    requireServed(ctx.settlement, leg.chainId, leg.token, 'to')
+    // The cap less what the solver may keep, rescaled from the reward's
+    // decimals to the delivery's; with `to.minAmount` too, the stricter wins.
+    const feeFloor =
+      maxFeeBps === undefined || fromDecimals === undefined
+        ? 0n
+        : floorFor(
+            cap,
+            BPS - BigInt(maxFeeBps),
+            BPS,
+            fromDecimals,
+            stableDecimals(ctx.settlement, leg.chainId, leg.token, 'to'),
+          )
+    const floor =
+      leg.minAmount !== undefined && leg.minAmount > feeFloor
+        ? leg.minAmount
+        : feeFloor
     if (leg.recipient === undefined) {
       throw new SettlementLayerRefusal(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
@@ -274,16 +403,39 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
         referenceValue: floor,
       },
     ]
-    // The prover OR nests inside its leg, so the rule count grows with legs
-    // plus provers rather than their product.
-    return {
-      type: 'and',
-      left: allOf(legRules),
-      right: anyOf(
-        provers.map((prover) => allOf([pin(PUBLISH.rewardProver, prover)])),
-      ),
-    }
+    return { rules: legRules, provers }
   })
+  // What every leg pins moves out of the OR, stored once instead of per leg:
+  // (A and X) or (A and Y) is A and (X or Y).
+  const shared = legs[0].rules.filter((rule) =>
+    legs.every((leg) => leg.rules.some((other) => sameRule(other, rule))),
+  )
+  const sharedProvers = legs.every(
+    (leg) =>
+      leg.provers.length === legs[0].provers.length &&
+      leg.provers.every((prover, i) => prover === legs[0].provers[i]),
+  )
+  // The prover OR nests inside its leg, so the rule count grows with legs
+  // plus provers rather than their product.
+  const proverOr = (provers: readonly Address[]) =>
+    anyOf(provers.map((prover) => allOf([pin(PUBLISH.rewardProver, prover)])))
+  const branches = legs.map((leg) => {
+    const own = leg.rules.filter(
+      (rule) => !shared.some((other) => sameRule(other, rule)),
+    )
+    return [
+      ...(own.length ? [allOf(own)] : []),
+      ...(sharedProvers ? [] : [proverOr(leg.provers)]),
+    ]
+  })
+  const expression = [
+    allOf([...rules, ...shared]),
+    ...(sharedProvers ? [proverOr(legs[0].provers)] : []),
+    // A leg left with nothing of its own admits everything the others do.
+    ...(branches.some((branch) => branch.length === 0)
+      ? []
+      : [anyOf(branches.map(allOfExpressions))]),
+  ]
   return {
     target: ctx.target,
     selector: PUBLISH_AND_FUND_SELECTOR,
@@ -291,9 +443,8 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       {
         type: 'arg-policy',
         valueLimitPerUse: 0n,
-        expression: { type: 'and', left: allOf(rules), right: anyOf(legs) },
+        expression: allOfExpressions(expression),
       },
-      ...ctx.timeFrame,
     ],
   }
 }

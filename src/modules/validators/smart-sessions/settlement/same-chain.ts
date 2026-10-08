@@ -88,9 +88,6 @@ export interface SameChainContext {
     readonly minAmount?: bigint
   }[]
   readonly cap?: bigint
-  readonly timeFrame: readonly SessionPolicy[]
-  readonly validAfter?: bigint
-  readonly validUntil?: bigint
 }
 
 export interface SameChainScope {
@@ -147,10 +144,6 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       { chainId: elsewhere.chainId, leg: 'to' },
     )
   }
-  const withTimeFrame = (action: ScopedAction): ScopedAction => ({
-    ...action,
-    policies: [...(action.policies ?? []), ...ctx.timeFrame],
-  })
 
   const sameToken = ctx.destinations.map((leg) =>
     isAddressEqual(leg.token, token),
@@ -158,8 +151,8 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   if (sameToken.every(Boolean)) {
     if (ctx.destinations.some((leg) => leg.minAmount !== undefined)) {
       throw refusal(
-        'MIN_AMOUNT_ONLY_SAME_CHAIN_SWAP',
-        'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+        'SAME_CHAIN_TRANSFER_MIN_AMOUNT',
+        'crossChainPermits: a SAME_CHAIN_IE transfer cannot enforce `to.minAmount`; it applies to a swap',
       )
     }
     const rules: UniversalActionPolicyParamRule[] =
@@ -201,7 +194,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
               pinned.map((recipient) => [pin(0n, recipient)]),
             )
           : recipientsOnly(token, pinned)
-    return { actions: [withTimeFrame(action)], permissions: [] }
+    return { actions: [action], permissions: [] }
   }
   if (sameToken.some(Boolean) || ctx.destinations.length !== 1) {
     throw refusal(
@@ -249,15 +242,6 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
     calldataOffset: SWAPPER_OUTPUT_BOUND_OFFSET,
     referenceValue: leg.minAmount,
   }
-  const date = (seconds: bigint) => new Date(Number(seconds) * 1000)
-  const window = {
-    ...(ctx.validAfter === undefined
-      ? {}
-      : { validAfter: date(ctx.validAfter) }),
-    ...(ctx.validUntil === undefined
-      ? {}
-      : { validUntil: date(ctx.validUntil) }),
-  }
   return {
     // The bare venue emits only Swapper entrypoints; the floor goes on every
     // action so none can run without it.
@@ -275,19 +259,11 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
           'crossChainPermits: a SAME_CHAIN_IE swap action has no params policy to carry its floor',
         )
       }
-      return withTimeFrame({
+      return {
         ...action,
         policies: policies.map((policy) => withRule(policy, floor)),
-      })
+      }
     }),
-    permissions: swap.permissions.map((permission) => ({
-      ...permission,
-      functions: Object.fromEntries(
-        Object.entries(permission.functions).map(([name, fn]) => [
-          name,
-          fn && { ...fn, ...window },
-        ]),
-      ),
-    })),
+    permissions: swap.permissions,
   }
 }

@@ -97,13 +97,19 @@ function normalizeExportTargets(
 // point is the one manifest change a declared surface change may make, so the
 // export map is compared separately and this stays strict either way.
 function publishMetadataContract(manifest: PackageManifest) {
+  // One-off: the release baseline still declares the dropped optional
+  // `express` peer until that minor ships. Remove this exemption after it does.
+  const { express: _peer, ...peerDependencies } =
+    manifest.peerDependencies ?? {}
+  const { express: _peerMeta, ...peerDependenciesMeta } =
+    manifest.peerDependenciesMeta ?? {}
   return {
     name: manifest.name,
     type: manifest.type,
     types: manifest.types,
     files: manifest.files,
-    peerDependencies: manifest.peerDependencies,
-    peerDependenciesMeta: manifest.peerDependenciesMeta,
+    peerDependencies,
+    peerDependenciesMeta,
     publishConfig: manifest.publishConfig,
   }
 }
@@ -147,6 +153,16 @@ function missingRelativeImports(packageDirectory: string): string[] {
     }
   }
   return missing
+}
+
+function expressImports(packageDirectory: string): string[] {
+  const importPattern =
+    /(?:from\s*|import\s*\(\s*|require\s*\(\s*)["']express(?:\/[^"']*)?["']/
+  return packageFiles(packageDirectory).filter(
+    (path) =>
+      /\.(?:js|d\.ts)$/.test(path) &&
+      importPattern.test(readFileSync(path, 'utf8')),
+  )
 }
 
 function privateSourceImports(packageDirectory: string): string[] {
@@ -480,6 +496,19 @@ describe('packed package contract', () => {
     expect(currentWithoutJose.code).toBe(baseWithoutJose.code)
     expect(currentWithoutJose.name).toBe(baseWithoutJose.name)
     expect(currentWithoutJose.message).toContain("Cannot find package 'jose'")
+  })
+
+  it('declares no express peer', () => {
+    const currentManifest = readJson<PackageManifest>(
+      join(currentPackageDirectory, 'package.json'),
+    )
+
+    expect(currentManifest.peerDependencies).not.toHaveProperty('express')
+    expect(currentManifest.peerDependenciesMeta).not.toHaveProperty('express')
+  })
+
+  it('never imports express from published files', () => {
+    expect(expressImports(currentPackageDirectory)).toEqual([])
   })
 
   it('contains no broken relative or private source imports', () => {

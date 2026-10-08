@@ -20,6 +20,10 @@ import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
+import {
+  UNIVERSAL_ACTION_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_COPIES,
+} from '../modules/validators/smart-sessions/policies/addresses'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { SWAP_EXACT_IN_SELECTOR } from '../modules/validators/smart-sessions/swap/rhinestone'
 import { createCoreComposition } from './compose'
@@ -750,7 +754,12 @@ describe('internal core composition', () => {
     ).toBe(true)
   })
 
-  test("createSession scopes an IntentExecutor-layer permit with /chains' settlement addresses", async () => {
+  /** A settlement-scoped createSession on Base, reading code through `getCode`. */
+  const createSettlementSession = (
+    getCode: RpcReadPort['getCode'] = vi.fn(async () => ({
+      code: '0x6080604052' as Hex,
+    })),
+  ) => {
     const base = fixture()
     const served = (id: number) => ({
       name: String(id),
@@ -777,9 +786,12 @@ describe('internal core composition', () => {
             }),
         ),
       },
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
     })
 
-    const session = await composition.project.createSession({
+    return composition.project.createSession({
       chain: baseChain,
       owners: { type: 'ecdsa', accounts: [owner] },
       account: '0x1111111111111111111111111111111111111111',
@@ -797,9 +809,36 @@ describe('internal core composition', () => {
         },
       ],
     })
+  }
+
+  test("createSession scopes an IntentExecutor-layer permit with /chains' settlement addresses", async () => {
+    const session = await createSettlementSession()
 
     expect(session.actions[0].actionTarget).toBe(
       SETTLEMENT_CATALOG[baseChain.id].cctp!.tokenMessenger,
+    )
+  })
+
+  test('createSession checks the deployed copies a settlement-scoped session defaults to', async () => {
+    const UAP_CODE = '0x6080604052'
+    const getCode = vi.fn(async (_: unknown, _address: Address) => ({
+      code: UAP_CODE as Hex,
+    }))
+    await createSettlementSession(getCode)
+    expect(getCode.mock.calls.map(([, address]) => address)).toEqual([
+      UNIVERSAL_ACTION_POLICY_ADDRESS,
+      ...UNIVERSAL_ACTION_POLICY_COPIES,
+    ])
+
+    const last = UNIVERSAL_ACTION_POLICY_COPIES[2]
+    await expect(
+      createSettlementSession(
+        vi.fn(async (_: unknown, address: Address) => ({
+          code: (address === last ? '0x' : UAP_CODE) as Hex,
+        })),
+      ),
+    ).rejects.toThrow(
+      `universalActionCopies ${last} does not hold the code of universalAction`,
     )
   })
 
@@ -830,62 +869,167 @@ describe('internal core composition', () => {
     ).rejects.toThrow('no wrapped-native token')
   })
 
-  test('validateCrossChainPermits reports what createSession throws, then the rest', async () => {
-    const base = fixture()
-    const composition = createCoreComposition(base.context.sdk, {
-      ...base.dependencies,
-      orchestrator: {
-        ...base.orchestrator,
-        getChainCatalog: vi.fn(
-          async () =>
-            new ChainCatalog({
-              [baseChain.id]: {
-                name: 'Base',
-                testnet: false,
-                supportedTokens: 'all',
-                settlement: SETTLEMENT_CATALOG[baseChain.id],
-              },
-              [arbitrum.id]: {
-                name: 'Arbitrum',
-                testnet: false,
-                supportedTokens: 'all',
-                settlement: SETTLEMENT_CATALOG[arbitrum.id],
-              },
-            }),
-        ),
-      },
-    })
-    const definition = {
-      chain: baseChain,
-      owners: { type: 'ecdsa' as const, accounts: [owner] },
-      account: '0x1111111111111111111111111111111111111111' as const,
-      crossChainPermits: [
-        {
-          from: {
-            chain: baseChain,
-            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
-            maxAmount: 1n,
-          },
-          to: {
-            chain: arbitrum,
-            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
-          },
-          settlementLayers: ['CCTP' as const],
+  test.each([
+    ['0x6080604052', []],
+    [undefined, ['SESSION_REFUSED']],
+  ] as const)(
+    'validateCrossChainPermits reports what createSession throws, then the rest (copy code %s)',
+    async (copyCode, first) => {
+      const base = fixture()
+      // The default UniversalActionPolicy copies are checked first, as createSession does.
+      const getCode = vi.fn(async (_: unknown, address: Address) => ({
+        code:
+          address.toLowerCase() ===
+          UNIVERSAL_ACTION_POLICY_ADDRESS.toLowerCase()
+            ? ('0x6080604052' as Hex)
+            : copyCode,
+      }))
+      const composition = createCoreComposition(base.context.sdk, {
+        ...base.dependencies,
+        rpc: {
+          forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
         },
-      ],
+        orchestrator: {
+          ...base.orchestrator,
+          getChainCatalog: vi.fn(
+            async () =>
+              new ChainCatalog({
+                [baseChain.id]: {
+                  name: 'Base',
+                  testnet: false,
+                  supportedTokens: 'all',
+                  settlement: SETTLEMENT_CATALOG[baseChain.id],
+                },
+                [arbitrum.id]: {
+                  name: 'Arbitrum',
+                  testnet: false,
+                  supportedTokens: 'all',
+                  settlement: SETTLEMENT_CATALOG[arbitrum.id],
+                },
+              }),
+          ),
+        },
+      })
+      const definition = {
+        chain: baseChain,
+        owners: { type: 'ecdsa' as const, accounts: [owner] },
+        account: '0x1111111111111111111111111111111111111111' as const,
+        crossChainPermits: [
+          {
+            from: {
+              chain: baseChain,
+              token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+              maxAmount: 1n,
+            },
+            to: {
+              chain: arbitrum,
+              token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+            },
+            settlementLayers: ['CCTP' as const],
+          },
+        ],
+      }
+
+      const refusals =
+        await composition.project.validateCrossChainPermits(definition)
+      const thrown = await composition.project
+        .createSession(definition)
+        .catch((error: Error) => error.message)
+
+      expect(refusals.map(({ code }) => code)).toEqual([
+        ...first,
+        'WRAPPED_NATIVE_TOKEN_UNSERVED',
+        'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+      ])
+      expect(refusals[0].message).toBe(thrown)
+    },
+  )
+
+  describe('createSession with universalActionCopies', () => {
+    const uap = UNIVERSAL_ACTION_POLICY_ADDRESS
+    const copies: Address[] = [
+      '0x00000000000000000000000000000000000000c1',
+      '0x00000000000000000000000000000000000000c2',
+    ]
+    const UAP_CODE = '0x6080604052'
+    const withCode = (code: Record<string, Hex | undefined>) => {
+      const base = fixture()
+      const getCode = vi.fn(async (_: unknown, address: Address) => ({
+        code: code[address.toLowerCase()],
+      }))
+      const composition = createCoreComposition(base.context.sdk, {
+        ...base.dependencies,
+        orchestrator: {
+          ...base.orchestrator,
+          getChainCatalog: vi.fn(
+            async () =>
+              new ChainCatalog({
+                [baseChain.id]: {
+                  name: 'Base',
+                  testnet: false,
+                  supportedTokens: 'all',
+                  wrappedNativeToken: {
+                    symbol: 'WETH',
+                    address: '0x4200000000000000000000000000000000000006',
+                    decimals: 18,
+                  },
+                },
+              }),
+          ),
+        },
+        rpc: {
+          forChain: () => ({
+            ...base.dependencies.rpc.forChain(),
+            getCode,
+          }),
+        },
+      })
+      const create = (universalActionCopies?: Address[]) =>
+        composition.project.createSession({
+          chain: baseChain,
+          owners: { type: 'ecdsa', accounts: [owner] },
+          ...(universalActionCopies
+            ? { policyAddresses: { universalActionCopies } }
+            : {}),
+        })
+      return { create, getCode }
     }
+    const codes = (copyCode: (i: number) => Hex | undefined) =>
+      Object.fromEntries([
+        [uap.toLowerCase(), UAP_CODE as Hex],
+        ...copies.map((c, i) => [c.toLowerCase(), copyCode(i)]),
+      ])
 
-    const refusals =
-      await composition.project.validateCrossChainPermits(definition)
-    const thrown = await composition.project
-      .createSession(definition)
-      .catch((error: Error) => error.message)
+    test('accepts copies holding the UniversalActionPolicy code', async () => {
+      const { create, getCode } = withCode(codes(() => UAP_CODE))
+      await expect(create(copies)).resolves.toBeDefined()
+      expect(getCode.mock.calls.map(([, address]) => address)).toEqual([
+        uap,
+        ...copies,
+      ])
+    })
 
-    expect(refusals.map(({ code }) => code)).toEqual([
-      'WRAPPED_NATIVE_TOKEN_UNSERVED',
-      'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
-    ])
-    expect(refusals[0].message).toBe(thrown)
+    test('reads no code when no copy is configured', async () => {
+      const { create, getCode } = withCode({})
+      await expect(create()).resolves.toBeDefined()
+      expect(getCode).not.toHaveBeenCalled()
+    })
+
+    test('refuses a copy with other code or none', async () => {
+      for (const other of ['0x6080604053', undefined, '0x'] as const) {
+        const { create } = withCode(
+          codes((i) => (i === 1 ? (other as Hex | undefined) : UAP_CODE)),
+        )
+        await expect(create(copies)).rejects.toThrow(
+          `universalActionCopies ${copies[1]} does not hold the code of universalAction`,
+        )
+      }
+    })
+
+    test('refuses when universalAction itself has no code', async () => {
+      const { create } = withCode({})
+      await expect(create(copies)).rejects.toThrow('has no code on chain')
+    })
   })
 
   test('createSession hands the served USD stablecoins to a stableFloor swap scope', async () => {

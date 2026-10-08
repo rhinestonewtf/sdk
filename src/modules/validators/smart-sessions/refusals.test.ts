@@ -80,6 +80,10 @@ describe('refusal codes', () => {
   test('the published codes do not change', () => {
     expect(Object.keys(CROSS_CHAIN_PERMIT_REFUSAL_CODES)).toEqual([
       'VALID_AFTER_AFTER_VALID_UNTIL',
+      'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
+      'VALID_UNTIL_NOT_IN_FUTURE',
+      'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+      'SETTLEMENT_SCOPED_SALT_V1',
       'MIXED_PERMIT_KINDS',
       'MULTIPLE_INTENT_EXECUTOR_PERMITS',
       'PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER',
@@ -93,7 +97,16 @@ describe('refusal codes', () => {
       'MISSING_TO',
       'FILL_DEADLINE_ONLY_PERMIT2',
       'MAX_FEE_BPS_ONLY_ECO',
-      'MIN_AMOUNT_ONLY_SAME_CHAIN_SWAP',
+      'MIN_AMOUNT_ON_PERMIT2_LAYER',
+      'SAME_CHAIN_TRANSFER_MIN_AMOUNT',
+      'MIN_AMOUNT_OUTSIDE_CAP',
+      'MIN_AMOUNT_NOT_ENFORCEABLE',
+      'MIN_AMOUNT_NOT_POSITIVE',
+      'MIN_AMOUNT_ABOVE_UINT64',
+      'FLOOR_DECIMALS_MISMATCH',
+      'CONFLICTING_LEG_FLOORS',
+      'LZ_FLOORED_LEG_NOT_ALONE',
+      'LZ_FLOOR_ON_CCTP_ROUTE',
       'SETTLEMENT_CATALOG_MISSING',
       'LAYER_REQUIRES_ONE_TIME_USE',
       'LAYER_NOT_SERVED',
@@ -108,6 +121,7 @@ describe('refusal codes', () => {
       'MAX_FEE_BPS_OUT_OF_RANGE',
       'ECO_NEEDS_VALID_UNTIL',
       'ECO_VALIDITY_TOO_SHORT',
+      'ECO_FLOOR_NEEDS_EQUAL_CAPS',
       'RECIPIENT_ANY_UNPINNABLE',
       'ECO_NO_SHARED_PROVER',
       'LZ_NO_ROUTE',
@@ -229,6 +243,8 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
+      ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 0],
+      ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 1],
       ['VALID_AFTER_AFTER_VALID_UNTIL', 0],
       ['VALID_AFTER_AFTER_VALID_UNTIL', 1],
       ['SESSION_REFUSED', undefined],
@@ -253,7 +269,7 @@ describe('collectSessionRefusals', () => {
       ['RESTRICTED_WITH_PERMIT2_PERMIT', undefined],
       ['MAX_FEE_BPS_ONLY_ECO', 0],
       ['ALLOW_FEES_ONLY_INTENT_EXECUTOR', 1],
-      ['MIN_AMOUNT_ONLY_SAME_CHAIN_SWAP', 2],
+      ['MIN_AMOUNT_ON_PERMIT2_LAYER', 2],
     ])
   })
 

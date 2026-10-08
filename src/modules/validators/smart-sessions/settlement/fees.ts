@@ -6,19 +6,29 @@ import {
 } from 'viem'
 import { resolvePermissions } from '../../permissions'
 import { refusal } from '../refusals'
-import { allOf, anyOf, cumulativeCap, pin } from '../swap/rules'
+import {
+  allOf,
+  anyOf,
+  cumulativeCap,
+  cumulativeOnly,
+  pin,
+  swapAction,
+} from '../swap/rules'
 import type {
   ArgPolicyExpression,
   Permission,
   ScopedAction,
   SessionPolicy,
+  UniversalActionPolicyParamRule,
 } from '../types'
 import { withRule } from './same-chain'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
 /**
  * `allowFees` (RHI-7884): the app-fee transfer and the unsponsored-gas paymaster
- * calls the orchestrator adds before the layer calls, each capped at 5 USD.
+ * calls the orchestrator adds before the layer calls. Each call has its own
+ * 5 USD cap: per `from` token for the transfer and approve, one shared across
+ * tokens for the callback.
  */
 
 /** 5 USD at 6 decimals. Cumulative: the burning transaction admits every later op. */
@@ -135,23 +145,20 @@ function addFeeBranch(
   actions: ScopedAction[],
   target: Address,
   selector: Hex,
-  branch: ArgPolicyExpression,
-  timeFrame: readonly SessionPolicy[],
+  branch: UniversalActionPolicyParamRule[] | ArgPolicyExpression,
 ): void {
   const index = actions.findIndex(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
   )
   if (index === -1) {
-    actions.push({
-      target,
-      selector,
-      policies: [
-        { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
-        ...timeFrame,
-      ],
-    })
+    // A rule list goes on UniversalActionPolicy, whose enable writes fewer slots.
+    const policies: SessionPolicy[] = Array.isArray(branch)
+      ? (swapAction(target, selector, branch).policies ?? [])
+      : [{ type: 'arg-policy', valueLimitPerUse: 0n, expression: branch }]
+    actions.push({ target, selector, policies })
     return
   }
+  const expression = Array.isArray(branch) ? allOf(branch) : branch
   const existing = actions[index]
   const policies = existing.policies ?? []
   const layer = policies.find(isParamsPolicy)
@@ -172,7 +179,7 @@ function addFeeBranch(
         ? {
             type: 'arg-policy',
             valueLimitPerUse: layer.valueLimitPerUse ?? 0n,
-            expression: anyOf([branch, layerExpression]),
+            expression: anyOf([expression, layerExpression]),
           }
         : p,
     ),
@@ -184,40 +191,31 @@ export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: Fees,
-  timeFrame: readonly SessionPolicy[],
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  const cap = () => cumulativeCap(32n, SETTLEMENT_FEE_CAP)
+  const cap = () => cumulativeOnly(32n, SETTLEMENT_FEE_CAP)
   for (const token of sourceTokens) {
-    addFeeBranch(
-      out,
-      token,
-      TRANSFER_SELECTOR,
-      allOf([pin(0n, fees.appFeeCollector), cap()]),
-      timeFrame,
-    )
+    addFeeBranch(out, token, TRANSFER_SELECTOR, [
+      pin(0n, fees.appFeeCollector),
+      cap(),
+    ])
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
-    addFeeBranch(
-      out,
-      token,
-      APPROVE_SELECTOR,
-      allOf([pin(0n, fees.paymaster), cap()]),
-      timeFrame,
-    )
+    addFeeBranch(out, token, APPROVE_SELECTOR, [pin(0n, fees.paymaster), cap()])
   }
   // One cap rule after the OR, so every token draws on the same budget.
   addFeeBranch(
     out,
     fees.paymaster,
     CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-    {
-      type: 'and',
-      left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
-      right: allOf([cap()]),
-    },
-    timeFrame,
+    sourceTokens.length === 1
+      ? [pin(0n, sourceTokens[0]), cap()]
+      : {
+          type: 'and',
+          left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
+          right: allOf([cap()]),
+        },
   )
   return out
 }

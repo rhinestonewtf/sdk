@@ -155,12 +155,14 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
     createSession: (definition) =>
       createSession({
         orchestrator: dependencies.orchestrator,
+        rpc: dependencies.rpc,
         environment: config.environment,
         definition,
       }),
     validateCrossChainPermits: (definition) =>
       validateCrossChainPermits({
         orchestrator: dependencies.orchestrator,
+        rpc: dependencies.rpc,
         environment: config.environment,
         definition,
       }),

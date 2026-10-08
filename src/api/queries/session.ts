@@ -1,5 +1,8 @@
 import type { Address } from 'viem'
+import { toEvmChainReference } from '../../chains/caip2'
 import type { ChainCatalogPort } from '../../clients/orchestrator/port'
+import type { RpcPort } from '../../clients/rpc/port'
+import { resolvePolicyAddresses } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
   type CrossChainPermitRefusal,
   collectRefusals,
@@ -7,6 +10,7 @@ import {
 } from '../../modules/validators/smart-sessions/refusals'
 import {
   collectSessionRefusals,
+  sessionPolicyAddresses,
   toSession,
 } from '../../modules/validators/smart-sessions/resolve'
 import type {
@@ -37,9 +41,11 @@ function servedWrappedNativeToken(
 
 export async function createSession(input: {
   readonly orchestrator: ChainCatalogPort
+  readonly rpc: RpcPort
   readonly environment: 'production' | 'development'
   readonly definition: SessionDefinition
 }): Promise<Session> {
+  await assertUniversalActionCopies(input.rpc, input.definition)
   const catalog = await input.orchestrator.getChainCatalog()
   return toSession(input.definition, {
     wrappedNativeToken: servedWrappedNativeToken(
@@ -54,9 +60,20 @@ export async function createSession(input: {
 /** Every refusal `createSession` would throw for `definition`, from the same `/chains` inputs. */
 export async function validateCrossChainPermits(input: {
   readonly orchestrator: ChainCatalogPort
+  readonly rpc: RpcPort
   readonly environment: 'production' | 'development'
   readonly definition: SessionDefinition
 }): Promise<CrossChainPermitRefusal[]> {
+  const copies = await assertUniversalActionCopies(
+    input.rpc,
+    input.definition,
+  ).then(
+    () => [],
+    (error: unknown) =>
+      collectRefusals(() => {
+        throw error
+      }),
+  )
   const catalog = await input.orchestrator.getChainCatalog()
   let wrappedNativeToken: Address | undefined
   // The token only adds an unrestricted session's `deposit()`, so the session
@@ -68,6 +85,7 @@ export async function validateCrossChainPermits(input: {
     )
   })
   return [
+    ...copies,
     ...unserved,
     ...collectSessionRefusals(input.definition, {
       environment: input.environment,
@@ -75,4 +93,37 @@ export async function validateCrossChainPermits(input: {
       ...(wrappedNativeToken ? { wrappedNativeToken } : {}),
     }),
   ]
+}
+
+/**
+ * Every configured UniversalActionPolicy copy must hold the same code as
+ * `universalAction` on the session's chain: a split installs argument rules
+ * there.
+ */
+async function assertUniversalActionCopies(
+  rpc: RpcPort,
+  definition: SessionDefinition,
+): Promise<void> {
+  const addresses = resolvePolicyAddresses(sessionPolicyAddresses(definition))
+  const copies = addresses.universalActionCopies
+  if (!copies) return
+  const chain = toEvmChainReference(definition.chain.id)
+  const port = rpc.forChain(chain)
+  const [canonical, ...codes] = await Promise.all(
+    [addresses.universalAction, ...copies].map(
+      async (address) => (await port.getCode({ chain }, address)).code,
+    ),
+  )
+  if (!canonical || canonical === '0x') {
+    throw new Error(
+      `createSession: universalAction ${addresses.universalAction} has no code on chain ${chain.id}`,
+    )
+  }
+  copies.forEach((copy, i) => {
+    if (codes[i] !== canonical) {
+      throw new Error(
+        `createSession: universalActionCopies ${copy} does not hold the code of universalAction ${addresses.universalAction} on chain ${chain.id}`,
+      )
+    }
+  })
 }

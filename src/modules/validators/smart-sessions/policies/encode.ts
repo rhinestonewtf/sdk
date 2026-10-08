@@ -278,3 +278,61 @@ export function encodeSessionPolicy(
       }
   }
 }
+
+/** The rules of an expression that only ANDs rules, in evaluation order. */
+function andedRules(
+  expression: ArgPolicyExpression,
+): UniversalActionPolicyParamRule[] | undefined {
+  if (expression.type === 'rule') return [expression.rule]
+  if (expression.type !== 'and') return undefined
+  const left = andedRules(expression.left)
+  const right = andedRules(expression.right)
+  return left && right ? [...left, ...right] : undefined
+}
+
+/**
+ * Encodes an action's policies. With `universalActionCopies` configured, an
+ * ArgPolicy that only ANDs rules becomes UniversalActionPolicy configs of up to
+ * 16 rules, in evaluation order, one per deployment not already on the action.
+ * Every config carries the ArgPolicy's `valueLimitPerUse`. It stays an
+ * ArgPolicy when there are fewer free deployments than configs.
+ */
+export function encodeActionPolicies(
+  policies: readonly SessionPolicy[],
+  environment: 'production' | 'development',
+  addresses: ResolvedPolicyAddresses,
+): ResolvedPolicy[] {
+  const encoded = policies.map((policy) =>
+    encodeSessionPolicy(policy, environment, addresses),
+  )
+  const copies = addresses.universalActionCopies
+  const index = policies.findIndex((policy) => policy.type === 'arg-policy')
+  const policy = policies[index]
+  if (!copies?.length || policy?.type !== 'arg-policy') return encoded
+  const rules = andedRules(policy.expression)
+  if (!rules) return encoded
+  const taken = new Set(
+    encoded.flatMap((p, i) => (i === index ? [] : [p.policy.toLowerCase()])),
+  )
+  const free = [addresses.universalAction, ...copies].filter(
+    (address) => !taken.has(address.toLowerCase()),
+  )
+  const chunks = Math.ceil(rules.length / 16)
+  if (chunks > free.length) return encoded
+  const split = free.slice(0, chunks).map((address, i) => ({
+    ...encodeSessionPolicy(
+      {
+        type: 'universal-action',
+        valueLimitPerUse: policy.valueLimitPerUse,
+        rules: rules.slice(16 * i, 16 * (i + 1)) as [
+          UniversalActionPolicyParamRule,
+          ...UniversalActionPolicyParamRule[],
+        ],
+      },
+      environment,
+      addresses,
+    ),
+    policy: address,
+  }))
+  return [...encoded.slice(0, index), ...split, ...encoded.slice(index + 1)]
+}

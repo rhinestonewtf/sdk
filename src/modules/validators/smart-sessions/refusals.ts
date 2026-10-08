@@ -6,6 +6,13 @@ import type { IntentExecutorSettlementLayer } from './types'
  */
 export const CROSS_CHAIN_PERMIT_REFUSAL_CODES = {
   VALID_AFTER_AFTER_VALID_UNTIL: 'validAfter is later than validUntil',
+  SESSION_WINDOW_REQUIRES_ONE_TIME_USE:
+    'a validAfter, or a validUntil without oneTimeUse',
+  VALID_UNTIL_NOT_IN_FUTURE: 'a validUntil that is not a future Date',
+  PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
+    'maxAmount on a Permit2-layer permit without oneTimeUse',
+  SETTLEMENT_SCOPED_SALT_V1:
+    "an IntentExecutor-layer permit with saltMode 'v1'",
   MIXED_PERMIT_KINDS:
     'IntentExecutor-layer and Permit2-layer permits in one session',
   MULTIPLE_INTENT_EXECUTOR_PERMITS:
@@ -26,8 +33,21 @@ export const CROSS_CHAIN_PERMIT_REFUSAL_CODES = {
   MISSING_TO: 'an IntentExecutor-layer permit names no `to` chains',
   FILL_DEADLINE_ONLY_PERMIT2: 'fillDeadline on an IntentExecutor-layer permit',
   MAX_FEE_BPS_ONLY_ECO: 'maxFeeBps without ECO_IE',
-  MIN_AMOUNT_ONLY_SAME_CHAIN_SWAP:
-    '`to.minAmount` outside a SAME_CHAIN_IE swap',
+  MIN_AMOUNT_ON_PERMIT2_LAYER: '`to.minAmount` on a Permit2-layer permit',
+  SAME_CHAIN_TRANSFER_MIN_AMOUNT: '`to.minAmount` on a SAME_CHAIN_IE transfer',
+  MIN_AMOUNT_OUTSIDE_CAP:
+    '`to.minAmount` outside [maxAmount / 2, maxAmount] of a capped `from` leg',
+  MIN_AMOUNT_NOT_ENFORCEABLE:
+    '`to.minAmount` on a layer that cannot enforce it (CCTP)',
+  MIN_AMOUNT_NOT_POSITIVE: 'a `to.minAmount` of zero',
+  MIN_AMOUNT_ABOVE_UINT64: 'an OFT or LZ `to.minAmount` above uint64',
+  FLOOR_DECIMALS_MISMATCH:
+    'an OFT or LZ floor whose `from` and `to` tokens lack served, equal decimals',
+  CONFLICTING_LEG_FLOORS:
+    'two `to` legs the layer cannot tell apart with different `to.minAmount`',
+  LZ_FLOORED_LEG_NOT_ALONE:
+    'a floored LZ leg beside another `to` leg on its chain',
+  LZ_FLOOR_ON_CCTP_ROUTE: 'a floored LZ leg on a chain LZ reaches over CCTP',
   SETTLEMENT_CATALOG_MISSING:
     "IntentExecutor layers without the orchestrator's settlement addresses",
   LAYER_REQUIRES_ONE_TIME_USE: 'OFT or LZ without oneTimeUse',
@@ -40,12 +60,15 @@ export const CROSS_CHAIN_PERMIT_REFUSAL_CODES = {
   ONE_SOURCE_TOKEN: 'the layer takes exactly one `from` token per chain',
   TOKEN_NOT_ROUTED: 'a `from` or `to` token the layer does not move',
   ECO_STABLECOIN_DECIMALS:
-    'an ECO_IE token that is not a served 6-decimal USD stablecoin',
+    'an ECO_IE token priced by maxFeeBps that is not one served USD stablecoin of 6 or 18 decimals',
   ACCOUNT_REQUIRED: 'the layer needs `account` on the definition',
-  ECO_NEEDS_MAX_AMOUNT_AND_FEE: 'ECO_IE without maxAmount and maxFeeBps',
+  ECO_NEEDS_MAX_AMOUNT_AND_FEE:
+    'ECO_IE without maxAmount, or without maxFeeBps where a `to` leg has no `to.minAmount`',
   MAX_FEE_BPS_OUT_OF_RANGE: 'maxFeeBps outside the integers in [0, 10000)',
   ECO_NEEDS_VALID_UNTIL: 'ECO_IE without validUntil',
-  ECO_VALIDITY_TOO_SHORT: 'ECO_IE validUntil under 7 days after first use',
+  ECO_VALIDITY_TOO_SHORT: 'ECO_IE validUntil under 7 days from now',
+  ECO_FLOOR_NEEDS_EQUAL_CAPS:
+    'an ECO_IE `to.minAmount` without maxFeeBps across `from` legs with different maxAmount',
   RECIPIENT_ANY_UNPINNABLE:
     "recipient 'any' where the layer must pin a concrete recipient",
   ECO_NO_SHARED_PROVER: 'no Eco prover deployed on both chains of a leg',
