@@ -258,11 +258,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         `crossChainPermits: a floored LZ leg must be the only \`to\` leg on chain ${leg.chainId}; give one \`to\` leg per chain`,
       )
     }
-    if (ctx.cap !== undefined && minAmount > ctx.cap) {
-      throw new SettlementLayerRefusal(
-        `crossChainPermits: the LZ \`to.minAmount\` on chain ${leg.chainId} exceeds maxAmount, so no send could meet it`,
-      )
-    }
     // depositForBurn takes a maxFee, not a minimum out, so no word carries it.
     if (cctpReaches(leg)) {
       throw new SettlementLayerRefusal(

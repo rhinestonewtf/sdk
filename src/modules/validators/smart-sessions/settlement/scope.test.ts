@@ -541,6 +541,81 @@ describe('settlement-scoped crossChainPermits', () => {
     }
     const arbSend = (minAmount: bigint) =>
       execute(stargate('taxi', { minAmount }))
+    const soneiumLeg = (minAmount: bigint) => ({
+      chain: soneium,
+      token: USDC_SONEIUM,
+      minAmount,
+    })
+    const { usdStablecoins: __, ...soneiumNoDecimals } =
+      SETTLEMENT_CATALOG[soneium.id]
+
+    test.each([
+      [
+        'a zero floor',
+        { from: { chain: base, token: USDC }, to: soneiumLeg(0n) },
+        SETTLEMENT_CATALOG,
+        'must be positive',
+      ],
+      [
+        'a floor above uint64',
+        { from: { chain: base, token: USDC }, to: soneiumLeg(2n ** 64n) },
+        SETTLEMENT_CATALOG,
+        'above uint64',
+      ],
+      [
+        'unserved decimals',
+        {},
+        { ...SETTLEMENT_CATALOG, [soneium.id]: soneiumNoDecimals },
+        'served with equal decimals',
+      ],
+      [
+        'a second leg on the floored chain',
+        { to: [soneiumLeg(9_800_000n), soneiumLeg(9_800_000n)] },
+        SETTLEMENT_CATALOG,
+        'must be the only `to` leg',
+      ],
+      [
+        'a leg reached over CCTP',
+        { to: toArb.to },
+        SETTLEMENT_CATALOG,
+        'only on a Stargate send',
+      ],
+    ] as [
+      string,
+      Partial<CrossChainPermissionInput>,
+      SettlementCatalog,
+      string,
+    ][])(
+      "drops LZ under 'all' on %s, and refuses it named",
+      (_, permit, settlement, reason) => {
+        const scoped = (
+          settlementLayers: CrossChainPermissionInput['settlementLayers'],
+        ) => lzScope({ ...permit, settlementLayers }, settlement)
+        expect(() => scoped(['LZ'])).toThrow(SettlementLayerRefusal)
+        expect(() => scoped(['LZ'])).toThrow(reason)
+        // Dropped: either the permit settles without LZ, or no layer is left
+        // and LZ's reason is listed.
+        try {
+          expect(scoped('all')?.settlementLayers).not.toContain('LZ')
+        } catch (error) {
+          expect(String(error)).toContain('no IntentExecutor layer can settle')
+          expect(String(error)).toContain('LZ: ')
+          expect(String(error)).toContain(reason)
+        }
+      },
+    )
+
+    test('a floor above maxAmount is a units mistake, not a dropped layer', () => {
+      for (const settlementLayers of [['LZ'], 'all'] as const) {
+        expect(() =>
+          lzScope({
+            to: soneiumLeg(LZ_CAP + 1n),
+            settlementLayers:
+              settlementLayers === 'all' ? 'all' : [...settlementLayers],
+          }),
+        ).toThrow('must be between half of and all of')
+      }
+    })
 
     test('floors what the Stargate send must deliver', () => {
       const action = lzScope({})?.actions.find(

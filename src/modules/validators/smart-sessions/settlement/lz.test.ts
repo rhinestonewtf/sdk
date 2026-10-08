@@ -566,12 +566,11 @@ describe('scopeLz to.minAmount', () => {
     // CCTP reaches Arbitrum from Base, and depositForBurn has no minimum out.
     expect(() =>
       scopeLz(context({ destinations: [{ ...ARB_LEG, minAmount: FLOOR }] })),
-    ).toThrow(/minAmount/)
+    ).toThrow('only on a Stargate send')
   })
 
-  test('refuses a floor that is not positive or exceeds the cap', () => {
+  test('refuses a floor that is not positive', () => {
     expect(() => floored(0n)).toThrow(/positive/)
-    expect(() => floored(CAP + 1n)).toThrow(/maxAmount/)
   })
 
   test('refuses a floor across tokens whose decimals are not served equal', () => {

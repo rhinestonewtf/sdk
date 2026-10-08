@@ -477,8 +477,8 @@ interface ToLeg {
    * applies). Without `maxFeeBps`, every `from` leg must give the same
    * `maxAmount`, and a `to` leg named twice must give the same `minAmount`.
    *
-   * Every layer in the permit enforces it: one that cannot (always `CCTP` and
-   * `LZ`; `OFT` in the cases below) is refused when named and dropped under
+   * Every layer in the permit enforces it: one that cannot (always `CCTP`;
+   * `OFT` and `LZ` in the cases below) is refused when named and dropped under
    * `'all'`. Where both tokens' decimals are served, a value outside half of
    * to all of a `from` leg's `maxAmount` is refused as a units mistake, on
    * any layer list.
@@ -496,9 +496,9 @@ interface ToLeg {
    * amount, not a rate: a smaller send fails, and a quote whose own minimum
    * is below it is refused. The LZ API quotes `minAmountLD` with about 1%
    * slippage, so set `minAmount` to at most ~99% of the expected send, or
-   * the session cannot settle it. Refused on a leg LZ reaches over CCTP,
-   * beside a second `to` leg on the same chain, above uint64, and unless
-   * the orchestrator serves both tokens as USD stablecoins with equal
+   * the session cannot settle it. Refused at zero or above uint64, on a leg
+   * LZ reaches over CCTP, beside a second `to` leg on the same chain, and
+   * unless the orchestrator serves both tokens as USD stablecoins with equal
    * decimals.
    */
   minAmount?: bigint
