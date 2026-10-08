@@ -310,6 +310,13 @@ export interface SessionDefinition {
   chain: Chain
   owners: OwnerSet
   permissions?: Permission[]
+  /**
+   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
+   * adds spending-limit and timeframe guardrails, takes `Date`s, defaults to
+   * bridge-to-self, and picks the enforcement surface per settlement layer — a
+   * claim policy does not bind an IntentExecutor route. Still the only way to
+   * pin `spenders` to an arbiter outside the SDK's bundled allow-set.
+   */
   claimPolicies?: Permit2ClaimPolicy[]
   crossChainPermits?: CrossChainPermissionInput[]
   signing?: SessionSigning
