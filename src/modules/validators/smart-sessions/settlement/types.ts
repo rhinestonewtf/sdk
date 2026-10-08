@@ -68,7 +68,10 @@ export interface SettlementContext {
     readonly chainId: number
     readonly token: Address
     readonly recipient?: Address
-    /** `ECO_IE` and `OFT`: the owner's floor on delivery, in this leg's token. */
+    /**
+     * `SAME_CHAIN_IE`, `ECO_IE` and `OFT`: the owner's floor on delivery, in
+     * this leg's token. CCTP cannot enforce it.
+     */
     readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
