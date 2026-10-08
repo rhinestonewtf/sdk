@@ -1077,7 +1077,8 @@ interface SessionDefinition<
    * Pins a one-time-use id on the session (RHI-5798): the session settles at most
    * once per chain. Uses the deployed OneTimeUseIdPolicy for the session's chain
    * and contracts environment; on a chain without one, resolving the session
-   * throws unless `policyAddresses.oneTimeUseId` is set. Use a fresh random id
+   * throws unless `policyAddresses.oneTimeUseId` is set, and so does preparing an
+   * intent that uses the default on a chain without it. Use a fresh random id
    * per session. Every intent the SDK prepares for the session burns the id first
    * on each chain it settles on; the policy refuses any settlement that does not.
    * Intents must list `sourceChains`, and cannot run destination calls on a chain
