@@ -363,7 +363,6 @@ export function scopeLzV0(ctx: SettlementContext): ScopedAction {
           right: anyOf(branches),
         },
       },
-      ...ctx.timeFrame,
     ],
   }
 }

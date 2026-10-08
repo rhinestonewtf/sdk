@@ -395,7 +395,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           right: anyOf(groups),
         },
       },
-      ...ctx.timeFrame,
     ],
   }
 }
