@@ -830,6 +830,64 @@ describe('internal core composition', () => {
     ).rejects.toThrow('no wrapped-native token')
   })
 
+  test('validateCrossChainPermits reports what createSession throws, then the rest', async () => {
+    const base = fixture()
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      orchestrator: {
+        ...base.orchestrator,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [baseChain.id]: {
+                name: 'Base',
+                testnet: false,
+                supportedTokens: 'all',
+                settlement: SETTLEMENT_CATALOG[baseChain.id],
+              },
+              [arbitrum.id]: {
+                name: 'Arbitrum',
+                testnet: false,
+                supportedTokens: 'all',
+                settlement: SETTLEMENT_CATALOG[arbitrum.id],
+              },
+            }),
+        ),
+      },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      account: '0x1111111111111111111111111111111111111111' as const,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 1n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP' as const],
+        },
+      ],
+    }
+
+    const refusals =
+      await composition.project.validateCrossChainPermits(definition)
+    const thrown = await composition.project
+      .createSession(definition)
+      .catch((error: Error) => error.message)
+
+    expect(refusals.map(({ code }) => code)).toEqual([
+      'WRAPPED_NATIVE_TOKEN_UNSERVED',
+      'MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+    ])
+    expect(refusals[0].message).toBe(thrown)
+  })
+
   test('createSession hands the served USD stablecoins to a stableFloor swap scope', async () => {
     const usdc: Address = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
     const usdt: Address = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'

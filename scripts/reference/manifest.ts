@@ -120,6 +120,13 @@ export const manifest: Group[] = [
         container: 'RhinestoneSDK',
         callStyle: 'sdkMethod',
       },
+      {
+        kind: 'symbol',
+        symbol: 'validateCrossChainPermits',
+        source: '.',
+        container: 'RhinestoneSDK',
+        callStyle: 'sdkMethod',
+      },
     ],
   },
   {

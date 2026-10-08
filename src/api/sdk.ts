@@ -8,6 +8,7 @@ import type {
   RhinestoneSDKConfig,
 } from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
+import type { CrossChainPermitRefusal } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
@@ -131,6 +132,26 @@ class RhinestoneSDK {
    */
   createSession(definition: SessionDefinition): Promise<Session> {
     return this.#sdk.composition.project.createSession(definition)
+  }
+
+  /**
+   * Dry-run a session definition and return every refusal `createSession`
+   * would throw for it, each with a stable `code`, instead of throwing the
+   * first. Fetches the orchestrator's chain catalog (`GET /chains`) the way
+   * `createSession` does and runs the same resolution, so the first entry is
+   * the error `createSession` throws and the list is empty exactly when it
+   * succeeds. A failed catalog fetch still throws.
+   *
+   * Problems that do not depend on each other are all reported; within one
+   * settlement layer only its first refusal is. For a fully offline check, use
+   * the standalone `validateCrossChainPermits` from `@rhinestone/sdk/smart-sessions`.
+   * @param definition The session definition
+   * @returns Each refusal; empty when `createSession` would succeed
+   */
+  validateCrossChainPermits(
+    definition: SessionDefinition,
+  ): Promise<readonly CrossChainPermitRefusal[]> {
+    return this.#sdk.composition.project.validateCrossChainPermits(definition)
   }
 }
 

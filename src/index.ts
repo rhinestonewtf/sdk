@@ -123,6 +123,10 @@ export type {
   WebauthnValidatorConfig,
 } from './config/account'
 export type {
+  CrossChainPermitRefusal,
+  CrossChainPermitRefusalCode,
+} from './modules/validators/smart-sessions/refusals'
+export type {
   OwnerPasskeySignature,
   OwnerSignature,
   OwnerSignatureData,
