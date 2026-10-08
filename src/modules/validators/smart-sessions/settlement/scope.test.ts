@@ -504,7 +504,8 @@ describe('settlement-scoped crossChainPermits', () => {
           (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         ),
       ).toBe(true)
-      expect(toSession(permit).settlementLayers).toBeUndefined()
+      // Carried as intent metadata only; the session stays a Permit2 one.
+      expect(toSession(permit).settlementLayers).toEqual([layer])
     },
   )
 

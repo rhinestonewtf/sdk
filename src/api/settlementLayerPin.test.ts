@@ -1,8 +1,11 @@
+import { keccak256, toHex } from 'viem'
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
+import { getSessionData } from '../modules/validators/smart-sessions/digest'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
+import type { Session } from '../modules/validators/smart-sessions/types'
 import { adaptTransaction } from './account'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
@@ -197,10 +200,126 @@ describe('settlement layer pin', () => {
     expect(intent.options?.settlementLayers).toBeUndefined()
   })
 
-  test('a Permit2 permit leaves the filter to the caller', () => {
-    expect(layersFor(['ACROSS'])).toBeUndefined()
+  test('an ACROSS-only Permit2 session limits the intent to ACROSS', () => {
+    expect(layersFor(['ACROSS'])).toEqual({ include: ['ACROSS'] })
+  })
+
+  test('an explicit filter can only narrow a Permit2 session', () => {
+    expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
+      include: ['ACROSS'],
+    })
     expect(layersFor(['ACROSS'], { exclude: ['RELAY'] })).toEqual({
+      include: ['ACROSS'],
+    })
+    expect(() => layersFor(['ACROSS'], { exclude: ['ACROSS'] })).toThrow(
+      'no settlement layer is left to settle the intent',
+    )
+    expect(() => layersFor(['ACROSS'], { include: ['RELAY'] })).toThrow(
+      'no settlement layer is left to settle the intent',
+    )
+  })
+
+  test('retired Permit2 layers add no layer to the filter', () => {
+    expect(layersFor(['ACROSS', 'ECO', 'SAME_CHAIN'])).toEqual({
+      include: ['ACROSS'],
+    })
+    expect(layersFor(['ECO'])).toBeUndefined()
+    expect(layersFor(['SAME_CHAIN'])).toBeUndefined()
+  })
+
+  test('a Permit2 permit that names no layer leaves the filter to the caller', () => {
+    expect(permit2Layers([undefined])).toBeUndefined()
+    expect(permit2Layers([[]])).toBeUndefined()
+    expect(permit2Layers([undefined], { exclude: ['RELAY'] })).toEqual({
       exclude: ['RELAY'],
     })
   })
+
+  test('a session without crossChainPermits leaves the filter to the caller', () => {
+    expect(permit2Layers([])).toBeUndefined()
+    expect(permit2Layers([], { include: ['RELAY'] })).toEqual({
+      include: ['RELAY'],
+    })
+  })
+
+  test('the Permit2 layers do not change the session encoding', () => {
+    const layerSets = [['ACROSS'], ['ACROSS', 'ECO'], undefined]
+    expect(
+      Object.fromEntries(
+        layerSets.map((layers) => [
+          String(layers),
+          fingerprint(permit2Session([layers])),
+        ]),
+      ),
+    ).toEqual(PERMIT2_FINGERPRINTS)
+  })
 })
+
+function permit2Session(
+  permits: readonly (readonly string[] | undefined)[],
+): Session {
+  return toSession(
+    {
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+      account: ACCOUNT,
+      ...(permits.length
+        ? {
+            crossChainPermits: permits.map((settlementLayers) => ({
+              from: { chain: base, token: USDC },
+              to: { chain: arbitrum, token: USDC_ARB },
+              ...(settlementLayers ? { settlementLayers } : {}),
+            })),
+          }
+        : {}),
+    } as never,
+    { settlement: SETTLEMENT_CATALOG },
+  )
+}
+
+function permit2Layers(
+  permits: readonly (readonly string[] | undefined)[],
+  explicit?: unknown,
+): unknown {
+  const intent = adaptTransaction(
+    { account: {} } as never,
+    {
+      chain: base,
+      calls: [],
+      signers: { type: 'session', session: permit2Session(permits) },
+      ...(explicit ? { settlementLayers: explicit } : {}),
+    } as never,
+  ) as { options?: { settlementLayers?: unknown } }
+  return intent.options?.settlementLayers
+}
+
+/** Everything the session enables and signs with, minus the intent metadata. */
+function fingerprint(session: Session): string {
+  return keccak256(
+    toHex(
+      JSON.stringify(
+        {
+          permissionId: session.permissionId,
+          data: getSessionData(session),
+          claimPolicies: session.claimPolicies,
+          hasExplicitPermissions: session.hasExplicitPermissions,
+        },
+        (_, value) =>
+          typeof value === 'bigint'
+            ? value.toString()
+            : value && typeof value === 'object' && 'rpcUrls' in value
+              ? value.id
+              : value,
+      ),
+    ),
+  )
+}
+
+// Captured from origin/main, before a Permit2 session carried its layers.
+const PERMIT2_FINGERPRINTS: Record<string, string> = {
+  ACROSS: '0xde85b36b910f2af3fc2e2d016fb53f575a24750e68ce12e2164478a66cd4b7af',
+  'ACROSS,ECO':
+    '0x8e8cef790a7a8af4b148d9a22bd3e770dc095650a4001faab956c06545e56649',
+  undefined:
+    '0x98648166ab66979b2497021e9b81d3685b6dc5951abd908364172eeb60b32939',
+}

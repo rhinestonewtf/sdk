@@ -1030,9 +1030,10 @@ function narrowQuoterPin(
 }
 
 /**
- * The settlement layers a settlement-scoped session admits, narrowed by any
- * explicit filter. Like the quoter pin, an explicit filter can only narrow: a
- * route outside the session's layers would fail its action policies on-chain.
+ * The settlement layers a session's permit admits, narrowed by any explicit
+ * filter. Like the quoter pin, an explicit filter can only narrow: a route
+ * outside the session's layers would fail its action policies, or its Permit2
+ * arbiter allowlist, on-chain.
  */
 function settlementLayerPin(
   signers: SignerSet | undefined,
@@ -1054,11 +1055,16 @@ function settlementLayerPin(
   // The session's layer names are the SDK's; the filter speaks the
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
   // no bridge, and the orchestrator refuses same-chain layers in the filter,
-  // so it narrows nothing; its session refuses cross-chain calls on-chain.
+  // so it narrows nothing; its session refuses cross-chain calls on-chain. The
+  // same holds for Permit2's SAME_CHAIN. Permit2's ECO is the retired Standard
+  // Eco arbiter, not the orchestrator's ECO, so no route it signs is left.
   const toFilter = (
     layer: NonNullable<Session['settlementLayers']>[number],
-  ): Layer[] =>
-    layer === 'SAME_CHAIN_IE' ? [] : [layer === 'ECO_IE' ? 'ECO' : layer]
+  ): Layer[] => {
+    if (layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN' || layer === 'ECO')
+      return []
+    return [layer === 'ECO_IE' ? 'ECO' : layer]
+  }
   const scoped = sessions.flatMap((session) => {
     const layers = session.settlementLayers?.flatMap(toFilter) ?? []
     return layers.length ? [new Set<Layer>(layers)] : []
