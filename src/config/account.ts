@@ -393,9 +393,11 @@ interface CrossChainPermit {
    * Intents signed with the session are restricted to the layers it kept, so
    * the orchestrator cannot pick one the session would refuse: `['ACROSS']`
    * sends `settlementLayers: { include: ['ACROSS'] }`. `SAME_CHAIN`,
-   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter. An intent's own
-   * `settlementLayers` can only narrow it, and one that leaves no layer
-   * throws. Omitting the field leaves intents unrestricted.
+   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter, and an intent with
+   * a session naming only `SAME_CHAIN` or `ECO` throws: use `SAME_CHAIN_IE`
+   * or `ECO_IE`. An intent's own `settlementLayers` can only narrow the
+   * filter, and one that leaves no layer throws. Omitting the field leaves
+   * intents unrestricted.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -496,9 +498,11 @@ interface CrossChainPermissionInput {
    * Intents signed with the session are restricted to the layers it kept, so
    * the orchestrator cannot pick one the session would refuse: `['ACROSS']`
    * sends `settlementLayers: { include: ['ACROSS'] }`. `SAME_CHAIN`,
-   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter. An intent's own
-   * `settlementLayers` can only narrow it, and one that leaves no layer
-   * throws. Omitting the field leaves intents unrestricted.
+   * `SAME_CHAIN_IE` and `ECO` add no layer to that filter, and an intent with
+   * a session naming only `SAME_CHAIN` or `ECO` throws: use `SAME_CHAIN_IE`
+   * or `ECO_IE`. An intent's own `settlementLayers` can only narrow the
+   * filter, and one that leaves no layer throws. Omitting the field leaves
+   * intents unrestricted.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -1048,7 +1052,8 @@ interface Session {
    *  a Permit2 permit lists (absent when it lists none, which admits them all).
    *  Metadata only — intents with the session are limited to them
    *  (`SAME_CHAIN_IE`, `SAME_CHAIN` and the retired `ECO` arbiter add no
-   *  bridge filter). */
+   *  bridge filter; a session naming only `SAME_CHAIN` or `ECO` refuses
+   *  intents). */
   settlementLayers?: readonly CrossChainSettlementLayer[]
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }

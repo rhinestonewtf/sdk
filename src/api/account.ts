@@ -1055,18 +1055,25 @@ function settlementLayerPin(
   // The session's layer names are the SDK's; the filter speaks the
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
   // no bridge, and the orchestrator refuses same-chain layers in the filter,
-  // so it narrows nothing; its session refuses cross-chain calls on-chain. The
-  // same holds for Permit2's SAME_CHAIN. Permit2's ECO is the retired Standard
-  // Eco arbiter, not the orchestrator's ECO, so no route it signs is left.
+  // so it narrows nothing; its session refuses cross-chain calls on-chain.
+  // Permit2's SAME_CHAIN and ECO are retired arbiters (ECO is not the
+  // orchestrator's ECO), so no route they sign is left.
+  const isRetired = (layer: string): layer is 'SAME_CHAIN' | 'ECO' =>
+    layer === 'SAME_CHAIN' || layer === 'ECO'
   const toFilter = (
     layer: NonNullable<Session['settlementLayers']>[number],
   ): Layer[] => {
-    if (layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN' || layer === 'ECO')
-      return []
+    if (layer === 'SAME_CHAIN_IE' || isRetired(layer)) return []
     return [layer === 'ECO_IE' ? 'ECO' : layer]
   }
   const scoped = sessions.flatMap((session) => {
-    const layers = session.settlementLayers?.flatMap(toFilter) ?? []
+    const named = session.settlementLayers ?? []
+    if (named.length && named.every(isRetired)) {
+      throw new Error(
+        `settlementLayers: no settlement layer is left to settle the intent; the session permits only retired Permit2 layers (${named.join(', ')}), so name ECO_IE or SAME_CHAIN_IE in its permit instead`,
+      )
+    }
+    const layers = named.flatMap(toFilter)
     return layers.length ? [new Set<Layer>(layers)] : []
   })
   // An unscoped session admits every layer, so it narrows nothing.

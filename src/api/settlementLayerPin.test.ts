@@ -223,8 +223,18 @@ describe('settlement layer pin', () => {
     expect(layersFor(['ACROSS', 'ECO', 'SAME_CHAIN'])).toEqual({
       include: ['ACROSS'],
     })
-    expect(layersFor(['ECO'])).toBeUndefined()
-    expect(layersFor(['SAME_CHAIN'])).toBeUndefined()
+  })
+
+  test('refuses a Permit2 session that names only retired layers', () => {
+    for (const layers of [['ECO'], ['SAME_CHAIN'], ['ECO', 'SAME_CHAIN']]) {
+      expect(() => layersFor(layers)).toThrow(
+        'the session permits only retired Permit2 layers',
+      )
+      // An explicit filter cannot supply a layer the session cannot sign.
+      expect(() => layersFor(layers, { include: ['ACROSS'] })).toThrow(
+        'name ECO_IE or SAME_CHAIN_IE in its permit instead',
+      )
+    }
   })
 
   test('a Permit2 permit that names no layer leaves the filter to the caller', () => {
