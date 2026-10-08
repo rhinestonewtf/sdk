@@ -749,63 +749,20 @@ describe('resolvePermission sugar fields', () => {
     expect(actions[0].policies).toEqual([{ type: 'usage-limit', limit: 10n }])
   })
 
-  test('validUntil + validAfter compose into a single time-frame policy', () => {
-    const until = new Date('2027-01-01').getTime()
-    const after = new Date('2026-01-01').getTime()
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: {
-        transfer: {
-          validUntil: new Date('2027-01-01'),
-          validAfter: new Date('2026-01-01'),
-        },
-      },
-    })
-    expect(actions[0].policies).toEqual([
-      { type: 'time-frame', validUntil: until, validAfter: after },
-    ])
-  })
-
-  test('one-sided validUntil defaults validAfter to 0', () => {
-    const until = new Date('2027-01-01').getTime()
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: { transfer: { validUntil: new Date('2027-01-01') } },
-    })
-    const policy = actions[0].policies![0]
-    if (policy.type !== 'time-frame') throw new Error('wrong type')
-    expect(policy.validUntil).toBe(until)
-    expect(policy.validAfter).toBe(0)
-  })
-
-  test('one-sided validAfter defaults validUntil to year-2100 sentinel', () => {
-    const after = new Date('2026-01-01').getTime()
-    const actions = resolvePermission({
-      abi: erc20Abi,
-      address: USDC,
-      functions: { transfer: { validAfter: new Date('2026-01-01') } },
-    })
-    const policy = actions[0].policies![0]
-    if (policy.type !== 'time-frame') throw new Error('wrong type')
-    expect(policy.validUntil).toBe(4_102_444_800_000)
-    expect(policy.validAfter).toBe(after)
-  })
-
-  test('rejects validUntil < validAfter', () => {
+  // The session resolver folds a window into the deadline and strips it first.
+  test.each([
+    { validUntil: new Date('2027-01-01') },
+    { validAfter: new Date('2026-01-01') },
+  ])('refuses a window that reaches it: %o', (window) => {
     expect(() =>
       resolvePermission({
         abi: erc20Abi,
         address: USDC,
-        functions: {
-          transfer: {
-            validUntil: new Date('2026-01-01'),
-            validAfter: new Date('2027-01-01'),
-          },
-        },
+        functions: { transfer: window },
       }),
-    ).toThrow(/before validAfter/)
+    ).toThrow(
+      'Function "transfer": validUntil/validAfter belong to the session deadline; build the session with toSession',
+    )
   })
 
   test('spendingLimit on an ERC-20-transfer-shaped ABI emits spending-limits', () => {
@@ -1000,7 +957,7 @@ describe('resolvePermission sugar fields', () => {
     expect(uni.valueLimitPerUse).toBe(7n)
   })
 
-  test('all sugar fields stack with params (arg-policy + usage + time-frame + spending)', () => {
+  test('all sugar fields stack with params (arg-policy + usage + spending)', () => {
     const actions = resolvePermission({
       abi: erc20Abi,
       address: USDC,
@@ -1010,14 +967,13 @@ describe('resolvePermission sugar fields', () => {
             recipient: { anyOf: [RECIPIENT] },
           },
           maxUses: 10n,
-          validUntil: new Date('2027-01-01'),
           spendingLimit: { token: USDC, amount: 5000n },
         },
       },
     })
     const types = actions[0].policies!.map((p) => p.type).sort()
     expect(types).toEqual(
-      ['arg-policy', 'spending-limits', 'time-frame', 'usage-limit'].sort(),
+      ['arg-policy', 'spending-limits', 'usage-limit'].sort(),
     )
   })
 })

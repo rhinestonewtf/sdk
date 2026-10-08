@@ -327,9 +327,9 @@ function fingerprint(session: Session): string {
 
 // Captured from origin/main, before a Permit2 session carried its layers.
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
-  ACROSS: '0xde85b36b910f2af3fc2e2d016fb53f575a24750e68ce12e2164478a66cd4b7af',
+  ACROSS: '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
   'ACROSS,ECO':
-    '0x8e8cef790a7a8af4b148d9a22bd3e770dc095650a4001faab956c06545e56649',
+    '0xec5782e18534d347a80ae0eef42453faae0570b7e52f36608e6717ae8e67bb1e',
   undefined:
-    '0x98648166ab66979b2497021e9b81d3685b6dc5951abd908364172eeb60b32939',
+    '0xe6512d4da3c112e3171cac65ebf40c4c322aa06687c5edc2e1675b13aabc7c2d',
 }

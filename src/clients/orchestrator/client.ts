@@ -17,7 +17,7 @@ import type { OrchestratorPort } from './port'
 import type { OrchestratorQuoteContext } from './types'
 import type { WireChainsResponse } from './wire'
 
-const SDK_VERSION = '2.16.3'
+const SDK_VERSION = '2.16.4'
 const API_VERSION = '2026-04.blanc'
 // Bounds how long a killed layer or pulled settlement address stays pinnable.
 const CHAIN_CATALOG_TTL_MS = 10 * 60 * 1000
