@@ -234,39 +234,39 @@ test('every session encodes and digests as pinned', async () => {
   expect(table).toMatchInlineSnapshot(`
     {
       "all": {
-        "digest": "0xe0eb23bbe50f6919edc5bb48483b6f1ee0e9422371581b268c412449b5e07625",
-        "permissionId": "0xb99b0492b73da1e4468b0f19512c30b381a2246895d717d3acdf2e64930b6d41",
-        "policies": "0xd2552d404de73db84a4de3f6f6d36ef52c2821c38a3a73826432a7128365cb76",
+        "digest": "0x8353aa4e92bcdd90db51d290144a2ed44558b4d4bc6d7021b1ba55800e36a52c",
+        "permissionId": "0x6fc58e71ed4bf5f3409b466d6c90fafefe5efb1cef816d98a3d66ae29171196e",
+        "policies": "0x9b17b4c1df34f443315f551d1d38e00d787ff02761350303b4dee50a7e2fd46d",
       },
       "all, fees": {
-        "digest": "0x26b5950d2cd863316ed060408a9e36e0757717379c2e624ea1425584a46cbce1",
-        "permissionId": "0xf2fe0eea7cf0d6a3e70384274c4ca74462a999f81eb9e05ad78aa1aace951830",
-        "policies": "0xd58538f1c650015c1cd3d75459ffba8f7f9adbbc0b485107fba352df825d48bc",
+        "digest": "0xc405c2d94aa302d4a4b3837d181b92d452344bb1b3a6cc8623b19b369ed4b5cd",
+        "permissionId": "0x26930db6b0b38c5b287f729b073727342ffb5a79fec256371da3c6031b7d47d5",
+        "policies": "0xbd50c5e1d9cf3a227a7a6e02af331141340d8fbe61fdeea3d48a5f25023af5fb",
       },
       "cctp": {
-        "digest": "0xbcf49e09fae55a5dc848ba66c2e8303eb131db0b6219c8dfaf7b95ba876aead9",
-        "permissionId": "0x0975fa95bc679c082401ee181ef35a129af507979e58d6d4ad716ef030ccef07",
-        "policies": "0x2ab9ade793b20d478100f2df69835bcd8b7d9185650d970633ff330a40efb922",
+        "digest": "0x268bb41e6059231718a68ead89c2e296d91554b5e67940015949ecf01586a21e",
+        "permissionId": "0xb9be9af903902150898a7293b11d669f451cd20f2a88313defb2f281f30011aa",
+        "policies": "0x23025509f108c5edea3b6af214f939dd6c379055fcaa28fadec515e13a6c9802",
       },
       "eco": {
-        "digest": "0x150a312637659285ac76c10e00f4aef91b9fdb432409a5f66ad7fc55d1134ea9",
-        "permissionId": "0xf8ec15dd943461b1754a79c0d20fbca3cfa4c5fcf6c6b1772e26fa7aec1f55ba",
-        "policies": "0x8728a20443a98219ebcce0f8fa72c410edca5097a0bcbc8060967ba86dc4ebf5",
+        "digest": "0x9f1cf4e6684f3f02c104e10b0131a10431929e73457626de61fd5a8203e2bf9d",
+        "permissionId": "0x64d5b09c11b93fe1aedc0cef9f04747cfb3e9c58dd2f8f4ac6877de5fc705f76",
+        "policies": "0xdd8522a6c711ad210a9467c005c90fd5704c567282c2917e9f35126a7a861951",
       },
       "lz": {
-        "digest": "0x130b1725cb7d5a38070128d401a8f4183478f679bf3278e4865ab120d0485073",
-        "permissionId": "0xde50e777e0894a4cc1802d989953aeb92db17b9a33180d92370e72661bfd3645",
-        "policies": "0xecabecc6ab4f59165bf791e77413a7c550ab22f19d629a365f0e0a847dfed147",
+        "digest": "0x9c449aaca124cee3d97ea05f989ae16d9f4ddb06d9b63061dc96df3e0c105ad6",
+        "permissionId": "0xdcb30f15b1ff348422079202ec27ade215d83ba54f44eaff63b7dab61c1e2df4",
+        "policies": "0x3829b0ef2fda8c6b2e8ad4eda31f6f459a3e1799d3a59e28c2dca914bc6a9a13",
       },
       "lz, fees": {
-        "digest": "0x487af7b59b85efd7aeae889f58b05e2a95ee55ee2f55acb19e6a5ffa03f1cfef",
-        "permissionId": "0x303b17546df104bf6ee4569232169dc69b8439f9a1b40a49194abcca4dcff08c",
-        "policies": "0xf94a053d0e46d1092430014445ba5df94d0b9fc97ea9b30c07cfdb3edbaf3659",
+        "digest": "0xaf24552ebea6c804e83850c267dc763d2bbd175177991adad896fe7b2be25c46",
+        "permissionId": "0x9a329600de42b3a03f942225e46cc86279e5817cdf81ab9b63fd9e9896d714e9",
+        "policies": "0xd9ba9bb72c214267fc9930b3af10da9b15e554063f4b3b3b7b2ad96f218c1ef2",
       },
       "oft": {
-        "digest": "0x4c6f8f304bd53cde35404de5503a7b0fbd684686819048be9162763eea41e02f",
-        "permissionId": "0xc88b273d427b7070fb92507f35c919a2b9d30d12e924ad9642c80da284330f70",
-        "policies": "0xa9a7b87aec716fbd7650033e4d877d051bc46eab3da5930e91f258892ef412f7",
+        "digest": "0x1280c602a435f49276b8018ef09789b4662b3b7f997591b631c9d0295f8bfefc",
+        "permissionId": "0x4a13d6f8e2baea79e5c3a297c46fff03babd06227b4f2511a10ea4736d10bfc6",
+        "policies": "0xfe85155a99133b7d740d75aa48b4a791ec27d00aef9cdf90648f6b091acbec31",
       },
       "raw actions": {
         "digest": "0x336beb6a24ded8a118e1a94307e9b6a8c41cc809b01a9556beb4570d954f7ab0",
@@ -274,9 +274,9 @@ test('every session encodes and digests as pinned', async () => {
         "policies": "0x85ba9cbc3aec5e67fc5d5d8a13bc8f6f7f1990de99158c93d3423aa63665d4e0",
       },
       "same chain": {
-        "digest": "0xbb7a3a38639df519d5e786358080791484a53d889db57c8422555a071f16505e",
-        "permissionId": "0x66d7c7732e8bf6cedeee9b46a2f05aa4277132e12f9e153775b64ad2cf329192",
-        "policies": "0x4ea09cd4d6e422a25068d9c4692c0d57d34c544001d0e77ec53024fc3e129406",
+        "digest": "0x64e481c988c10d6169510d9524f3571a27f6fa365732dcfbc660081bc99bcad7",
+        "permissionId": "0xe2c55653e3a81e99c67757776d94a597847837459641559b56577004fbf5e16a",
+        "policies": "0x2728392e08651e982cf96a5f0e8fc1d7e471aa364f277e9f4892f98961cb9218",
       },
     }
   `)

@@ -1,4 +1,5 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
+import { sessionWindowRefusal } from '../one-time-use'
 import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
 import type {
   CrossChainPermit,
@@ -142,7 +143,7 @@ export function resolveSettlementScope(
     (permit.validUntil !== undefined && !options.oneTimeUse)
   ) {
     throw new Error(
-      'crossChainPermits: an IntentExecutor-layer permit supports validUntil only together with oneTimeUse, and does not support validAfter; set oneTimeUse with validUntil to bound the session',
+      sessionWindowRefusal(`crossChainPermits[${permits.indexOf(permit)}]`),
     )
   }
   const named = permit.settlementLayers
@@ -242,13 +243,7 @@ export function resolveSettlementScope(
     }),
   )
 
-  // resolve folds validUntil into the once-policy on every action. A deadline of
-  // 0 would read as "never expires".
-  if (permit.validUntil !== undefined && permit.validUntil <= 0n) {
-    throw new Error(
-      'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
-    )
-  }
+  // resolve has refused a validUntil that is not in the future.
   const onceDeadline =
     permit.validUntil === undefined ? {} : { onceDeadline: permit.validUntil }
 
