@@ -432,9 +432,9 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
-  /** The IntentExecutor layers the session's permit was scoped to, so a caller
-   *  can restrict an intent to them. Metadata only, like `swap`. */
-  settlementLayers?: readonly IntentExecutorSettlementLayer[]
+  /** The layers the session's permits name (IntentExecutor or Permit2), so a
+   *  caller can restrict an intent to them. Metadata only, like `swap`. */
+  settlementLayers?: readonly CrossChainSettlementLayer[]
   /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
    *  like `swap`; absent on sessions stored before it existed. */
   settlementCoverage?: SettlementCoverage
