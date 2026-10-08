@@ -8,7 +8,7 @@ import {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrum, base, mainnet } from 'viem/chains'
+import { arbitrum, base, mainnet, sepolia } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../test/utils/settlement-catalog'
@@ -689,6 +689,42 @@ describe('intent workflow', () => {
         signers,
       })
       expect(prepared.request.destinationExecutions ?? []).toHaveLength(0)
+    })
+
+    test('refuses a default policy address on an intent chain it is not deployed on', async () => {
+      // The dev deployment is on Base and mainnet but not on Sepolia.
+      const devSession = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [account] },
+          oneTimeUse: { id: 42n },
+        },
+        { environment: 'development' },
+      )
+      const workflow = enabledWorkflow()
+      const byChain = (ids: readonly number[]) => ({
+        kind: 'smart-session' as const,
+        byChain: Object.fromEntries(
+          ids.map((id) => [id, { session: devSession }]),
+        ),
+      })
+      await expect(
+        prepareIntent(workflow, {
+          ...input,
+          sourceChains: [toEvmChainReference(sepolia.id)],
+          signers: byChain([sepolia.id, input.destination.id]),
+        }),
+      ).rejects.toThrow(
+        `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${sepolia.id} (development contracts); pass its address as policyAddresses.oneTimeUseId`,
+      )
+      expect(workflow.checkpoints.read).not.toHaveBeenCalled()
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [baseChain],
+          signers: byChain([base.id, input.destination.id]),
+        }),
+      ).resolves.toBeDefined()
     })
 
     test('rejects an intent that does not list its sources', async () => {

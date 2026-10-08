@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import { type Address, isAddressEqual } from 'viem'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
 import type { SessionPolicyAddresses } from '../types'
 
@@ -52,6 +52,37 @@ export function defaultOneTimeUseIdPolicy(
   return ONE_TIME_USE_ID_POLICY_CHAINS.includes(chainId)
     ? ONE_TIME_USE_ID_POLICY_ADDRESS
     : undefined
+}
+
+/** The refusal for a chain with no OneTimeUseIdPolicy to default to. */
+export function oneTimeUseIdPolicyMissing(
+  chainId: number,
+  environment: 'production' | 'development',
+): string {
+  return (
+    `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${chainId}` +
+    (environment === 'development' ? ' (development contracts)' : '') +
+    '; pass its address as policyAddresses.oneTimeUseId'
+  )
+}
+
+/**
+ * Throws when `policy` is a default deployment with no code on `chainId`. A
+ * session resolves its default on its own chain, but an intent can use it on
+ * others. Any other address is the caller's to vouch for.
+ */
+export function assertOneTimeUseIdPolicyDeployed(
+  policy: Address,
+  chainId: number,
+): void {
+  const environment = isAddressEqual(policy, ONE_TIME_USE_ID_POLICY_ADDRESS)
+    ? 'production'
+    : isAddressEqual(policy, ONE_TIME_USE_ID_POLICY_ADDRESS_DEV)
+      ? 'development'
+      : undefined
+  if (environment && !defaultOneTimeUseIdPolicy(chainId, environment)) {
+    throw new Error(oneTimeUseIdPolicyMissing(chainId, environment))
+  }
 }
 
 // CREATE2 deployments of the canonical UniversalActionPolicy bytecode, at the

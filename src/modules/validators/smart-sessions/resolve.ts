@@ -24,6 +24,7 @@ import {
 } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
+  oneTimeUseIdPolicyMissing,
   resolvePolicyAddresses,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_COPIES,
@@ -591,9 +592,7 @@ function resolveSession(
   if (definition.oneTimeUse) {
     if (!addresses.oneTimeUseId) {
       throw new Error(
-        `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${definition.chain.id}` +
-          (environment === 'development' ? ' (development contracts)' : '') +
-          '; pass its address as policyAddresses.oneTimeUseId',
+        oneTimeUseIdPolicyMissing(definition.chain.id, environment),
       )
     }
     const once = oneTimeUseIdErc1271Policy({
