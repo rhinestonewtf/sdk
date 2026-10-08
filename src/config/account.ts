@@ -325,8 +325,9 @@ interface Permit2ClaimPolicy {
  *   `LZ` that can settle the permit on the session's chain, and silently
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
- *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`), or cannot
- *   enforce the `to.minAmount` given (always `CCTP`). Setting `maxFeeBps` asks
+ *   `maxFeeBps` or a session deadline under 7 days ahead, `OFT`'s and
+ *   `LZ`'s `oneTimeUse`), or cannot enforce the `to.minAmount` given
+ *   (always `CCTP`). Setting `maxFeeBps` asks
  *   for `ECO_IE`, so a dropped `ECO_IE` is then refused with its reason, and
  *   it floors only the `ECO_IE` call. A `to.minAmount` needs no particular layer:
  *   the layers that enforce it are kept. `'all'` never includes
@@ -340,9 +341,13 @@ interface Permit2ClaimPolicy {
  *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
  *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount`, a delivery floor and `validUntil`; `validUntil` at least 7 days
- *   from now, since the session pins Eco's reward deadline under it and Eco
- *   quotes that ~7 days out. Both tokens must be ones the orchestrator serves
+ *   `maxAmount` and a delivery floor. The session's earliest deadline (the
+ *   permit's `validUntil` or `oneTimeUse.validUntil`) must be at least 7 days
+ *   from now, since the session pins Eco's route and reward deadlines under it
+ *   and Eco quotes that ~7 days out, so `ECO_IE` is usable only until that
+ *   deadline minus 7 days. Only a session with no deadline at all (no
+ *   `validUntil` on the permit and none on the session) leaves an unfilled
+ *   `ECO_IE` reward with no refund deadline. Both tokens must be ones the orchestrator serves
  *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
  *   served, or a `to.minAmount` on every leg, for any two such tokens; given
  *   both, the higher applies. Without `maxFeeBps`, `ECO_IE` needs every `from`
@@ -532,6 +537,11 @@ interface CrossChainPermissionInput {
    * `oneTimeUse.validUntil`; this requires `oneTimeUse` and can only shorten
    * that one session-wide deadline (the earliest `validUntil` in the session
    * applies, to the permit deadline too). A future `Date`.
+   *
+   * For `ECO_IE` the session's earliest deadline must be at least 7 days
+   * ahead, and `ECO_IE` is usable only until it minus 7 days. Only when the
+   * session has no deadline at all (none here and none on the session) does
+   * an unfilled `ECO_IE` reward have no refund deadline.
    */
   validUntil?: Date
   /** Not supported; a permit that sets it throws. */
