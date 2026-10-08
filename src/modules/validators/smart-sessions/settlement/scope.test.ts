@@ -309,10 +309,13 @@ describe('settlement-scoped crossChainPermits', () => {
       ).toThrow('CCTP cannot enforce `to.minAmount`')
     })
 
-    test("is refused under 'all' when ECO_IE cannot settle the permit", () => {
-      expect(() => resolveSettlementScope([permit('all')], options)).toThrow(
-        '`to.minAmount` asks for ECO_IE, which cannot settle this permit',
-      )
+    test("settles over OFT alone under 'all' when ECO_IE cannot settle the permit", () => {
+      // No validUntil: ECO_IE is dropped, and CCTP cannot enforce the floor.
+      const resolved = resolveSettlementScope([permit('all')], options)
+      expect(resolved?.settlementLayers).toEqual(['OFT'])
+      const action = sendOf(resolved)
+      expect(satisfiesRules(action, send(100n, 95n))).toBe(true)
+      expect(satisfiesRules(action, send(100n, 94n))).toBe(false)
     })
 
     test.each([
@@ -467,10 +470,14 @@ describe('settlement-scoped crossChainPermits', () => {
       )
     })
 
-    test("is refused under 'all' when ECO_IE cannot settle the permit", () => {
-      expect(() => lzScope({ settlementLayers: 'all' })).toThrow(
-        '`to.minAmount` asks for ECO_IE, which cannot settle this permit',
-      )
+    test("settles over LZ alone under 'all' when ECO_IE cannot settle the permit", () => {
+      // ECO_IE does not reach Soneium, and CCTP cannot enforce the floor.
+      const resolved = lzScope({ settlementLayers: 'all' })
+      expect(resolved?.settlementLayers).toEqual(['LZ'])
+      const send = (minAmount: bigint) =>
+        execute(stargate('taxi', { eid: SONEIUM_EID, minAmount }))
+      expect(satisfiesRules(executeOf(resolved), send(9_800_000n))).toBe(true)
+      expect(satisfiesRules(executeOf(resolved), send(9_799_999n))).toBe(false)
     })
 
     test.each([
@@ -763,12 +770,14 @@ describe('settlement-scoped crossChainPermits', () => {
       })
     })
 
-    test("refuses a to.minAmount when 'all' drops ECO_IE", () => {
+    // USDC to USDT0 without validUntil: only ECO_IE could floor it, and 'all'
+    // drops it.
+    test("refuses a to.minAmount under 'all' when no layer can enforce it", () => {
       expect(() =>
         resolveSessionData(
           eco({ ...toUsdt, settlementLayers: 'all', validUntil: undefined }),
         ),
-      ).toThrow('`to.minAmount` asks for ECO_IE, which cannot settle')
+      ).toThrow('no IntentExecutor layer can settle this permit')
     })
 
     describe('a to.minAmount across source chains with different caps', () => {
