@@ -76,7 +76,7 @@ enforced by `scripts/architecture/check.ts`:
 - **`actions/`, `errors/`, `smart-sessions/`, `jwt-server/`** —
   published subpath surfaces. `actions/` are standalone builders; the rest are
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
-  separate server-side bounded context with optional `jose`/`express` peers.
+  separate server-side bounded context with an optional `jose` peer.
 
 ## Cross-VM account boundary
 
