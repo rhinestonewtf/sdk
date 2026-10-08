@@ -247,17 +247,6 @@ export interface SettlementCoverage {
   readonly dropped: readonly DroppedSettlementLayer[]
 }
 
-/**
- * Whether a session's key is held to the session's own actions. `'open'` keeps
- * the wildcard intent-execution fallback, so the key may also call any target
- * the global intent-execution whitelist allows.
- */
-export interface SessionAccess {
-  readonly kind: 'scoped' | 'open'
-  /** What made it so, e.g. `restrictToActions` or the permit that kept the fallback. */
-  readonly reason: string
-}
-
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   to?: {
@@ -438,9 +427,6 @@ export interface Session {
   /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
    *  like `swap`; absent on sessions stored before it existed. */
   settlementCoverage?: SettlementCoverage
-  /** Whether the session keeps the intent-execution fallback, and why. Metadata
-   *  only; absent on sessions stored before it existed. */
-  access?: SessionAccess
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }

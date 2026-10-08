@@ -33,7 +33,6 @@ import type {
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
 import type {
   DroppedSettlementLayer,
-  SessionAccess,
   SettlementCoverage,
   StableSwapFloor,
 } from '../modules/validators/smart-sessions/types'
@@ -1175,11 +1174,6 @@ interface Session {
    *  permission id. Absent on sessions without such a permit and on sessions
    *  stored before this field existed. */
   settlementCoverage?: SettlementCoverage
-  /** Whether the session's key is held to its own actions (`'scoped'`) or keeps
-   *  the wildcard intent-execution fallback (`'open'`), with the reason.
-   *  Metadata only — it does not change the permission id. Absent on sessions
-   *  stored before this field existed. */
-  access?: SessionAccess
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
@@ -1635,7 +1629,6 @@ export type {
   SessionEnableData,
   SessionInput,
   SessionPolicyAddresses,
-  SessionAccess,
   SessionSignerSet,
   SessionSigning,
   SessionSigningContent,
