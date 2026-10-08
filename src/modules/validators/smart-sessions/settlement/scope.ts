@@ -370,11 +370,6 @@ export function resolveSettlementScope(
       `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
     )
   }
-  if (minAmount && ecoSkipped !== undefined) {
-    throw new Error(
-      `crossChainPermits: \`to.minAmount\` asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
-    )
-  }
   if (scopedLayers.length === 0) {
     throw new Error(
       `crossChainPermits: no IntentExecutor layer can settle this permit on chain ${options.chainId} (${[

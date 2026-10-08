@@ -316,10 +316,11 @@ interface Permit2ClaimPolicy {
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
  *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`), or cannot
- *   enforce a `to.minAmount` (always `CCTP`). Setting `maxFeeBps` or
- *   `to.minAmount` asks for `ECO_IE`, so a dropped `ECO_IE` is then refused
- *   with its reason; `maxFeeBps` floors only the `ECO_IE` call. `'all'` never includes `SAME_CHAIN_IE`, and is refused when
- *   no layer qualifies. It resolves against the orchestrator's `GET /chains`
+ *   enforce a `to.minAmount` (always `CCTP`). Setting `maxFeeBps` asks for
+ *   `ECO_IE`, so a dropped `ECO_IE` is then refused with its reason, and it
+ *   floors only the `ECO_IE` call. A `to.minAmount` needs no particular layer:
+ *   the layers that enforce it are kept. `'all'` never includes
+ *   `SAME_CHAIN_IE`, and is refused when no layer qualifies. It resolves against the orchestrator's `GET /chains`
  *   and the clock when the session is created, so store the created session
  *   (its `settlementLayers` lists the layers kept) and reuse it rather than
  *   rebuilding it from `'all'`, which can keep a different set of layers.
