@@ -472,21 +472,32 @@ function resolveSession(
   // policy bounding the spender.
   const claimPoliciesMoved = claimPolicies.length > 0
   if (claimPoliciesMoved) {
-    // The claim policies take over the 1271 list, so anything the caller asked
-    // for on that surface would be dropped: a validity window lives on the
-    // signing policy, and a scoped or disabled mode decides the 7739 content the
-    // claim policy is reached through. Refuse rather than silently discard it.
-    if (definition.signing !== undefined) {
+    const signing = definition.signing
+    // `scoped` and `disabled` both rewrite `allowedERC7739Content`, which is the
+    // gate the claim policy is reached through: scoped replaces the wildcard
+    // entry, disabled empties it, and either way the policy is never consulted.
+    // The list is also an AND, so a scoped content could not be signed anyway —
+    // the claim policy rejects every digest that is not its own.
+    if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw new Error(
-        `Claim policies take over the session's ERC-1271 list, so \`signing\` cannot also be configured — its policy and validity window would be dropped. Drop \`signing\` or the claim policies.`,
+        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound the window, or drop the claim policies.`,
       )
     }
-    // Replace rather than append. The list is an AND, so a permissive sudo entry
-    // alongside cannot weaken it — but it would be dead config that reads as a
-    // signing capability the session no longer has.
-    erc1271Policies = onceErc1271Policy
-      ? [...claimPolicies, onceErc1271Policy]
-      : claimPolicies
+    // A validity window is the one thing that survives: it lowers to a
+    // TimeFramePolicy, which ANDs with the claim policies and leaves the content
+    // gate alone. Without one the signing policy is a sudo entry that cannot
+    // weaken the AND but would read as a capability the session no longer has,
+    // so it is dropped rather than carried.
+    const windowPolicy =
+      signing !== undefined &&
+      (signing.validAfter !== undefined || signing.validUntil !== undefined)
+        ? erc1271Policies
+        : []
+    erc1271Policies = [
+      ...claimPolicies,
+      ...windowPolicy,
+      ...(onceErc1271Policy ? [onceErc1271Policy] : []),
+    ]
     claimPolicies = []
   }
   // Same hazard on the ERC-1271 list: it is an AddressSet keyed by policy, and
