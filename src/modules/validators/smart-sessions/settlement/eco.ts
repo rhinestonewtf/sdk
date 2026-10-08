@@ -9,7 +9,8 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { compareHexValues } from '../../ordering'
-import { cumulativeCap, pin, pinValue, pinWord } from '../swap/rules'
+import { cumulativeCap, floorFor, pin, pinValue, pinWord } from '../swap/rules'
+import { STABLE_DECIMALS } from '../swap/stable-floor'
 import type {
   ArgPolicyExpression,
   ScopedAction,
@@ -48,6 +49,13 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * vault a third party pre-funded; partial funding pulls at most the capped
  * reward and `Vault.withdraw` pays at most what the vault holds; route native
  * comes from the solver. The account never pays more than the capped reward.
+ *
+ * Fills are permissionless and the filler names the claimant, so a key can fill
+ * its own intent: the delivery floor is the whole price bound. With `maxFeeBps`
+ * it is the cap less the most the solver may keep, rescaled between two served
+ * USD stablecoins' decimals. With `to.minAmount` it is the owner's own amount
+ * of the `to` token, for any two served stablecoins; given both, the higher
+ * floor applies.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -99,8 +107,6 @@ export const PUBLISH = {
 
 const BPS = 10_000n
 
-const ECO_DECIMALS = 6
-
 /**
  * How far ahead `validUntil` must reach: the session pins Eco's reward deadline
  * under it, and the orchestrator publishes Eco's quoted deadline about 7 days out.
@@ -108,11 +114,10 @@ const ECO_DECIMALS = 6
 export const ECO_MIN_VALIDITY_SECONDS = 7n * 24n * 60n * 60n
 
 /**
- * The delivery floor compares reward and delivery in raw units 1:1, which only
- * holds between USD stablecoins of the same decimals. Eco's bare address list
- * carries none, so the served `usdStablecoins` must vouch for 6.
+ * Eco's solvers deliver only the stablecoins it serves on a chain; any other
+ * token never fills and locks the reward until its deadline.
  */
-function requireStablecoin(
+function requireServed(
   settlement: SettlementCatalog,
   chainId: number,
   token: Address,
@@ -127,14 +132,52 @@ function requireStablecoin(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
-  const usd = settlement[chainId]?.usdStablecoins?.find((t) =>
+}
+
+/**
+ * The decimals of a served Eco stablecoin the `maxFeeBps` floor prices 1:1, as
+ * the served `usdStablecoins` vouch for them. Eco's bare address list carries
+ * none, and the permit's own word is not taken.
+ */
+function stableDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+  leg: 'from' | 'to',
+): number {
+  const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
     isAddressEqual(t.address, token),
   )
-  if (usd?.decimals !== ECO_DECIMALS) {
-    throw new SettlementLayerRefusal(
-      `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served ${ECO_DECIMALS}-decimal USD stablecoin; ${usd === undefined ? 'the orchestrator serves no usdStablecoins entry for it' : `it has ${usd.decimals} decimals`}`,
+  const refuse = (why: string) =>
+    new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served USD stablecoin with known decimals; ${why}`,
     )
+  if (usd.length === 0) {
+    throw refuse('the orchestrator serves no usdStablecoins entry for it')
   }
+  // Two entries could disagree, and the floor would take whichever came first.
+  if (usd.length > 1) {
+    throw refuse(`it appears ${usd.length} times in usdStablecoins`)
+  }
+  // A wrong scale moves the floor by orders of magnitude.
+  if (!STABLE_DECIMALS.has(usd[0].decimals)) {
+    throw refuse(`it has ${usd[0].decimals} decimals; expected 6 or 18`)
+  }
+  return usd[0].decimals
+}
+
+/** The token's served decimals when `stableDecimals` would accept them. */
+function knownDecimals(
+  settlement: SettlementCatalog,
+  chainId: number,
+  token: Address,
+): number | undefined {
+  const usd = (settlement[chainId]?.usdStablecoins ?? []).filter((t) =>
+    isAddressEqual(t.address, token),
+  )
+  return usd.length === 1 && STABLE_DECIMALS.has(usd[0].decimals)
+    ? usd[0].decimals
+    : undefined
 }
 
 /**
@@ -192,23 +235,43 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
     )
   }
-  requireStablecoin(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
+  // `maxFeeBps` prices the reward 1:1 against delivery; without it every leg's
+  // owner-set `to.minAmount` is the floor, in that leg's own token.
+  requireServed(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
+  const fromDecimals =
+    ctx.maxFeeBps === undefined
+      ? undefined
+      : stableDecimals(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
     )
   }
-  // The key sets the delivery against the reward; only a floor stops it from
-  // paying a solver for next to nothing.
-  if (ctx.cap === undefined || ctx.maxFeeBps === undefined) {
+  // The key fills its own intent and names itself claimant, so a floor on
+  // delivery is all that stops a reward paying for next to nothing.
+  if (
+    ctx.cap === undefined ||
+    (ctx.maxFeeBps === undefined &&
+      ctx.destinations.some((leg) => leg.minAmount === undefined))
+  ) {
     throw new SettlementLayerRefusal(
-      'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
+      'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver (or maxAmount and a `to.minAmount` on every leg)',
     )
   }
   if (
-    !Number.isInteger(ctx.maxFeeBps) ||
-    ctx.maxFeeBps < 0 ||
-    ctx.maxFeeBps >= 10_000
+    ctx.destinations.some(
+      (leg) => leg.minAmount !== undefined && leg.minAmount <= 0n,
+    )
+  ) {
+    throw new SettlementLayerRefusal(
+      'crossChainPermits: ECO_IE needs a positive `to.minAmount`',
+    )
+  }
+  if (
+    ctx.maxFeeBps !== undefined &&
+    (!Number.isInteger(ctx.maxFeeBps) ||
+      ctx.maxFeeBps < 0 ||
+      ctx.maxFeeBps >= 10_000)
   ) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
@@ -232,9 +295,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     )
   }
   const cap = ctx.cap
-  // Round up: a floor rounded down would let the solver keep more than maxFeeBps.
-  const feeBps = BigInt(ctx.maxFeeBps)
-  const floor = (cap * (BPS - feeBps) + BPS - 1n) / BPS
+  const maxFeeBps = ctx.maxFeeBps
   const rules: UniversalActionPolicyParamRule[] = [
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
@@ -258,8 +319,60 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       referenceValue: ctx.validUntil,
     },
   ]
+  // Two legs that pin the same delivery become an OR, so the lower floor binds.
+  const twin = ctx.destinations.find((leg, i) =>
+    ctx.destinations.some(
+      (other, j) =>
+        j < i &&
+        other.chainId === leg.chainId &&
+        isAddressEqual(other.token, leg.token) &&
+        (other.recipient === undefined || leg.recipient === undefined
+          ? other.recipient === leg.recipient
+          : isAddressEqual(other.recipient, leg.recipient)) &&
+        other.minAmount !== leg.minAmount,
+    ),
+  )
+  if (twin) {
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: ECO_IE names the \`to\` leg ${twin.token} on chain ${twin.chainId} twice with different \`to.minAmount\`; give it once`,
+    )
+  }
   const legs = ctx.destinations.map((leg) => {
-    requireStablecoin(ctx.settlement, leg.chainId, leg.token, 'to')
+    requireServed(ctx.settlement, leg.chainId, leg.token, 'to')
+    // Every Eco token is a USD stablecoin, so a floor under half the cap is a
+    // units mistake: `to.minAmount` is in the `to` token's smallest units.
+    const fromKnown = knownDecimals(
+      ctx.settlement,
+      ctx.chainId,
+      ctx.sourceTokens[0],
+    )
+    const toKnown = knownDecimals(ctx.settlement, leg.chainId, leg.token)
+    if (
+      leg.minAmount !== undefined &&
+      fromKnown !== undefined &&
+      toKnown !== undefined &&
+      leg.minAmount < floorFor(cap, 1n, 2n, fromKnown, toKnown)
+    ) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ECO_IE \`to.minAmount\` ${leg.minAmount} on chain ${leg.chainId} is under half of maxAmount; give it in the \`to\` token's smallest units (${toKnown} decimals)`,
+      )
+    }
+    // The cap less what the solver may keep, rescaled from the reward's
+    // decimals to the delivery's; with `to.minAmount` too, the stricter wins.
+    const feeFloor =
+      maxFeeBps === undefined || fromDecimals === undefined
+        ? 0n
+        : floorFor(
+            cap,
+            BPS - BigInt(maxFeeBps),
+            BPS,
+            fromDecimals,
+            stableDecimals(ctx.settlement, leg.chainId, leg.token, 'to'),
+          )
+    const floor =
+      leg.minAmount !== undefined && leg.minAmount > feeFloor
+        ? leg.minAmount
+        : feeFloor
     if (leg.recipient === undefined) {
       throw new SettlementLayerRefusal(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
