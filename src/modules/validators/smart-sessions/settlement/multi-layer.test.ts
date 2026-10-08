@@ -212,11 +212,11 @@ describe('multi-layer settlement permits', () => {
     )
     expect(digests).toMatchInlineSnapshot(`
       {
-        "CCTP": "0xaf45f02832fa2ebc22ccc355dbb399c61417864ce82801debe85bd738c901fed",
-        "CCTP with fees": "0x57a3aac93df5f7b3ba14ded8535ca4b0f8e55561b3ccb00aa5fdcf10dc97361c",
-        "ECO_IE": "0x6a4314356d9baddd6cfdd6f681535801acf11d160136c6f19a7fb9da4088662b",
-        "LZ": "0x42e887f586a6d642c4ffe53f8b694cf25b333eb1eb5516543c3cbd78287d6df0",
-        "OFT": "0x9ecc13fd247747c934cd2809805823031c43ed9b789f858cdaa0519b89ed0b43",
+        "CCTP": "0x579b4c3f004b4df034c8e28b13a5f5aadca12060696a508e3c33d921d58a27f7",
+        "CCTP with fees": "0xa39eff6593ad08ecc8aec6c71910b8cc19d30364dca8088889d8d2231c1de4bf",
+        "ECO_IE": "0xf88bcf66cc02f04fc5ac6cfd8026a8d813b416cdc1edc0d9b7ea24b9cd23795c",
+        "LZ": "0x782b98c47fd0664eeacb6907c683cfd622aacb2713dfd65322b96b0437146d85",
+        "OFT": "0xafb81473b9789f2853937b3fd3fc384cb4832bec534fd853d45830f27aec0c45",
       }
     `)
   })
@@ -307,12 +307,15 @@ describe('multi-layer settlement permits', () => {
         validUntil: VALID_UNTIL,
         validAfter: new Date(1_000_000_000_000),
       }),
-    ).toThrow('does not support validAfter')
+    ).toThrow('validAfter is not supported')
   })
 
   test('refuses a validUntil that would read as no deadline', () => {
     expect(() =>
-      scope({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+      resolveSessionData(
+        definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+        { settlement: SETTLEMENT_CATALOG },
+      ),
     ).toThrow('validUntil must be a valid Date in the future')
   })
 

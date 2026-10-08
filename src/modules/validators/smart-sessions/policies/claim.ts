@@ -1,5 +1,4 @@
 import { isAddressEqual } from 'viem'
-import { FAR_FUTURE_MS } from '../../permissions'
 import { getArbitersForSettlementLayers } from '../../policies/claim/arbiters'
 import type {
   InternalPermit2ClaimPolicy,
@@ -14,6 +13,7 @@ import type {
 export function expandCrossChainPermit(
   permit: CrossChainPermit,
   environment: 'production' | 'development',
+  onceDeadline?: bigint,
 ): {
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
@@ -49,9 +49,11 @@ export function expandCrossChainPermit(
       chain,
       address: recipient as `0x${string}` | 'any',
     }))
+  // The once-policy refuses a settlement past its deadline, so the claim does too.
+  const maxDeadline = onceDeadline ?? permit.validUntil
   const permitDeadline =
-    permit.validAfter !== undefined || permit.validUntil !== undefined
-      ? { min: permit.validAfter, max: permit.validUntil }
+    permit.validAfter !== undefined || maxDeadline !== undefined
+      ? { min: permit.validAfter, max: maxDeadline }
       : undefined
   const claim: Permit2ClaimPolicy = {
     type: 'permit2',
@@ -71,17 +73,6 @@ export function expandCrossChainPermit(
     .filter(({ maxAmount }) => maxAmount !== undefined)
     .map(({ token, maxAmount }) => ({ token, amount: maxAmount as bigint }))
   if (limits.length) fallbackPolicies.push({ type: 'spending-limits', limits })
-  if (permitDeadline) {
-    fallbackPolicies.push({
-      type: 'time-frame',
-      validUntil:
-        permit.validUntil === undefined
-          ? FAR_FUTURE_MS
-          : Number(permit.validUntil * 1000n),
-      validAfter:
-        permit.validAfter === undefined ? 0 : Number(permit.validAfter * 1000n),
-    })
-  }
   return { claim, fallbackPolicies }
 }
 
