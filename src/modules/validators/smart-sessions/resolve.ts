@@ -906,6 +906,7 @@ export function sessionPolicyAddresses(
     (universalAction !== undefined &&
       universalAction.toLowerCase() !==
         UNIVERSAL_ACTION_POLICY_ADDRESS.toLowerCase()) ||
+    // resolve refuses it; this only spares createSession a code check first.
     definition.saltMode === 'v1' ||
     !UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(definition.chain.id) ||
     !definition.crossChainPermits?.some(isSettlementScopedPermit)
