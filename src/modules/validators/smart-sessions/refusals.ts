@@ -101,6 +101,10 @@ export const SESSION_REFUSAL_CODES = {
     'a restricted session holding a Permit2-layer permit or claimPolicies',
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
+  CLAIM_POLICIES_SIGNING_MODE:
+    "a scoped or disabled `signing` mode beside claim policies, including a Permit2-layer permit's",
+  CLAIM_POLICIES_SIGNING_WINDOW_CLOSED:
+    'a `signing.validUntil` that is not in the future beside claim policies',
   DUPLICATE_ERC1271_POLICY:
     'one ERC-1271 policy installed twice, e.g. by two Permit2-layer permits',
   UNIVERSAL_ACTION_COPY_INVALID:

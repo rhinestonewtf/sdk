@@ -149,6 +149,8 @@ describe('refusal codes', () => {
       'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
       'RESTRICTED_WITH_PERMIT2_GRANTS',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
+      'CLAIM_POLICIES_SIGNING_MODE',
+      'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
       'DUPLICATE_ERC1271_POLICY',
       'UNIVERSAL_ACTION_COPY_INVALID',
       'UNIVERSAL_ACTION_POLICY_NO_CODE',
@@ -468,6 +470,18 @@ describe('collectSessionRefusals', () => {
       session([permit2({ allowFees: true })]),
     ],
     ['DUPLICATE_ERC1271_POLICY', session([permit2(), permit2()])],
+    [
+      'CLAIM_POLICIES_SIGNING_MODE',
+      session([permit2()], {
+        signing: { mode: 'disabled' },
+      } as Partial<SessionDefinition>),
+    ],
+    [
+      'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
+      session([permit2()], {
+        signing: { mode: 'unrestricted', validUntil: new Date(1_000) },
+      } as Partial<SessionDefinition>),
+    ],
     [
       'UNIVERSAL_ACTION_COPY_INVALID',
       session([], {

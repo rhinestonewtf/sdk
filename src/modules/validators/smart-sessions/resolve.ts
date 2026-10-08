@@ -746,7 +746,8 @@ function resolveSession(
     // signing policy is sudo and is dropped rather than advertising a capability
     // the session no longer has.
     if (signing !== undefined && signing.mode !== 'unrestricted') {
-      throw new Error(
+      throw refusal(
+        'CLAIM_POLICIES_SIGNING_MODE',
         `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
       )
     }
@@ -763,7 +764,8 @@ function resolveSession(
         signing.validUntil.getTime() > Date.now()
       )
     ) {
-      throw new Error(
+      throw refusal(
+        'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
         'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
       )
     }
