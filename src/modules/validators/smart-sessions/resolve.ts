@@ -902,6 +902,8 @@ export function sessionPolicyAddresses(
   const universalAction = overrides?.universalAction
   if (
     overrides?.universalActionCopies !== undefined ||
+    // A pinned ArgPolicy asks for the ArgPolicy encoding; splitting would move it.
+    overrides?.argPolicy !== undefined ||
     // The copies hold the canonical code, so they cannot stand in for another.
     (universalAction !== undefined &&
       universalAction.toLowerCase() !==

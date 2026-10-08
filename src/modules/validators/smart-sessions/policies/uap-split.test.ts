@@ -939,6 +939,18 @@ describe('a settlement-scoped session defaults to the deployed copies', () => {
     )
   })
 
+  test('an overridden argPolicy does not, even at the canonical address', async () => {
+    for (const argPolicy of [
+      '0x00000000000000000000000000000000000000a9' as Address,
+      DEFAULT_POLICY_ADDRESSES.argPolicy,
+    ]) {
+      await expectUnsplitByDefault({
+        ...lzSession,
+        policyAddresses: { ...lzSession.policyAddresses, argPolicy },
+      })
+    }
+  })
+
   test('an overridden universalAction does not', async () => {
     const universalAction = '0x00000000000000000000000000000000000000d2'
     await expectUnsplitByDefault({
