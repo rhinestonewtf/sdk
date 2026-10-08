@@ -1026,6 +1026,20 @@ interface SessionDefinition<
   swap?: SwapScope<TChain['id']>
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
+  /**
+   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
+   * expands to this plus a `maxAmount` spending limit (with `oneTimeUse`), takes
+   * `Date`s rather than raw deadlines, and defaults to bridge-to-self
+   * (`allowRecipientNotAccount: false`) rather than leaving the recipient open.
+   *
+   * It also picks the enforcement surface per settlement layer: a Permit2
+   * arbiter layer compiles to this claim policy, while an IntentExecutor layer
+   * compiles to argument-pinned actions instead — a claim policy does not bind
+   * an IntentExecutor route at all.
+   *
+   * Still exported as a low-level escape hatch: it is the only way to pin
+   * `spenders` to an arbiter outside the SDK's bundled allow-set.
+   */
   claimPolicies?: readonly Permit2ClaimPolicy[]
   /**
    * Cross-chain permits expanded by the SDK into matching
