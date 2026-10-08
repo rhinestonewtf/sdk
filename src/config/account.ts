@@ -290,10 +290,12 @@ interface Permit2ClaimPolicy {
  *   retired Standard Eco arbiter).
  *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
  *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor), `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
- *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
- *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
- *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
+ * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor),
+ *   `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
+ *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap
+ *   with a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC
+ *   through the LayerZero Value Transfer API, over Stargate or CCTP, with an
+ *   optional `to.minAmount` floor on a Stargate send) settle by the
  *   account executing the call. Naming any of them makes the permit
  *   **settlement-scoped**: the session is restricted to those layers' calls
  *   and their approve, with the `from` token, the `to` chains and recipients,
@@ -308,12 +310,12 @@ interface Permit2ClaimPolicy {
  *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
  *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
  *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
- *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE` and
- *   `OFT` floor their own delivery, and naming a layer that cannot (`CCTP`
- *   never can) is refused. A `to.minAmount` outside half of to all of any
- *   `from` leg's `maxAmount` is refused as a units mistake, `'all'` included.
- *   With `ECO_IE` among several layers, an intent settles over Eco only when
- *   it delivers at least its floor: the higher of
+ *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE`, `OFT`
+ *   and `LZ` (on a Stargate send) floor their own delivery, and naming a layer
+ *   that cannot (`CCTP` never can) is refused. A `to.minAmount` outside half
+ *   of to all of any `from` leg's `maxAmount` is refused as a units mistake,
+ *   `'all'` included. With `ECO_IE` among several layers, an intent settles
+ *   over Eco only when it delivers at least its floor: the higher of
  *   `maxAmount × (1 − maxFeeBps / 10000)`, rescaled to the `to` token's
  *   decimals, and `to.minAmount`. Both are fixed against `maxAmount`, so the
  *   orchestrator may route a smaller intent through another layer, or the
@@ -463,10 +465,10 @@ interface ToLeg {
   token: Address
   recipient?: Address | 'any'
   /**
-   * `SAME_CHAIN_IE` swaps, `ECO_IE` and `OFT`: the least amount of
-   * `token` the swap, the Eco route or the OFT send must deliver, in `token`'s
-   * smallest units (its own decimals, e.g. `99_000_000n` for 99 of a 6-decimal
-   * stablecoin). Required for
+   * `SAME_CHAIN_IE` swaps, `ECO_IE`, `OFT` and `LZ`: the least amount of
+   * `token` the swap, the Eco route or the OFT or Stargate send must deliver,
+   * in `token`'s smallest units (its own decimals, e.g. `99_000_000n` for 99
+   * of a 6-decimal stablecoin). Required for
    * a swap (with `maxAmount`), since the session key otherwise sets the swap's
    * output bound; `maxAmount : minAmount` is the worst rate accepted.
    *
@@ -475,8 +477,8 @@ interface ToLeg {
    * applies). Without `maxFeeBps`, every `from` leg must give the same
    * `maxAmount`, and a `to` leg named twice must give the same `minAmount`.
    *
-   * Every layer in the permit enforces it: one that cannot (always `CCTP` and
-   * `LZ`; `OFT` in the cases below) is refused when named and dropped under
+   * Every layer in the permit enforces it: one that cannot (always `CCTP`;
+   * `OFT` and `LZ` in the cases below) is refused when named and dropped under
    * `'all'`. Where both tokens' decimals are served, a value outside half of
    * to all of a `from` leg's `maxAmount` is refused as a units mistake, on
    * any layer list.
@@ -486,6 +488,18 @@ interface ToLeg {
    * decimals, and it must be positive and at most uint64. The orchestrator
    * sends at 1% slippage, so set it at most 99% of
    * the amount you expect to send.
+   *
+   * On `LZ` it is optional, on a leg LZ reaches over Stargate.
+   * The session then refuses a Stargate send whose `minAmountLD` is below it,
+   * so the pool's fee costs at most `amount sent − minAmount`. Without it
+   * the send accepts whatever fee the pool charges. It is an absolute
+   * amount, not a rate: a smaller send fails, and a quote whose own minimum
+   * is below it is refused. The LZ API quotes `minAmountLD` with about 1%
+   * slippage, so set `minAmount` to at most ~99% of the expected send, or
+   * the session cannot settle it. Refused at zero or above uint64, on a leg
+   * LZ reaches over CCTP, beside a second `to` leg on the same chain, and
+   * unless the orchestrator serves both tokens as USD stablecoins with equal
+   * decimals.
    */
   minAmount?: bigint
 }

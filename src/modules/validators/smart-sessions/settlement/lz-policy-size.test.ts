@@ -407,16 +407,129 @@ describe.each(Object.entries(PERMITS))(
   },
 )
 
+/** The owner's floor on what a Stargate send into Soneium must deliver. */
+const FLOOR = 9_800_000n
+
+/** Permits whose Soneium leg carries `to.minAmount`. */
+const FLOORED: Record<string, { to: number[]; open?: boolean }> = {
+  'floored stargate, base -> soneium': { to: [SONEIUM] },
+  'floored stargate, base -> soneium + arbitrum + plasma': {
+    to: [SONEIUM, ARB, PLASMA],
+  },
+  "floored stargate, recipient 'any', base -> soneium + arbitrum + plasma": {
+    to: [SONEIUM, ARB, PLASMA],
+    open: true,
+  },
+}
+
+const flooredContext = (permit: (typeof FLOORED)[string]) =>
+  context({
+    destinations: legs(permit.to, permit.open).map((leg) =>
+      leg.chainId === SONEIUM ? { ...leg, minAmount: FLOOR } : leg,
+    ),
+  })
+
+/** Byte offset of the Stargate send's `minAmountLD` in the batch calldata. */
+const MIN_AMOUNT_AT = (() => {
+  const data = taxi(SONEIUM, ACCOUNT).data
+  const word = toHex(9_899_009n, { size: 32 }).slice(2)
+  const at = data.slice(2).indexOf(word)
+  if (at < 0 || at % 2 !== 0) throw new Error('minAmountLD not found')
+  return at / 2
+})()
+
+describe.each(Object.entries(FLOORED))(
+  'LZ policy with a Stargate floor: %s',
+  (_, permit) => {
+    const ctx = flooredContext(permit)
+    const current = scopeLz(ctx)
+    // The same permit without the floor: the policy the suites above hold to
+    // the frozen copy.
+    const unfloored = scopeLz(
+      context({ destinations: legs(permit.to, permit.open) }),
+    )
+    const old = scopeLzV0(ctx)
+    // Whether the batch is a Stargate send into Soneium, the floored leg.
+    const intoSoneium = scopeLz(
+      context({ destinations: legs([SONEIUM], permit.open) }),
+    )
+    const to = permit.open ? OTHER : ACCOUNT
+
+    const expectFloored = (data: Hex, name: string) => {
+      const now = holds(current, data)
+      const below =
+        holds(intoSoneium, data) &&
+        BigInt(slice(data, MIN_AMOUNT_AT, MIN_AMOUNT_AT + 32)) < FLOOR
+      expect(now, name).toBe(holds(unfloored, data) && !below)
+      // Never looser than the frozen copy, except where LZMultiCall reverts or
+      // only the CCTP burn token differs, as the suites above allow.
+      if (now && !holds(old, data)) {
+        const usdc = withBurnToken(data, USDC_BASE)
+        const reverts = (() => {
+          try {
+            return multiCallReverts(data, ACCOUNT)
+          } catch {
+            return false
+          }
+        })()
+        expect(
+          reverts || (usdc !== undefined && usdc !== data && holds(old, usdc)),
+          `widened: ${name}`,
+        ).toBe(true)
+      }
+      return now
+    }
+
+    const valid = permit.to.flatMap((chainId) => admitted(chainId, to))
+
+    test('admits each batch at or above the floor, refuses one below', () => {
+      for (const { data } of valid) expect(holds(current, data)).toBe(true)
+      const atFloor = setWord(taxi(SONEIUM, to).data, MIN_AMOUNT_AT, FLOOR)
+      const below = setWord(atFloor, MIN_AMOUNT_AT, FLOOR - 1n)
+      expect(expectFloored(atFloor, 'at floor')).toBe(true)
+      expect(holds(old, below)).toBe(true)
+      expect(holds(unfloored, below)).toBe(true)
+      expect(expectFloored(below, 'below floor')).toBe(false)
+    })
+
+    test('decides every single-word mutation and splice as the unfloored policy plus the floor', () => {
+      let refused = 0
+      for (const { data } of valid) {
+        for (const [name, mutated] of mutations(data)) {
+          if (!expectFloored(mutated, name)) refused++
+        }
+      }
+      const pool = [
+        ...valid,
+        ...[ARB, OP, PLASMA].flatMap((chainId) => burn(chainId, { to }) ?? []),
+      ]
+      for (const a of pool) {
+        for (const b of pool) {
+          if (a === b || a.calls !== b.calls) continue
+          let n = 0
+          for (const spliced of splices(a.data, b.data, 100)) {
+            if (!expectFloored(spliced, `splice ${n++}`)) refused++
+          }
+        }
+      }
+      expect(refused).toBeGreaterThan(0)
+    })
+  },
+)
+
 test('rule counts, initData and the frozen policy compile as pinned', () => {
   // A revert of the shared-pin factoring or of a route's narrowing moves the
   // live numbers; any change to the frozen copy's inputs moves its hash.
-  const table = Object.fromEntries(
+  const table: Record<string, unknown> = Object.fromEntries(
     Object.entries(PERMITS).map(([name, permit]) => {
       const ctx = context(permit.ctx)
       const old = scopeLzV0(ctx)
       return [name, { old: frozen(old), now: measure(scopeLz(ctx)) }]
     }),
   )
+  for (const [name, permit] of Object.entries(FLOORED)) {
+    table[name] = { now: measure(scopeLz(flooredContext(permit))) }
+  }
   expect(table).toMatchInlineSnapshot(`
     {
       "all three layouts, base -> soneium + arbitrum + plasma": {
@@ -479,6 +592,27 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
           "hash": "0x8d49f2894f88ed4a6d1e472b9eb15cd23ac7b92d84deabd7d94440f7c291abf2",
           "nonZeroWords": 148,
           "rules": 36,
+        },
+      },
+      "floored stargate, base -> soneium": {
+        "now": {
+          "bytes": 10464,
+          "nonZeroWords": 167,
+          "rules": 40,
+        },
+      },
+      "floored stargate, base -> soneium + arbitrum + plasma": {
+        "now": {
+          "bytes": 23264,
+          "nonZeroWords": 372,
+          "rules": 90,
+        },
+      },
+      "floored stargate, recipient 'any', base -> soneium + arbitrum + plasma": {
+        "now": {
+          "bytes": 22496,
+          "nonZeroWords": 360,
+          "rules": 87,
         },
       },
       "recipient 'any', base -> soneium + arbitrum + plasma": {

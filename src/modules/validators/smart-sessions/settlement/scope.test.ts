@@ -14,9 +14,18 @@ import {
   baseSepolia,
   optimism,
   plasma,
+  soneium,
 } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
+import {
+  execute,
+  ACCOUNT as LZ_ACCOUNT,
+  CAP as LZ_CAP,
+  SONEIUM_EID,
+  stargate,
+  USDC_SONEIUM,
+} from '../../../../../test/utils/lz-calldata'
 import {
   type RuleUsage,
   satisfiesRules,
@@ -484,6 +493,197 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(satisfiesRules(action, approve(delegate, 40n), usage)).toBe(true)
     // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
     expect(satisfiesRules(action, approve(LZ_BASE.multiCall))).toBe(false)
+  })
+
+  describe('LZ to.minAmount', () => {
+    const lzScope = (
+      permit: Partial<CrossChainPermissionInput>,
+      settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+    ) =>
+      resolveSettlementScope(
+        [
+          resolveCrossChainPermission({
+            from: { chain: base, token: USDC, maxAmount: LZ_CAP },
+            to: {
+              chain: soneium,
+              token: USDC_SONEIUM,
+              minAmount: 9_800_000n,
+            },
+            settlementLayers: ['LZ'],
+            ...permit,
+          }),
+        ],
+        {
+          chainId: base.id,
+          environment: 'production',
+          account: LZ_ACCOUNT,
+          oneTimeUse: true,
+          settlement,
+        },
+      )
+    const executeOf = (resolved: ReturnType<typeof resolveSettlementScope>) => {
+      const action = resolved?.actions.find(
+        (a) => a.selector === LZ_EXECUTE_SELECTOR,
+      )
+      if (!action) throw new Error('no execute action')
+      return action
+    }
+    // ECO_IE settles Base -> Arbitrum USDC. Without Arbitrum's LZ CCTP block,
+    // LZ reaches that leg over Stargate only.
+    const { cctp: _, ...arbLz } = SETTLEMENT_CATALOG[arbitrum.id].lz!
+    const stargateOnly: SettlementCatalog = {
+      ...SETTLEMENT_CATALOG,
+      [arbitrum.id]: { ...SETTLEMENT_CATALOG[arbitrum.id], lz: arbLz },
+    }
+    const toArb = {
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 9_800_000n },
+      validUntil: new Date(2_000_000_000_000),
+    }
+    const arbSend = (minAmount: bigint) =>
+      execute(stargate('taxi', { minAmount }))
+    const soneiumLeg = (minAmount: bigint) => ({
+      chain: soneium,
+      token: USDC_SONEIUM,
+      minAmount,
+    })
+    const { usdStablecoins: __, ...soneiumNoDecimals } =
+      SETTLEMENT_CATALOG[soneium.id]
+
+    test.each([
+      [
+        'a zero floor',
+        { from: { chain: base, token: USDC }, to: soneiumLeg(0n) },
+        SETTLEMENT_CATALOG,
+        'must be positive',
+      ],
+      [
+        'a floor above uint64',
+        { from: { chain: base, token: USDC }, to: soneiumLeg(2n ** 64n) },
+        SETTLEMENT_CATALOG,
+        'above uint64',
+      ],
+      [
+        'unserved decimals',
+        {},
+        { ...SETTLEMENT_CATALOG, [soneium.id]: soneiumNoDecimals },
+        'served with equal decimals',
+      ],
+      [
+        'a second leg on the floored chain',
+        { to: [soneiumLeg(9_800_000n), soneiumLeg(9_800_000n)] },
+        SETTLEMENT_CATALOG,
+        'must be the only `to` leg',
+      ],
+      [
+        'a leg reached over CCTP',
+        { to: toArb.to },
+        SETTLEMENT_CATALOG,
+        'only on a Stargate send',
+      ],
+    ] as [
+      string,
+      Partial<CrossChainPermissionInput>,
+      SettlementCatalog,
+      string,
+    ][])(
+      "drops LZ under 'all' on %s, and refuses it named",
+      (_, permit, settlement, reason) => {
+        const scoped = (
+          settlementLayers: CrossChainPermissionInput['settlementLayers'],
+        ) => lzScope({ ...permit, settlementLayers }, settlement)
+        expect(() => scoped(['LZ'])).toThrow(SettlementLayerRefusal)
+        expect(() => scoped(['LZ'])).toThrow(reason)
+        // Dropped: either the permit settles without LZ, or no layer is left
+        // and LZ's reason is listed.
+        try {
+          expect(scoped('all')?.settlementLayers).not.toContain('LZ')
+        } catch (error) {
+          expect(String(error)).toContain('no IntentExecutor layer can settle')
+          expect(String(error)).toContain('LZ: ')
+          expect(String(error)).toContain(reason)
+        }
+      },
+    )
+
+    test('a floor above maxAmount is a units mistake, not a dropped layer', () => {
+      for (const settlementLayers of [['LZ'], 'all'] as const) {
+        expect(() =>
+          lzScope({
+            to: soneiumLeg(LZ_CAP + 1n),
+            settlementLayers:
+              settlementLayers === 'all' ? 'all' : [...settlementLayers],
+          }),
+        ).toThrow('must be between half of and all of')
+      }
+    })
+
+    test('floors what the Stargate send must deliver', () => {
+      const action = lzScope({})?.actions.find(
+        (a) => a.selector === LZ_EXECUTE_SELECTOR,
+      )
+      if (!action) throw new Error('no execute action')
+      const send = (minAmount: bigint) =>
+        execute(stargate('taxi', { eid: SONEIUM_EID, minAmount }))
+      expect(satisfiesRules(action, send(9_800_000n))).toBe(true)
+      expect(satisfiesRules(action, send(9_799_999n))).toBe(false)
+    })
+
+    test('is refused beside CCTP, which cannot enforce it', () => {
+      expect(() => lzScope({ settlementLayers: ['LZ', 'CCTP'] })).toThrow(
+        'CCTP cannot enforce `to.minAmount`',
+      )
+    })
+
+    test("settles over LZ alone under 'all' when ECO_IE cannot settle the permit", () => {
+      // ECO_IE does not reach Soneium, and CCTP cannot enforce the floor.
+      const resolved = lzScope({ settlementLayers: 'all' })
+      expect(resolved?.settlementLayers).toEqual(['LZ'])
+      const send = (minAmount: bigint) =>
+        execute(stargate('taxi', { eid: SONEIUM_EID, minAmount }))
+      expect(satisfiesRules(executeOf(resolved), send(9_800_000n))).toBe(true)
+      expect(satisfiesRules(executeOf(resolved), send(9_799_999n))).toBe(false)
+    })
+
+    test.each([
+      ['beside ECO_IE', ['ECO_IE', 'LZ'] as const],
+      ["under 'all'", 'all' as const],
+    ])('floors the Stargate send %s', (_, layers) => {
+      const resolved = lzScope(
+        { ...toArb, settlementLayers: layers === 'all' ? 'all' : [...layers] },
+        stargateOnly,
+      )
+      expect(resolved?.settlementLayers).toEqual(['ECO_IE', 'LZ'])
+      const action = executeOf(resolved)
+      expect(satisfiesRules(action, arbSend(9_800_000n))).toBe(true)
+      expect(satisfiesRules(action, arbSend(9_799_999n))).toBe(false)
+    })
+
+    test('beside ECO_IE, is refused on a leg LZ reaches over CCTP', () => {
+      expect(() =>
+        lzScope({ ...toArb, settlementLayers: ['ECO_IE', 'LZ'] }),
+      ).toThrow('LZ pins `to.minAmount` only on a Stargate send')
+      // 'all' drops LZ there, and CCTP, and settles over ECO_IE.
+      expect(
+        lzScope({ ...toArb, settlementLayers: 'all' })?.settlementLayers,
+      ).toEqual(['ECO_IE'])
+    })
+
+    test("drops LZ under 'all' when two `to` legs share its chain", () => {
+      const twoLegs = {
+        ...toArb,
+        to: [toArb.to, toArb.to],
+      }
+      expect(
+        lzScope({ ...twoLegs, settlementLayers: 'all' }, stargateOnly)
+          ?.settlementLayers,
+      ).toEqual(['ECO_IE'])
+      expect(() =>
+        lzScope(
+          { ...twoLegs, settlementLayers: ['ECO_IE', 'LZ'] },
+          stargateOnly,
+        ),
+      ).toThrow('a floored LZ leg must be the only `to` leg on chain 42161')
+    })
   })
 
   describe('SAME_CHAIN_IE', () => {

@@ -73,6 +73,7 @@ const LAYERS: Record<
       served(settlement, chainId, 'lz').transferDelegate,
     scope: scopeLz,
     requiresOneTimeUse: true,
+    floorsDelivery: true,
   },
 }
 
