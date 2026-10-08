@@ -238,6 +238,12 @@ interface SpendingLimitsPolicy {
   }[]
 }
 
+/**
+ * A raw action's time window. Optional: bound a session with
+ * `oneTimeUse.validUntil`. On a `oneTimeUse` session, `validUntil` (unix ms)
+ * can only shorten that one session-wide deadline (the earliest applies), and
+ * `validAfter` must be `0`. Any other use throws.
+ */
 interface TimeFramePolicy {
   type: 'time-frame'
   validUntil: number
@@ -353,10 +359,9 @@ type CrossChainSettlementLayer =
  * A high-level permit that authorises a session key to move funds
  * between two chains via Permit2 arbiter settlement. The SDK expands
  * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
- * plus optional `SpendingLimitsPolicy` / `TimeFramePolicy`
- * entries on the fallback action — the claim policy itself doesn't
- * enforce amounts or expiry on-chain, so we lift those guarantees into
- * action-level policies that do.
+ * plus an optional `SpendingLimitsPolicy` on the fallback action — the
+ * claim policy itself doesn't enforce amounts on-chain, so the SDK lifts
+ * that guarantee into an action-level policy that does.
  *
  * Resolved from {@link CrossChainPermissionInput} by the SDK; consumers
  * normally set `SessionDefinition.crossChainPermits` with the input shape,
@@ -377,9 +382,13 @@ interface CrossChainPermit {
    * still constrains the destination recipient even when `to` is absent.
    */
   to?: ToLeg[]
-  /** Upper bound on the permit deadline (Permit2 deadline) — unix seconds */
+  /**
+   * Optional upper bound on the permit deadline (Permit2 deadline) — unix
+   * seconds. Requires `oneTimeUse` and can only shorten its session-wide
+   * deadline; see {@link CrossChainPermissionInput}.
+   */
   validUntil?: bigint
-  /** Lower bound on the permit deadline — unix seconds */
+  /** Not supported; a permit that sets it throws. */
   validAfter?: bigint
   /** Per-destination fill-deadline windows — unix seconds */
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
@@ -475,8 +484,8 @@ interface ToLeg {
  * `SessionDefinition.crossChainPermits`; token fields are per-chain ERC-20
  * addresses (v2 no longer accepts symbols) and the SDK resolves `Date`s to
  * on-chain deadlines, then expands
- * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus optional
- * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
+ * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus an optional
+ * `SpendingLimitsPolicy` guardrail.
  */
 interface CrossChainPermissionInput {
   /**
@@ -494,11 +503,13 @@ interface CrossChainPermissionInput {
    */
   to?: ToLeg | ToLeg[]
   /**
-   * Upper bound on the permit deadline. On an IntentExecutor-layer permit it
-   * requires `oneTimeUse` and becomes the one-time-use deadline.
+   * Optional upper bound on the permit deadline. Bound a session with
+   * `oneTimeUse.validUntil`; this requires `oneTimeUse` and can only shorten
+   * that one session-wide deadline (the earliest `validUntil` in the session
+   * applies, to the permit deadline too). A future `Date`.
    */
   validUntil?: Date
-  /** Lower bound on the permit deadline. Refused on an IntentExecutor-layer permit. */
+  /** Not supported; a permit that sets it throws. */
   validAfter?: Date
   /** Per-destination fill-deadline windows. */
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
@@ -718,12 +729,13 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Upper bound on `block.timestamp`. Pairs with `validAfter` into one
-   * `time-frame` policy. If only one of the two is set, the other defaults to
-   * "always passes" (validAfter=0 / validUntil=year-2100).
+   * Optional. Bound a session with `oneTimeUse.validUntil`; this requires
+   * `oneTimeUse` and can only shorten that one session-wide deadline (the
+   * earliest `validUntil` in the session applies). It bounds the whole
+   * session, not this function alone. A future `Date`.
    */
   validUntil?: Date
-  /** Lower bound on `block.timestamp`. See `validUntil`. */
+  /** Not supported; a permission that sets it throws. */
   validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
@@ -964,8 +976,8 @@ interface SessionDefinition<
   claimPolicies?: readonly Permit2ClaimPolicy[]
   /**
    * Cross-chain permits expanded by the SDK into matching
-   * {@link Permit2ClaimPolicy} (claim-side) plus action-level
-   * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
+   * {@link Permit2ClaimPolicy} (claim-side) plus an action-level
+   * `SpendingLimitsPolicy` guardrail.
    * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
    * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
    * it pins from the orchestrator's `GET /chains`.
@@ -1032,10 +1044,13 @@ interface SessionDefinition<
    * that is also one of several sources. A Permit2-route session must also supply `claimPolicies`, each
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
-   * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
-   * An IntentExecutor-layer permit's `validUntil` bounds it too (the earlier one
-   * applies), and either deadline bounds the whole session, including its
-   * `permissions` and `actions`.
+   * `validUntil` (a future Date; omit for never) is the way to bound a session
+   * in time: one deadline for the whole session, including its `permissions`,
+   * `actions` and `crossChainPermits`. A `validUntil` on a permission function,
+   * a raw `time-frame` action policy or a `crossChainPermits` entry is optional
+   * and can only shorten it (the earliest applies); there is no per-function
+   * deadline. Without `oneTimeUse` those fields throw, and `validAfter` always
+   * does.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
