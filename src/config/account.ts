@@ -325,7 +325,8 @@ interface Permit2ClaimPolicy {
  *   `LZ` that can settle the permit on the session's chain, and silently
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
- *   `maxFeeBps` and `validUntil`, `OFT`'s and `LZ`'s `oneTimeUse`), or cannot
+ *   `maxFeeBps` or a `validUntil` under 7 days ahead, `OFT`'s and `LZ`'s
+ *   `oneTimeUse`), or cannot
  *   enforce the `to.minAmount` given (always `CCTP`). Setting `maxFeeBps` asks
  *   for `ECO_IE`, so a dropped `ECO_IE` is then refused with its reason, and
  *   it floors only the `ECO_IE` call. A `to.minAmount` needs no particular layer:
@@ -340,9 +341,11 @@ interface Permit2ClaimPolicy {
  *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
  *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount`, a delivery floor and `validUntil`; `validUntil` at least 7 days
+ *   `maxAmount` and a delivery floor. A `validUntil` must be at least 7 days
  *   from now, since the session pins Eco's reward deadline under it and Eco
- *   quotes that ~7 days out. Both tokens must be ones the orchestrator serves
+ *   quotes that ~7 days out, so `ECO_IE` is usable only until `validUntil`
+ *   minus 7 days. Omit `validUntil` and an unfilled `ECO_IE` reward has no
+ *   refund deadline. Both tokens must be ones the orchestrator serves
  *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
  *   served, or a `to.minAmount` on every leg, for any two such tokens; given
  *   both, the higher applies. Without `maxFeeBps`, `ECO_IE` needs every `from`
@@ -532,6 +535,10 @@ interface CrossChainPermissionInput {
    * `oneTimeUse.validUntil`; this requires `oneTimeUse` and can only shorten
    * that one session-wide deadline (the earliest `validUntil` in the session
    * applies, to the permit deadline too). A future `Date`.
+   *
+   * For `ECO_IE` it must be at least 7 days ahead, and `ECO_IE` is usable
+   * only until `validUntil` minus 7 days. Omit it and an unfilled `ECO_IE`
+   * reward has no refund deadline.
    */
   validUntil?: Date
   /** Not supported; a permit that sets it throws. */

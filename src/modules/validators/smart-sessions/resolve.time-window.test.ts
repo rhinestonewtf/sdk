@@ -28,6 +28,28 @@ const ONE_TIME_USE = '0x3333333333333333333333333333333333333333' as Address
 const UNTIL = new Date(2_000_000_000_000)
 const owners = { type: 'ecdsa' as const, accounts: [accountA] }
 
+function eco(
+  settlementLayers: ['ECO_IE'] | 'all',
+  validUntil?: Date,
+): SessionDefinition {
+  return {
+    chain: base,
+    owners,
+    account: ACCOUNT,
+    oneTimeUse: { id: 7n },
+    policyAddresses: { oneTimeUseId: ONE_TIME_USE },
+    crossChainPermits: [
+      {
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        to: { chain: arbitrum, token: USDC_ARB, recipient: ACCOUNT },
+        settlementLayers,
+        maxFeeBps: 100,
+        ...(validUntil === undefined ? {} : { validUntil }),
+      },
+    ],
+  }
+}
+
 function fingerprint(definition: SessionDefinition) {
   const session = toSession(definition, { settlement: SETTLEMENT_CATALOG })
   return {
@@ -141,6 +163,10 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
       },
     ],
   },
+  'ECO_IE permit with oneTimeUse and validUntil': eco(['ECO_IE'], UNTIL),
+  "'all' permit with oneTimeUse and validUntil": eco('all', UNTIL),
+  // Unreleased: ECO_IE without validUntil carries no deadline pin.
+  'ECO_IE permit with oneTimeUse, no validUntil': eco(['ECO_IE']),
 }
 
 const PINS: Record<string, ReturnType<typeof fingerprint>> = {
@@ -188,6 +214,21 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
     permissionId:
       '0xa8a9e8f395b07204d56599bc6f08ef1a9e915792314ec2d39d85a6f7a3bccf35',
     data: '0xdcc45c2fa680a975bde430fba67ffda2fe3d55b4ea86e4147e2262f2ce030cff',
+  },
+  'ECO_IE permit with oneTimeUse and validUntil': {
+    permissionId:
+      '0xff61c30f6b4794ec4840ad4bd44d24473fea1d14aa536c6e909b1e27133f4273',
+    data: '0xeb6eb911771278c0a34d9179767931855b4830c7f8579c875aaa0207acb2b039',
+  },
+  "'all' permit with oneTimeUse and validUntil": {
+    permissionId:
+      '0xaaf9c2a56da66ebe7ccfcde1045788910b266d99fe0b56585e46cb7737bf5c95',
+    data: '0xfd0a52ced0f5bdff5c29a94cc82b4e257913b64c2d8b5d9962e53f9b059ab478',
+  },
+  'ECO_IE permit with oneTimeUse, no validUntil': {
+    permissionId:
+      '0x87cd89541acd720fcf1ef0606465afd81d0796f79ef505ce47c293f5b2e14ec9',
+    data: '0xa86846105fb19cbecc9bdc7c466bca318027bc28818aaac52906f01a676d5eff',
   },
 }
 

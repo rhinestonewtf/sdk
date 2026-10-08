@@ -255,7 +255,6 @@ describe('scopeEco', () => {
       'maxFeeBps must be an integer',
     ],
     ['a negative maxFeeBps', { maxFeeBps: -1 }, 'maxFeeBps must be an integer'],
-    ['no validUntil', { validUntil: undefined }, 'needs validUntil'],
     ['no account', { account: undefined }, 'needs `account`'],
     [
       'more than one source token',
@@ -388,6 +387,42 @@ describe('scopeEco', () => {
     expect(at(NOW + ECO_MIN_VALIDITY_SECONDS - 1n)).toThrow(
       'ECO_IE needs validUntil at least 7 days ahead',
     )
+  })
+
+  describe('without validUntil', () => {
+    const open = scopeEco({ ...base, validUntil: undefined })
+    const MAX_UINT64 = 2n ** 64n - 1n
+
+    test('pins neither deadline', () => {
+      const policy = open.policies?.[0]
+      if (policy?.type !== 'arg-policy')
+        throw new Error('expected an arg policy')
+      const offsets = rulesOf(policy.expression).map((r) => r.calldataOffset)
+      expect(offsets).not.toContain(PUBLISH.rewardDeadline)
+      expect(offsets).not.toContain(PUBLISH.routeDeadline)
+      // Everything else is the bounded policy's.
+      expect(rulesOf(policy.expression)).toEqual(
+        rulesOf(expression).filter(
+          (r) =>
+            r.calldataOffset !== PUBLISH.rewardDeadline &&
+            r.calldataOffset !== PUBLISH.routeDeadline,
+        ),
+      )
+    })
+
+    test('admits a publish with either deadline at the uint64 maximum', () => {
+      expect(holds(open, publish())).toBe(true)
+      expect(
+        holds(
+          open,
+          publish({ deadline: MAX_UINT64, routeDeadline: MAX_UINT64 }),
+        ),
+      ).toBe(true)
+    })
+
+    test('still refuses a reward over the cap', () => {
+      expect(holds(open, publish({ reward: 101n }))).toBe(false)
+    })
   })
 
   describe('the 1:1 floor needs every token served with known decimals', () => {
