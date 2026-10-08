@@ -473,29 +473,22 @@ function resolveSession(
   const claimPoliciesMoved = claimPolicies.length > 0
   if (claimPoliciesMoved) {
     const signing = definition.signing
-    // `scoped` and `disabled` both rewrite `allowedERC7739Content`, which is the
-    // gate the claim policy is reached through: scoped replaces the wildcard
-    // entry, disabled empties it, and either way the policy is never consulted.
-    // The list is also an AND, so a scoped content could not be signed anyway —
-    // the claim policy rejects every digest that is not its own.
+    // `scoped` and `disabled` rewrite `allowedERC7739Content`, the gate the claim
+    // policy is reached through, so the policy would never be consulted. A
+    // validity window instead lowers to a TimeFramePolicy, which ANDs with the
+    // claim policies and leaves the gate alone, so it is carried; a windowless
+    // signing policy is sudo and is dropped rather than advertising a capability
+    // the session no longer has.
     if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw new Error(
-        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound the window, or drop the claim policies.`,
+        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
       )
     }
-    // A validity window is the one thing that survives: it lowers to a
-    // TimeFramePolicy, which ANDs with the claim policies and leaves the content
-    // gate alone. Without one the signing policy is a sudo entry that cannot
-    // weaken the AND but would read as a capability the session no longer has,
-    // so it is dropped rather than carried.
-    const windowPolicy =
-      signing !== undefined &&
-      (signing.validAfter !== undefined || signing.validUntil !== undefined)
-        ? erc1271Policies
-        : []
+    const hasWindow =
+      signing?.validAfter !== undefined || signing?.validUntil !== undefined
     erc1271Policies = [
       ...claimPolicies,
-      ...windowPolicy,
+      ...(hasWindow ? erc1271Policies : []),
       ...(onceErc1271Policy ? [onceErc1271Policy] : []),
     ]
     claimPolicies = []

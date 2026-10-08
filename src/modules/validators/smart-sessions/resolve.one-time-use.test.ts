@@ -6,6 +6,7 @@ import { accountA } from '../../../../test/consts'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionData } from './digest'
 import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
+import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
 import { resolveSessionData, toSession } from './resolve'
 
 // Kept out of resolve.test.ts because that file imports fast-check (declared in
@@ -272,8 +273,6 @@ describe('resolveSessionData — one-time-use session', () => {
     },
   )
 
-  // The window ANDs with the claim policy and the once-policy, so all three are
-  // carried. Without one the signing policy is sudo and is dropped instead.
   test.each([
     { signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') } },
     { signing: { mode: 'unrestricted', validAfter: new Date('2020-01-01') } },
@@ -289,8 +288,11 @@ describe('resolveSessionData — one-time-use session', () => {
         policyAddresses: { oneTimeUseId: POLICY },
       }).erc7739Policies.erc1271Policies
 
-      expect(policies).toHaveLength(3)
-      expect(policies.at(-1)?.policy).toBe(POLICY)
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        TIME_FRAME_POLICY_ADDRESS,
+        POLICY,
+      ])
     },
   )
 
@@ -309,8 +311,10 @@ describe('resolveSessionData — one-time-use session', () => {
         policyAddresses: { oneTimeUseId: POLICY },
       }).erc7739Policies.erc1271Policies
 
-      expect(policies).toHaveLength(2)
-      expect(policies.at(-1)?.policy).toBe(POLICY)
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        POLICY,
+      ])
     },
   )
 

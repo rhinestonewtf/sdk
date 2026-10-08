@@ -11,6 +11,7 @@ import {
 } from './cross-chain-permits'
 import { getSessionData } from './digest'
 import { buildSmartSessionMockSignature } from './mock-signature'
+import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
 import {
   DEFAULT_POLICY_ADDRESSES,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
@@ -442,8 +443,6 @@ describe('Permit2 claim policy placement', () => {
     expect(content[0].appDomainSeparator).toBe(zeroHash)
   })
 
-  // Both modes rewrite `allowedERC7739Content`, which is the gate the claim
-  // policy is reached through, so the declared policy would never be consulted.
   test.each([
     { mode: 'disabled' },
     {
@@ -462,29 +461,27 @@ describe('Permit2 claim policy placement', () => {
     )
   })
 
-  // A window lowers to a TimeFramePolicy, which ANDs with the claim policy and
-  // leaves the content gate alone, so it is kept rather than refused.
   test('keeps a signing validity window alongside claim policies', () => {
     const windowed = toSession({
       ...definition,
       signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
     }).erc7739Policies.erc1271Policies
 
-    expect(windowed).toHaveLength(2)
-    expect(windowed[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
-    expect(windowed[1].policy).not.toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(windowed.map(({ policy }) => policy)).toEqual([
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+      TIME_FRAME_POLICY_ADDRESS,
+    ])
   })
 
-  // Without a window the signing policy is a sudo entry: it cannot weaken the
-  // AND, but it would read as a capability the session no longer has.
   test('drops a windowless signing policy alongside claim policies', () => {
     const policies = toSession({
       ...definition,
       signing: { mode: 'unrestricted' },
     }).erc7739Policies.erc1271Policies
 
-    expect(policies).toHaveLength(1)
-    expect(policies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(policies.map(({ policy }) => policy)).toEqual([
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    ])
   })
 
   test('salts the session so it cannot share a permissionId with a plain one', () => {
