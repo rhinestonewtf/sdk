@@ -11,6 +11,7 @@ import type {
 import { scopeCctp } from './cctp'
 import { scopeEco } from './eco'
 import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
+import { requireFloorsWithinCaps } from './floor'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -45,6 +46,8 @@ const LAYERS: Record<
      * a reusable session could repeat dust sends until the balance is gone.
      */
     readonly requiresOneTimeUse?: true
+    /** Enforces the leg's `to.minAmount` on what its call delivers. */
+    readonly floorsDelivery?: true
   }
 > = {
   CCTP: {
@@ -56,10 +59,12 @@ const LAYERS: Record<
     target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
     requiresOneTimeUse: true,
+    floorsDelivery: true,
   },
   ECO_IE: {
     target: (settlement, chainId) => served(settlement, chainId, 'eco').portal,
     scope: scopeEco,
+    floorsDelivery: true,
   },
   LZ: {
     target: (settlement, chainId) =>
@@ -253,26 +258,11 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && !requested.includes('ECO_IE')) {
     throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
   }
-  const minAmount = permit.to?.some((leg) => leg.minAmount !== undefined)
-  if (minAmount && !sameChainOnly && !requested.includes('ECO_IE')) {
-    throw new Error(
-      'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap or ECO_IE',
-    )
-  }
-  // Each source chain's session floors its own capped reward with the same
-  // absolute amount, so it bounds the rate only where every cap is the same.
-  const sourceCaps = new Set(
-    (permit.from ?? []).map(({ maxAmount }) => maxAmount),
-  )
-  if (
-    minAmount &&
-    requested.includes('ECO_IE') &&
-    permit.maxFeeBps === undefined &&
-    sourceCaps.size > 1
-  ) {
-    throw new Error(
-      'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
-    )
+  // Every layer in the permit must enforce `to.minAmount`, or the key would
+  // settle around it: scopeLayer refuses one that cannot (CCTP never can).
+  const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
+  if (minAmount && !sameChainOnly && options.settlement) {
+    requireFloorsWithinCaps(permit, options.settlement)
   }
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
@@ -311,10 +301,16 @@ export function resolveSettlementScope(
       "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
+  const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: an ${layer} permit requires oneTimeUse`,
+      )
+    }
+    if (minAmount && !LAYERS[layer].floorsDelivery) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
       )
     }
     const target = LAYERS[layer].target(settlement, options.chainId)
@@ -328,6 +324,7 @@ export function resolveSettlementScope(
       sourceTokens,
       destinations,
       cap,
+      fromCaps,
       ...(permit.maxFeeBps === undefined
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
@@ -357,11 +354,6 @@ export function resolveSettlementScope(
   if (permit.maxFeeBps !== undefined && ecoSkipped !== undefined) {
     throw new Error(
       `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
-    )
-  }
-  if (minAmount && ecoSkipped !== undefined) {
-    throw new Error(
-      `crossChainPermits: \`to.minAmount\` asks for ECO_IE, which cannot settle this permit: ${ecoSkipped}`,
     )
   }
   if (scopedLayers.length === 0) {

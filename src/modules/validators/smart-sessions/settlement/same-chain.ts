@@ -146,7 +146,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   if (sameToken.every(Boolean)) {
     if (ctx.destinations.some((leg) => leg.minAmount !== undefined)) {
       throw new Error(
-        'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+        'crossChainPermits: a SAME_CHAIN_IE transfer cannot enforce `to.minAmount`; it applies to a swap',
       )
     }
     const rules: UniversalActionPolicyParamRule[] =
