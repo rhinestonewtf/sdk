@@ -161,7 +161,6 @@ function legacyEco(ctx: SettlementContext): ScopedAction {
           right: legs.reduce((left, right) => ({ type: 'or', left, right })),
         },
       },
-      ...ctx.timeFrame,
     ],
   }
 }
@@ -469,7 +468,6 @@ const ecoCtx: SettlementContext = {
   cap: 100n,
   maxFeeBps: 100,
   validUntil: 1_900_000_000n,
-  timeFrame: [],
 }
 
 const legsCtx = (destinations: SettlementContext['destinations']) => ({

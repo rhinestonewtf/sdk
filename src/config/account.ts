@@ -328,7 +328,7 @@ interface Permit2ClaimPolicy {
  *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
  *   `maxAmount`, a delivery floor and `validUntil`; `validUntil` at least 7 days
- *   after it can first act (now or `validAfter`), since the session pins Eco's reward deadline under it and Eco
+ *   from now, since the session pins Eco's reward deadline under it and Eco
  *   quotes that ~7 days out. Both tokens must be ones the orchestrator serves
  *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
  *   served, or a `to.minAmount` on every leg, for any two such tokens; given
@@ -487,9 +487,12 @@ interface CrossChainPermissionInput {
    * the recipient.
    */
   to?: ToLeg | ToLeg[]
-  /** Upper bound on the permit deadline. */
+  /**
+   * Upper bound on the permit deadline. On an IntentExecutor-layer permit it
+   * requires `oneTimeUse` and becomes the one-time-use deadline.
+   */
   validUntil?: Date
-  /** Lower bound on the permit deadline. */
+  /** Lower bound on the permit deadline. Refused on an IntentExecutor-layer permit. */
   validAfter?: Date
   /** Per-destination fill-deadline windows. */
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
@@ -1011,6 +1014,9 @@ interface SessionDefinition<
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
    * `validUntil` (a future Date; omit for never) bounds when the id can be spent.
+   * An IntentExecutor-layer permit's `validUntil` bounds it too (the earlier one
+   * applies), and either deadline bounds the whole session, including its
+   * `permissions` and `actions`.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }

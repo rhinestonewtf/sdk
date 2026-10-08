@@ -137,7 +137,6 @@ function addFeeBranch(
   target: Address,
   selector: Hex,
   branch: UniversalActionPolicyParamRule[] | ArgPolicyExpression,
-  timeFrame: readonly SessionPolicy[],
 ): void {
   const index = actions.findIndex(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
@@ -147,7 +146,7 @@ function addFeeBranch(
     const policies: SessionPolicy[] = Array.isArray(branch)
       ? (swapAction(target, selector, branch).policies ?? [])
       : [{ type: 'arg-policy', valueLimitPerUse: 0n, expression: branch }]
-    actions.push({ target, selector, policies: [...policies, ...timeFrame] })
+    actions.push({ target, selector, policies })
     return
   }
   const expression = Array.isArray(branch) ? allOf(branch) : branch
@@ -182,28 +181,18 @@ export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: Fees,
-  timeFrame: readonly SessionPolicy[],
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
   const cap = () => cumulativeOnly(32n, SETTLEMENT_FEE_CAP)
   for (const token of sourceTokens) {
-    addFeeBranch(
-      out,
-      token,
-      TRANSFER_SELECTOR,
-      [pin(0n, fees.appFeeCollector), cap()],
-      timeFrame,
-    )
+    addFeeBranch(out, token, TRANSFER_SELECTOR, [
+      pin(0n, fees.appFeeCollector),
+      cap(),
+    ])
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
-    addFeeBranch(
-      out,
-      token,
-      APPROVE_SELECTOR,
-      [pin(0n, fees.paymaster), cap()],
-      timeFrame,
-    )
+    addFeeBranch(out, token, APPROVE_SELECTOR, [pin(0n, fees.paymaster), cap()])
   }
   // One cap rule after the OR, so every token draws on the same budget.
   addFeeBranch(
@@ -217,7 +206,6 @@ export function withFeeActions(
           left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
           right: allOf([cap()]),
         },
-    timeFrame,
   )
   return out
 }
