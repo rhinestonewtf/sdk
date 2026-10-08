@@ -3,6 +3,7 @@ import {
   encodeFunctionData,
   erc20Abi,
   toFunctionSelector,
+  zeroHash,
 } from 'viem'
 import {
   arbitrum,
@@ -645,6 +646,45 @@ describe('settlement-scoped crossChainPermits', () => {
     expect(() => resolveSessionData(twice)).toThrow(
       'at most one IntentExecutor-layer permit per session',
     )
+  })
+})
+
+describe('settlement-scoped session salt', () => {
+  const plain = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+  } as SessionDefinition
+
+  test('salts a settlement-scoped session without oneTimeUse or saltMode', () => {
+    const scoped = toSession(definition())
+    expect(scoped.salt).not.toBe(zeroHash)
+    expect(scoped.permissionId).not.toBe(toSession(plain).permissionId)
+  })
+
+  test('the salt is the strict one', () => {
+    expect(toSession(definition()).salt).toBe(
+      toSession(definition({}, { saltMode: 'strict' })).salt,
+    )
+    expect(toSession(definition({}, { saltMode: 'none' })).salt).toBe(
+      toSession(definition({}, { saltMode: 'strict' })).salt,
+    )
+  })
+
+  test("refuses saltMode 'v1'", () => {
+    expect(() => toSession(definition({}, { saltMode: 'v1' }))).toThrow(
+      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1'",
+    )
+  })
+
+  test('leaves a plain or restrictToActions session without saltMode on zeroHash', () => {
+    expect(toSession(plain).salt).toBe(zeroHash)
+    expect(
+      toSession({
+        ...plain,
+        restrictToActions: true,
+        actions: [{ target: USDC, selector: APPROVE }],
+      } as SessionDefinition).salt,
+    ).toBe(zeroHash)
   })
 })
 
