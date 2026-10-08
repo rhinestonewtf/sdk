@@ -37,8 +37,10 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   if (!selection || selection.kind !== 'smart-session') return undefined
   const chains = sessionChains(input.intent)
   for (const chain of chains) {
-    const policy = selection.byChain[chain.id]?.session.oneTimeUse?.policy
-    if (policy) assertOneTimeUseIdPolicyDeployed(policy, chain.id)
+    // Only a defaulted address: an explicit one may sit on a chain the table lacks.
+    const once = selection.byChain[chain.id]?.session.oneTimeUse
+    if (once?.defaultPolicy)
+      assertOneTimeUseIdPolicyDeployed(once.policy, chain.id)
   }
   const resolvedEntries = await Promise.all(
     chains.map(async (chain) => {

@@ -28,6 +28,7 @@ import {
   getQuorumMerkleRootSignableHash,
   getQuorumSignableHash,
 } from '../../modules/validators/quorum'
+import { ONE_TIME_USE_ID_POLICY_ADDRESS_DEV } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -723,6 +724,32 @@ describe('intent workflow', () => {
           ...input,
           sourceChains: [baseChain],
           signers: byChain([base.id, input.destination.id]),
+        }),
+      ).resolves.toBeDefined()
+    })
+
+    test('accepts an explicitly pinned canonical policy address on any chain', async () => {
+      const pinned = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [account] },
+          oneTimeUse: { id: 42n },
+          policyAddresses: { oneTimeUseId: ONE_TIME_USE_ID_POLICY_ADDRESS_DEV },
+        },
+        { environment: 'development' },
+      )
+      expect(pinned.oneTimeUse?.defaultPolicy).toBeUndefined()
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [toEvmChainReference(sepolia.id)],
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [sepolia.id]: { session: pinned },
+              [input.destination.id]: { session: pinned },
+            },
+          },
         }),
       ).resolves.toBeDefined()
     })
