@@ -44,6 +44,7 @@ import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
+  CrossChainPermit,
   IntentExecutorSettlementLayer,
   Permission,
   ResolvedAction,
@@ -51,6 +52,7 @@ import type {
   ResolvedPolicy,
   ScopedAction,
   Session,
+  SessionAccess,
   SessionAction,
   SessionData,
   SessionDefinition,
@@ -184,6 +186,7 @@ function resolveSession(
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
   readonly settlementCoverage: SettlementCoverage | undefined
+  readonly access: SessionAccess
 } {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
@@ -278,10 +281,13 @@ function resolveSession(
       "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
     )
   }
-  const restricted =
-    definition.restrictToActions === true ||
-    swapScope !== undefined ||
-    settlementScope !== undefined
+  const access = sessionAccess(
+    definition,
+    resolvedPermits,
+    swapScope !== undefined,
+    settlementScope?.settlementLayers,
+  )
+  const restricted = access.kind === 'scoped'
   const permissions = [
     ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
@@ -704,7 +710,45 @@ function resolveSession(
     settlementCoverage: settlementScope && {
       dropped: settlementScope.dropped,
     },
+    access,
   }
+}
+
+/** Whether the session drops the intent-execution fallback, and what decided it. */
+function sessionAccess(
+  definition: SessionDefinition,
+  permits: readonly CrossChainPermit[],
+  swapScoped: boolean,
+  settlementLayers: readonly IntentExecutorSettlementLayer[] | undefined,
+): SessionAccess {
+  const scopedBy = [
+    ...(definition.restrictToActions === true ? ['restrictToActions'] : []),
+    ...(swapScoped ? ['swap scope'] : []),
+    ...(settlementLayers
+      ? [`settlement-scoped permit (${settlementLayers.join(', ')})`]
+      : []),
+  ]
+  if (scopedBy.length) return { kind: 'scoped', reason: scopedBy.join('; ') }
+  if (permits.length) {
+    const layers = [
+      ...new Set(
+        permits.flatMap(({ settlementLayers: named }) =>
+          Array.isArray(named) ? named : [],
+        ),
+      ),
+    ]
+    return {
+      kind: 'open',
+      reason: `Permit2-route permit (${layers.length ? layers.join(', ') : 'any layer'}) keeps the intent-execution fallback`,
+    }
+  }
+  if (definition.claimPolicies?.length) {
+    return {
+      kind: 'open',
+      reason: 'claimPolicies keep the intent-execution fallback',
+    }
+  }
+  return { kind: 'open', reason: 'no restriction set' }
 }
 
 const POLICY_COMPONENTS = [
@@ -933,7 +977,7 @@ export function toSession(
   const environment = options.environment ?? 'production'
   // One resolution: 'all' depends on the clock and the catalog, so a second
   // could keep a different set of layers than the session's actions.
-  const { data, settlementLayers, settlementCoverage } = resolveSession(
+  const { data, settlementLayers, settlementCoverage, access } = resolveSession(
     definition,
     {
       environment,
@@ -980,6 +1024,7 @@ export function toSession(
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(settlementLayers.length ? { settlementLayers } : {}),
     ...(settlementCoverage ? { settlementCoverage } : {}),
+    access,
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,
