@@ -290,10 +290,12 @@ interface Permit2ClaimPolicy {
  *   retired Standard Eco arbiter).
  *   `SAME_CHAIN` and `ECO` are deprecated: their arbiter paths are retired, so
  *   use `SAME_CHAIN_IE` and `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor), `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
- *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap with
- *   a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC through
- *   the LayerZero Value Transfer API, over Stargate or CCTP) settle by the
+ * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor),
+ *   `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
+ *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap
+ *   with a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC
+ *   through the LayerZero Value Transfer API, over Stargate or CCTP, with an
+ *   optional `to.minAmount` floor on a Stargate send) settle by the
  *   account executing the call. Naming any of them makes the permit
  *   **settlement-scoped**: the session is restricted to those layers' calls
  *   and their approve, with the `from` token, the `to` chains and recipients,
@@ -308,9 +310,9 @@ interface Permit2ClaimPolicy {
  *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
  *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
  *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
- *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE` and
- *   `OFT` floor their own delivery, and naming a layer that cannot (`CCTP`
- *   never can) is refused. With `ECO_IE` among several layers, an intent settles over
+ *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE`, `OFT`
+ *   and `LZ` (on a Stargate send) floor their own delivery, and naming a layer
+ *   that cannot (`CCTP` never can) is refused. With `ECO_IE` among several layers, an intent settles over
  *   Eco only when it delivers at least its floor: the higher of
  *   `maxAmount × (1 − maxFeeBps / 10000)`, rescaled to the `to` token's
  *   decimals, and `to.minAmount`. Both are fixed against `maxAmount`, so the
@@ -342,8 +344,6 @@ interface Permit2ClaimPolicy {
  *   both, the higher applies. Without `maxFeeBps`, every `from` leg must give
  *   the same `maxAmount`: each source chain's session pins the same
  *   `to.minAmount` against its own cap. `OFT` and `LZ` require `oneTimeUse`.
- *   `to.minAmount` applies to `SAME_CHAIN_IE`, to `ECO_IE`, and to `OFT` or
- *   `LZ` named alone.
  *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
  *   addresses the orchestrator serves on `GET /chains`, so create their
  *   sessions with `sdk.createSession`.
@@ -482,7 +482,7 @@ interface ToLeg {
    * decimals. The orchestrator sends at 1% slippage, so set it at most 99% of
    * the amount you expect to send.
    *
-   * On an `LZ`-only permit it is optional, on a leg LZ reaches over Stargate.
+   * On `LZ` it is optional, on a leg LZ reaches over Stargate.
    * The session then refuses a Stargate send whose `minAmountLD` is below it,
    * so the pool's fee costs at most `amount sent − minAmount`. Without it
    * the send accepts whatever fee the pool charges. It is an absolute

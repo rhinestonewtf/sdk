@@ -238,14 +238,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     reached: readonly Leg[],
   ) => {
     if (minAmount <= 0n) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         'crossChainPermits: an LZ `to.minAmount` must be positive',
       )
     }
     // Stargate casts `minAmountLD` in shared decimals to uint64; a larger floor
     // would revert every send.
     if (minAmount > maxUint64) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         'crossChainPermits: an LZ `to.minAmount` above uint64 cannot be met by any Stargate send',
       )
     }
@@ -254,12 +254,12 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (
       reached.some((other) => other !== leg && other.chainId === leg.chainId)
     ) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: a floored LZ leg must be the only \`to\` leg on chain ${leg.chainId}; give one \`to\` leg per chain`,
       )
     }
     if (ctx.cap !== undefined && minAmount > ctx.cap) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: the LZ \`to.minAmount\` on chain ${leg.chainId} exceeds maxAmount, so no send could meet it`,
       )
     }
