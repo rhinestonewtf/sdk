@@ -145,18 +145,18 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'Permit2 crossChainPermit, oneTimeUse': {
     permissionId:
-      '0x443ca76c1f34d3034f0347daae2ec28a7dc8ef7cdd3bcf800369797c99fa2073',
-    data: '0xfe34938ffcbebb3ed069d126c6858b66db488fc74dfb5c3740897e899af2767a',
+      '0x714bcef1bcd1616a9ac3f1dd5b8653a0e5fe45b7f2661dcaa17b6f721aea8183',
+    data: '0xe01d5c74f5ca9df2fcb8ecbfbf202f2cbc51b5dd44c2c53deb92b8edf99ef855',
   },
   'oneTimeUse with permissions and claim policies': {
     permissionId:
-      '0x16b3f92dbe57fbbb59762c4b5dc66126f26b8e34a9227542b709fac83b4a2bca',
-    data: '0xc9e190633c648c4160b50225b14ac2d72d87fc4e4a3671e72c736474d4b6622c',
+      '0x9e3a4205e5610995830543d171b3b2b2b547b167d6ff28ecdc8df20fded09c3c',
+    data: '0x6641737a429e015f167bbf72a784a43d211d40605e6f07d6100c6765ce79614a',
   },
   'oneTimeUse with raw actions': {
     permissionId:
-      '0xa3f51489e58d860da4f7c9a62d6ad59399b71818f2024a63918449a3a43e2dbb',
-    data: '0x9e1812c4bf425f47bafcc98313c9f3a62fd230e9b442ada45828beb3063b7a7c',
+      '0x09437cf6fc2f5f27f7bab5a8d1527850e600b054d344e3fbb525a33e1dcaf415',
+    data: '0x6640ca3b8dde209b29db69d72d76bd7d51be6a450e3d13ebd2aeeaeb809719f8',
   },
   'signing window': {
     permissionId:
@@ -165,8 +165,8 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'CCTP permit with oneTimeUse and validUntil': {
     permissionId:
-      '0xe67ea3240512c8162f9d8f2f5f8e56e5941c11b4737924687c7afc8c33fa7de9',
-    data: '0x4a549b527124f0c37bec4952f2cd5f53f310c0413d0ad25b553347981e37100a',
+      '0xa8a9e8f395b07204d56599bc6f08ef1a9e915792314ec2d39d85a6f7a3bccf35',
+    data: '0xdcc45c2fa680a975bde430fba67ffda2fe3d55b4ea86e4147e2262f2ce030cff',
   },
 }
 
@@ -513,18 +513,18 @@ const WINDOWED: Record<string, SessionDefinition> = {
 const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   'permissions validUntil, oneTimeUse': {
     permissionId:
-      '0xb85339e133941810debd5d6a3921cbeff44eff3bd1a21d6293b52d120bc8b7e4',
-    data: '0x4ec7ecc4edaea6451b9e99fd04ab5e448db07e610399445d04111d469f4509d1',
+      '0x11fad567145ba56b9c764007f66aa153899324b1c86613b72d633465d3834c79',
+    data: '0x649bbc786e9db9e30358bd18604c844f0a48779cb078a6e202f61c6ea35e91ca',
   },
   'raw time-frame action, oneTimeUse': {
     permissionId:
-      '0xe46a3d35490ea0029b39e1913adb2a11d96b3221d17a032cb60020494dcf4da2',
-    data: '0xb06ef3c963c4fa2cc0e62d616c379ff6778c7767b609b4c52db602ef4c922265',
+      '0xe46b2f678467a3fb75c46fc0eb510695ab872dd3e8da1391c3cc202c261ad1f7',
+    data: '0xbbb1fb8b30f1961d2003be2d5f67dbe76aba67855a6ecfcf1e12a3186d91c670',
   },
   'Permit2 permit validUntil, oneTimeUse': {
     permissionId:
-      '0x920efa107228d78ac9bf6c492376905fbd5f671b3d64d7a79bdc73b6a99f92f4',
-    data: '0xda75560c3ea7400745c0b37def67d6412ea2f02a4326a07f78fcad15964720ba',
+      '0x43e67378e6a3641d96dd98b7f6bb5bc94489317bf9ff49f9ea2b911502129c1e',
+    data: '0x3341f82b8bdefe2deea885d2c5e40ef5447d5d1b6306728db108c78d2bb6a038',
   },
 }
 
