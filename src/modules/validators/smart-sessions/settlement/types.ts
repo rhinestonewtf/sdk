@@ -69,8 +69,8 @@ export interface SettlementContext {
     readonly token: Address
     readonly recipient?: Address
     /**
-     * `ECO_IE`, `OFT` and LZ's Stargate send: the owner's floor on delivery, in
-     * this leg's token.
+     * `SAME_CHAIN_IE`, `ECO_IE`, `OFT` and LZ's Stargate send: the owner's floor
+     * on delivery, in this leg's token. CCTP cannot enforce it.
      */
     readonly minAmount?: bigint
   }[]
