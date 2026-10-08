@@ -234,39 +234,39 @@ test('every session encodes and digests as pinned', async () => {
   expect(table).toMatchInlineSnapshot(`
     {
       "all": {
-        "digest": "0xb2825b21ac5f61a9c31c5057d098c101d7e8a8b208cb05bd64db282d330d12c4",
-        "permissionId": "0x548528b2c77ba4b4426768e7878732b3ee450cb8ef3c506bb6f12d2d13a2b721",
-        "policies": "0xd251375c511f47c792cba21960d379319b8680cfbedf9dd5256dfbffd188f9ff",
+        "digest": "0xe0eb23bbe50f6919edc5bb48483b6f1ee0e9422371581b268c412449b5e07625",
+        "permissionId": "0xb99b0492b73da1e4468b0f19512c30b381a2246895d717d3acdf2e64930b6d41",
+        "policies": "0xd2552d404de73db84a4de3f6f6d36ef52c2821c38a3a73826432a7128365cb76",
       },
       "all, fees": {
-        "digest": "0xb78c32a0175dae3e8b2e260fd631770aab59322bf6e247f61630d237608525a9",
-        "permissionId": "0xb1dcccc7db6e9d006070223dddb4181e8f124299574fc55b8a2aca894b1c464b",
-        "policies": "0x150950e4d8c51f276c18f538691d471149ac1ee83f747347db6fadc6a19e77a4",
+        "digest": "0x26b5950d2cd863316ed060408a9e36e0757717379c2e624ea1425584a46cbce1",
+        "permissionId": "0xf2fe0eea7cf0d6a3e70384274c4ca74462a999f81eb9e05ad78aa1aace951830",
+        "policies": "0xd58538f1c650015c1cd3d75459ffba8f7f9adbbc0b485107fba352df825d48bc",
       },
       "cctp": {
-        "digest": "0xd159f9c7c5384e326fcbfc75684190aa5576cc9709c7e40606db940a405ff1df",
-        "permissionId": "0x083fa8b0455939fdc4cb862961590729263fa11c8dd0c257b28a76e2ade3db8f",
-        "policies": "0x11397c742e3b9e87919e93a933d6a5feca7a3f9505fc4ed695dab1097dede19b",
+        "digest": "0xbcf49e09fae55a5dc848ba66c2e8303eb131db0b6219c8dfaf7b95ba876aead9",
+        "permissionId": "0x0975fa95bc679c082401ee181ef35a129af507979e58d6d4ad716ef030ccef07",
+        "policies": "0x2ab9ade793b20d478100f2df69835bcd8b7d9185650d970633ff330a40efb922",
       },
       "eco": {
-        "digest": "0x20c8257b14d47f9e2d2c14f06b250fe1bdf40022eba9380f772db6117339332c",
-        "permissionId": "0x5ca6be716418d5fa4a0db9d935adb512d59b45949e7edb6761d4253185be04aa",
-        "policies": "0x3558833171472947313e9138df1c6f17c83116c6f1b4af32a8046a0672b7d7fb",
+        "digest": "0x150a312637659285ac76c10e00f4aef91b9fdb432409a5f66ad7fc55d1134ea9",
+        "permissionId": "0xf8ec15dd943461b1754a79c0d20fbca3cfa4c5fcf6c6b1772e26fa7aec1f55ba",
+        "policies": "0x8728a20443a98219ebcce0f8fa72c410edca5097a0bcbc8060967ba86dc4ebf5",
       },
       "lz": {
-        "digest": "0x75cc1ed8e6518c90ee384e0ba4876d09d3ee822d456678cc71452f3cbc0109cb",
-        "permissionId": "0x6bac50fcbac5e194f4ab25791cb74a7d90150649bc6af3be90ef3f8d75e19a17",
-        "policies": "0xb571399eb3683e5ea3bf51292a4b6e9a74c74bcdad67a50e22d7cba665fadad1",
+        "digest": "0x130b1725cb7d5a38070128d401a8f4183478f679bf3278e4865ab120d0485073",
+        "permissionId": "0xde50e777e0894a4cc1802d989953aeb92db17b9a33180d92370e72661bfd3645",
+        "policies": "0xecabecc6ab4f59165bf791e77413a7c550ab22f19d629a365f0e0a847dfed147",
       },
       "lz, fees": {
-        "digest": "0x6d80a74f0b5c011d84e4931869bf3ff53bf505d3165518b89a362dac86315dda",
-        "permissionId": "0xc5cf2aa6d8d4b3c7dd37d94fd7b70643a4d80545220c816e5f21425efa78e25b",
-        "policies": "0x8e37afc2fdd17399c29d6a6be6a2fd84c287e4f7f0957219404f3d5d5c51ce85",
+        "digest": "0x487af7b59b85efd7aeae889f58b05e2a95ee55ee2f55acb19e6a5ffa03f1cfef",
+        "permissionId": "0x303b17546df104bf6ee4569232169dc69b8439f9a1b40a49194abcca4dcff08c",
+        "policies": "0xf94a053d0e46d1092430014445ba5df94d0b9fc97ea9b30c07cfdb3edbaf3659",
       },
       "oft": {
-        "digest": "0x04961e8b22a1f67943a6fd864be1be423d68ec1efadee8e0e175575c87358b58",
-        "permissionId": "0xb3eaab8a4785292a996b184364ded2805e8afa3d2050db1d4474f70eea3a02ec",
-        "policies": "0x0f72d37970432604e6f428d486feb5b28e23bc0dde1b3307168dc9b1bfe89a8b",
+        "digest": "0x4c6f8f304bd53cde35404de5503a7b0fbd684686819048be9162763eea41e02f",
+        "permissionId": "0xc88b273d427b7070fb92507f35c919a2b9d30d12e924ad9642c80da284330f70",
+        "policies": "0xa9a7b87aec716fbd7650033e4d877d051bc46eab3da5930e91f258892ef412f7",
       },
       "raw actions": {
         "digest": "0x336beb6a24ded8a118e1a94307e9b6a8c41cc809b01a9556beb4570d954f7ab0",
@@ -274,9 +274,9 @@ test('every session encodes and digests as pinned', async () => {
         "policies": "0x85ba9cbc3aec5e67fc5d5d8a13bc8f6f7f1990de99158c93d3423aa63665d4e0",
       },
       "same chain": {
-        "digest": "0xc957cb68b8085b4c79011a19564576ea8bb32f291616505a298c862446f2bd6e",
-        "permissionId": "0xc4aba8867c622a0c677287b1053670346a049ca7139f92278b0b71f8483bdc98",
-        "policies": "0xf3cecbcc6394d24b8eedf40003fca6558e768bbeece71bd5690a1cd594c0d83f",
+        "digest": "0xbb7a3a38639df519d5e786358080791484a53d889db57c8422555a071f16505e",
+        "permissionId": "0x66d7c7732e8bf6cedeee9b46a2f05aa4277132e12f9e153775b64ad2cf329192",
+        "policies": "0x4ea09cd4d6e422a25068d9c4692c0d57d34c544001d0e77ec53024fc3e129406",
       },
     }
   `)
@@ -809,7 +809,6 @@ test('an LZ session installs its execute policy across the copies', () => {
   }).actions.find((a) => a.actionTargetSelector === LZ_EXECUTE_SELECTOR)!
   expect(execute.actionPolicies.map((p) => p.policy)).toEqual([
     ...UNIVERSAL.slice(0, 3),
-    DEFAULT_POLICY_ADDRESSES.timeFrame,
     ONE_TIME_USE,
   ])
 })

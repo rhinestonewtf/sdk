@@ -1,6 +1,6 @@
 {
   "name": "@rhinestone/sdk",
-  "version": "2.16.3",
+  "version": "2.16.4",
   "description": "Smart wallets and multichain transactions for your application",
   "author": {
     "name": "Rhinestone",
@@ -97,14 +97,10 @@
   },
   "peerDependencies": {
     "viem": "^2.55.0",
-    "jose": ">=5.0.0",
-    "express": ">=4"
+    "jose": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "jose": {
-      "optional": true
-    },
-    "express": {
       "optional": true
     }
   }
