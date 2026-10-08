@@ -1,5 +1,12 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
-import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
+import {
+  allOf,
+  anyOf,
+  cumulativeCap,
+  floorFor,
+  pin,
+  swapAction,
+} from '../swap/rules'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -8,7 +15,7 @@ import type {
   ScopedAction,
 } from '../types'
 import { scopeCctp } from './cctp'
-import { scopeEco } from './eco'
+import { knownDecimals, scopeEco } from './eco'
 import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
@@ -264,21 +271,40 @@ export function resolveSettlementScope(
   }
   // Every layer in the permit must enforce `to.minAmount`, or the key would
   // settle around it: scopeLayer refuses one that cannot (CCTP never can).
-  const minAmount = permit.to?.some((leg) => leg.minAmount !== undefined)
-  // Each source chain's session floors its own capped reward with the same
-  // absolute amount, so it bounds the rate only where every cap is the same.
-  const sourceCaps = new Set(
-    (permit.from ?? []).map(({ maxAmount }) => maxAmount),
-  )
-  if (
-    minAmount &&
-    requested.includes('ECO_IE') &&
-    permit.maxFeeBps === undefined &&
-    sourceCaps.size > 1
-  ) {
-    throw new Error(
-      'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
-    )
+  const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
+  // Every bridged token is a USD stablecoin, so a floor outside
+  // [maxAmount / 2, maxAmount] of any capped `from` leg is a units mistake. It
+  // is a hard error, never a dropped layer: 'all' must not keep a floor of dust.
+  if (minAmount && !sameChainOnly && options.settlement) {
+    for (const to of permit.to) {
+      const toDecimals = knownDecimals(
+        options.settlement,
+        to.chain.id,
+        to.token,
+      )
+      for (const from of permit.from ?? []) {
+        const fromDecimals = knownDecimals(
+          options.settlement,
+          from.chain.id,
+          from.token,
+        )
+        if (
+          to.minAmount === undefined ||
+          from.maxAmount === undefined ||
+          toDecimals === undefined ||
+          fromDecimals === undefined
+        ) {
+          continue
+        }
+        const at = (num: bigint, den: bigint) =>
+          floorFor(from.maxAmount ?? 0n, num, den, fromDecimals, toDecimals)
+        if (to.minAmount < at(1n, 2n) || to.minAmount > at(1n, 1n)) {
+          throw new Error(
+            `crossChainPermits: \`to.minAmount\` ${to.minAmount} on chain ${to.chain.id} must be between half of and all of the chain ${from.chain.id} maxAmount; give it in the \`to\` token's smallest units (${toDecimals} decimals)`,
+          )
+        }
+      }
+    }
   }
   const fees = permit.allowFees
     ? servedFees(options.settlement, options.chainId, sourceTokens)
@@ -317,6 +343,7 @@ export function resolveSettlementScope(
       "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
     )
   }
+  const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
@@ -339,6 +366,7 @@ export function resolveSettlementScope(
       sourceTokens,
       destinations,
       cap,
+      fromCaps,
       ...(permit.maxFeeBps === undefined
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),

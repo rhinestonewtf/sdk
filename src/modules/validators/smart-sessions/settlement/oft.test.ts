@@ -4,6 +4,7 @@ import {
   encodeFunctionData,
   type Hex,
   isAddress,
+  maxUint64,
   maxUint256,
   pad,
   size,
@@ -15,6 +16,7 @@ import { scopeOft as frozenScopeOft } from '../../../../../test/utils/oft-frozen
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { OFT_SEND_SELECTOR, oftAbi, SEND, scopeOft } from './oft'
+import { SettlementLayerRefusal } from './served'
 
 const USDT0_ARB = SETTLEMENT_CATALOG[42161].oft!.token
 const USDT0_OP = SETTLEMENT_CATALOG[10].oft!.token
@@ -378,17 +380,17 @@ describe('scopeOft with to.minAmount', () => {
 
   test.each([
     ['a zero floor', 0n, 'must be positive'],
-    ['a floor above the cap', 101n, 'above `maxAmount` admits no send'],
+    ['a floor above uint64', maxUint64 + 1n, 'above uint64'],
   ])('refuses %s', (_, minAmount, message) => {
-    expect(() =>
+    const scope = () =>
       scopeOft({
         ...base,
         destinations: [
           { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT, minAmount },
         ],
-        cap: 100n,
-      }),
-    ).toThrow(message)
+      })
+    expect(scope).toThrow(message)
+    expect(scope).toThrow(SettlementLayerRefusal)
   })
 
   describe('legs on one chain', () => {
