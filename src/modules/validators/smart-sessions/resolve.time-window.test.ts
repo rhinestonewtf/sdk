@@ -71,9 +71,11 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
       },
     ],
   },
-  'Permit2 crossChainPermit': {
+  'Permit2 crossChainPermit, oneTimeUse': {
     chain: base,
     owners,
+    oneTimeUse: { id: 42n },
+    policyAddresses: { oneTimeUseId: ONE_TIME_USE },
     crossChainPermits: [
       {
         from: { chain: base, token: USDC, maxAmount: 100n },
@@ -141,15 +143,15 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
       '0x5e76b37831e3aba8f394e9fe12df02a8fdec55174e1b27c29adc810b8a5cc844',
     data: '0x4538d4956dfb324c2488d867a58f9388bd835707cd03ec2b271b5b59c68f1505',
   },
-  'Permit2 crossChainPermit': {
+  'Permit2 crossChainPermit, oneTimeUse': {
     permissionId:
-      '0x46ee4c9e4cc4618684d16a85e2b3524ab87d2f6a7299a62e4ecabc434d985bad',
-    data: '0x6debffe5ff0b6ed08239d2ce4d68814592fef3fd70df8d6f5269c6355c1a68cb',
+      '0x443ca76c1f34d3034f0347daae2ec28a7dc8ef7cdd3bcf800369797c99fa2073',
+    data: '0xfe34938ffcbebb3ed069d126c6858b66db488fc74dfb5c3740897e899af2767a',
   },
   'oneTimeUse with permissions and claim policies': {
     permissionId:
-      '0x95b67478505169c7c2909d90a7c4593323e395cec895891644ecdc997ef47be3',
-    data: '0x7a9eae27a5ca0b41756261702d0963e01d1e5bb82c5500e866dbe55efb77a995',
+      '0x16b3f92dbe57fbbb59762c4b5dc66126f26b8e34a9227542b709fac83b4a2bca',
+    data: '0xc9e190633c648c4160b50225b14ac2d72d87fc4e4a3671e72c736474d4b6622c',
   },
   'oneTimeUse with raw actions': {
     permissionId:
@@ -521,8 +523,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'Permit2 permit validUntil, oneTimeUse': {
     permissionId:
-      '0xfeeee96e7c4543fb3baf8c90f4c8456ad08e320dc14f37bc12f3a7552c7d424a',
-    data: '0xd7d6ea301a89fd7dfedd33e238443a6c2f96f3cd3d9c6226209ce2fee6f37f86',
+      '0x920efa107228d78ac9bf6c492376905fbd5f671b3d64d7a79bdc73b6a99f92f4',
+    data: '0xda75560c3ea7400745c0b37def67d6412ea2f02a4326a07f78fcad15964720ba',
   },
 }
 

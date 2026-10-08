@@ -245,7 +245,10 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
   test('the paymaster callback names only the token, 5 USD cumulative', () => {
     const action = find(on(), PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR)
     expect(action.policies).toContainEqual(
-      expect.objectContaining({ type: 'arg-policy', valueLimitPerUse: 0n }),
+      expect.objectContaining({
+        type: 'universal-action',
+        valueLimitPerUse: 0n,
+      }),
     )
     expectRuns(action, [
       [[callback(token, CAP), true]],

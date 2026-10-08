@@ -720,6 +720,10 @@ describe('crossChainPermits expansion', () => {
           to: [{ chain: base, token: USDC_ARB }],
         },
       ],
+      oneTimeUse: { id: 1n },
+      policyAddresses: {
+        oneTimeUseId: '0x00000000000000000000000000000000000000aa',
+      },
     })
     const data = getSessionData(session)
     const fallback = data.actions.find(
@@ -764,7 +768,7 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(/one Permit2 claim policy/)
+    ).toThrow(/twice; the second config would overwrite/)
   })
 
   test('refuses multiple permits, which would collapse to one on-chain', () => {
@@ -778,7 +782,7 @@ describe('crossChainPermits expansion', () => {
         owners: { type: 'ecdsa', accounts: [accountA] },
         crossChainPermits: [permit, permit, permit],
       }),
-    ).toThrow(/one Permit2 claim policy/)
+    ).toThrow(/twice; the second config would overwrite/)
   })
 
   test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
