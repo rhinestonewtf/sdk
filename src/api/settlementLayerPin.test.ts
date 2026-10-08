@@ -1,11 +1,9 @@
-import { keccak256, toHex } from 'viem'
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
+import { sessionFingerprint } from '../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
-import { getSessionData } from '../modules/validators/smart-sessions/digest'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
-import type { Session } from '../modules/validators/smart-sessions/types'
 import { adaptTransaction } from './account'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
@@ -13,30 +11,37 @@ const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
 
 /**
- * A settlement-scoped session only authorises its layers' calls, but the
- * orchestrator picks the layer after the session is signed. These assert the
- * intent carries the session's layers, so it is never routed through a layer
- * the session would refuse on-chain.
+ * The orchestrator picks the layer after the session is signed. These assert
+ * the intent never offers a route the session would refuse on-chain, and only
+ * narrows the routes a session with the intent-execution fallback can take.
+ * `layers` is the permit's `settlementLayers`; `null` gives no permit at all.
  */
-function session(settlementLayers: readonly string[]) {
+function session(layers: readonly string[] | undefined | null) {
   return toSession(
     {
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       account: ACCOUNT,
-      crossChainPermits: [
-        {
-          from: { chain: base, token: USDC },
-          to: { chain: arbitrum, token: USDC_ARB },
-          settlementLayers,
-        },
-      ],
+      ...(layers === null
+        ? {}
+        : {
+            crossChainPermits: [
+              {
+                from: { chain: base, token: USDC },
+                to: { chain: arbitrum, token: USDC_ARB },
+                ...(layers ? { settlementLayers: layers } : {}),
+              },
+            ],
+          }),
     } as never,
     { settlement: SETTLEMENT_CATALOG },
   )
 }
 
-function layersFor(layers: readonly string[], explicit?: unknown): unknown {
+function layersFor(
+  layers: readonly string[] | undefined | null,
+  explicit?: unknown,
+): unknown {
   const intent = adaptTransaction(
     { account: {} } as never,
     {
@@ -200,54 +205,44 @@ describe('settlement layer pin', () => {
     expect(intent.options?.settlementLayers).toBeUndefined()
   })
 
-  test('an ACROSS-only Permit2 session limits the intent to ACROSS', () => {
-    expect(layersFor(['ACROSS'])).toEqual({ include: ['ACROSS'] })
-  })
-
-  test('an explicit filter can only narrow a Permit2 session', () => {
+  test('a Permit2 session naming ACROSS leaves the filter to the caller', () => {
+    expect(layersFor(['ACROSS'])).toBeUndefined()
+    expect(layersFor(['ACROSS', 'ECO'])).toBeUndefined()
     expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
-      include: ['ACROSS'],
-    })
-    expect(layersFor(['ACROSS'], { exclude: ['RELAY'] })).toEqual({
-      include: ['ACROSS'],
-    })
-    expect(() => layersFor(['ACROSS'], { exclude: ['ACROSS'] })).toThrow(
-      'no settlement layer is left to settle the intent',
-    )
-    expect(() => layersFor(['ACROSS'], { include: ['RELAY'] })).toThrow(
-      'no settlement layer is left to settle the intent',
-    )
-  })
-
-  test('retired Permit2 layers add no layer to the filter', () => {
-    expect(layersFor(['ACROSS', 'ECO', 'SAME_CHAIN'])).toEqual({
-      include: ['ACROSS'],
+      include: ['ACROSS', 'RELAY'],
     })
   })
 
-  test('refuses a Permit2 session that names only retired layers', () => {
+  test('a Permit2 session excludes only the arbiter it cannot sign', () => {
+    // The fallback still settles IntentExecutor routes such as RELAY or CCTP.
     for (const layers of [['ECO'], ['SAME_CHAIN'], ['ECO', 'SAME_CHAIN']]) {
-      expect(() => layersFor(layers)).toThrow(
-        'the session permits only retired Permit2 layers',
-      )
-      // An explicit filter cannot supply a layer the session cannot sign.
-      expect(() => layersFor(layers, { include: ['ACROSS'] })).toThrow(
-        'name ECO_IE or SAME_CHAIN_IE in its permit instead',
-      )
+      expect(layersFor(layers)).toEqual({ exclude: ['ACROSS'] })
     }
   })
 
+  test('an explicit filter can only narrow a Permit2 session', () => {
+    expect(layersFor(['ECO'], { include: ['ACROSS', 'RELAY'] })).toEqual({
+      include: ['RELAY'],
+    })
+    expect(layersFor(['ECO'], { exclude: ['RELAY'] })).toEqual({
+      exclude: ['RELAY', 'ACROSS'],
+    })
+    expect(() => layersFor(['ECO'], { include: ['ACROSS'] })).toThrow(
+      'no settlement layer is left to settle the intent; the session cannot sign ACROSS',
+    )
+  })
+
   test('a Permit2 permit that names no layer leaves the filter to the caller', () => {
-    expect(permit2Layers([undefined])).toBeUndefined()
-    expect(permit2Layers([[]])).toBeUndefined()
-    expect(permit2Layers([undefined], { exclude: ['RELAY'] })).toEqual({
+    expect(layersFor(undefined)).toBeUndefined()
+    expect(layersFor([])).toBeUndefined()
+    expect(layersFor(undefined, { exclude: ['RELAY'] })).toEqual({
       exclude: ['RELAY'],
     })
   })
 
   test('a session without crossChainPermits leaves the filter to the caller', () => {
-    expect(permit2Layers([])).toBeUndefined()
-    expect(permit2Layers([], { include: ['RELAY'] })).toEqual({
+    expect(layersFor(null)).toBeUndefined()
+    expect(layersFor(null, { include: ['RELAY'] })).toEqual({
       include: ['RELAY'],
     })
   })
@@ -258,72 +253,12 @@ describe('settlement layer pin', () => {
       Object.fromEntries(
         layerSets.map((layers) => [
           String(layers),
-          fingerprint(permit2Session([layers])),
+          sessionFingerprint(session(layers)),
         ]),
       ),
     ).toEqual(PERMIT2_FINGERPRINTS)
   })
 })
-
-function permit2Session(
-  permits: readonly (readonly string[] | undefined)[],
-): Session {
-  return toSession(
-    {
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      account: ACCOUNT,
-      ...(permits.length
-        ? {
-            crossChainPermits: permits.map((settlementLayers) => ({
-              from: { chain: base, token: USDC },
-              to: { chain: arbitrum, token: USDC_ARB },
-              ...(settlementLayers ? { settlementLayers } : {}),
-            })),
-          }
-        : {}),
-    } as never,
-    { settlement: SETTLEMENT_CATALOG },
-  )
-}
-
-function permit2Layers(
-  permits: readonly (readonly string[] | undefined)[],
-  explicit?: unknown,
-): unknown {
-  const intent = adaptTransaction(
-    { account: {} } as never,
-    {
-      chain: base,
-      calls: [],
-      signers: { type: 'session', session: permit2Session(permits) },
-      ...(explicit ? { settlementLayers: explicit } : {}),
-    } as never,
-  ) as { options?: { settlementLayers?: unknown } }
-  return intent.options?.settlementLayers
-}
-
-/** Everything the session enables and signs with, minus the intent metadata. */
-function fingerprint(session: Session): string {
-  return keccak256(
-    toHex(
-      JSON.stringify(
-        {
-          permissionId: session.permissionId,
-          data: getSessionData(session),
-          claimPolicies: session.claimPolicies,
-          hasExplicitPermissions: session.hasExplicitPermissions,
-        },
-        (_, value) =>
-          typeof value === 'bigint'
-            ? value.toString()
-            : value && typeof value === 'object' && 'rpcUrls' in value
-              ? value.id
-              : value,
-      ),
-    ),
-  )
-}
 
 // Captured from origin/main, before a Permit2 session carried its layers.
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
