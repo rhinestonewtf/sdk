@@ -25,8 +25,8 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * The recipient lives inside the vendor route, and the reward's offsets move
  * with the route's length, so the session pins the one shape the orchestrator
  * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
- * Every calldata pointer, the reward's tokens pointer and every count is pinned
- * so no field can alias another. The route's own pointers and byte length are
+ * Every calldata pointer, the reward's tokens pointer and every other count is
+ * pinned so no field can alias another. The route's own pointers and byte length are
  * not: the destination Portal
  * (0xEC000769A73b70e16f361a442292500b3BCf4A85, verified source on Base
  * Blockscout) checks every fill and cancel in `_validateRoute`, which hashes
@@ -35,6 +35,19 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * offsets assume. Any other layout is never filled and refunds to the pinned
  * creator after the pinned deadline. This assumes EVM destinations and a Portal
  * that keeps re-encoding.
+ *
+ * The route's token count is not pinned either: the pinned route token, call
+ * count and transfer head leave 3 as the only other canonical count, whose
+ * second token is the call count pin, address 1. `_fulfill` pulls it with OZ
+ * 5.0 `safeTransferFrom`, which reverts on a code-less target. The call's
+ * value is not pinned: `Executor` bubbles the revert of every served
+ * stablecoin's non-payable `transfer`. Both were checked on every ECO chain.
+ *
+ * Neither native amount nor `allowPartial` is pinned. `valueLimitPerUse: 0`
+ * holds `msg.value` at 0, so `_fundNative` fills reward native only from a
+ * vault a third party pre-funded; partial funding pulls at most the capped
+ * reward and `Vault.withdraw` pays at most what the vault holds; route native
+ * comes from the solver. The account never pays more than the capped reward.
  */
 
 export const ecoPortalAbi = parseAbi([
@@ -225,14 +238,9 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   const rules: UniversalActionPolicyParamRule[] = [
     pinValue(PUBLISH.routePointer, 0x80n),
     pinValue(PUBLISH.rewardPointer, 0x300n),
-    pinValue(PUBLISH.allowPartial, 0n),
-    pinValue(PUBLISH.routeNativeAmount, 0n),
-    pinValue(PUBLISH.routeTokensLength, 1n),
     pinValue(PUBLISH.callsLength, 1n),
-    pinValue(PUBLISH.callValue, 0n),
     pinValue(PUBLISH.callDataLength, 0x44n),
     pin(PUBLISH.rewardCreator, ctx.account),
-    pinValue(PUBLISH.rewardNativeAmount, 0n),
     pinValue(PUBLISH.rewardTokensPointer, 0xa0n),
     pinValue(PUBLISH.rewardTokensLength, 1n),
     pin(PUBLISH.rewardToken, ctx.sourceTokens[0]),
