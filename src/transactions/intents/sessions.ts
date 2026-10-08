@@ -5,6 +5,7 @@ import { isHyperCoreWireId } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
 import { buildOneTimeUseBurnOp } from '../../modules/validators/smart-sessions/one-time-use'
+import { assertOneTimeUseIdPolicyDeployed } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -35,6 +36,10 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   const selection = input.intent.signers
   if (!selection || selection.kind !== 'smart-session') return undefined
   const chains = sessionChains(input.intent)
+  for (const chain of chains) {
+    const policy = selection.byChain[chain.id]?.session.oneTimeUse?.policy
+    if (policy) assertOneTimeUseIdPolicyDeployed(policy, chain.id)
+  }
   const resolvedEntries = await Promise.all(
     chains.map(async (chain) => {
       const selected = selection.byChain[chain.id]

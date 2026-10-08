@@ -847,8 +847,8 @@ interface SessionPolicyAddresses {
   timeFrame?: Address
   usageLimit?: Address
   valueLimit?: Address
-  // Required when a session sets `oneTimeUse`; no default until the policy has a
-  // canonical deployment.
+  // Used by `oneTimeUse` sessions. Defaults to the deployed OneTimeUseIdPolicy on
+  // chains that have one; required elsewhere.
   oneTimeUseId?: Address
 }
 
@@ -1099,7 +1099,10 @@ interface SessionDefinition<
   saltMode?: 'none' | 'v1' | 'strict'
   /**
    * Pins a one-time-use id on the session (RHI-5798): the session settles at most
-   * once per chain. Requires `policyAddresses.oneTimeUseId`; use a fresh random id
+   * once per chain. Uses the deployed OneTimeUseIdPolicy for the session's chain
+   * and contracts environment; on a chain without one, resolving the session
+   * throws unless `policyAddresses.oneTimeUseId` is set, and so does preparing an
+   * intent that uses the default on a chain without it. Use a fresh random id
    * per session. Every intent the SDK prepares for the session burns the id first
    * on each chain it settles on; the policy refuses any settlement that does not.
    * Intents must list `sourceChains`, and cannot run destination calls on a chain
