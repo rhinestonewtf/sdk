@@ -307,12 +307,15 @@ describe('multi-layer settlement permits', () => {
         validUntil: VALID_UNTIL,
         validAfter: new Date(1_000_000_000_000),
       }),
-    ).toThrow('does not support validAfter')
+    ).toThrow('validAfter is not supported')
   })
 
   test('refuses a validUntil that would read as no deadline', () => {
     expect(() =>
-      scope({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+      resolveSessionData(
+        definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+        { settlement: SETTLEMENT_CATALOG },
+      ),
     ).toThrow('validUntil must be a valid Date in the future')
   })
 
