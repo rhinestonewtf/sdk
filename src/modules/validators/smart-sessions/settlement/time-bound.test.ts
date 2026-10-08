@@ -50,8 +50,6 @@ interface Shape {
   readonly chain?: Chain
   readonly settlement?: SettlementCatalog
   readonly oneTimeUse: boolean
-  /** ECO_IE refuses a permit without validUntil. */
-  readonly needsUntil?: true
 }
 
 const BASE_TO_ARB = {
@@ -101,7 +99,6 @@ const SHAPES: Record<string, Shape> = {
   ECO_IE: {
     permit: { ...BASE_TO_ARB, settlementLayers: ['ECO_IE'], maxFeeBps: 50 },
     oneTimeUse: true,
-    needsUntil: true,
   },
   LZ: {
     permit: { ...BASE_TO_ARB, settlementLayers: ['LZ'] },
@@ -125,7 +122,6 @@ const SHAPES: Record<string, Shape> = {
     },
     settlement: WITH_FEES,
     oneTimeUse: true,
-    needsUntil: true,
   },
   'all, ECO_IE dropped': {
     permit: { ...BASE_TO_ARB, settlementLayers: 'all' },
@@ -286,9 +282,7 @@ describe('a validAfter or a validUntil without oneTimeUse is refused at resolve'
         shape,
         { validAfter: AFTER, validUntil: UNTIL },
       ] as const,
-      ...(shape.needsUntil
-        ? []
-        : [[`${name}: validAfter`, shape, { validAfter: AFTER }] as const]),
+      [`${name}: validAfter`, shape, { validAfter: AFTER }] as const,
     ]),
     ...nonOtuShapes.map(
       ([name, shape]) =>
