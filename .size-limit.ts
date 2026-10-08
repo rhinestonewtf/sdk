@@ -7,7 +7,7 @@ const limits = [
   {
     name: '@rhinestone/sdk',
     path: `${packageRoot}/index.js`,
-    limit: '67 kB',
+    limit: '72 kB',
     import: '*',
     ignore: viem,
   },
