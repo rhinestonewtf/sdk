@@ -36,8 +36,10 @@ function fingerprint(definition: SessionDefinition) {
   }
 }
 
-// Sessions that set no time window on an action must not move, except the
-// Permit2 permit without maxAmount (below).
+// Pinned sessions without an action window. The released shapes (sudo,
+// permissions, raw actions, signing window) equal main; the oneTimeUse and
+// CCTP rows are unreleased snapshots, and the Permit2 permit without
+// maxAmount moved from main (below).
 const WINDOWLESS: Record<string, SessionDefinition> = {
   sudo: { chain: base, owners },
   'permissions, strict salt': {
@@ -72,8 +74,8 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
       },
     ],
   },
-  // Moved in this change: its fallback now always carries the intent-execution
-  // policy (main: 0x99711685…e5d2).
+  // Its fallback always carries the intent-execution policy (main:
+  // 0x99711685…e5d2).
   'Permit2 crossChainPermit, no maxAmount': {
     chain: base,
     owners,
@@ -189,7 +191,7 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
 }
 
-describe('a session with no action time window keeps its permissionId and data', () => {
+describe('pins the permissionId and data of sessions without an action window', () => {
   test.each(Object.entries(WINDOWLESS))('%s', (name, definition) => {
     expect(fingerprint(definition)).toEqual(PINS[name])
   })
