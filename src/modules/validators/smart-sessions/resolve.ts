@@ -39,6 +39,7 @@ import { encodeActionPolicies } from './policies/encode'
 import {
   DEPOSIT_SELECTOR,
   isNativeToken,
+  permit2FallbackScope,
   permit2RouteScope,
   permit2SourceTokens,
 } from './policies/permit2-approval'
@@ -469,15 +470,24 @@ function resolveSession(
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []),
   ]
+  // The wildcard admits a fallback session's approves; an exact approve action
+  // would take precedence over it and refuse every other spender.
   const permit2Actions =
     recover(refuse, () =>
-      permit2RouteScope(
-        permit2Tokens,
-        permissions,
-        definition.actions ?? [],
-        permit2Fees,
-        wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
-      ),
+      fallback === undefined
+        ? permit2RouteScope(
+            permit2Tokens,
+            permissions,
+            definition.actions ?? [],
+            permit2Fees,
+            wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
+          )
+        : permit2FallbackScope(
+            permit2Tokens,
+            permissions,
+            definition.actions ?? [],
+            permit2Fees,
+          ),
     ) ?? []
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be

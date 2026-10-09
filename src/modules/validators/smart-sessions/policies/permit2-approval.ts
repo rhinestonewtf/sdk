@@ -57,23 +57,14 @@ export function permit2RouteScope(
   fees: ServedFees | undefined,
   wrap?: { readonly token: Address; readonly cap: bigint },
 ): ScopedAction[] {
+  refuseDeclaredApproves(
+    sourceTokens.keys(),
+    permissions,
+    declaredActions,
+    'the permit adds its own',
+  )
   const actions: ScopedAction[] = []
   for (const [token, cap] of sourceTokens) {
-    if (
-      permissions.some(
-        ({ address, functions }) =>
-          isAddressEqual(address, token) && functions.approve,
-      ) ||
-      declaredActions.some(
-        ({ target, selector }) =>
-          isAddressEqual(target, token) && selector === APPROVE_SELECTOR,
-      )
-    ) {
-      throw refusal(
-        'PERMIT2_APPROVE_CONFLICT',
-        `crossChainPermits: drop the declared approve on ${token}; the permit adds its own`,
-      )
-    }
     actions.push(
       swapAction(token, APPROVE_SELECTOR, [
         pin(0n, PERMIT2),
@@ -91,4 +82,52 @@ export function permit2RouteScope(
   return fees === undefined
     ? actions
     : withFeeActions(actions, [...sourceTokens.keys()], fees)
+}
+
+/**
+ * The fee calls of a `fallback` session's Permit2-route permit: the capped
+ * transfer to the fee collector and the paymaster callback. An exact
+ * (token, approve) action would replace the wildcard for every approve of that
+ * token, so approves, the paymaster's included, are left to the wildcard.
+ */
+export function permit2FallbackScope(
+  sourceTokens: ReadonlyMap<Address, bigint | undefined>,
+  permissions: readonly Permission[],
+  declaredActions: readonly ScopedAction[],
+  fees: ServedFees | undefined,
+): ScopedAction[] {
+  refuseDeclaredApproves(
+    sourceTokens.keys(),
+    permissions,
+    declaredActions,
+    'the fallback admits its approves',
+  )
+  return fees === undefined
+    ? []
+    : withFeeActions([], [...sourceTokens.keys()], fees, { approve: false })
+}
+
+function refuseDeclaredApproves(
+  tokens: Iterable<Address>,
+  permissions: readonly Permission[],
+  declaredActions: readonly ScopedAction[],
+  why: string,
+): void {
+  for (const token of tokens) {
+    if (
+      permissions.some(
+        ({ address, functions }) =>
+          isAddressEqual(address, token) && functions.approve,
+      ) ||
+      declaredActions.some(
+        ({ target, selector }) =>
+          isAddressEqual(target, token) && selector === APPROVE_SELECTOR,
+      )
+    ) {
+      throw refusal(
+        'PERMIT2_APPROVE_CONFLICT',
+        `crossChainPermits: drop the declared approve on ${token}; ${why}`,
+      )
+    }
+  }
 }

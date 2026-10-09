@@ -30,6 +30,7 @@ import {
 } from './policies/addresses'
 import { encodeActionPolicies } from './policies/encode'
 import {
+  permit2FallbackScope,
   permit2RouteScope,
   permit2SourceTokens,
 } from './policies/permit2-approval'
@@ -520,6 +521,49 @@ describe('a scoped Permit2-route session', () => {
   })
 })
 
+describe('the fee actions a fallback permit scopes', () => {
+  const fees = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER, cap: 5n }
+  const transfer = (to: Address, amount: bigint): Hex =>
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [to, amount],
+    })
+
+  test('is nothing without fees', () => {
+    expect(
+      permit2FallbackScope(new Map([[USDC, 5n]]), [], [], undefined),
+    ).toEqual([])
+  })
+
+  test('is the capped transfer and callback, with no approve', () => {
+    const actions = permit2FallbackScope(
+      new Map([[USDC, undefined]]),
+      [],
+      [],
+      fees,
+    )
+    expect(actions.map(({ target, selector }) => [target, selector])).toEqual([
+      [USDC, TRANSFER],
+      [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
+    ])
+    expect(satisfiesRules(actions[0], transfer(COLLECTOR, 5n))).toBe(true)
+    expect(satisfiesRules(actions[0], transfer(COLLECTOR, 6n))).toBe(false)
+    expect(satisfiesRules(actions[0], transfer(OTHER, 1n))).toBe(false)
+  })
+
+  test('refuses a declared approve on the token', () => {
+    expect(() =>
+      permit2FallbackScope(
+        new Map([[USDC, undefined]]),
+        [],
+        [{ target: USDC, selector: APPROVE }],
+        fees,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
+  })
+})
+
 describe.each([
   ['intentExecution', INTENT_EXECUTION_POLICY_ADDRESS],
   ['sudo', SUDO_POLICY_ADDRESS],
@@ -527,7 +571,7 @@ describe.each([
   const definition = (extra: Partial<CrossChainPermissionInput> = {}) =>
     session([oncePermit(extra)], { fallback })
 
-  test('is open, with that fallback beside its scoped approve', () => {
+  test('is open, with that fallback and no approve action of its own', () => {
     const built = toSession(definition(), OPTIONS)
     expect(built.access).toEqual({
       kind: 'open',
@@ -536,7 +580,7 @@ describe.each([
     expect(
       fallbackOf(definition())?.actionPolicies.map((p) => p.policy),
     ).toEqual([policy])
-    expect(actionOn(built.actions, USDC, APPROVE)).toBeDefined()
+    expect(actionOn(built.actions, USDC, APPROVE)).toBeUndefined()
     // Intents keep the routes the fallback can settle.
     expect(built.settlementLayers).toEqual(['ACROSS'])
     expect(built.hasExplicitPermissions).toBe(false)
@@ -563,6 +607,76 @@ describe.each([
             ONE_TIME_USE,
           ],
     )
+  })
+
+  // An exact (token, approve) action takes precedence over the wildcard, so it
+  // would refuse every approve the wildcard admits (another layer's spender,
+  // the paymaster).
+  test.each<[string, Partial<CrossChainPermissionInput>, object]>([
+    ['without allowFees', {}, {}],
+    ['with allowFees', { allowFees: true }, {}],
+    ['with allowFees and oneTimeUse', { allowFees: true }, otu],
+  ])('holds no approve on its `from` token %s', (_, extra, more) => {
+    const built = toSession(
+      session([oncePermit(extra)], { fallback, ...more }),
+      OPTIONS,
+    )
+    expect(
+      built.actions.filter((a) => a.actionTargetSelector === APPROVE),
+    ).toEqual([])
+  })
+
+  test('keeps the fee transfer and paymaster callback with allowFees', () => {
+    const fallbackBuilt = toSession(
+      session([oncePermit({ allowFees: true })], { fallback, ...otu }),
+      OPTIONS,
+    )
+    const scopedBuilt = toSession(
+      session([oncePermit({ allowFees: true })], otu),
+      OPTIONS,
+    )
+    // The same capped calls a scoped session gets.
+    for (const [target, selector] of [
+      [USDC, TRANSFER],
+      [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
+    ] as const) {
+      const kept = actionOn(fallbackBuilt.actions, target, selector)
+      expect(kept).toBeDefined()
+      expect(kept).toEqual(actionOn(scopedBuilt.actions, target, selector))
+    }
+    const plain = toSession(session([oncePermit()], { fallback }), OPTIONS)
+    expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
+    expect(
+      actionOn(plain.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
+    ).toBeUndefined()
+  })
+
+  test('leaves approve to the wildcard in the enabled session data', () => {
+    for (const permitExtra of [{}, { allowFees: true }]) {
+      const data = getSessionData(
+        toSession(session([oncePermit(permitExtra)], { fallback }), OPTIONS),
+      )
+      const governing = data.actions.filter(
+        (a) =>
+          a.actionTargetSelector === APPROVE ||
+          a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      )
+      expect(governing.map((a) => a.actionTarget)).toEqual([
+        SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      ])
+      expect(governing[0].actionPolicies[0].policy).toBe(policy)
+    }
+  })
+
+  test('still refuses a declared approve on its `from` token', () => {
+    expect(
+      codes(
+        session([oncePermit()], {
+          fallback,
+          actions: [{ target: USDC, selector: APPROVE }],
+        }),
+      ),
+    ).toContain('PERMIT2_APPROVE_CONFLICT')
   })
 })
 
