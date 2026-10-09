@@ -94,11 +94,18 @@ export const SESSION_REFUSAL_CODES = {
   FEES_NOT_SERVED: 'allowFees on a chain with no served fee addresses',
   ALLOW_FEES_NON_STABLECOIN:
     'allowFees with a `from` token that is not a served USD stablecoin',
-  ALLOW_FEES_ONLY_INTENT_EXECUTOR: 'allowFees on a Permit2-layer permit',
+  ALLOW_FEES_ONLY_INTENT_EXECUTOR: 'no longer raised',
   SIGNING_WITH_INTENT_EXECUTOR_PERMIT:
     'an IntentExecutor-layer permit with `signing` enabled',
-  RESTRICTED_WITH_PERMIT2_GRANTS:
-    'a restricted session holding a Permit2-layer permit or claimPolicies',
+  RESTRICTED_WITH_PERMIT2_GRANTS: 'a restricted session holding claimPolicies',
+  PERMIT2_ROUTE_NEEDS_FROM:
+    "a Permit2-layer permit with no `from` on the session's chain",
+  PERMIT2_ROUTE_NO_LIVE_LAYER:
+    'a Permit2-layer permit naming only SAME_CHAIN or ECO',
+  PERMIT2_APPROVE_CONFLICT:
+    'an approve on a `from` token that cannot also admit Permit2',
+  FALLBACK_WITHOUT_PERMIT2_PERMIT:
+    '`fallback` without a Permit2-layer permit',
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
   CLAIM_POLICIES_SIGNING_MODE:

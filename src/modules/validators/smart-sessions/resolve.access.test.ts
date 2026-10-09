@@ -41,6 +41,18 @@ const DEFINITIONS = {
     actions: [APPROVE],
   },
   across: { chain: base, owners, crossChainPermits: [permit(['ACROSS'])] },
+  acrossIntentExecution: {
+    chain: base,
+    owners,
+    crossChainPermits: [permit(['ACROSS'])],
+    fallback: 'intentExecution',
+  },
+  acrossSudo: {
+    chain: base,
+    owners,
+    crossChainPermits: [permit(['ACROSS'])],
+    fallback: 'sudo',
+  },
   cctp: {
     chain: base,
     owners,
@@ -91,14 +103,12 @@ describe('session access', () => {
         reason: 'claimPolicies keep the intent-execution fallback',
       },
     ],
+    ['across', { kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' }],
     [
-      'across',
-      {
-        kind: 'open',
-        reason:
-          'Permit2-route permit (ACROSS) keeps the intent-execution fallback',
-      },
+      'acrossIntentExecution',
+      { kind: 'open', reason: 'fallback: intentExecution' },
     ],
+    ['acrossSudo', { kind: 'open', reason: 'fallback: sudo' }],
     ['cctp', { kind: 'scoped', reason: 'settlement-scoped permit (CCTP)' }],
     ['restrictToActions', { kind: 'scoped', reason: 'restrictToActions' }],
     ['swap', { kind: 'scoped', reason: 'swap scope' }],
@@ -119,19 +129,16 @@ describe('session access', () => {
     }
   })
 
-  test('a Permit2 permit naming no layer reports any layer', () => {
+  test('a Permit2 permit naming no layer is scoped to ACROSS', () => {
     expect(
       toSession({ ...DEFINITIONS.across, crossChainPermits: [permit()] })
         .access,
-    ).toEqual({
-      kind: 'open',
-      reason:
-        'Permit2-route permit (any layer) keeps the intent-execution fallback',
-    })
+    ).toEqual({ kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' })
   })
 
   test('reporting access leaves the encoded session unchanged', () => {
     // Captured from origin/main (ade12708), before sessions carried access.
+    // `across` moved when Permit2-route sessions became scoped (RHI-8045).
     expect(
       Object.fromEntries(
         Object.keys(DEFINITIONS).map((name) => [
@@ -149,7 +156,11 @@ describe('session access', () => {
       claimPoliciesWithActions:
         '0x54f7b11d9665425cf479f3cb77f49b80b28129026aeb7042a14926c1adbe9649',
       across:
-        '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
+        '0xb1c3ecc025a03e0a80ece0a443042876e248881815a0ffeabe9041fa41fb761c',
+      acrossIntentExecution:
+        '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
+      acrossSudo:
+        '0x61631c1ee23420849c69a697d304b6606ada7a29506d65e513f9b3a949a0f6a3',
       cctp: '0x3e848b71c89c12576c20ad3bf3ab943be1e85c5e611f1ae93ea76494a3d9ef46',
       restrictToActions:
         '0x706042507973928c950a6c52a0a670153375d07be64e38ea5df7b8fe36783804',

@@ -376,9 +376,9 @@ type CrossChainSettlementLayer =
  * A high-level permit that authorises a session key to move funds
  * between two chains via Permit2 arbiter settlement. The SDK expands
  * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
- * plus an optional `SpendingLimitsPolicy` on the fallback action — the
- * claim policy itself doesn't enforce amounts on-chain, so the SDK lifts
- * that guarantee into an action-level policy that does.
+ * plus a capped `approve(Permit2, amount)` per `from` token — the claim
+ * policy itself doesn't enforce amounts on-chain, so the SDK lifts that
+ * guarantee into an action-level policy that does.
  *
  * Resolved from {@link CrossChainPermissionInput} by the SDK; consumers
  * normally set `SessionDefinition.crossChainPermits` with the input shape,
@@ -427,14 +427,19 @@ interface CrossChainPermit {
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.
    *
+   * A Permit2-layer permit (`ACROSS`, `SAME_CHAIN`, `ECO`, or this field
+   * omitted) settles through `ACROSS`, the one Permit2 arbiter still routed;
+   * a permit naming only `SAME_CHAIN` or `ECO` is refused unless the session
+   * sets `fallback`.
+   *
    * Intents signed with the session never offer the orchestrator a route the
    * session would refuse. IntentExecutor layers restrict them to the layers
-   * the session kept. Permit2 layers exclude only the Permit2 arbiters the
-   * permit does not name (a permit without `ACROSS` sends
-   * `settlementLayers: { exclude: ['ACROSS'] }`); the session keeps the
-   * intent-execution fallback, so other routes stay open. An intent's own
-   * `settlementLayers` can only narrow this, and one that leaves no layer
-   * throws.
+   * the session kept, and a Permit2-layer permit to `ACROSS`. With
+   * `fallback` set, Permit2 layers instead exclude only the Permit2 arbiters
+   * the permit does not name (a permit without `ACROSS` sends
+   * `settlementLayers: { exclude: ['ACROSS'] }`), so other routes stay open.
+   * An intent's own `settlementLayers` can only narrow this, and one that
+   * leaves no layer throws.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -445,10 +450,10 @@ interface CrossChainPermit {
    */
   maxFeeBps?: number
   /**
-   * IntentExecutor layers only: also let the session pay the intent's app fee
-   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
-   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
-   * only sponsored intents without an app fee settle.
+   * Also let the session pay the intent's app fee (and a user-paid protocol
+   * fee) to the orchestrator's fee collector, and approve and call its
+   * paymaster for unsponsored gas. Defaults to `false`: only sponsored intents
+   * without an app fee settle, on IntentExecutor and Permit2 layers alike.
    *
    * - Each fee call has its own cumulative 5 USD cap, not one per session: the
    *   collector transfer and the paymaster approve one per `from` token, the
@@ -527,8 +532,8 @@ interface ToLeg {
  * `SessionDefinition.crossChainPermits`; token fields are per-chain ERC-20
  * addresses (v2 no longer accepts symbols) and the SDK resolves `Date`s to
  * on-chain deadlines, then expands
- * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus an optional
- * `SpendingLimitsPolicy` guardrail.
+ * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus the capped
+ * Permit2 approve its settlement needs.
  */
 interface CrossChainPermissionInput {
   /**
@@ -536,6 +541,11 @@ interface CrossChainPermissionInput {
    * or an array for multi-leg permits. Omit for no source-token
    * restriction (any token on any chain may be pulled) — the arbiter
    * whitelist, deadline, and bridge-to-self flag still apply.
+   *
+   * On a Permit2 layer, each `from` token on the session's chain gets the
+   * `approve(Permit2, amount)` its settlement needs, capped at the largest
+   * `maxAmount` of its legs. A Permit2-layer permit must name a `from` token
+   * on the session's chain unless the session sets `fallback`.
    */
   from?: FromLeg | FromLeg[]
   /**
@@ -582,14 +592,19 @@ interface CrossChainPermissionInput {
    * `SAME_CHAIN` and `ECO` are deprecated (retired Permit2 arbiters): use
    * `SAME_CHAIN_IE` and `ECO_IE`.
    *
+   * A Permit2-layer permit (`ACROSS`, `SAME_CHAIN`, `ECO`, or this field
+   * omitted) settles through `ACROSS`, the one Permit2 arbiter still routed;
+   * a permit naming only `SAME_CHAIN` or `ECO` is refused unless the session
+   * sets `fallback`.
+   *
    * Intents signed with the session never offer the orchestrator a route the
    * session would refuse. IntentExecutor layers restrict them to the layers
-   * the session kept. Permit2 layers exclude only the Permit2 arbiters the
-   * permit does not name (a permit without `ACROSS` sends
-   * `settlementLayers: { exclude: ['ACROSS'] }`); the session keeps the
-   * intent-execution fallback, so other routes stay open. An intent's own
-   * `settlementLayers` can only narrow this, and one that leaves no layer
-   * throws.
+   * the session kept, and a Permit2-layer permit to `ACROSS`. With
+   * `fallback` set, Permit2 layers instead exclude only the Permit2 arbiters
+   * the permit does not name (a permit without `ACROSS` sends
+   * `settlementLayers: { exclude: ['ACROSS'] }`), so other routes stay open.
+   * An intent's own `settlementLayers` can only narrow this, and one that
+   * leaves no layer throws.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -600,10 +615,10 @@ interface CrossChainPermissionInput {
    */
   maxFeeBps?: number
   /**
-   * IntentExecutor layers only: also let the session pay the intent's app fee
-   * (and a user-paid protocol fee) to the orchestrator's fee collector, and
-   * approve and call its paymaster for unsponsored gas. Defaults to `false`:
-   * only sponsored intents without an app fee settle.
+   * Also let the session pay the intent's app fee (and a user-paid protocol
+   * fee) to the orchestrator's fee collector, and approve and call its
+   * paymaster for unsponsored gas. Defaults to `false`: only sponsored intents
+   * without an app fee settle, on IntentExecutor and Permit2 layers alike.
    *
    * - Each fee call has its own cumulative 5 USD cap, not one per session: the
    *   collector transfer and the paymaster approve one per `from` token, the
@@ -1027,8 +1042,8 @@ interface SessionDefinition<
   chain: TChain
   /**
    * Venue-scoped swap permissions. See {@link SwapScope}. Implies
-   * `restrictToActions`, and is mutually exclusive with
-   * `crossChainPermits`/`claimPolicies`.
+   * `restrictToActions`, and is mutually exclusive with `claimPolicies` and
+   * `fallback`.
    */
   swap?: SwapScope<TChain['id']>
   owners: OwnerSet
@@ -1050,8 +1065,9 @@ interface SessionDefinition<
   claimPolicies?: readonly Permit2ClaimPolicy[]
   /**
    * Cross-chain permits expanded by the SDK into matching
-   * {@link Permit2ClaimPolicy} (claim-side) plus an action-level
-   * `SpendingLimitsPolicy` guardrail.
+   * {@link Permit2ClaimPolicy} (claim-side) plus the scoped actions their
+   * settlement needs. A session holding one is scoped to those actions (see
+   * `fallback`).
    * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
    * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
    * it pins from the orchestrator's `GET /chains`. To see every refusal at
@@ -1068,10 +1084,27 @@ interface SessionDefinition<
    * Drop the wildcard intent-execution fallback so the session's explicit
    * permissions/actions are the ONLY ops it can run — any other (target,
    * selector) reverts. Requires at least one permission or action, and is
-   * mutually exclusive with `crossChainPermits`/`claimPolicies` (which rely on
-   * the fallback for their guardrails).
+   * mutually exclusive with `claimPolicies` (which rely on the fallback for
+   * their guardrails) and with `fallback`. A session with `crossChainPermits`
+   * is already scoped.
    */
   restrictToActions?: boolean
+  /**
+   * Add a wildcard action to a session holding a Permit2-layer
+   * `crossChainPermits` entry, which is otherwise scoped to the Permit2
+   * approve and fee calls its settlement needs. Omit to keep it scoped.
+   *
+   * - `'intentExecution'`: the session key may also call the targets on
+   *   Rhinestone's intent-execution allow-list, with the permit's `maxAmount`
+   *   as a spending limit. The allow-list is set by Rhinestone and may grow.
+   * - `'sudo'`: the session key may call any contract with any arguments.
+   *
+   * Either one admits a permit without `from` or naming only `SAME_CHAIN` or
+   * `ECO`, and leaves intents free to take routes other than `ACROSS`. Refused
+   * on a session without a Permit2-layer permit, and with `restrictToActions`
+   * or `swap`.
+   */
+  fallback?: 'intentExecution' | 'sudo'
   /**
    * Configure ERC-1271 signing. Omission is unrestricted for backwards
    * compatibility; use `disabled` to remove signing capability explicitly.
@@ -1181,12 +1214,13 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
-  /** The layers the session's cross-chain permit names: the IntentExecutor
-   *  layers a settlement-scoped permit restricted it to, or the Permit2 layers
-   *  a Permit2 permit lists (absent when it lists none, which admits them all).
-   *  Metadata only — intents with the session are limited to the IntentExecutor
-   *  layers (`SAME_CHAIN_IE` adds no bridge filter), and exclude the Permit2
-   *  arbiters a Permit2 permit does not name. */
+  /** The layers the session's cross-chain permit settles through: the
+   *  IntentExecutor layers a settlement-scoped permit restricted it to,
+   *  `['ACROSS']` for a Permit2 permit, or, with `fallback`, the Permit2 layers
+   *  the permit lists (absent when it lists none). Metadata only — intents with
+   *  the session are limited to these layers (`SAME_CHAIN_IE` adds no bridge
+   *  filter); with `fallback` they exclude the Permit2 arbiters the permit does
+   *  not name. */
   settlementLayers?: readonly CrossChainSettlementLayer[]
   /** The layers `settlementLayers: 'all'` left out of a settlement-scoped permit
    *  on the session's chain, each with the refusal that dropped it; the kept

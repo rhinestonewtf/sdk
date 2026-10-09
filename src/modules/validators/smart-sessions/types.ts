@@ -252,7 +252,8 @@ export interface SettlementCoverage {
  * Whether a session's key is held to the session's own actions. `'open'` keeps
  * the wildcard fallback action: with intent-execution, the key may also call
  * any target the global intent-execution whitelist allows; a session with no
- * actions, permissions or permits has a sudo fallback instead.
+ * actions, permissions or permits, or with `fallback: 'sudo'`, has a sudo
+ * fallback instead.
  */
 export interface SessionAccess {
   readonly kind: 'scoped' | 'open'
@@ -354,6 +355,12 @@ export interface SessionDefinition {
   // Required to make a session provably restricted, e.g. to a specific swap
   // aggregator (RHI-6286). Requires at least one permission or action.
   restrictToActions?: boolean
+  /**
+   * A wildcard action for a session holding a Permit2-layer permit, which is
+   * otherwise scoped to its own actions. See `SessionDefinition` in
+   * config/account.ts.
+   */
+  fallback?: 'intentExecution' | 'sudo'
   /**
    * How a restricted session's salt is derived, which decides its permissionId.
    *

@@ -1037,8 +1037,8 @@ const PERMIT2_LAYERS: ReadonlySet<string> = new Set([
 
 /**
  * The settlement layers a session admits, narrowed by any explicit filter. A
- * settlement-scoped session admits only its own layers. A Permit2 session keeps
- * the intent-execution fallback, so it admits every route except the Permit2
+ * settlement-scoped or scoped Permit2-route session admits only its own layers.
+ * A Permit2 session with a `fallback` admits every route except the Permit2
  * arbiters its permit does not name. Like the quoter pin, an explicit filter
  * can only narrow.
  */
@@ -1072,14 +1072,19 @@ function settlementLayerPin(
   for (const session of sessions) {
     const named: readonly string[] = session.settlementLayers ?? []
     // A Permit2 permit never shares a session with IntentExecutor layers.
-    if (named.some((layer) => PERMIT2_LAYERS.has(layer))) {
+    if (
+      named.some((layer) => PERMIT2_LAYERS.has(layer)) &&
+      session.access?.kind !== 'scoped'
+    ) {
       for (const arbiter of permit2Arbiters) {
         if (!named.includes(arbiter)) excluded.add(arbiter)
       }
       continue
     }
+    // A scoped Permit2-route session names only the live arbiters; the
+    // retired Permit2 SAME_CHAIN and ECO are not the orchestrator's layers.
     const layers = named.flatMap((layer): Layer[] =>
-      layer === 'SAME_CHAIN_IE'
+      layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN' || layer === 'ECO'
         ? []
         : [layer === 'ECO_IE' ? 'ECO' : (layer as Layer)],
     )

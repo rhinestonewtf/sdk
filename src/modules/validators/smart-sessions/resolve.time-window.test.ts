@@ -21,6 +21,7 @@ import type { ResolvedPolicy, SessionDefinition } from './types'
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 const TARGET = '0x4444444444444444444444444444444444444444' as Address
+const WETH = '0x4200000000000000000000000000000000000006' as Address
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const ARBITER = '0x00000000000000000000000000000000000000ab' as Address
 const ONE_TIME_USE = '0x3333333333333333333333333333333333333333' as Address
@@ -99,6 +100,7 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
   },
   // Its fallback always carries the intent-execution policy (main:
   // 0x99711685…e5d2).
+  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045).
   'Permit2 crossChainPermit, no maxAmount': {
     chain: base,
     owners,
@@ -186,15 +188,16 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
       '0x5e76b37831e3aba8f394e9fe12df02a8fdec55174e1b27c29adc810b8a5cc844',
     data: '0x4538d4956dfb324c2488d867a58f9388bd835707cd03ec2b271b5b59c68f1505',
   },
+  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045).
   'Permit2 crossChainPermit, no maxAmount': {
     permissionId:
-      '0x1bed04f1dab12e3ccb1ec7e62815b8ca9d92440c556ff58049254998e580556b',
-    data: '0xfaa25e62e2082e19eac4f4bff88dc195f5e459f9aa3985f6b8b057edbc24e018',
+      '0x545bcdc2f68767f4bc2ea877b5b90bed2c9c091892fedf623bdb626cb7ce6b6a',
+    data: '0x6b48bf83fb5c2d25bdcb62c7c8e1332ef15acf35838463cf4ca69d2b5bc842d9',
   },
   'Permit2 crossChainPermit, oneTimeUse': {
     permissionId:
-      '0x714bcef1bcd1616a9ac3f1dd5b8653a0e5fe45b7f2661dcaa17b6f721aea8183',
-    data: '0xe01d5c74f5ca9df2fcb8ecbfbf202f2cbc51b5dd44c2c53deb92b8edf99ef855',
+      '0x06c2faccc451915a0f80be98f62869f784577fdc36651be14341b9aebb85ea31',
+    data: '0xe59abdf0d624b14a5687fb4501174e577be7f7c97cd7d0117ec14a7ba3a33464',
   },
   'oneTimeUse with permissions and claim policies': {
     permissionId:
@@ -262,8 +265,9 @@ const rawAction = (window: Window) => ({
     },
   ],
 })
+// Not USDC: its Permit2 approve would collide with `permission`'s approve.
 const permit2Permit = (window: Window) => ({
-  from: { chain: base, token: USDC, maxAmount: 100n },
+  from: { chain: base, token: WETH, maxAmount: 100n },
   to: { chain: arbitrum, token: USDC_ARB },
   settlementLayers: ['ACROSS' as const],
   ...window,
@@ -584,10 +588,11 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
       '0xe46b2f678467a3fb75c46fc0eb510695ab872dd3e8da1391c3cc202c261ad1f7',
     data: '0xbbb1fb8b30f1961d2003be2d5f67dbe76aba67855a6ecfcf1e12a3186d91c670',
   },
+  // Moved again when Permit2-route sessions became scoped (RHI-8045).
   'Permit2 permit validUntil, oneTimeUse': {
     permissionId:
-      '0x43e67378e6a3641d96dd98b7f6bb5bc94489317bf9ff49f9ea2b911502129c1e',
-    data: '0x3341f82b8bdefe2deea885d2c5e40ef5447d5d1b6306728db108c78d2bb6a038',
+      '0xe4b27288976bd722ed22f896cf743efdd51f9642a3d28bfd49de0354bdb31564',
+    data: '0x0e9e7c53b5df21133bf87ae326cdbaf7ca82aa7d70169953f4e0c001a6bc8edb',
   },
 }
 
@@ -597,9 +602,10 @@ describe('a session whose window became the once-policy deadline', () => {
   })
 })
 
-// A Permit2-layer permit always keeps its target-whitelisted fallback, whatever
-// guardrails it sets.
-describe('a Permit2-layer permit keeps the intent-execution fallback', () => {
+// With `fallback: 'intentExecution'`, a Permit2-layer permit keeps its
+// intent-execution fallback, whatever guardrails it sets; without one it has
+// none.
+describe('a Permit2-layer permit keeps the intent-execution fallback it asks for', () => {
   const fallbackPolicies = (definition: SessionDefinition) =>
     getSessionData(toSession(definition))
       .actions.filter((action) =>
@@ -622,6 +628,7 @@ describe('a Permit2-layer permit keeps the intent-execution fallback', () => {
       owners,
       ...otu(),
       crossChainPermits: [permit({ validUntil: UNTIL })],
+      fallback: 'intentExecution',
     } as SessionDefinition
     expect(fallbackPolicies(definition)).toEqual([
       [INTENT_EXECUTION_POLICY_ADDRESS, ONE_TIME_USE],
@@ -634,6 +641,7 @@ describe('a Permit2-layer permit keeps the intent-execution fallback', () => {
       owners,
       ...otu(),
       crossChainPermits: [permit({})],
+      fallback: 'intentExecution',
     } as SessionDefinition
     expect(fallbackPolicies(definition)).toEqual([
       [INTENT_EXECUTION_POLICY_ADDRESS, ONE_TIME_USE],
@@ -645,10 +653,21 @@ describe('a Permit2-layer permit keeps the intent-execution fallback', () => {
       chain: base,
       owners,
       crossChainPermits: [permit({})],
+      fallback: 'intentExecution',
     } as SessionDefinition
     expect(fallbackPolicies(definition)).toEqual([
       [INTENT_EXECUTION_POLICY_ADDRESS],
     ])
+  })
+
+  test('without fallback, none', () => {
+    const definition = {
+      chain: base,
+      owners,
+      ...otu(),
+      crossChainPermits: [permit({})],
+    } as SessionDefinition
+    expect(fallbackPolicies(definition)).toEqual([])
   })
 })
 

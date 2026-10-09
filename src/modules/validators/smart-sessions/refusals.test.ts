@@ -148,6 +148,10 @@ describe('refusal codes', () => {
       'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
       'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
       'RESTRICTED_WITH_PERMIT2_GRANTS',
+      'PERMIT2_ROUTE_NEEDS_FROM',
+      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      'PERMIT2_APPROVE_CONFLICT',
+      'FALLBACK_WITHOUT_PERMIT2_PERMIT',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
       'CLAIM_POLICIES_SIGNING_MODE',
       'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
@@ -281,9 +285,10 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
-      ['RESTRICTED_WITH_PERMIT2_GRANTS', undefined],
+      // allowFees now scopes the fee calls, which base's catalog does not serve;
+      // restrictToActions beside a Permit2 permit is no longer refused.
+      ['FEES_NOT_SERVED', 1],
       ['MAX_FEE_BPS_ONLY_ECO_IE', 0],
-      ['ALLOW_FEES_ONLY_INTENT_EXECUTOR', 1],
       ['MIN_AMOUNT_ON_PERMIT2_LAYER', 2],
     ])
   })
@@ -465,9 +470,15 @@ describe('collectSessionRefusals', () => {
       ]),
     ],
     ['MAX_FEE_BPS_ONLY_ECO_IE', session([cctp({ maxFeeBps: 10 })])],
+    ['FEES_NOT_SERVED', session([permit2({ allowFees: true })])],
+    ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
     [
-      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      session([permit2({ allowFees: true })]),
+      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      session([permit2({ settlementLayers: ['ECO'] })]),
+    ],
+    [
+      'FALLBACK_WITHOUT_PERMIT2_PERMIT',
+      session([cctp()], { fallback: 'sudo' } as Partial<SessionDefinition>),
     ],
     ['DUPLICATE_ERC1271_POLICY', session([permit2(), permit2()])],
     [
@@ -565,8 +576,10 @@ describe('refusal code coverage', () => {
   )
 
   test('every listed code is raised somewhere in src', () => {
+    // A published code stays listed after it stops being raised.
+    const retired = ['SESSION_REFUSED', 'ALLOW_FEES_ONLY_INTENT_EXECUTOR']
     const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
-      (code) => code !== 'SESSION_REFUSED',
+      (code) => !retired.includes(code),
     )
     expect(listed.filter((code) => !used.has(code))).toEqual([])
   })
@@ -669,11 +682,12 @@ describe('validateSessionDefinition access', () => {
     [
       'a Permit2 permit',
       session([permit2()]),
-      {
-        kind: 'open',
-        reason:
-          'Permit2-route permit (ACROSS) keeps the intent-execution fallback',
-      },
+      { kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' },
+    ],
+    [
+      'a Permit2 permit with fallback: sudo',
+      session([permit2()], { fallback: 'sudo' } as Partial<SessionDefinition>),
+      { kind: 'open', reason: 'fallback: sudo' },
     ],
     [
       'a settlement-scoped permit',

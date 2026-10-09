@@ -693,7 +693,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['ACROSS'],
         },
       ],
     })
@@ -724,6 +724,7 @@ describe('crossChainPermits expansion', () => {
       policyAddresses: {
         oneTimeUseId: '0x00000000000000000000000000000000000000aa',
       },
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     const fallback = data.actions.find(
@@ -768,7 +769,7 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(/twice; the second config would overwrite/)
+    ).toThrow(/cannot hold claimPolicies/)
   })
 
   test('refuses multiple permits, which would collapse to one on-chain', () => {
@@ -794,6 +795,7 @@ describe('crossChainPermits expansion', () => {
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
@@ -810,6 +812,7 @@ describe('crossChainPermits expansion', () => {
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      fallback: 'intentExecution',
     })
     const withTokens = toSession({
       chain: base,
@@ -821,6 +824,7 @@ describe('crossChainPermits expansion', () => {
           settlementLayers: ['ECO'],
         },
       ],
+      fallback: 'intentExecution',
     })
     const bare =
       getSessionData(session).erc7739Policies.erc1271Policies[0].initData

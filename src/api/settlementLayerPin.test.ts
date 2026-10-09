@@ -16,12 +16,16 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
  * narrows the routes a session with the intent-execution fallback can take.
  * `layers` is the permit's `settlementLayers`; `null` gives no permit at all.
  */
-function session(layers: readonly string[] | undefined | null) {
+function session(
+  layers: readonly string[] | undefined | null,
+  fallback?: 'intentExecution' | 'sudo',
+) {
   return toSession(
     {
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
       account: ACCOUNT,
+      ...(fallback ? { fallback } : {}),
       ...(layers === null
         ? {}
         : {
@@ -41,13 +45,14 @@ function session(layers: readonly string[] | undefined | null) {
 function layersFor(
   layers: readonly string[] | undefined | null,
   explicit?: unknown,
+  fallback?: 'intentExecution' | 'sudo',
 ): unknown {
   const intent = adaptTransaction(
     { account: {} } as never,
     {
       chain: base,
       calls: [],
-      signers: { type: 'session', session: session(layers) },
+      signers: { type: 'session', session: session(layers, fallback) },
       ...(explicit ? { settlementLayers: explicit } : {}),
     } as never,
   ) as { options?: { settlementLayers?: unknown } }
@@ -205,40 +210,72 @@ describe('settlement layer pin', () => {
     expect(intent.options?.settlementLayers).toBeUndefined()
   })
 
-  test('a Permit2 session naming ACROSS leaves the filter to the caller', () => {
-    expect(layersFor(['ACROSS'])).toBeUndefined()
-    expect(layersFor(['ACROSS', 'ECO'])).toBeUndefined()
-    expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
-      include: ['ACROSS', 'RELAY'],
-    })
-  })
-
-  test('a Permit2 session excludes only the arbiter it cannot sign', () => {
-    // The fallback still settles IntentExecutor routes such as RELAY or CCTP.
-    for (const layers of [['ECO'], ['SAME_CHAIN'], ['ECO', 'SAME_CHAIN']]) {
-      expect(layersFor(layers)).toEqual({ exclude: ['ACROSS'] })
+  test('a scoped Permit2 session limits the intent to ACROSS', () => {
+    for (const layers of [['ACROSS'], ['ACROSS', 'ECO'], undefined, []]) {
+      expect(layersFor(layers)).toEqual({ include: ['ACROSS'] })
     }
   })
 
-  test('an explicit filter can only narrow a Permit2 session', () => {
-    expect(layersFor(['ECO'], { include: ['ACROSS', 'RELAY'] })).toEqual({
-      include: ['RELAY'],
+  test('an explicit filter can only narrow a scoped Permit2 session', () => {
+    expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
+      include: ['ACROSS'],
     })
-    expect(layersFor(['ECO'], { exclude: ['RELAY'] })).toEqual({
-      exclude: ['RELAY', 'ACROSS'],
+    expect(layersFor(undefined, { exclude: ['RELAY'] })).toEqual({
+      include: ['ACROSS'],
     })
-    expect(() => layersFor(['ECO'], { include: ['ACROSS'] })).toThrow(
-      'no settlement layer is left to settle the intent; the session cannot sign ACROSS',
+    expect(() => layersFor(['ACROSS'], { include: ['RELAY'] })).toThrow(
+      'no settlement layer is left to settle the intent',
+    )
+    expect(() => layersFor(undefined, { exclude: ['ACROSS'] })).toThrow(
+      'no settlement layer is left to settle the intent',
     )
   })
 
-  test('a Permit2 permit that names no layer leaves the filter to the caller', () => {
-    expect(layersFor(undefined)).toBeUndefined()
-    expect(layersFor([])).toBeUndefined()
-    expect(layersFor(undefined, { exclude: ['RELAY'] })).toEqual({
-      exclude: ['RELAY'],
-    })
-  })
+  describe.each(['intentExecution', 'sudo'] as const)(
+    'a Permit2 session with fallback: %s',
+    (fallback) => {
+      test('naming ACROSS leaves the filter to the caller', () => {
+        expect(layersFor(['ACROSS'], undefined, fallback)).toBeUndefined()
+        expect(
+          layersFor(['ACROSS', 'ECO'], undefined, fallback),
+        ).toBeUndefined()
+        expect(
+          layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] }, fallback),
+        ).toEqual({ include: ['ACROSS', 'RELAY'] })
+      })
+
+      test('excludes only the arbiter it cannot sign', () => {
+        // The fallback still settles IntentExecutor routes such as RELAY or CCTP.
+        for (const layers of [['ECO'], ['SAME_CHAIN'], ['ECO', 'SAME_CHAIN']]) {
+          expect(layersFor(layers, undefined, fallback)).toEqual({
+            exclude: ['ACROSS'],
+          })
+        }
+      })
+
+      test('an explicit filter can only narrow it', () => {
+        expect(
+          layersFor(['ECO'], { include: ['ACROSS', 'RELAY'] }, fallback),
+        ).toEqual({ include: ['RELAY'] })
+        expect(layersFor(['ECO'], { exclude: ['RELAY'] }, fallback)).toEqual({
+          exclude: ['RELAY', 'ACROSS'],
+        })
+        expect(() =>
+          layersFor(['ECO'], { include: ['ACROSS'] }, fallback),
+        ).toThrow(
+          'no settlement layer is left to settle the intent; the session cannot sign ACROSS',
+        )
+      })
+
+      test('naming no layer leaves the filter to the caller', () => {
+        expect(layersFor(undefined, undefined, fallback)).toBeUndefined()
+        expect(layersFor([], undefined, fallback)).toBeUndefined()
+        expect(layersFor(undefined, { exclude: ['RELAY'] }, fallback)).toEqual({
+          exclude: ['RELAY'],
+        })
+      })
+    },
+  )
 
   test('a session without crossChainPermits leaves the filter to the caller', () => {
     expect(layersFor(null)).toBeUndefined()
@@ -260,11 +297,12 @@ describe('settlement layer pin', () => {
   })
 })
 
-// Captured from origin/main, before a Permit2 session carried its layers.
+// Captured from origin/main, before a Permit2 session carried its layers;
+// moved when Permit2-route sessions became scoped (RHI-8045).
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
-  ACROSS: '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
+  ACROSS: '0xb1c3ecc025a03e0a80ece0a443042876e248881815a0ffeabe9041fa41fb761c',
   'ACROSS,ECO':
-    '0xec5782e18534d347a80ae0eef42453faae0570b7e52f36608e6717ae8e67bb1e',
+    '0x5d031ab5787e3939b0854d1d492e5bc31143c448cb40580e6dc69497e5152d6f',
   undefined:
-    '0xe6512d4da3c112e3171cac65ebf40c4c322aa06687c5edc2e1675b13aabc7c2d',
+    '0x296f4d30d6cf2c2c279feab6956e938820fa88fecca74bfb744ecb48ad55f8e2',
 }

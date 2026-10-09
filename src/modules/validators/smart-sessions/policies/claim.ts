@@ -33,12 +33,6 @@ export function expandCrossChainPermit(
       'crossChainPermits: maxFeeBps applies only to ECO_IE',
     )
   }
-  if (permit.allowFees) {
-    throw refusal(
-      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      'crossChainPermits: allowFees applies only to IntentExecutor layers',
-    )
-  }
   if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
     throw refusal(
       'MIN_AMOUNT_ON_PERMIT2_LAYER',

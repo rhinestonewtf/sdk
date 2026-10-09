@@ -36,6 +36,10 @@ import {
 } from './policies/claim'
 import { encodeActionPolicies } from './policies/encode'
 import {
+  permit2RouteScope,
+  permit2SourceTokens,
+} from './policies/permit2-approval'
+import {
   collectRefusals,
   RefusalCollectionHalted,
   type Refuse,
@@ -45,6 +49,7 @@ import {
   refuser,
   type SessionValidation,
 } from './refusals'
+import { servedFees } from './settlement/fees'
 import {
   isSettlementScopedPermit,
   resolveSettlementScope,
@@ -369,6 +374,23 @@ function resolveSession(
       ),
     )
   }
+  const permit2Permits = resolvedPermits.filter(
+    (permit) => !isSettlementScopedPermit(permit),
+  )
+  const fallback = definition.fallback
+  if (
+    fallback !== undefined &&
+    (permit2Permits.length === 0 ||
+      swapScope !== undefined ||
+      definition.restrictToActions === true)
+  ) {
+    refuse(
+      refusal(
+        'FALLBACK_WITHOUT_PERMIT2_PERMIT',
+        'fallback needs a Permit2-layer permit, without restrictToActions or swap',
+      ),
+    )
+  }
   const access = sessionAccess(
     definition,
     resolvedPermits,
@@ -376,11 +398,59 @@ function resolveSession(
     settlementScope?.settlementLayers,
   )
   const restricted = access.kind === 'scoped'
-  const permissions = [
+  // Without a fallback, a Permit2-route session settles only through its scoped
+  // Permit2 approve, so it must name the tokens to scope it to.
+  if (fallback === undefined) {
+    for (const [permitIndex, permit] of resolvedPermits.entries()) {
+      if (isSettlementScopedPermit(permit)) continue
+      if (!permit.from?.some(({ chain }) => chain.id === definition.chain.id)) {
+        refuse(
+          refusal(
+            'PERMIT2_ROUTE_NEEDS_FROM',
+            `crossChainPermits: a Permit2-layer permit needs a \`from\` token on chain ${definition.chain.id}, or \`fallback\``,
+            { permitIndex, chainId: definition.chain.id },
+          ),
+        )
+      }
+      if (!admitsAcross(permit)) {
+        refuse(
+          refusal(
+            'PERMIT2_ROUTE_NO_LIVE_LAYER',
+            'crossChainPermits: SAME_CHAIN and ECO are retired; name ACROSS, or set `fallback`',
+            { permitIndex },
+          ),
+        )
+      }
+    }
+  }
+  const permit2Tokens = permit2SourceTokens(permit2Permits, definition.chain.id)
+  const feesIndex = resolvedPermits.findIndex(
+    (permit) => !isSettlementScopedPermit(permit) && permit.allowFees,
+  )
+  const permit2Fees =
+    permit2Tokens.size && feesIndex !== -1
+      ? recover(
+          (error) => refuse(error, { permitIndex: feesIndex }),
+          () =>
+            servedFees(options.settlement, definition.chain.id, [
+              ...permit2Tokens.keys(),
+            ]),
+        )
+      : undefined
+  const declaredPermissions = [
     ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []),
   ]
+  const permit2Scope = recover(refuse, () =>
+    permit2RouteScope(
+      permit2Tokens,
+      declaredPermissions,
+      definition.actions ?? [],
+      permit2Fees,
+    ),
+  )
+  const permissions = permit2Scope?.permissions ?? declaredPermissions
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
@@ -398,26 +468,19 @@ function resolveSession(
     }),
     ...(swapScope?.actions ?? []),
     ...(settlementScope?.actions ?? []),
+    ...(permit2Scope?.actions ?? []),
   ]
-  // A restricted session drops the fallback action, which is also where a
-  // cross-chain permit's spending-limit guardrails live — so a restricted
-  // session combined with a permit would keep claim signing but lose maxAmount
-  // enforcement. These are different authorization surfaces;
-  // reject the combination rather than silently drop the guardrails.
-  // A settlement-scoped permit carries its guardrails on its own actions, so it
-  // is the one permit shape a restricted session can hold.
-  if (
-    restricted &&
-    ((definition.crossChainPermits?.length && settlementScope === undefined) ||
-      definition.claimPolicies?.length)
-  ) {
+  // Raw claimPolicies keep their spending guardrails on the fallback action, so
+  // a restricted session would drop them. A crossChainPermits entry carries
+  // its own on its scoped actions (a Permit2-layer permit's cap rides its
+  // Permit2 approve, its claim policy the 1271 list).
+  if (restricted && definition.claimPolicies?.length) {
     refuse(
       refusal(
         'RESTRICTED_WITH_PERMIT2_GRANTS',
-        'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
-          'dropping the fallback also drops the permit guardrails (spending ' +
-          'limits). Use a restricted scoped-action session or a permit session, ' +
-          'not both.',
+        'a scoped session (restrictToActions, swap or crossChainPermits) ' +
+          'cannot hold claimPolicies: their guardrails (spending limits) ' +
+          'live on the fallback action it drops. Use crossChainPermits instead.',
       ),
     )
   }
@@ -520,7 +583,10 @@ function resolveSession(
   // then reverts instead of escaping via the global intent-execution target
   // whitelist (RHI-6286).
   const fallbackAction: SessionAction = {
-    policies: [{ type: 'intent-execution' }, ...permitFallbackPolicies],
+    policies:
+      fallback === 'sudo'
+        ? [{ type: 'sudo' }]
+        : [{ type: 'intent-execution' }, ...permitFallbackPolicies],
   }
   const injectedActions: SessionAction[] = [
     // Native-wrap `deposit()` is only permitted when the caller supplies the
@@ -566,7 +632,13 @@ function resolveSession(
           } satisfies ScopedAction,
         ]),
   ]
-  if (restricted && !userActions.length && !rawActions.length) {
+  // A Permit2-route session without `from` has already been refused.
+  if (
+    restricted &&
+    !userActions.length &&
+    !rawActions.length &&
+    !permit2Permits.length
+  ) {
     throw new Error(
       'restrictToActions drops the fallback, so the session must supply at ' +
         'least one permission or action — none were given',
@@ -693,7 +765,10 @@ function resolveSession(
   const erc7739Policies = resolveSessionSigning({
     signing:
       definition.signing ??
-      (restricted || executorOnlyOneTimeUse ? { mode: 'disabled' } : undefined),
+      // Claim policies are reached through the unrestricted content gate.
+      ((restricted && rawClaimPolicies.length === 0) || executorOnlyOneTimeUse
+        ? { mode: 'disabled' }
+        : undefined),
     environment,
     addresses,
   })
@@ -866,21 +941,19 @@ function sessionAccess(
   swapScoped: boolean,
   settlementLayers: readonly IntentExecutorSettlementLayer[] | undefined,
 ): SessionAccess {
+  if (definition.fallback !== undefined) {
+    return { kind: 'open', reason: `fallback: ${definition.fallback}` }
+  }
+  const permit2 = permits.some((permit) => !isSettlementScopedPermit(permit))
   const scopedBy = [
     ...(definition.restrictToActions === true ? ['restrictToActions'] : []),
     ...(swapScoped ? ['swap scope'] : []),
     ...(settlementLayers
       ? [`settlement-scoped permit (${settlementLayers.join(', ')})`]
       : []),
+    ...(permit2 ? ['Permit2-route permit (ACROSS)'] : []),
   ]
   if (scopedBy.length) return { kind: 'scoped', reason: scopedBy.join('; ') }
-  if (permits.length) {
-    const layers = permit2Layers(permits)
-    return {
-      kind: 'open',
-      reason: `Permit2-route permit (${layers.length ? layers.join(', ') : 'any layer'}) keeps the intent-execution fallback`,
-    }
-  }
   if (definition.claimPolicies?.length) {
     return {
       kind: 'open',
@@ -1100,6 +1173,17 @@ function permit2Layers(
 }
 
 /**
+ * Whether a Permit2-route permit admits ACROSS, the one Permit2 arbiter the
+ * orchestrator still routes: by naming it, or by naming no layer.
+ */
+function admitsAcross(permit: CrossChainPermit): boolean {
+  const named = Array.isArray(permit.settlementLayers)
+    ? permit.settlementLayers
+    : []
+  return named.length === 0 || named.includes('ACROSS')
+}
+
+/**
  * The definition's policy addresses, with the deployed UniversalActionPolicy
  * copies defaulted in for a settlement-scoped session on a chain that has them.
  */
@@ -1147,9 +1231,15 @@ export function toSession(
     resolveCrossChainPermission(permit),
   )
   const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
+  const permit2Scoped =
+    access.kind === 'scoped' &&
+    resolvedPermits.some((permit) => !isSettlementScopedPermit(permit))
+  // A scoped Permit2-route session settles only through the live arbiters.
   const intentLayers = settlementLayers.length
     ? settlementLayers
-    : permit2Layers(resolvedPermits)
+    : permit2Scoped
+      ? ['ACROSS' as const]
+      : permit2Layers(resolvedPermits)
   const expandedClaims = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))
     .map((permit) => expandCrossChainPermit(permit, environment).claim)
@@ -1166,7 +1256,8 @@ export function toSession(
       definition.permissions?.length ||
         definition.actions?.length ||
         definition.swap ||
-        scopedPermits.length,
+        scopedPermits.length ||
+        permit2Scoped,
     ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
