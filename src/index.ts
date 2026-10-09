@@ -129,6 +129,8 @@ export type {
   SessionRefusal,
   SessionRefusalCode,
   SessionValidation,
+  SessionWarning,
+  SessionWarningCode,
 } from './modules/validators/smart-sessions/refusals'
 export type {
   OwnerPasskeySignature,

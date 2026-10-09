@@ -734,3 +734,52 @@ describe('fallback outside a Permit2-route session', () => {
     expect(codes(definition)).toContain('FALLBACK_NOT_APPLICABLE')
   })
 })
+
+describe('a recipient pin beside a fallback', () => {
+  const warningsOf = (definition: SessionDefinition) =>
+    validateSessionDefinition(definition, OPTIONS).warnings
+  const optOut = { allowRecipientNotAccount: true }
+  const to = (recipient?: Address | 'any') => ({
+    chain: arbitrum,
+    token: USDC_ARB,
+    ...(recipient === undefined ? {} : { recipient }),
+  })
+
+  describe.each(['intentExecution', 'sudo'] as const)('%s', (fallback) => {
+    test.each<[string, Partial<CrossChainPermissionInput>]>([
+      ['bridge-to-self by default', {}],
+      ['a pinned recipient', { ...optOut, to: to(OTHER) }],
+      ['the account pinned with the opt-out', { ...optOut, to: to(ACCOUNT) }],
+      ['one pinned leg of several', { ...optOut, to: [to('any'), to(OTHER)] }],
+    ])('warns on %s, refusing nothing', (_, extra) => {
+      const definition = session([oncePermit(extra)], { fallback })
+      expect(codes(definition)).toEqual([])
+      expect(warningsOf(definition)).toEqual([
+        {
+          code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
+          message:
+            'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled through ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+          permitIndex: 0,
+        },
+      ])
+      expect(() => toSession(definition, OPTIONS)).not.toThrow()
+    })
+
+    test.each<[string, Partial<CrossChainPermissionInput>]>([
+      ['no recipient with the opt-out', { ...optOut, to: to() }],
+      ["recipient 'any'", { ...optOut, to: to('any') }],
+    ])('does not warn on %s', (_, extra) => {
+      expect(
+        warningsOf(session([oncePermit(extra)], { fallback })),
+      ).toBeUndefined()
+    })
+  })
+
+  test('does not warn on a scoped session', () => {
+    for (const extra of [{}, { ...optOut, to: to(OTHER) }]) {
+      const definition = session([permit(extra)])
+      expect(codes(definition)).toEqual([])
+      expect(warningsOf(definition)).toBeUndefined()
+    }
+  })
+})

@@ -41,9 +41,12 @@ import {
 } from '../modules/validators/smart-sessions/policies/addresses'
 import {
   SESSION_REFUSAL_CODES,
+  SESSION_WARNING_CODES,
   type SessionRefusal,
   type SessionRefusalCode,
   type SessionValidation,
+  type SessionWarning,
+  type SessionWarningCode,
 } from '../modules/validators/smart-sessions/refusals'
 import {
   toSession as resolveSession,
@@ -193,6 +196,8 @@ export type {
   SessionRefusalCode,
   SessionValidation,
   SessionValidationOptions,
+  SessionWarning,
+  SessionWarningCode,
   FyndChainId,
   FyndVenue,
   RhinestoneSwapVenue,
@@ -208,6 +213,7 @@ export type {
 export {
   ARG_POLICY_ADDRESS,
   SESSION_REFUSAL_CODES,
+  SESSION_WARNING_CODES,
   FYND_CHAIN_IDS,
   fynd,
   getPermissionId,

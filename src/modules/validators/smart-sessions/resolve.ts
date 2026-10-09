@@ -52,6 +52,7 @@ import {
   type refusalLog,
   refuser,
   type SessionValidation,
+  type SessionWarning,
 } from './refusals'
 import { servedFees } from './settlement/fees'
 import {
@@ -236,9 +237,41 @@ export function validateSessionDefinition(
     (collect) => resolveSession(definition, options, collect),
     log,
   )
-  if (result === undefined) return { refusals }
+  const warnings = sessionWarnings(definition)
+  const warned = warnings.length ? { warnings } : {}
+  if (result === undefined) return { refusals, ...warned }
   const { access, settlementCoverage } = result
-  return { refusals, access, ...(settlementCoverage && { settlementCoverage }) }
+  return {
+    refusals,
+    access,
+    ...(settlementCoverage && { settlementCoverage }),
+    ...warned,
+  }
+}
+
+/**
+ * Under `fallback`, the wildcard admits IntentExecutor-layer settlement
+ * without reading its recipient, and the claim policy that pins it checks
+ * only Permit2 (`ACROSS`) claims.
+ */
+function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
+  if (definition.fallback === undefined) return []
+  return (definition.crossChainPermits ?? []).flatMap((permit, permitIndex) =>
+    !isSettlementScopedPermit(permit) &&
+    (!permit.allowRecipientNotAccount ||
+      [permit.to ?? []]
+        .flat()
+        .some(({ recipient }) => recipient && recipient !== 'any'))
+      ? [
+          {
+            code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
+            message:
+              'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled through ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+            permitIndex,
+          },
+        ]
+      : [],
+  )
 }
 
 /**
