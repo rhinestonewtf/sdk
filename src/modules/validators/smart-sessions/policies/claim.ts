@@ -1,4 +1,4 @@
-import { type Address, isAddressEqual } from 'viem'
+import { type Address, type Chain, isAddressEqual } from 'viem'
 import { getArbitersForSettlementLayers } from '../../policies/claim/arbiters'
 import type {
   InternalPermit2ClaimPolicy,
@@ -18,6 +18,7 @@ export function expandCrossChainPermit(
   environment: 'production' | 'development',
   onceDeadline?: bigint,
   account?: Address,
+  chain?: Chain,
 ): {
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
@@ -90,6 +91,8 @@ export function expandCrossChainPermit(
     recipientIsAccount: permit.recipientIsAccount,
     permitDeadline,
     fillDeadline: permit.fillDeadline,
+    ...(chain &&
+      permit.preClaimOps && { originOps: [{ chain, required: false }] }),
   }
   const fallbackPolicies: SessionPolicy[] = []
   const limits = (permit.from ?? [])
@@ -99,14 +102,14 @@ export function expandCrossChainPermit(
   return { claim, fallbackPolicies }
 }
 
-/** The Permit2 layers a permit settles through: those it names, else SAME_CHAIN and ACROSS. */
+/** The Permit2 layers a permit settles through: those it names, else ACROSS. */
 export function livePermit2Layers(
   permit: CrossChainPermit,
 ): CrossChainSettlementLayer[] {
   const named = Array.isArray(permit.settlementLayers)
     ? permit.settlementLayers
     : []
-  return named.length ? named : ['SAME_CHAIN', 'ACROSS']
+  return named.length ? named : ['ACROSS']
 }
 
 export function permit2ClaimPolicyMatchesMessage(
@@ -198,6 +201,10 @@ export function resolvePermit2ClaimPolicy(
       chainId: chain.id,
       min,
       max,
+    })),
+    originOps: policy.originOps?.map(({ chain, required }) => ({
+      chainId: chain.id,
+      required,
     })),
   }
 }

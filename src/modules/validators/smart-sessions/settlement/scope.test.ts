@@ -1152,7 +1152,10 @@ describe('settlement-scoped crossChainPermits', () => {
   )
 
   test('an ACROSS permit without a fallback is scoped to ACROSS', () => {
-    const permit = definition({ settlementLayers: ['ACROSS'] })
+    const permit = definition({
+      settlementLayers: ['ACROSS'],
+      preClaimOps: 'none',
+    })
     const data = resolveSessionData(permit)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
     expect(

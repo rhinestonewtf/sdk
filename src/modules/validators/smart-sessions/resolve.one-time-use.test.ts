@@ -577,7 +577,9 @@ describe('resolveSessionData — Permit2-route permit maxAmount', () => {
   })
 
   test('accepts ACROSS without maxAmount and without oneTimeUse', () => {
-    expect(() => resolve({ settlementLayers: ['ACROSS'] })).not.toThrow()
+    expect(() =>
+      resolve({ settlementLayers: ['ACROSS'], preClaimOps: 'none' }),
+    ).not.toThrow()
   })
 
   test('leaves an IntentExecutor-layer permit to its own maxAmount rule', () => {

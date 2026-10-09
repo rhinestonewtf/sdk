@@ -34,6 +34,9 @@ const session = (
   owners: { type: 'ecdsa', accounts: [accountA] },
   ...(account ? { account } : {}),
   crossChainPermits: [crossChainPermit],
+  // The recipient guard holds on every Permit2 session; a fallback lets every
+  // layer list here resolve.
+  fallback: 'intentExecution',
 })
 
 function thrown(definition: SessionDefinition): unknown {
@@ -107,7 +110,9 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
 
   // Moved when Permit2-route sessions became scoped and gained their Permit2
   // approve (RHI-8045); `account` named the now-refused ECO, so it names
-  // SAME_CHAIN, and the omitted-layer claims no longer admit ECO.
+  // SAME_CHAIN, and the omitted-layer claims admit only ACROSS. Every row now
+  // sets fallback: 'intentExecution', which a reusable session without
+  // preClaimOps: 'none' needs.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(
@@ -118,15 +123,15 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
       ),
     ).toEqual({
       otherWithOptOut:
-        '0x82d90c1b72d8bc0bb107f114c9b073bb00ee311c77ea3e7fd3aec65e2fc96eae',
+        '0x00cf8fe485e568b998942e7156a51d298ac69e568593d9c37a06e93f30bd1325',
       anyWithOptOut:
-        '0x5b028400da784a0c090c4250d6e3c98a3794f40bf8cfef6a81cc3d4fd8fb0c9b',
+        '0x7413bacd261442f161995932868a25acae04beacf9020638ae5f484175e34378',
       account:
-        '0x5bba65d8a02f90d8468f2f135a314e3dc65e23cbd208d6c013b6943ea2daf33d',
+        '0x0b103d420cae0eef0e6208c6611aecb492a6fb221d1ebc25a70a7ac1a8338d9a',
       noRecipient:
-        '0xa46a4a08607df497937ed93c2968113a37aafffaed0a5a7631d50c4394e785ec',
+        '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
       otherWithoutAccount:
-        '0xcc2941a50c0615251f3c209b21d646b1c7c953268f2e377079c10a4e87f14ae0',
+        '0xf45704c50c724e547891bd64cccc45007673ca975e524056798a445c2e134288',
     })
   })
 })

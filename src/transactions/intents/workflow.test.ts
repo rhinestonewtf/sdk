@@ -638,6 +638,52 @@ describe('intent workflow', () => {
     )
   })
 
+  describe('a session whose claim may not carry pre-claim calls', () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      crossChainPermits: [
+        {
+          from: {
+            chain: mainnet,
+            token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+          },
+          to: {
+            chain: arbitrum,
+            token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+          },
+          settlementLayers: ['ACROSS'],
+          preClaimOps: 'none',
+        },
+      ],
+    })
+    const prepare = (enabled: boolean) =>
+      prepareIntent(
+        context({
+          checkpoints: {
+            read: vi.fn(async (checkpoint) => [
+              { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+            ]),
+          },
+        }),
+        {
+          ...input,
+          signers: { kind: 'smart-session', byChain: { 1: { session } } },
+        },
+      )
+
+    test('must be enabled before its first intent', async () => {
+      await expect(prepare(false)).rejects.toThrow(
+        "The session's claim may not carry pre-claim calls, so enable it on chain 1 before its first intent",
+      )
+    })
+
+    test('once enabled, adds no pre-claim call', async () => {
+      const prepared = await prepare(true)
+      expect(prepared.request.preClaimExecutions?.[1] ?? []).toEqual([])
+    })
+  })
+
   describe('one-time-use destination burn', () => {
     const POLICY = '0x00000000000000000000000000000000000000aa' as const
     // source: cast calldata "consumeFor(uint256,uint256)" 42 0

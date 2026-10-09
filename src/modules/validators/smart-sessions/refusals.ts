@@ -78,7 +78,7 @@ export const SESSION_REFUSAL_CODES = {
     "recipient 'any' where the layer must pin a concrete recipient",
   ECO_IE_NO_SHARED_PROVER: 'no Eco prover deployed on both chains of a leg',
   LZ_NO_ROUTE: 'no LZ route from the chain to any `to` chain',
-  NATIVE_SOURCE_UNSUPPORTED: 'a native `from` token on SAME_CHAIN_IE',
+  NATIVE_SOURCE_UNSUPPORTED: 'a native `from` on SAME_CHAIN_IE or Permit2',
   SAME_CHAIN_IE_OTHER_CHAIN_LEG: 'a SAME_CHAIN_IE `to` leg on another chain',
   SAME_CHAIN_IE_TRANSFER_TO_SELF:
     'a SAME_CHAIN_IE transfer to the account itself',
@@ -94,16 +94,22 @@ export const SESSION_REFUSAL_CODES = {
   FEES_NOT_SERVED: 'allowFees on a chain with no served fee addresses',
   ALLOW_FEES_NON_STABLECOIN:
     'allowFees with a `from` token that is not a served USD stablecoin',
-  ALLOW_FEES_ONLY_INTENT_EXECUTOR: 'no longer raised',
+  ALLOW_FEES_ONLY_INTENT_EXECUTOR: 'retired: allowFees applies to Permit2 too',
   SIGNING_WITH_INTENT_EXECUTOR_PERMIT:
     'an IntentExecutor-layer permit with `signing` enabled',
   RESTRICTED_WITH_PERMIT2_GRANTS: 'a restricted session holding claimPolicies',
   PERMIT2_ROUTE_NEEDS_FROM:
-    "a Permit2-layer permit with no `from` on the session's chain",
+    "a Permit2-layer permit with no `from` on the session's chain, without `fallback` or with allowFees",
   RETIRED_PERMIT2_LAYER: 'a permit naming the Permit2 ECO arbiter',
-  PERMIT2_APPROVE_CONFLICT:
-    'an approve on a `from` token that cannot also admit Permit2',
-  FALLBACK_WITHOUT_PERMIT2_PERMIT: '`fallback` without a Permit2-layer permit',
+  PERMIT2_APPROVE_CONFLICT: 'a declared approve on a Permit2 `from` token',
+  FALLBACK_NOT_APPLICABLE:
+    '`fallback` without a Permit2-layer permit, or with restrictToActions or swap',
+  PERMIT2_ROUTE_NEEDS_BOUND:
+    "a Permit2-layer permit without oneTimeUse, preClaimOps: 'none' or `fallback`",
+  PERMIT2_ROUTE_NEEDS_ACROSS:
+    'a Permit2-layer permit without ACROSS or `fallback`',
+  PRE_CLAIM_OPS_NOT_APPLICABLE:
+    "preClaimOps: 'none' with oneTimeUse or on an IntentExecutor-layer permit",
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
   CLAIM_POLICIES_SIGNING_MODE:

@@ -696,6 +696,7 @@ describe('crossChainPermits expansion', () => {
           settlementLayers: ['ACROSS'],
         },
       ],
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
@@ -782,6 +783,7 @@ describe('crossChainPermits expansion', () => {
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
         crossChainPermits: [permit, permit, permit],
+        fallback: 'intentExecution',
       }),
     ).toThrow(/twice; the second config would overwrite/)
   })

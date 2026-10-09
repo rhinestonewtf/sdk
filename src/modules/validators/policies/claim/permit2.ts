@@ -14,6 +14,7 @@ import {
   FIELD_ARBITER,
   FIELD_EXPIRY,
   FIELD_FILL_EXPIRY,
+  FIELD_ORIGIN_OPS,
   FIELD_RECIPIENT,
   FIELD_RECIPIENT_IS_SPONSOR,
   FIELD_TOKEN_IN,
@@ -30,6 +31,8 @@ interface InternalPermit2ClaimPolicy {
   recipientIsSponsor?: boolean
   expiryBounds?: { min?: bigint; max?: bigint }
   fillExpiryBounds?: { chainId: number; min?: bigint; max?: bigint }[]
+  /** Whether a claim must (or must not) carry pre-claim calls, per origin chain. */
+  originOps?: { chainId: number; required: boolean }[]
 }
 
 // EIP-712 type definitions for Permit2/Mandate struct encoding.
@@ -190,6 +193,7 @@ export function buildPermit2ClaimPolicyCalldata(
   const fillExpiryEnabled = !!policy.fillExpiryBounds?.length
   const tokenOutEnabled = !!policy.tokensOut?.length
   const recipientIsSponsorEnabled = !!policy.recipientIsSponsor
+  const originOpsEnabled = !!policy.originOps?.length
 
   // hasAnyTargetCheck mirrors the Solidity MASK_TARGET_CHECKS logic for our supported fields
   const hasAnyTargetCheck =
@@ -221,13 +225,23 @@ export function buildPermit2ClaimPolicyCalldata(
     parts.push(hashTokenPermissionsArray(message.permitted))
   }
 
+  const target = message.mandate.target
   // Mandate section
-  if (!hasAnyTargetCheck) {
+  if (!hasAnyTargetCheck && !originOpsEnabled) {
     // No mandate-level checks enabled — provide pre-computed mandateHash
     parts.push(hashMandateStruct(message.mandate))
+  } else if (!hasAnyTargetCheck) {
+    // Mandate checks without target checks: [targetHash:32][targetChain:32]
+    parts.push(
+      hashStruct({
+        primaryType: 'Target',
+        types: PERMIT2_TYPES,
+        data: { ...target, tokenOut: Array.from(target.tokenOut) },
+      }),
+      toHex(target.targetChain, { size: 32 }),
+    )
   } else {
     // Expanded mandate: target fields + minGas + ops hashes + q
-    const target = message.mandate.target
 
     // Target: [recipient:20][targetChain:32][fillExpiry:32]
     parts.push(
@@ -248,10 +262,11 @@ export function buildPermit2ClaimPolicyCalldata(
     } else {
       parts.push(hashTokenOutArray(target.tokenOut))
     }
-
+  }
+  if (hasAnyTargetCheck || originOpsEnabled) {
     // minGas: uint128 = 16 bytes
     parts.push(toHex(message.mandate.minGas, { size: 16 }))
-    // originOpsHash and destOpsHash: always 32-byte hashes (we don't support ops checks)
+    // originOpsHash and destOpsHash: 32-byte hashes, read in place by the checks
     parts.push(hashOpStruct(message.mandate.originOps))
     parts.push(hashOpStruct(message.mandate.destOps))
     // qualificationHash: q is already keccak256(qualifier.encodedVal)
@@ -280,6 +295,7 @@ export function encodePermit2ClaimPolicyInitData(
   if (policy.fillExpiryBounds?.length) setMode(FIELD_FILL_EXPIRY)
   if (policy.tokensOut?.length) setMode(FIELD_TOKEN_OUT)
   if (policy.recipientIsSponsor) setMode(FIELD_RECIPIENT_IS_SPONSOR)
+  if (policy.originOps?.length) setMode(FIELD_ORIGIN_OPS)
 
   const parts: Hex[] = [toHex(modeConfig, { size: 4 })]
 
@@ -351,6 +367,14 @@ export function encodePermit2ClaimPolicyInitData(
     parts.push(toHex(policy.tokensOut.length, { size: 1 }))
     for (const { chainId, token } of policy.tokensOut) {
       parts.push(encodePacked(['uint256', 'address'], [BigInt(chainId), token]))
+    }
+  }
+
+  // OriginOps: [count: 1][chainId: 32][required: 1] each
+  if (policy.originOps?.length) {
+    parts.push(toHex(policy.originOps.length, { size: 1 }))
+    for (const { chainId, required } of policy.originOps) {
+      parts.push(encodePacked(['uint256', 'bool'], [BigInt(chainId), required]))
     }
   }
 

@@ -88,7 +88,7 @@ describe('Smart Sessions claim policies', () => {
     }
   })
 
-  test('admits ACROSS and SAME_CHAIN, never ECO, when no layer is named', () => {
+  test('admits only ACROSS when no layer is named', () => {
     for (const settlementLayers of [undefined, []]) {
       expect(
         expandCrossChainPermit(
@@ -96,7 +96,6 @@ describe('Smart Sessions claim policies', () => {
           'production',
         ).claim.spenders,
       ).toEqual([
-        '0x000000000006e2569CaF8Ff021810790e0A0D740',
         '0x28a4D41776968c1201A807ec51fFB405362B8882',
         '0xA162fabb9a0EeF2736485A587aAAB3d015e14224',
       ])

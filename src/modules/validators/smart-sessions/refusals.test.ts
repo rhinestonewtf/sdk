@@ -50,6 +50,7 @@ const permit2 = (
   from: { chain: base, token: USDC },
   to: { chain: arbitrum, token: USDC_ARB },
   settlementLayers: ['ACROSS'],
+  preClaimOps: 'none',
   ...permit,
 })
 
@@ -151,7 +152,10 @@ describe('refusal codes', () => {
       'PERMIT2_ROUTE_NEEDS_FROM',
       'RETIRED_PERMIT2_LAYER',
       'PERMIT2_APPROVE_CONFLICT',
-      'FALLBACK_WITHOUT_PERMIT2_PERMIT',
+      'FALLBACK_NOT_APPLICABLE',
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+      'PERMIT2_ROUTE_NEEDS_ACROSS',
+      'PRE_CLAIM_OPS_NOT_APPLICABLE',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
       'CLAIM_POLICIES_SIGNING_MODE',
       'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
@@ -473,11 +477,20 @@ describe('collectSessionRefusals', () => {
     ['FEES_NOT_SERVED', session([permit2({ allowFees: true })])],
     ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
     [
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+      session([permit2({ preClaimOps: undefined })]),
+    ],
+    [
+      'PERMIT2_ROUTE_NEEDS_ACROSS',
+      session([permit2({ settlementLayers: ['SAME_CHAIN'] })]),
+    ],
+    ['PRE_CLAIM_OPS_NOT_APPLICABLE', session([permit2()], oneTimeUse)],
+    [
       'RETIRED_PERMIT2_LAYER',
       session([permit2({ settlementLayers: ['ECO'] })]),
     ],
     [
-      'FALLBACK_WITHOUT_PERMIT2_PERMIT',
+      'FALLBACK_NOT_APPLICABLE',
       session([cctp()], { fallback: 'sudo' } as Partial<SessionDefinition>),
     ],
     ['DUPLICATE_ERC1271_POLICY', session([permit2(), permit2()])],

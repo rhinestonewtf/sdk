@@ -7,7 +7,10 @@ import {
   type Hex,
   isAddressEqual,
   maxUint256,
+  pad,
   toFunctionSelector,
+  toHex,
+  zeroAddress,
   zeroHash,
 } from 'viem'
 import { arbitrum, base } from 'viem/chains'
@@ -15,6 +18,8 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { satisfiesRules } from '../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
+import { FIELD_ORIGIN_OPS } from '../policies/claim/types'
 import { getSessionData } from './digest'
 import { CONSUME_SELECTOR } from './one-time-use'
 import {
@@ -27,6 +32,7 @@ import { encodeActionPolicies } from './policies/encode'
 import {
   permit2RouteScope,
   permit2SourceTokens,
+  WITHDRAW_SELECTOR,
 } from './policies/permit2-approval'
 import {
   DEFAULT_POLICY_ADDRESSES,
@@ -38,6 +44,7 @@ import {
 } from './resolve'
 import { CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR } from './settlement/fees'
 import type { SettlementCatalog } from './settlement/types'
+import { cumulativeCap, pin, swapAction } from './swap/rules'
 import { PERMIT2 } from './swap/stable-floor'
 import type {
   CrossChainPermissionInput,
@@ -50,6 +57,7 @@ import type {
 
 const USDC = SETTLEMENT_CATALOG[base.id].cctp!.usdc
 const USDC_ARB = SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc
+const USDT = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2' as Address
 const WETH = '0x4200000000000000000000000000000000000006' as Address
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
@@ -58,6 +66,7 @@ const COLLECTOR = '0x5555555555555555555555555555555555555555' as Address
 const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const APPROVE = toFunctionSelector('approve(address,uint256)')
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
+const DEPOSIT = toFunctionSelector('deposit()')
 const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: {
@@ -71,14 +80,20 @@ const otu = {
   policyAddresses: { oneTimeUseId: ONE_TIME_USE },
 } as const
 
+/** A reusable scoped permit: its claim may not carry pre-claim calls. */
 const permit = (
   extra: Partial<CrossChainPermissionInput> = {},
 ): CrossChainPermissionInput => ({
   from: { chain: base, token: USDC },
   to: { chain: arbitrum, token: USDC_ARB },
   settlementLayers: ['ACROSS'],
+  preClaimOps: 'none',
   ...extra,
 })
+
+/** A one-time-use permit, which bounds its pre-claim calls by the once-policy. */
+const oncePermit = (extra: Partial<CrossChainPermissionInput> = {}) =>
+  permit({ preClaimOps: undefined, ...extra })
 
 const session = (
   permits: CrossChainPermissionInput[],
@@ -96,6 +111,21 @@ const approve = (spender: Address, amount: bigint): Hex =>
     abi: erc20Abi,
     functionName: 'approve',
     args: [spender, amount],
+  })
+
+const withdraw = (amount: bigint): Hex =>
+  encodeFunctionData({
+    abi: [
+      {
+        type: 'function',
+        name: 'withdraw',
+        inputs: [{ name: 'wad', type: 'uint256' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ],
+    functionName: 'withdraw',
+    args: [amount],
   })
 
 const codes = (definition: SessionDefinition, options = OPTIONS) =>
@@ -121,13 +151,20 @@ const fallbackOf = (definition: SessionDefinition) =>
     '0x00000001',
   )
 
+const encoded = (action: ScopedAction) =>
+  encodeActionPolicies(
+    action.policies ?? [],
+    'production',
+    DEFAULT_POLICY_ADDRESSES,
+  )
+
 const resolved = (
   legs: CrossChainPermit['from'],
 ): readonly CrossChainPermit[] => [{ from: legs }]
 
-describe('the Permit2 approve a Permit2-route permit scopes', () => {
+describe('the actions a Permit2-route permit scopes', () => {
   const only = (cap?: bigint) =>
-    permit2RouteScope(new Map([[USDC, cap]]), [], [], undefined).actions
+    permit2RouteScope(new Map([[USDC, cap]]), [], [], undefined)
 
   test('is one approve on the token, its spender pinned to Permit2', () => {
     const actions = only()
@@ -175,95 +212,69 @@ describe('the Permit2 approve a Permit2-route permit scopes', () => {
     }
   })
 
-  describe('beside a declared approve on the token', () => {
-    const declared = (spender?: object, extra: object = {}): Permission =>
+  test('refuses any declared approve on the token', () => {
+    const declared = (params?: object): Permission =>
       ({
         abi: erc20Abi as Abi,
         address: USDC,
-        functions: {
-          approve: {
-            ...(spender ? { params: { spender } } : {}),
-            ...extra,
-          },
-        },
+        functions: { approve: params ? { params } : {} },
       }) as Permission
-    const merge = (
-      permission: Permission,
-      cap?: bigint,
-      fees?: { appFeeCollector: Address; paymaster: Address },
-    ) => permit2RouteScope(new Map([[USDC, cap]]), [permission], [], fees)
-
-    test('adds Permit2 to a plain spender pin', () => {
-      expect(merge(declared({ condition: 'equal', value: OTHER }))).toEqual({
-        permissions: [
-          declared({ anyOf: [OTHER, PERMIT2] }) as unknown as Permission,
-        ],
-        actions: [],
-      })
-      expect(merge(declared({ anyOf: [OTHER, PERMIT2] }))).toEqual({
-        permissions: [declared({ anyOf: [OTHER, PERMIT2] })],
-        actions: [],
-      })
-    })
-
-    test.each([
-      ['an approve open to every spender', declared(), undefined],
-      ['a capped Permit2 approve', declared({ anyOf: [OTHER] }), 1n],
-      [
-        'a declared cap',
-        declared(
-          { anyOf: [OTHER] },
-          { spendingLimit: { token: USDC, amount: 1n } },
-        ),
-        undefined,
-      ],
-      [
-        'a usage limit on the spender',
-        declared({ condition: 'equal', value: OTHER, usageLimit: 1n }),
-        undefined,
-      ],
-      [
-        'another rule on the spender',
-        declared({ condition: 'notEqual', value: OTHER }),
-        undefined,
-      ],
-    ])('refuses %s', (_, permission, cap) => {
-      expect(() => merge(permission, cap)).toThrow(
-        expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }),
-      )
-    })
-
-    test('refuses a merge the fee calls would join', () => {
-      expect(() =>
-        merge(declared({ anyOf: [OTHER] }), undefined, {
-          appFeeCollector: COLLECTOR,
-          paymaster: PAYMASTER,
-        }),
-      ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
-    })
-
-    test('refuses a raw approve action on the token', () => {
-      const raw: ScopedAction = { target: USDC, selector: APPROVE }
-      expect(() =>
-        permit2RouteScope(new Map([[USDC, undefined]]), [], [raw], undefined),
-      ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
-      // Even beside a declared approve it could otherwise merge into.
+    for (const permission of [
+      declared(),
+      declared({ spender: { condition: 'equal', value: OTHER } }),
+      declared({ spender: { anyOf: [OTHER, PERMIT2] } }),
+    ]) {
       expect(() =>
         permit2RouteScope(
           new Map([[USDC, undefined]]),
-          [declared({ anyOf: [OTHER] })],
-          [raw],
+          [permission],
+          [],
           undefined,
         ),
       ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
+    }
+    expect(() =>
+      permit2RouteScope(
+        new Map([[USDC, undefined]]),
+        [],
+        [{ target: USDC, selector: APPROVE }],
+        undefined,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
+  })
+
+  test('wraps and unwraps the wrapped native token within its cap', () => {
+    const [, deposit, unwrap] = permit2RouteScope(
+      new Map([[WETH, 5n]]),
+      [],
+      [],
+      undefined,
+      { token: WETH, cap: 5n },
+    )
+    expect(deposit).toEqual({
+      target: WETH,
+      selector: DEPOSIT,
+      policies: [{ type: 'value-limit', limit: 5n }],
     })
+    expect(unwrap.selector).toBe(WITHDRAW_SELECTOR)
+    expect(satisfiesRules(unwrap, withdraw(5n))).toBe(true)
+    expect(satisfiesRules(unwrap, withdraw(6n))).toBe(false)
+    // Uncapped when the leg is.
+    expect(
+      permit2RouteScope(new Map(), [], [], undefined, {
+        token: WETH,
+        cap: undefined,
+      }),
+    ).toEqual([
+      { target: WETH, selector: DEPOSIT },
+      { target: WETH, selector: WITHDRAW_SELECTOR },
+    ])
   })
 })
 
-describe('a Permit2-route session', () => {
-  test('is scoped: its approve and claim, no fallback or wrap', () => {
-    const definition = session([permit()])
-    const built = toSession(definition, {
+describe('a scoped Permit2-route session', () => {
+  test("with preClaimOps: 'none' is its approve and a claim that may not carry pre-claim calls", () => {
+    const built = toSession(session([permit()]), {
       ...OPTIONS,
       wrappedNativeToken: WETH,
     })
@@ -284,43 +295,52 @@ describe('a Permit2-route session', () => {
     expect(built.actions[1].actionPolicies.map((p) => p.policy)).toEqual([
       VALUE_LIMIT_POLICY_ADDRESS,
     ])
-    const [scoped] = permit2RouteScope(
-      new Map([[USDC, undefined]]),
-      [],
-      [],
-      undefined,
-    ).actions
     expect(built.actions[0].actionPolicies).toEqual(
-      encodeActionPolicies(
-        scoped.policies ?? [],
-        'production',
-        DEFAULT_POLICY_ADDRESSES,
-      ),
+      encoded(swapAction(USDC, APPROVE, [pin(0n, PERMIT2)])),
     )
-    // Its executions are checked against those actions once enabled.
     expect(built.hasExplicitPermissions).toBe(true)
     expect(built.settlementLayers).toEqual(['ACROSS'])
-  })
-
-  test('keeps its claim policy reachable through the signing gate', () => {
-    const data = getSessionData(toSession(session([permit()]), OPTIONS))
+    expect(built.claimPolicies[0].originOps).toEqual([
+      { chain: base, required: false },
+    ])
+    // The claim policy reads it as origin ops not required on the session chain.
+    const data = getSessionData(built)
     expect(data.erc7739Policies.allowedERC7739Content).toEqual([
       { appDomainSeparator: zeroHash, contentNames: [''] },
     ])
-    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    const [claim] = data.erc7739Policies.erc1271Policies
+    expect(claim.policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    const modeConfig = Number.parseInt(claim.initData.slice(2, 10), 16)
+    expect((modeConfig >> (FIELD_ORIGIN_OPS * 2)) & 0b11).toBe(0b01)
+    expect(claim.initData.endsWith(`01${pad(toHex(base.id)).slice(2)}00`)).toBe(
+      true,
+    )
   })
 
-  test('burns its one-time-use id like any session', () => {
+  test('with oneTimeUse burns its id and caps its approve at maxAmount', () => {
     const built = toSession(
-      session([permit({ from: { chain: base, token: USDC, maxAmount: 5n } })], {
-        ...otu,
-      }),
+      session(
+        [oncePermit({ from: { chain: base, token: USDC, maxAmount: 5n } })],
+        otu,
+      ),
       OPTIONS,
     )
+    expect(built.access?.kind).toBe('scoped')
     expect(
       actionOn(built.actions, ONE_TIME_USE, CONSUME_SELECTOR),
     ).toBeDefined()
-    expect(fallbackOf(session([permit()], { ...otu }))).toBeUndefined()
+    expect(built.claimPolicies[0].originOps).toBeUndefined()
+    // Built independently of the SDK's scoping, then checked against the session.
+    const expected = swapAction(USDC, APPROVE, [
+      pin(0n, PERMIT2),
+      cumulativeCap(32n, 5n),
+    ])
+    expect(
+      actionOn(built.actions, USDC, APPROVE)?.actionPolicies.slice(0, -1),
+    ).toEqual(encoded(expected))
+    expect(satisfiesRules(expected, approve(PERMIT2, 6n))).toBe(false)
+    expect(satisfiesRules(expected, approve(PERMIT2, 5n))).toBe(true)
+    expect(fallbackOf(session([oncePermit()], otu))).toBeUndefined()
   })
 
   test('settles unsponsored intents with allowFees', () => {
@@ -330,12 +350,78 @@ describe('a Permit2-route session', () => {
       actionOn(built.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
     ).toBeDefined()
     expect(built.access?.kind).toBe('scoped')
-    // Without it, no fee call is scoped.
     const plain = toSession(session([permit()]), OPTIONS)
     expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
   })
 
+  test('wraps and unwraps when a leg is the wrapped native token', () => {
+    const wrapping = (from: Address, toToken: Address = USDC_ARB) =>
+      toSession(
+        session([
+          permit({
+            from: { chain: base, token: from },
+            to: [
+              { chain: arbitrum, token: USDC_ARB },
+              { chain: base, token: toToken },
+            ],
+          }),
+        ]),
+        { ...OPTIONS, wrappedNativeToken: WETH },
+      ).actions
+    for (const actions of [wrapping(WETH), wrapping(USDC, zeroAddress)]) {
+      expect(actionOn(actions, WETH, DEPOSIT)).toBeDefined()
+      expect(actionOn(actions, WETH, WITHDRAW_SELECTOR)).toBeDefined()
+    }
+    expect(actionOn(wrapping(USDC), WETH, DEPOSIT)).toBeUndefined()
+  })
+
+  test('with a fallback keeps only the unscoped deposit it had before', () => {
+    const actions = toSession(
+      session([oncePermit({ from: { chain: base, token: WETH } })], {
+        fallback: 'intentExecution',
+      }),
+      { ...OPTIONS, wrappedNativeToken: WETH },
+    ).actions
+    expect(actionOn(actions, WETH, DEPOSIT)?.actionPolicies).toEqual([
+      { policy: SUDO_POLICY_ADDRESS, initData: '0x' },
+    ])
+    expect(actionOn(actions, WETH, WITHDRAW_SELECTOR)).toBeUndefined()
+  })
+
   test.each<[string, SessionDefinition, ResolveSessionOptions, string]>([
+    [
+      'a permit without oneTimeUse, preClaimOps or fallback',
+      session([oncePermit()]),
+      OPTIONS,
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+    ],
+    [
+      'restrictToActions without a bound either',
+      session([oncePermit()], {
+        restrictToActions: true,
+        actions: [{ target: OTHER, selector: '0x12345678' }],
+      }),
+      OPTIONS,
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+    ],
+    [
+      "preClaimOps: 'none' beside oneTimeUse",
+      session([permit()], otu),
+      OPTIONS,
+      'PRE_CLAIM_OPS_NOT_APPLICABLE',
+    ],
+    [
+      "preClaimOps: 'none' on an IntentExecutor-layer permit",
+      session([permit({ settlementLayers: ['CCTP'] })]),
+      OPTIONS,
+      'PRE_CLAIM_OPS_NOT_APPLICABLE',
+    ],
+    [
+      'a native `from` token',
+      session([permit({ from: { chain: base, token: zeroAddress } })]),
+      OPTIONS,
+      'NATIVE_SOURCE_UNSUPPORTED',
+    ],
     [
       'allowFees without the catalog',
       session([permit({ allowFees: true })]),
@@ -363,6 +449,20 @@ describe('a Permit2-route session', () => {
       'PERMIT2_ROUTE_NEEDS_FROM',
     ],
     [
+      'allowFees without `from`, even with a fallback',
+      session([permit({ from: undefined, allowFees: true })], {
+        fallback: 'sudo',
+      }),
+      OPTIONS,
+      'PERMIT2_ROUTE_NEEDS_FROM',
+    ],
+    [
+      'a SAME_CHAIN-only permit',
+      session([permit({ settlementLayers: ['SAME_CHAIN'] })]),
+      OPTIONS,
+      'PERMIT2_ROUTE_NEEDS_ACROSS',
+    ],
+    [
       'an ECO-only permit',
       session([permit({ settlementLayers: ['ECO'] })]),
       OPTIONS,
@@ -388,13 +488,13 @@ describe('a Permit2-route session', () => {
   })
 
   test.each<[CrossChainPermissionInput['settlementLayers'], string[]]>([
-    [['SAME_CHAIN'], ['SAME_CHAIN']],
     [
       ['ACROSS', 'SAME_CHAIN'],
       ['ACROSS', 'SAME_CHAIN'],
     ],
-    [undefined, ['SAME_CHAIN', 'ACROSS']],
-  ])('naming %j settles through %j, scoped', (settlementLayers, layers) => {
+    [undefined, ['ACROSS']],
+    [[], ['ACROSS']],
+  ])('naming %j settles through %j', (settlementLayers, layers) => {
     const built = toSession(session([permit({ settlementLayers })]), OPTIONS)
     expect(built.access).toEqual({
       kind: 'scoped',
@@ -426,7 +526,7 @@ describe.each([
   ['sudo', SUDO_POLICY_ADDRESS],
 ] as const)('a Permit2-route session with fallback: %s', (fallback, policy) => {
   const definition = (extra: Partial<CrossChainPermissionInput> = {}) =>
-    session([permit(extra)], { fallback })
+    session([oncePermit(extra)], { fallback })
 
   test('is open, with that fallback beside its scoped approve', () => {
     const built = toSession(definition(), OPTIONS)
@@ -443,15 +543,16 @@ describe.each([
     expect(built.hasExplicitPermissions).toBe(false)
   })
 
-  test('admits a permit without `from`', () => {
+  test('admits a permit without `from`, or naming only SAME_CHAIN', () => {
     expect(codes(definition({ from: undefined }))).toEqual([])
+    expect(codes(definition({ settlementLayers: ['SAME_CHAIN'] }))).toEqual([])
     const built = toSession(definition({ from: undefined }), OPTIONS)
     expect(actionOn(built.actions, USDC, APPROVE)).toBeUndefined()
   })
 
   test('carries the spending limit on the fallback only for intentExecution', () => {
     const capped = session(
-      [permit({ from: { chain: base, token: USDC, maxAmount: 5n } })],
+      [oncePermit({ from: { chain: base, token: USDC, maxAmount: 5n } })],
       { fallback, ...otu },
     )
     expect(fallbackOf(capped)?.actionPolicies.map((p) => p.policy)).toEqual(
@@ -471,7 +572,7 @@ describe('fallback outside a Permit2-route session', () => {
     ['a plain session', { crossChainPermits: [] }],
     [
       'a settlement-scoped session',
-      { crossChainPermits: [permit({ settlementLayers: ['CCTP'] })] },
+      { crossChainPermits: [oncePermit({ settlementLayers: ['CCTP'] })] },
     ],
     [
       'restrictToActions',
@@ -480,8 +581,18 @@ describe('fallback outside a Permit2-route session', () => {
         actions: [{ target: OTHER, selector: '0x12345678' }],
       },
     ],
+    [
+      'swap',
+      {
+        swap: {
+          sell: { token: USDC, maxTotal: 1_000_000n },
+          buy: { token: USDT },
+          to: ACCOUNT,
+        },
+      } as Partial<SessionDefinition>,
+    ],
   ])('is refused on %s', (_, extra) => {
-    const definition = session([permit()], { fallback: 'sudo', ...extra })
-    expect(codes(definition)).toContain('FALLBACK_WITHOUT_PERMIT2_PERMIT')
+    const definition = session([oncePermit()], { fallback: 'sudo', ...extra })
+    expect(codes(definition)).toContain('FALLBACK_NOT_APPLICABLE')
   })
 })

@@ -40,7 +40,11 @@ const DEFINITIONS = {
     claimPolicies,
     actions: [APPROVE],
   },
-  across: { chain: base, owners, crossChainPermits: [permit(['ACROSS'])] },
+  across: {
+    chain: base,
+    owners,
+    crossChainPermits: [{ ...permit(['ACROSS']), preClaimOps: 'none' }],
+  },
   acrossIntentExecution: {
     chain: base,
     owners,
@@ -129,19 +133,19 @@ describe('session access', () => {
     }
   })
 
-  test('a Permit2 permit naming no layer is scoped to SAME_CHAIN and ACROSS', () => {
+  test('a Permit2 permit naming no layer is scoped to ACROSS', () => {
     expect(
-      toSession({ ...DEFINITIONS.across, crossChainPermits: [permit()] })
-        .access,
-    ).toEqual({
-      kind: 'scoped',
-      reason: 'Permit2-route permit (SAME_CHAIN, ACROSS)',
-    })
+      toSession({
+        ...DEFINITIONS.across,
+        crossChainPermits: [{ ...permit(), preClaimOps: 'none' }],
+      }).access,
+    ).toEqual({ kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' })
   })
 
-  test('reporting access leaves the encoded session unchanged', () => {
+  test('pins the encoded session of each shape', () => {
     // Captured from origin/main (ade12708), before sessions carried access.
-    // `across` moved when Permit2-route sessions became scoped (RHI-8045).
+    // `across` moved when Permit2-route sessions became scoped (RHI-8045)
+    // and again when it took preClaimOps: 'none'.
     expect(
       Object.fromEntries(
         Object.keys(DEFINITIONS).map((name) => [
@@ -159,7 +163,7 @@ describe('session access', () => {
       claimPoliciesWithActions:
         '0x54f7b11d9665425cf479f3cb77f49b80b28129026aeb7042a14926c1adbe9649',
       across:
-        '0xb1c3ecc025a03e0a80ece0a443042876e248881815a0ffeabe9041fa41fb761c',
+        '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
       acrossIntentExecution:
         '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
       acrossSudo:

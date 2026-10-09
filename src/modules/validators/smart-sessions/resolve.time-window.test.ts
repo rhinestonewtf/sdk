@@ -100,7 +100,8 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
   },
   // Its fallback always carries the intent-execution policy (main:
   // 0x99711685…e5d2).
-  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045).
+  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045);
+  // the reusable one now sets preClaimOps: 'none', which its claim policy encodes.
   'Permit2 crossChainPermit, no maxAmount': {
     chain: base,
     owners,
@@ -109,6 +110,7 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
         from: { chain: base, token: USDC },
         to: { chain: arbitrum, token: USDC_ARB },
         settlementLayers: ['ACROSS'],
+        preClaimOps: 'none',
       },
     ],
   },
@@ -188,11 +190,12 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
       '0x5e76b37831e3aba8f394e9fe12df02a8fdec55174e1b27c29adc810b8a5cc844',
     data: '0x4538d4956dfb324c2488d867a58f9388bd835707cd03ec2b271b5b59c68f1505',
   },
-  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045).
+  // The Permit2 rows moved when Permit2-route sessions became scoped (RHI-8045);
+  // the reusable one now sets preClaimOps: 'none', which its claim policy encodes.
   'Permit2 crossChainPermit, no maxAmount': {
     permissionId:
-      '0x545bcdc2f68767f4bc2ea877b5b90bed2c9c091892fedf623bdb626cb7ce6b6a',
-    data: '0x6b48bf83fb5c2d25bdcb62c7c8e1332ef15acf35838463cf4ca69d2b5bc842d9',
+      '0x68c574671b2a68321d441476cf4e4c1f59e1b0c8eb9f6b75ea956dad02678f80',
+    data: '0xa8cee0069c3c09003a97948395e985cf4583c4524ebc048568157e439cb052f6',
   },
   'Permit2 crossChainPermit, oneTimeUse': {
     permissionId:

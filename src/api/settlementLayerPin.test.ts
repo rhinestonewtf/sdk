@@ -34,6 +34,10 @@ function session(
                 from: { chain: base, token: USDC },
                 to: { chain: arbitrum, token: USDC_ARB },
                 ...(layers ? { settlementLayers: layers } : {}),
+                // A reusable scoped Permit2 permit needs it.
+                ...(fallback || layers?.includes('CCTP')
+                  ? {}
+                  : { preClaimOps: 'none' }),
               },
             ],
           }),
@@ -221,12 +225,6 @@ describe('settlement layer pin', () => {
     }
   })
 
-  test('a scoped SAME_CHAIN-only session adds no bridge filter', () => {
-    // The orchestrator takes no same-chain layer in the filter.
-    expect(session(['SAME_CHAIN']).settlementLayers).toEqual(['SAME_CHAIN'])
-    expect(layersFor(['SAME_CHAIN'])).toBeUndefined()
-  })
-
   test('an explicit filter can only narrow a scoped Permit2 session', () => {
     expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
       include: ['ACROSS'],
@@ -309,12 +307,96 @@ describe('settlement layer pin', () => {
 })
 
 // Captured from origin/main, before a Permit2 session carried its layers;
-// moved when Permit2-route sessions became scoped (RHI-8045).
+// moved when Permit2-route sessions became scoped (RHI-8045), and again when
+// they took preClaimOps: 'none' and omitted layers came to admit ACROSS alone.
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
-  ACROSS: '0xb1c3ecc025a03e0a80ece0a443042876e248881815a0ffeabe9041fa41fb761c',
+  ACROSS: '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
   'ACROSS,SAME_CHAIN':
-    '0x77586a0ae7f8d68a3a5d62499216d1adc63d07f3e66b1aa98b253fcde0dcf66d',
-  // Omitted layers no longer admit the ECO arbiter.
+    '0x314e71c5cc23dd00400123db6d2320a5eaa0aada1009d5146702c64cb0212c91',
+  // Omitted layers admit ACROSS alone, as naming it does.
   undefined:
-    '0xa46a4a08607df497937ed93c2968113a37aafffaed0a5a7631d50c4394e785ec',
+    '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
 }
+
+describe('source asset pin', () => {
+  const OTHER = '0x4200000000000000000000000000000000000006' as const
+  const accessFor = (
+    sourceAssets?: unknown,
+    fallback?: 'intentExecution' | 'sudo',
+  ) =>
+    (
+      adaptTransaction(
+        { account: {} } as never,
+        {
+          chain: base,
+          calls: [],
+          signers: {
+            type: 'session',
+            session: session(['ACROSS'], fallback),
+          },
+          ...(sourceAssets ? { sourceAssets } : {}),
+        } as never,
+      ) as { accountAccessList?: unknown }
+    ).accountAccessList
+
+  test("a scoped Permit2 session funds the intent only from its permit's `from` tokens", () => {
+    expect(accessFor()).toEqual({ chainTokens: { [base.id]: [USDC] } })
+  })
+
+  test('an explicit sourceAssets can only narrow it', () => {
+    expect(accessFor([USDC, OTHER])).toEqual({
+      chainTokens: { [base.id]: [USDC] },
+    })
+    expect(accessFor([{ chain: base, address: USDC, amount: 5n }])).toEqual({
+      chainTokenAmounts: { [base.id]: { [USDC]: 5n } },
+    })
+    expect(() => accessFor({ [base.id]: [OTHER] })).toThrow(
+      'sourceAssets: no source asset is left',
+    )
+  })
+
+  test('keeps only the listed chains and tokens', () => {
+    const multi = toSession(
+      {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        account: ACCOUNT,
+        crossChainPermits: [
+          {
+            from: [
+              { chain: base, token: USDC },
+              { chain: base, token: OTHER },
+              { chain: arbitrum, token: USDC_ARB },
+            ],
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ACROSS'],
+            preClaimOps: 'none',
+          },
+        ],
+      } as never,
+      { settlement: SETTLEMENT_CATALOG },
+    )
+    const pin = (sourceAssets?: unknown) =>
+      (
+        adaptTransaction(
+          { account: {} } as never,
+          {
+            chain: base,
+            calls: [],
+            signers: { type: 'session', session: multi },
+            ...(sourceAssets ? { sourceAssets } : {}),
+          } as never,
+        ) as { accountAccessList?: unknown }
+      ).accountAccessList
+    // The intent's source chain is base, so arbitrum's leg is left out.
+    expect(pin()).toEqual({ chainTokens: { [base.id]: [USDC, OTHER] } })
+    expect(pin([OTHER])).toEqual({ chainTokens: { [base.id]: [OTHER] } })
+  })
+
+  test.each(['intentExecution', 'sudo'] as const)(
+    'a session with fallback: %s leaves the source assets to the caller',
+    (fallback) => {
+      expect(accessFor(undefined, fallback)).toEqual({ chainIds: [base.id] })
+    },
+  )
+})

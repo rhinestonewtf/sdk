@@ -62,6 +62,17 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       if (enabled?.kind !== 'session-enabled') {
         throw new Error(`Session state for chain ${chain.id} is missing`)
       }
+      // Enabling rides a pre-claim call, which such a claim may not carry.
+      if (
+        !enabled.enabled &&
+        selected.session.claimPolicies.some(({ originOps }) =>
+          originOps?.some((ops) => ops.chain.id === chain.id && !ops.required),
+        )
+      ) {
+        throw new Error(
+          `The session's claim may not carry pre-claim calls, so enable it on chain ${chain.id} before its first intent`,
+        )
+      }
       // A one-time-use session must never drop to plain ERC-1271 (mode 1): the
       // policy burns the id when checkAction validates the burn, which only runs in
       // verify-execution mode (mode 5), and it refuses ERC-1271 validation from the

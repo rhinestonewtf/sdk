@@ -276,6 +276,7 @@ export interface CrossChainPermit {
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
+  preClaimOps?: 'none'
 }
 
 export interface FromLeg {
@@ -301,6 +302,7 @@ export interface CrossChainPermissionInput {
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
+  preClaimOps?: 'none'
 }
 
 export interface Permit2ClaimPolicy {
@@ -312,6 +314,7 @@ export interface Permit2ClaimPolicy {
   recipientIsAccount?: boolean
   permitDeadline?: { min?: bigint; max?: bigint }
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  originOps?: { chain: Chain; required: boolean }[]
 }
 
 export interface SessionSigningContent {

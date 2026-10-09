@@ -35,7 +35,7 @@ import type { SettlementAddresses, SettlementCatalog } from './types'
 export const SETTLEMENT_FEE_CAP = 5_000_000n
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
-const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
+export const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
 export const CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR = toFunctionSelector(
   'callbackAllowMaxAmount(address,uint256)',
 )

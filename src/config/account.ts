@@ -282,15 +282,19 @@ interface Permit2ClaimPolicy {
   permitDeadline?: { min?: bigint; max?: bigint }
   /** Bounds for the mandate target fill deadline, per destination chain */
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  /** Whether a claim must (`true`) or may not (`false`) carry pre-claim calls, per origin chain */
+  originOps?: { chain: Chain; required: boolean }[]
 }
 
 /**
  * Settlement layers supported by the cross-chain session abstraction.
  *
  * - `SAME_CHAIN` and `ACROSS` settle through Permit2: each maps to one or
- *   more arbiter addresses from the SDK's bundled allow-set. `ECO` is the
- *   retired Standard Eco arbiter and a permit naming it is refused: use
- *   `ECO_IE` instead.
+ *   more arbiter addresses from the SDK's bundled allow-set. A smart account
+ *   settles cross-chain through `ACROSS` and same-chain through
+ *   `SAME_CHAIN_IE`, so a permit without `fallback` must admit `ACROSS`.
+ *   `ECO` is the retired Standard Eco arbiter and a permit naming it is
+ *   refused: use `ECO_IE` instead.
  * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor),
  *   `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
  *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap
@@ -375,9 +379,10 @@ type CrossChainSettlementLayer =
  * A high-level permit that authorises a session key to move funds
  * between two chains via Permit2 arbiter settlement. The SDK expands
  * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
- * plus a capped `approve(Permit2, amount)` per `from` token — the claim
- * policy itself doesn't enforce amounts on-chain, so the SDK lifts that
- * guarantee into an action-level policy that does.
+ * plus a capped `approve(Permit2, amount)` per `from` token. The claim
+ * policy itself doesn't check amounts, and the cap bounds only what the
+ * session approves: an allowance the account already holds for Permit2 is
+ * not bounded by it.
  *
  * Resolved from {@link CrossChainPermissionInput} by the SDK; consumers
  * normally set `SessionDefinition.crossChainPermits` with the input shape,
@@ -389,7 +394,7 @@ interface CrossChainPermit {
    * Omit for no source-token restriction (any token on any chain may be
    * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
    * flag then constrain the source side. On a Permit2-route permit,
-   * `maxAmount` requires `oneTimeUse`.
+   * `maxAmount` requires `oneTimeUse`, and a native token is refused.
    */
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   /**
@@ -416,7 +421,7 @@ interface CrossChainPermit {
   recipientIsAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for `SAME_CHAIN` and `ACROSS`.
+   * `[]`) for `ACROSS`.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
    * session to those layers' calls instead, and `'all'` to every bridging one
@@ -446,8 +451,11 @@ interface CrossChainPermit {
   /**
    * Also let the session pay the intent's app fee (and a user-paid protocol
    * fee) to the orchestrator's fee collector, and approve and call its
-   * paymaster for unsponsored gas. Defaults to `false`: only sponsored intents
-   * without an app fee settle, on IntentExecutor and Permit2 layers alike.
+   * paymaster for unsponsored gas. Defaults to `false`: an intent that carries
+   * an app fee or a protocol fee taken from the `from` token does not settle,
+   * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
+   * layer it also needs a `from` token on the session's chain, even with
+   * `fallback`.
    *
    * - Each fee call has its own cumulative 5 USD cap, not one per session: the
    *   collector transfer and the paymaster approve one per `from` token, the
@@ -464,6 +472,16 @@ interface CrossChainPermit {
    *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean
+  /**
+   * Permit2 layers only: the claim may not carry pre-claim calls. This bounds
+   * a session without `oneTimeUse`, so it can be scoped and reusable. The
+   * session then settles only intents that need no pre-claim call: the
+   * account already holds enough Permit2 allowance for the `from` token, no
+   * fee is taken from it, and no native token is wrapped. The session must be
+   * enabled before its first intent, and cannot be combined with
+   * `oneTimeUse`, whose burn is itself a pre-claim call.
+   */
+  preClaimOps?: 'none'
 }
 
 interface FromLeg {
@@ -472,7 +490,8 @@ interface FromLeg {
   /**
    * Cap on the amount the session may move from this leg. On a Permit2-route
    * permit (`SAME_CHAIN`, `ACROSS`, or `settlementLayers` omitted) it
-   * requires `oneTimeUse`; without it the session is refused.
+   * requires `oneTimeUse`, and caps what the session approves to Permit2: an
+   * allowance the account already holds is not bounded by it.
    */
   maxAmount?: bigint
 }
@@ -538,8 +557,13 @@ interface CrossChainPermissionInput {
    *
    * On a Permit2 layer, each `from` token on the session's chain gets the
    * `approve(Permit2, amount)` its settlement needs, capped at the largest
-   * `maxAmount` of its legs. A Permit2-layer permit must name a `from` token
-   * on the session's chain unless the session sets `fallback`.
+   * `maxAmount` of its legs (uncapped if any leg sets none). A Permit2-layer
+   * permit must name an ERC-20 `from` token on the session's chain unless the
+   * session sets `fallback`. A leg on the session's chain in the native or
+   * wrapped native token also gets the wrapped native `deposit()` and
+   * `withdraw(uint256)`, capped at the wrapped native `from` leg's
+   * `maxAmount` (uncapped without one); `sdk.createSession` supplies the
+   * wrapped native address.
    */
   from?: FromLeg | FromLeg[]
   /**
@@ -575,8 +599,7 @@ interface CrossChainPermissionInput {
   allowRecipientNotAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for the Permit2 layers `SAME_CHAIN` and `ACROSS`. Pass a subset
-   * (e.g. `['ACROSS']`) to narrow.
+   * `[]`) for `ACROSS`. A permit without `fallback` must admit `ACROSS`.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
    * session to those layers' calls instead, and `'all'` to every bridging one
@@ -606,8 +629,11 @@ interface CrossChainPermissionInput {
   /**
    * Also let the session pay the intent's app fee (and a user-paid protocol
    * fee) to the orchestrator's fee collector, and approve and call its
-   * paymaster for unsponsored gas. Defaults to `false`: only sponsored intents
-   * without an app fee settle, on IntentExecutor and Permit2 layers alike.
+   * paymaster for unsponsored gas. Defaults to `false`: an intent that carries
+   * an app fee or a protocol fee taken from the `from` token does not settle,
+   * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
+   * layer it also needs a `from` token on the session's chain, even with
+   * `fallback`.
    *
    * - Each fee call has its own cumulative 5 USD cap, not one per session: the
    *   collector transfer and the paymaster approve one per `from` token, the
@@ -624,6 +650,16 @@ interface CrossChainPermissionInput {
    *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean
+  /**
+   * Permit2 layers only: the claim may not carry pre-claim calls. This bounds
+   * a session without `oneTimeUse`, so it can be scoped and reusable. The
+   * session then settles only intents that need no pre-claim call: the
+   * account already holds enough Permit2 allowance for the `from` token, no
+   * fee is taken from it, and no native token is wrapped. The session must be
+   * enabled before its first intent, and cannot be combined with
+   * `oneTimeUse`, whose burn is itself a pre-claim call.
+   */
+  preClaimOps?: 'none'
 }
 
 type Policy =
@@ -1075,23 +1111,27 @@ interface SessionDefinition<
    * selector) reverts. Requires at least one permission or action, and is
    * mutually exclusive with `claimPolicies` (which rely on the fallback for
    * their guardrails) and with `fallback`. A session with `crossChainPermits`
-   * is already scoped.
+   * is already scoped unless it sets `fallback`.
    */
   restrictToActions?: boolean
   /**
    * Add a wildcard action to a session holding a Permit2-layer
-   * `crossChainPermits` entry, which is otherwise scoped to the Permit2
-   * approve and fee calls its settlement needs. Omit to keep it scoped.
+   * `crossChainPermits` entry. Without it, such a session is scoped to the
+   * calls its settlement needs, and needs `oneTimeUse` or the permit's
+   * `preClaimOps: 'none'` (refused with `PERMIT2_ROUTE_NEEDS_BOUND`
+   * otherwise).
    *
-   * - `'intentExecution'`: the session key may also call the targets on
-   *   Rhinestone's intent-execution allow-list, with the permit's `maxAmount`
-   *   as a spending limit. The allow-list is set by Rhinestone and may grow.
-   * - `'sudo'`: the session key may call any contract with any arguments.
+   * - `'intentExecution'`: the session key may also make the calls
+   *   Rhinestone's intent-execution policy admits, with the permit's
+   *   `maxAmount` as a spending limit. That policy is set by Rhinestone and
+   *   may admit more over time.
+   * - `'sudo'`: the session key may call any contract, any function, with any
+   *   arguments and native value.
    *
-   * Either one admits a permit without `from`, and leaves intents free to
-   * take routes other than `ACROSS`. Refused
-   * on a session without a Permit2-layer permit, and with `restrictToActions`
-   * or `swap`.
+   * Either one reports `access.kind: 'open'`, admits a permit without `from`
+   * or one naming only `SAME_CHAIN`, and leaves intents free to take routes
+   * other than `ACROSS`. Refused with `FALLBACK_NOT_APPLICABLE` on a session
+   * without a Permit2-layer permit, and with `restrictToActions` or `swap`.
    */
   fallback?: 'intentExecution' | 'sudo'
   /**
@@ -1203,14 +1243,13 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
-  /** The layers the session's cross-chain permit settles through: the
-   *  IntentExecutor layers a settlement-scoped permit restricted it to, the
-   *  Permit2 layers a Permit2 permit names (`SAME_CHAIN` and `ACROSS` when it
-   *  names none), or, with `fallback`, the Permit2 layers the permit lists
-   *  (absent when it lists none). Metadata only — intents with the session are
-   *  limited to these layers (`SAME_CHAIN` and `SAME_CHAIN_IE` add no bridge
-   *  filter); with `fallback` they exclude the Permit2 arbiters the permit does
-   *  not name. */
+  /** The layers the session's cross-chain permit settles through. For a
+   *  settlement-scoped permit, the IntentExecutor layers kept; for a scoped
+   *  Permit2 permit, the layers it names (`ACROSS` when it names none), and
+   *  intents are limited to `ACROSS` (`SAME_CHAIN` and `SAME_CHAIN_IE` add no
+   *  bridge filter). With `fallback`, the Permit2 layers the permit lists
+   *  (absent when it lists none), and intents exclude only the Permit2
+   *  arbiters it does not name. Metadata only. */
   settlementLayers?: readonly CrossChainSettlementLayer[]
   /** The layers `settlementLayers: 'all'` left out of a settlement-scoped permit
    *  on the session's chain, each with the refusal that dropped it; the kept

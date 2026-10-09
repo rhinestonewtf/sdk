@@ -1042,19 +1042,86 @@ const PERMIT2_LAYERS: ReadonlySet<string> = new Set([
  * arbiters its permit does not name. Like the quoter pin, an explicit filter
  * can only narrow.
  */
+function signingSessions(
+  signers: SignerSet | undefined,
+  chainIds: readonly number[],
+) {
+  if (signers?.type !== 'session') return []
+  return 'session' in signers
+    ? [signers.session]
+    : Object.entries(signers.sessions ?? {})
+        .filter(([chainId]) => chainIds.includes(Number(chainId)))
+        .map(([, s]) => s.session)
+}
+
+/**
+ * The source assets a scoped Permit2-route session can fund, narrowed by any
+ * explicit `sourceAssets`: its claim moves only the permit's `from` tokens, so
+ * an origin swap or a native wrap of anything else would not settle.
+ */
+function sourceAssetPin(
+  signers: SignerSet | undefined,
+  chainIds: readonly number[],
+  explicit: OrchestratorAccountAccessList | undefined,
+): OrchestratorAccountAccessList | undefined {
+  const derived: Record<number, Address[]> = {}
+  for (const session of signingSessions(signers, chainIds)) {
+    if (session.access?.kind !== 'scoped') continue
+    for (const claim of session.claimPolicies) {
+      for (const { chain, address } of claim.sourceTokens ?? []) {
+        ;(derived[chain.id] ??= []).push(address)
+      }
+    }
+  }
+  if (Object.keys(derived).length === 0) return explicit
+  const has = (chainId: number, token: string) =>
+    derived[chainId]?.some((t) => t.toLowerCase() === token.toLowerCase())
+  const chainTokens = Object.fromEntries(
+    Object.entries(
+      explicit?.chainTokens ?? (explicit?.chainTokenAmounts ? {} : derived),
+    ).flatMap(([chainId, tokens]) => {
+      const kept = tokens.filter(
+        (token) =>
+          has(Number(chainId), token) &&
+          (!explicit?.chainIds ||
+            explicit.chainIds.includes(Number(chainId))) &&
+          (!explicit?.tokens ||
+            explicit.tokens.some(
+              (t) => t.toLowerCase() === token.toLowerCase(),
+            )),
+      )
+      return kept.length ? [[chainId, kept]] : []
+    }),
+  )
+  const chainTokenAmounts = Object.fromEntries(
+    Object.entries(explicit?.chainTokenAmounts ?? {}).flatMap(
+      ([chainId, amounts]) => {
+        const kept = Object.entries(amounts).filter(([token]) =>
+          has(Number(chainId), token),
+        )
+        return kept.length ? [[chainId, Object.fromEntries(kept)]] : []
+      },
+    ),
+  )
+  const pinned = {
+    ...(Object.keys(chainTokens).length && { chainTokens }),
+    ...(Object.keys(chainTokenAmounts).length && { chainTokenAmounts }),
+  }
+  if (Object.keys(pinned).length === 0) {
+    throw new Error(
+      "sourceAssets: no source asset is left; the session funds intents only from its permit's `from` tokens",
+    )
+  }
+  return pinned
+}
+
 function settlementLayerPin(
   signers: SignerSet | undefined,
   chainIds: readonly number[],
   explicit: Transaction['settlementLayers'],
 ): Transaction['settlementLayers'] {
   if (signers?.type !== 'session') return explicit
-  const relevant = new Set(chainIds)
-  const sessions =
-    'session' in signers
-      ? [signers.session]
-      : Object.entries(signers.sessions ?? {})
-          .filter(([chainId]) => relevant.has(Number(chainId)))
-          .map(([, s]) => s.session)
+  const sessions = signingSessions(signers, chainIds)
   type Layer = Extract<
     NonNullable<Transaction['settlementLayers']>,
     { include: unknown }
@@ -1084,7 +1151,7 @@ function settlementLayerPin(
     // A scoped Permit2-route session names its live arbiters; Permit2's
     // SAME_CHAIN, like SAME_CHAIN_IE, narrows nothing.
     const layers = named.flatMap((layer): Layer[] =>
-      layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN' || layer === 'ECO'
+      layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN'
         ? []
         : [layer === 'ECO_IE' ? 'ECO' : (layer as Layer)],
     )
@@ -1175,14 +1242,22 @@ export function adaptTransaction(
     ...(transaction.eip7702InitSignature
       ? { eip7702InitSignature: transaction.eip7702InitSignature }
       : {}),
-    ...(transaction.sourceAssets || sourceChains
-      ? {
-          accountAccessList: adaptSourceAssets(
-            transaction.sourceAssets,
-            evmSources?.map(({ id }) => id),
-          ),
-        }
-      : {}),
+    ...(() => {
+      const accountAccessList = sourceAssetPin(
+        transaction.signers,
+        [
+          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(evmSources?.map(({ id }) => id) ?? []),
+        ],
+        transaction.sourceAssets || sourceChains
+          ? adaptSourceAssets(
+              transaction.sourceAssets,
+              evmSources?.map(({ id }) => id),
+            )
+          : undefined,
+      )
+      return accountAccessList ? { accountAccessList } : {}
+    })(),
     options: {
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
       ...(transaction.protocolFees
