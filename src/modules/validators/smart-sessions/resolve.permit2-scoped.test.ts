@@ -366,13 +366,19 @@ describe('a Permit2-route session', () => {
       'an ECO-only permit',
       session([permit({ settlementLayers: ['ECO'] })]),
       OPTIONS,
-      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      'RETIRED_PERMIT2_LAYER',
     ],
     [
-      'a SAME_CHAIN-only permit',
-      session([permit({ settlementLayers: ['SAME_CHAIN', 'ECO'] })]),
+      'a permit naming ECO beside live layers',
+      session([permit({ settlementLayers: ['ACROSS', 'SAME_CHAIN', 'ECO'] })]),
       OPTIONS,
-      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      'RETIRED_PERMIT2_LAYER',
+    ],
+    [
+      'a permit naming ECO, even with a fallback',
+      session([permit({ settlementLayers: ['ECO'] })], { fallback: 'sudo' }),
+      OPTIONS,
+      'RETIRED_PERMIT2_LAYER',
     ],
   ])('refuses %s', (_, definition, options, code) => {
     expect(codes(definition, options)).toEqual([code])
@@ -381,13 +387,20 @@ describe('a Permit2-route session', () => {
     )
   })
 
-  test('admits ACROSS beside a retired arbiter, settling through ACROSS', () => {
-    const built = toSession(
-      session([permit({ settlementLayers: ['ACROSS', 'ECO'] })]),
-      OPTIONS,
-    )
-    expect(built.access?.kind).toBe('scoped')
-    expect(built.settlementLayers).toEqual(['ACROSS'])
+  test.each<[CrossChainPermissionInput['settlementLayers'], string[]]>([
+    [['SAME_CHAIN'], ['SAME_CHAIN']],
+    [
+      ['ACROSS', 'SAME_CHAIN'],
+      ['ACROSS', 'SAME_CHAIN'],
+    ],
+    [undefined, ['SAME_CHAIN', 'ACROSS']],
+  ])('naming %j settles through %j, scoped', (settlementLayers, layers) => {
+    const built = toSession(session([permit({ settlementLayers })]), OPTIONS)
+    expect(built.access).toEqual({
+      kind: 'scoped',
+      reason: `Permit2-route permit (${layers.join(', ')})`,
+    })
+    expect(built.settlementLayers).toEqual(layers)
   })
 
   test('can be held with restrictToActions beside other actions', () => {
@@ -430,13 +443,8 @@ describe.each([
     expect(built.hasExplicitPermissions).toBe(false)
   })
 
-  test('admits a permit without `from` or naming only retired arbiters', () => {
-    for (const extra of [
-      { from: undefined },
-      { settlementLayers: ['ECO' as const] },
-    ]) {
-      expect(codes(definition(extra))).toEqual([])
-    }
+  test('admits a permit without `from`', () => {
+    expect(codes(definition({ from: undefined }))).toEqual([])
     const built = toSession(definition({ from: undefined }), OPTIONS)
     expect(actionOn(built.actions, USDC, APPROVE)).toBeUndefined()
   })

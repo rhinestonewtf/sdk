@@ -129,11 +129,14 @@ describe('session access', () => {
     }
   })
 
-  test('a Permit2 permit naming no layer is scoped to ACROSS', () => {
+  test('a Permit2 permit naming no layer is scoped to SAME_CHAIN and ACROSS', () => {
     expect(
       toSession({ ...DEFINITIONS.across, crossChainPermits: [permit()] })
         .access,
-    ).toEqual({ kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' })
+    ).toEqual({
+      kind: 'scoped',
+      reason: 'Permit2-route permit (SAME_CHAIN, ACROSS)',
+    })
   })
 
   test('reporting access leaves the encoded session unchanged', () => {

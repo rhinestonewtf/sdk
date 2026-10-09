@@ -8,6 +8,7 @@ import { recipientNotAllowed } from '../cross-chain-permits'
 import { refusal } from '../refusals'
 import type {
   CrossChainPermit,
+  CrossChainSettlementLayer,
   Permit2ClaimPolicy,
   SessionPolicy,
 } from '../types'
@@ -25,6 +26,14 @@ export function expandCrossChainPermit(
   if (permit.settlementLayers === 'all') {
     throw new Error(
       "crossChainPermits (internal): settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
+    )
+  }
+  // The orchestrator no longer routes a smart account through the Permit2 ECO
+  // arbiter, so the claim never admits it.
+  if (permit.settlementLayers?.includes('ECO')) {
+    throw refusal(
+      'RETIRED_PERMIT2_LAYER',
+      'crossChainPermits: the Permit2 ECO arbiter is retired; use ECO_IE',
     )
   }
   if (permit.maxFeeBps !== undefined) {
@@ -72,7 +81,7 @@ export function expandCrossChainPermit(
   const claim: Permit2ClaimPolicy = {
     type: 'permit2',
     spenders: getArbitersForSettlementLayers(
-      permit.settlementLayers,
+      livePermit2Layers(permit),
       environment === 'development',
     ),
     sourceTokens,
@@ -88,6 +97,16 @@ export function expandCrossChainPermit(
     .map(({ token, maxAmount }) => ({ token, amount: maxAmount as bigint }))
   if (limits.length) fallbackPolicies.push({ type: 'spending-limits', limits })
   return { claim, fallbackPolicies }
+}
+
+/** The Permit2 layers a permit settles through: those it names, else SAME_CHAIN and ACROSS. */
+export function livePermit2Layers(
+  permit: CrossChainPermit,
+): CrossChainSettlementLayer[] {
+  const named = Array.isArray(permit.settlementLayers)
+    ? permit.settlementLayers
+    : []
+  return named.length ? named : ['SAME_CHAIN', 'ACROSS']
 }
 
 export function permit2ClaimPolicyMatchesMessage(

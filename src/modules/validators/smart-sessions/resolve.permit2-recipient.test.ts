@@ -34,11 +34,6 @@ const session = (
   owners: { type: 'ecdsa', accounts: [accountA] },
   ...(account ? { account } : {}),
   crossChainPermits: [crossChainPermit],
-  // A permit naming only a retired arbiter needs a fallback to resolve.
-  ...(Array.isArray(crossChainPermit.settlementLayers) &&
-  !crossChainPermit.settlementLayers.includes('ACROSS')
-    ? { fallback: 'intentExecution' as const }
-    : {}),
 })
 
 function thrown(definition: SessionDefinition): unknown {
@@ -52,7 +47,6 @@ function thrown(definition: SessionDefinition): unknown {
 
 const LAYERS: [string, CrossChainSettlementLayer[] | undefined][] = [
   ['ACROSS', ['ACROSS']],
-  ['ECO', ['ECO']],
   ['SAME_CHAIN', ['SAME_CHAIN']],
   ['omitted layers', undefined],
 ]
@@ -103,7 +97,7 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
   const sessions: Record<string, SessionDefinition> = {
     otherWithOptOut: session(permit(OTHER, ['ACROSS'], optOut)),
     anyWithOptOut: session(permit('any', undefined, optOut)),
-    account: session(permit(ACCOUNT, ['ECO'])),
+    account: session(permit(ACCOUNT, ['SAME_CHAIN'])),
     noRecipient: session({
       from: { chain: base, token: USDC },
       to: { chain: arbitrum, token: USDC_ARB },
@@ -112,7 +106,8 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
   }
 
   // Moved when Permit2-route sessions became scoped and gained their Permit2
-  // approve (RHI-8045); `account` names ECO, so it now sets a fallback.
+  // approve (RHI-8045); `account` named the now-refused ECO, so it names
+  // SAME_CHAIN, and the omitted-layer claims no longer admit ECO.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(
@@ -125,11 +120,11 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
       otherWithOptOut:
         '0x82d90c1b72d8bc0bb107f114c9b073bb00ee311c77ea3e7fd3aec65e2fc96eae',
       anyWithOptOut:
-        '0xb797190ae90ba3f2830a8dd0a9e8f9b95c66f9c45745d57e6656caad595241c2',
+        '0x5b028400da784a0c090c4250d6e3c98a3794f40bf8cfef6a81cc3d4fd8fb0c9b',
       account:
-        '0x0f91b0e3ebf33773cc2e05a4a97532236db6699da4ffaf1bc0f7ac98cb5e0c3a',
+        '0x5bba65d8a02f90d8468f2f135a314e3dc65e23cbd208d6c013b6943ea2daf33d',
       noRecipient:
-        '0x296f4d30d6cf2c2c279feab6956e938820fa88fecca74bfb744ecb48ad55f8e2',
+        '0xa46a4a08607df497937ed93c2968113a37aafffaed0a5a7631d50c4394e785ec',
       otherWithoutAccount:
         '0xcc2941a50c0615251f3c209b21d646b1c7c953268f2e377079c10a4e87f14ae0',
     })

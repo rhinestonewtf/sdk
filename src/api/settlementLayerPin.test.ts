@@ -211,9 +211,20 @@ describe('settlement layer pin', () => {
   })
 
   test('a scoped Permit2 session limits the intent to ACROSS', () => {
-    for (const layers of [['ACROSS'], ['ACROSS', 'ECO'], undefined, []]) {
+    for (const layers of [
+      ['ACROSS'],
+      ['ACROSS', 'SAME_CHAIN'],
+      undefined,
+      [],
+    ]) {
       expect(layersFor(layers)).toEqual({ include: ['ACROSS'] })
     }
+  })
+
+  test('a scoped SAME_CHAIN-only session adds no bridge filter', () => {
+    // The orchestrator takes no same-chain layer in the filter.
+    expect(session(['SAME_CHAIN']).settlementLayers).toEqual(['SAME_CHAIN'])
+    expect(layersFor(['SAME_CHAIN'])).toBeUndefined()
   })
 
   test('an explicit filter can only narrow a scoped Permit2 session', () => {
@@ -237,7 +248,7 @@ describe('settlement layer pin', () => {
       test('naming ACROSS leaves the filter to the caller', () => {
         expect(layersFor(['ACROSS'], undefined, fallback)).toBeUndefined()
         expect(
-          layersFor(['ACROSS', 'ECO'], undefined, fallback),
+          layersFor(['ACROSS', 'SAME_CHAIN'], undefined, fallback),
         ).toBeUndefined()
         expect(
           layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] }, fallback),
@@ -246,22 +257,22 @@ describe('settlement layer pin', () => {
 
       test('excludes only the arbiter it cannot sign', () => {
         // The fallback still settles IntentExecutor routes such as RELAY or CCTP.
-        for (const layers of [['ECO'], ['SAME_CHAIN'], ['ECO', 'SAME_CHAIN']]) {
-          expect(layersFor(layers, undefined, fallback)).toEqual({
-            exclude: ['ACROSS'],
-          })
-        }
+        expect(layersFor(['SAME_CHAIN'], undefined, fallback)).toEqual({
+          exclude: ['ACROSS'],
+        })
       })
 
       test('an explicit filter can only narrow it', () => {
         expect(
-          layersFor(['ECO'], { include: ['ACROSS', 'RELAY'] }, fallback),
+          layersFor(['SAME_CHAIN'], { include: ['ACROSS', 'RELAY'] }, fallback),
         ).toEqual({ include: ['RELAY'] })
-        expect(layersFor(['ECO'], { exclude: ['RELAY'] }, fallback)).toEqual({
+        expect(
+          layersFor(['SAME_CHAIN'], { exclude: ['RELAY'] }, fallback),
+        ).toEqual({
           exclude: ['RELAY', 'ACROSS'],
         })
         expect(() =>
-          layersFor(['ECO'], { include: ['ACROSS'] }, fallback),
+          layersFor(['SAME_CHAIN'], { include: ['ACROSS'] }, fallback),
         ).toThrow(
           'no settlement layer is left to settle the intent; the session cannot sign ACROSS',
         )
@@ -285,7 +296,7 @@ describe('settlement layer pin', () => {
   })
 
   test('the Permit2 layers do not change the session encoding', () => {
-    const layerSets = [['ACROSS'], ['ACROSS', 'ECO'], undefined]
+    const layerSets = [['ACROSS'], ['ACROSS', 'SAME_CHAIN'], undefined]
     expect(
       Object.fromEntries(
         layerSets.map((layers) => [
@@ -301,8 +312,9 @@ describe('settlement layer pin', () => {
 // moved when Permit2-route sessions became scoped (RHI-8045).
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
   ACROSS: '0xb1c3ecc025a03e0a80ece0a443042876e248881815a0ffeabe9041fa41fb761c',
-  'ACROSS,ECO':
-    '0x5d031ab5787e3939b0854d1d492e5bc31143c448cb40580e6dc69497e5152d6f',
+  'ACROSS,SAME_CHAIN':
+    '0x77586a0ae7f8d68a3a5d62499216d1adc63d07f3e66b1aa98b253fcde0dcf66d',
+  // Omitted layers no longer admit the ECO arbiter.
   undefined:
-    '0x296f4d30d6cf2c2c279feab6956e938820fa88fecca74bfb744ecb48ad55f8e2',
+    '0xa46a4a08607df497937ed93c2968113a37aafffaed0a5a7631d50c4394e785ec',
 }

@@ -100,12 +100,10 @@ export const SESSION_REFUSAL_CODES = {
   RESTRICTED_WITH_PERMIT2_GRANTS: 'a restricted session holding claimPolicies',
   PERMIT2_ROUTE_NEEDS_FROM:
     "a Permit2-layer permit with no `from` on the session's chain",
-  PERMIT2_ROUTE_NO_LIVE_LAYER:
-    'a Permit2-layer permit naming only SAME_CHAIN or ECO',
+  RETIRED_PERMIT2_LAYER: 'a permit naming the Permit2 ECO arbiter',
   PERMIT2_APPROVE_CONFLICT:
     'an approve on a `from` token that cannot also admit Permit2',
-  FALLBACK_WITHOUT_PERMIT2_PERMIT:
-    '`fallback` without a Permit2-layer permit',
+  FALLBACK_WITHOUT_PERMIT2_PERMIT: '`fallback` without a Permit2-layer permit',
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
   CLAIM_POLICIES_SIGNING_MODE:

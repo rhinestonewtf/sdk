@@ -1060,8 +1060,8 @@ function settlementLayerPin(
     { include: unknown }
   >['include'][number]
   // The orchestrator layers that settle through a Permit2 arbiter. Permit2's
-  // SAME_CHAIN and ECO are retired arbiters the orchestrator no longer routes
-  // a smart account through (its ECO is ECO_IE's solver network).
+  // ECO is a retired arbiter (the orchestrator's ECO is ECO_IE's solver
+  // network), and SAME_CHAIN takes no bridge, so neither is filtered.
   const permit2Arbiters: readonly Layer[] = ['ACROSS']
   // The session's layer names are the SDK's; the filter speaks the
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
@@ -1081,8 +1081,8 @@ function settlementLayerPin(
       }
       continue
     }
-    // A scoped Permit2-route session names only the live arbiters; the
-    // retired Permit2 SAME_CHAIN and ECO are not the orchestrator's layers.
+    // A scoped Permit2-route session names its live arbiters; Permit2's
+    // SAME_CHAIN, like SAME_CHAIN_IE, narrows nothing.
     const layers = named.flatMap((layer): Layer[] =>
       layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN' || layer === 'ECO'
         ? []

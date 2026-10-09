@@ -32,6 +32,7 @@ import {
 } from './policies/addresses'
 import {
   expandCrossChainPermit,
+  livePermit2Layers,
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
 import { encodeActionPolicies } from './policies/encode'
@@ -412,15 +413,6 @@ function resolveSession(
           ),
         )
       }
-      if (!admitsAcross(permit)) {
-        refuse(
-          refusal(
-            'PERMIT2_ROUTE_NO_LIVE_LAYER',
-            'crossChainPermits: SAME_CHAIN and ECO are retired; name ACROSS, or set `fallback`',
-            { permitIndex },
-          ),
-        )
-      }
     }
   }
   const permit2Tokens = permit2SourceTokens(permit2Permits, definition.chain.id)
@@ -479,8 +471,7 @@ function resolveSession(
       refusal(
         'RESTRICTED_WITH_PERMIT2_GRANTS',
         'a scoped session (restrictToActions, swap or crossChainPermits) ' +
-          'cannot hold claimPolicies: their guardrails (spending limits) ' +
-          'live on the fallback action it drops. Use crossChainPermits instead.',
+          'cannot hold claimPolicies, whose spending limits need the fallback; use crossChainPermits',
       ),
     )
   }
@@ -944,14 +935,16 @@ function sessionAccess(
   if (definition.fallback !== undefined) {
     return { kind: 'open', reason: `fallback: ${definition.fallback}` }
   }
-  const permit2 = permits.some((permit) => !isSettlementScopedPermit(permit))
+  const permit2 = permits.filter((permit) => !isSettlementScopedPermit(permit))
   const scopedBy = [
     ...(definition.restrictToActions === true ? ['restrictToActions'] : []),
     ...(swapScoped ? ['swap scope'] : []),
     ...(settlementLayers
       ? [`settlement-scoped permit (${settlementLayers.join(', ')})`]
       : []),
-    ...(permit2 ? ['Permit2-route permit (ACROSS)'] : []),
+    ...(permit2.length
+      ? [`Permit2-route permit (${permit2LayerSet(permit2).join(', ')})`]
+      : []),
   ]
   if (scopedBy.length) return { kind: 'scoped', reason: scopedBy.join('; ') }
   if (definition.claimPolicies?.length) {
@@ -1172,15 +1165,11 @@ function permit2Layers(
   ]
 }
 
-/**
- * Whether a Permit2-route permit admits ACROSS, the one Permit2 arbiter the
- * orchestrator still routes: by naming it, or by naming no layer.
- */
-function admitsAcross(permit: CrossChainPermit): boolean {
-  const named = Array.isArray(permit.settlementLayers)
-    ? permit.settlementLayers
-    : []
-  return named.length === 0 || named.includes('ACROSS')
+/** Every Permit2 layer the permits settle through, once each. */
+function permit2LayerSet(
+  permits: readonly CrossChainPermit[],
+): CrossChainSettlementLayer[] {
+  return [...new Set(permits.flatMap(livePermit2Layers))]
 }
 
 /**
@@ -1238,7 +1227,9 @@ export function toSession(
   const intentLayers = settlementLayers.length
     ? settlementLayers
     : permit2Scoped
-      ? ['ACROSS' as const]
+      ? permit2LayerSet(
+          resolvedPermits.filter((permit) => !isSettlementScopedPermit(permit)),
+        )
       : permit2Layers(resolvedPermits)
   const expandedClaims = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))

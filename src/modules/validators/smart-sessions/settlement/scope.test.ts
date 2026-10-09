@@ -1132,7 +1132,7 @@ describe('settlement-scoped crossChainPermits', () => {
     ).toThrow('OFT does not route to chain 8453')
   })
 
-  test.each(['ACROSS', 'ECO', 'SAME_CHAIN'] as const)(
+  test.each(['ACROSS', 'SAME_CHAIN'] as const)(
     'a %s permit with a fallback keeps its Permit2 shape',
     (layer) => {
       const permit = definition(

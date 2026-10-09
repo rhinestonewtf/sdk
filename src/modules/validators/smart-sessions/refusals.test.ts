@@ -149,7 +149,7 @@ describe('refusal codes', () => {
       'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
       'RESTRICTED_WITH_PERMIT2_GRANTS',
       'PERMIT2_ROUTE_NEEDS_FROM',
-      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      'RETIRED_PERMIT2_LAYER',
       'PERMIT2_APPROVE_CONFLICT',
       'FALLBACK_WITHOUT_PERMIT2_PERMIT',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
@@ -473,7 +473,7 @@ describe('collectSessionRefusals', () => {
     ['FEES_NOT_SERVED', session([permit2({ allowFees: true })])],
     ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
     [
-      'PERMIT2_ROUTE_NO_LIVE_LAYER',
+      'RETIRED_PERMIT2_LAYER',
       session([permit2({ settlementLayers: ['ECO'] })]),
     ],
     [

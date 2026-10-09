@@ -794,7 +794,7 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['SAME_CHAIN'] }],
       fallback: 'intentExecution',
     })
     const data = getSessionData(session)
@@ -811,7 +811,7 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['SAME_CHAIN'] }],
       fallback: 'intentExecution',
     })
     const withTokens = toSession({
@@ -821,7 +821,7 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['SAME_CHAIN'],
         },
       ],
       fallback: 'intentExecution',
