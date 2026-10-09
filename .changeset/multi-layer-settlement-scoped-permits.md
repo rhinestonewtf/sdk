@@ -11,5 +11,5 @@ A settlement-scoped cross-chain permit may now name several IntentExecutor layer
 - Layers compile in a fixed order, so `['LZ', 'CCTP']` and `['CCTP', 'LZ']` give the same session.
 - `'all'` resolves against `GET /chains` and the clock when the session is created: store the created session and reuse it rather than rebuilding it from `'all'`.
 - With `ECO_IE` among several layers, Eco's delivery floor (`maxAmount × (1 − maxFeeBps / 10000)`) means an intent settles over Eco only when it moves close to `maxAmount`.
-- `allowFees` adds the paymaster as another branch of the same approve, with its own 5 USD budget.
+- `allowFees` adds the paymaster as another branch of the same approve, with its own fee budget (5 USD, 30 USD on Ethereum mainnet).
 - A single-layer permit compiles to the same session as before.
