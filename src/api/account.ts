@@ -1037,31 +1037,121 @@ const PERMIT2_LAYERS: ReadonlySet<string> = new Set([
 
 /**
  * The settlement layers a session admits, narrowed by any explicit filter. A
- * settlement-scoped session admits only its own layers. A Permit2 session keeps
- * the intent-execution fallback, so it admits every route except the Permit2
+ * settlement-scoped or scoped Permit2-route session admits only its own layers.
+ * A Permit2 session with a `fallback` admits every route except the Permit2
  * arbiters its permit does not name. Like the quoter pin, an explicit filter
  * can only narrow.
  */
+function signingSessions(
+  signers: SignerSet | undefined,
+  chainIds: readonly number[],
+) {
+  if (signers?.type !== 'session') return []
+  return 'session' in signers
+    ? [signers.session]
+    : Object.entries(signers.sessions ?? {})
+        .filter(([chainId]) => chainIds.includes(Number(chainId)))
+        .map(([, s]) => s.session)
+}
+
+/**
+ * The source assets a scoped Permit2-route session can fund, narrowed by any
+ * explicit `sourceAssets`: its claim moves only the permit's `from` tokens, so
+ * an origin swap or a native wrap of anything else would not settle. A capped
+ * token goes in `chainTokenAmounts`, which the orchestrator treats as a cap,
+ * so it never plans a spend above `maxAmount`.
+ */
+function sourceAssetPin(
+  signers: SignerSet | undefined,
+  chainIds: readonly number[],
+  explicit: OrchestratorAccountAccessList | undefined,
+  sameChain: boolean,
+): OrchestratorAccountAccessList | undefined {
+  const legs = signingSessions(signers, chainIds).flatMap(
+    (session) => session.permit2Sources ?? [],
+  )
+  if (legs.length === 0) return explicit
+  // The orchestrator settles a smart account's same-chain intent through the
+  // IntentExecutor, which a scoped Permit2 session cannot sign for.
+  if (sameChain) {
+    throw new Error(
+      'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session, or set `fallback`',
+    )
+  }
+  const leg = (chainId: number, token: string) =>
+    legs.find(
+      (l) =>
+        l.chain.id === chainId && l.token.toLowerCase() === token.toLowerCase(),
+    )
+  const listed = (chainId: number, token: string) =>
+    (!explicit?.chainIds || explicit.chainIds.includes(chainId)) &&
+    (!explicit?.tokens ||
+      explicit.tokens.some((t) => t.toLowerCase() === token.toLowerCase()))
+  // The explicit tokens (with any amounts), else every leg.
+  const wanted: [number, string, bigint | undefined][] =
+    explicit?.chainTokens || explicit?.chainTokenAmounts
+      ? [
+          ...Object.entries(explicit.chainTokens ?? {}).flatMap(
+            ([chainId, tokens]) =>
+              tokens.map((token): [number, string, undefined] => [
+                Number(chainId),
+                token,
+                undefined,
+              ]),
+          ),
+          ...Object.entries(explicit.chainTokenAmounts ?? {}).flatMap(
+            ([chainId, amounts]) =>
+              Object.entries(amounts).map(
+                ([token, amount]): [number, string, bigint] => [
+                  Number(chainId),
+                  token,
+                  amount,
+                ],
+              ),
+          ),
+        ]
+      : legs.map(({ chain, token }) => [chain.id, token, undefined])
+  const chainTokens: Record<number, string[]> = {}
+  const chainTokenAmounts: Record<number, Record<Address, bigint>> = {}
+  for (const [chainId, token, amount] of wanted) {
+    const cap = leg(chainId, token)
+    if (!cap || !listed(chainId, token)) continue
+    const bound =
+      cap.maxAmount === undefined ||
+      (amount !== undefined && amount < cap.maxAmount)
+        ? amount
+        : cap.maxAmount
+    if (bound === undefined) {
+      if (!chainTokens[chainId]?.includes(token))
+        (chainTokens[chainId] ??= []).push(token)
+    } else (chainTokenAmounts[chainId] ??= {})[token as Address] = bound
+  }
+  const pinned = {
+    ...(Object.keys(chainTokens).length && { chainTokens }),
+    ...(Object.keys(chainTokenAmounts).length && { chainTokenAmounts }),
+  }
+  if (Object.keys(pinned).length === 0) {
+    throw new Error(
+      "No source asset is left for the intent: a scoped Permit2 session funds it only from its permit's `from` tokens on the intent's source chains",
+    )
+  }
+  return pinned
+}
+
 function settlementLayerPin(
   signers: SignerSet | undefined,
   chainIds: readonly number[],
   explicit: Transaction['settlementLayers'],
 ): Transaction['settlementLayers'] {
   if (signers?.type !== 'session') return explicit
-  const relevant = new Set(chainIds)
-  const sessions =
-    'session' in signers
-      ? [signers.session]
-      : Object.entries(signers.sessions ?? {})
-          .filter(([chainId]) => relevant.has(Number(chainId)))
-          .map(([, s]) => s.session)
+  const sessions = signingSessions(signers, chainIds)
   type Layer = Extract<
     NonNullable<Transaction['settlementLayers']>,
     { include: unknown }
   >['include'][number]
   // The orchestrator layers that settle through a Permit2 arbiter. Permit2's
-  // SAME_CHAIN and ECO are retired arbiters the orchestrator no longer routes
-  // a smart account through (its ECO is ECO_IE's solver network).
+  // ECO is a retired arbiter (the orchestrator's ECO is ECO_IE's solver
+  // network), and SAME_CHAIN takes no bridge, so neither is filtered.
   const permit2Arbiters: readonly Layer[] = ['ACROSS']
   // The session's layer names are the SDK's; the filter speaks the
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
@@ -1072,14 +1162,19 @@ function settlementLayerPin(
   for (const session of sessions) {
     const named: readonly string[] = session.settlementLayers ?? []
     // A Permit2 permit never shares a session with IntentExecutor layers.
-    if (named.some((layer) => PERMIT2_LAYERS.has(layer))) {
+    if (
+      named.some((layer) => PERMIT2_LAYERS.has(layer)) &&
+      session.access?.kind !== 'scoped'
+    ) {
       for (const arbiter of permit2Arbiters) {
         if (!named.includes(arbiter)) excluded.add(arbiter)
       }
       continue
     }
+    // A scoped Permit2-route session names its live arbiters; Permit2's
+    // SAME_CHAIN, like SAME_CHAIN_IE, narrows nothing.
     const layers = named.flatMap((layer): Layer[] =>
-      layer === 'SAME_CHAIN_IE'
+      layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN'
         ? []
         : [layer === 'ECO_IE' ? 'ECO' : (layer as Layer)],
     )
@@ -1170,14 +1265,26 @@ export function adaptTransaction(
     ...(transaction.eip7702InitSignature
       ? { eip7702InitSignature: transaction.eip7702InitSignature }
       : {}),
-    ...(transaction.sourceAssets || sourceChains
-      ? {
-          accountAccessList: adaptSourceAssets(
-            transaction.sourceAssets,
-            evmSources?.map(({ id }) => id),
-          ),
-        }
-      : {}),
+    ...(() => {
+      const accountAccessList = sourceAssetPin(
+        transaction.signers,
+        [
+          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(evmSources?.map(({ id }) => id) ?? []),
+        ],
+        transaction.sourceAssets || sourceChains
+          ? adaptSourceAssets(
+              transaction.sourceAssets,
+              evmSources?.map(({ id }) => id),
+            )
+          : undefined,
+        Boolean(
+          evmSources?.length &&
+            evmSources.every(({ id }) => id === destinationChainId),
+        ),
+      )
+      return accountAccessList ? { accountAccessList } : {}
+    })(),
     options: {
       ...(transaction.appFees ? { appFees: transaction.appFees } : {}),
       ...(transaction.protocolFees

@@ -1132,10 +1132,13 @@ describe('settlement-scoped crossChainPermits', () => {
     ).toThrow('OFT does not route to chain 8453')
   })
 
-  test.each(['ACROSS', 'ECO', 'SAME_CHAIN'] as const)(
-    'a %s permit keeps its Permit2 shape',
+  test.each(['ACROSS', 'SAME_CHAIN'] as const)(
+    'a %s permit with a fallback keeps its Permit2 shape',
     (layer) => {
-      const permit = definition({ settlementLayers: [layer] })
+      const permit = definition(
+        { settlementLayers: [layer] },
+        { fallback: 'intentExecution' },
+      )
       const data = resolveSessionData(permit)
       expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
       expect(
@@ -1147,6 +1150,21 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(toSession(permit).settlementLayers).toEqual([layer])
     },
   )
+
+  test('an ACROSS permit without a fallback is scoped to ACROSS', () => {
+    const permit = definition({
+      settlementLayers: ['ACROSS'],
+      preClaimOps: 'none',
+    })
+    const data = resolveSessionData(permit)
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    expect(
+      data.actions.some(
+        (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      ),
+    ).toBe(false)
+    expect(toSession(permit).settlementLayers).toEqual(['ACROSS'])
+  })
 
   describe('refuses', () => {
     test.each([
@@ -1246,7 +1264,7 @@ describe('settlement-scoped crossChainPermits', () => {
           ),
         ),
       ).toThrow(
-        'restrictToActions is incompatible with crossChainPermits/claimPolicies',
+        'a scoped session (restrictToActions, swap or crossChainPermits) cannot hold claimPolicies',
       )
     })
   })

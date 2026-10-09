@@ -10,7 +10,10 @@ import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../../modules/validators/smart-sessions/resolve'
-import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
+import type {
+  ResolvedSessionSignerSet,
+  Session,
+} from '../../modules/validators/smart-sessions/types'
 import type { IntentInput, IntentWorkflowContext } from './types'
 
 export interface PreparedIntentSessions {
@@ -94,6 +97,27 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     throw new Error(
       'A oneTimeUse session needs the intent to list its sourceChains',
     )
+  }
+  // An origin enable rides a pre-claim call, which such a claim may not carry.
+  const noPreClaimCalls = ({ session }: { session: Session }) =>
+    session.claimPolicies.some(({ originOps }) =>
+      originOps?.some(({ required }) => !required),
+    )
+  if (
+    resolvedEntries.some(([, value]) => noPreClaimCalls(value)) &&
+    !input.intent.sourceChains?.length
+  ) {
+    throw new Error(
+      'A session whose claim may not carry pre-claim calls needs the intent to list its sourceChains',
+    )
+  }
+  for (const chain of input.intent.sourceChains ?? []) {
+    const resolved = byChain[chain.id]
+    if (resolved?.enableData && noPreClaimCalls(resolved)) {
+      throw new Error(
+        `The session's claim may not carry pre-claim calls, so enable it on chain ${chain.id} before its first intent: sign account.getSessionDetails([session]) with account.signEnableSession, then send enableSession from @rhinestone/sdk/actions/smart-sessions as an owner-signed transaction`,
+      )
+    }
   }
   const mockSignatures = Object.fromEntries(
     resolvedEntries.map(([chainId, resolved]) => [

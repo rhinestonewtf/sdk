@@ -502,7 +502,7 @@ describe('allowFees refuses', () => {
     )
   })
 
-  test('a Permit2-layer permit', () => {
+  test('a Permit2-layer permit without the settlement catalog', () => {
     expect(() =>
       resolveSessionData({
         chain: base,
@@ -516,7 +516,7 @@ describe('allowFees refuses', () => {
           },
         ],
       }),
-    ).toThrow('allowFees applies only to IntentExecutor layers')
+    ).toThrow("allowFees needs the orchestrator's settlement addresses")
   })
 })
 

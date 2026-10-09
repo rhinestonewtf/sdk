@@ -31,7 +31,7 @@ import type {
  */
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
-const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+export const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
 /**
  * The Swapper's output bound, at the same head word in both entrypoints:

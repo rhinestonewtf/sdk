@@ -1,4 +1,4 @@
-import { type Address, isAddressEqual } from 'viem'
+import { type Address, type Chain, isAddressEqual } from 'viem'
 import { getArbitersForSettlementLayers } from '../../policies/claim/arbiters'
 import type {
   InternalPermit2ClaimPolicy,
@@ -8,6 +8,7 @@ import { recipientNotAllowed } from '../cross-chain-permits'
 import { refusal } from '../refusals'
 import type {
   CrossChainPermit,
+  CrossChainSettlementLayer,
   Permit2ClaimPolicy,
   SessionPolicy,
 } from '../types'
@@ -17,6 +18,7 @@ export function expandCrossChainPermit(
   environment: 'production' | 'development',
   onceDeadline?: bigint,
   account?: Address,
+  chain?: Chain,
 ): {
   readonly claim: Permit2ClaimPolicy
   readonly fallbackPolicies: readonly SessionPolicy[]
@@ -27,16 +29,18 @@ export function expandCrossChainPermit(
       "crossChainPermits (internal): settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
     )
   }
+  // The orchestrator no longer routes a smart account through the Permit2 ECO
+  // arbiter, so the claim never admits it.
+  if (permit.settlementLayers?.includes('ECO')) {
+    throw refusal(
+      'RETIRED_PERMIT2_LAYER',
+      'crossChainPermits: the Permit2 ECO arbiter is retired; use ECO_IE',
+    )
+  }
   if (permit.maxFeeBps !== undefined) {
     throw refusal(
       'MAX_FEE_BPS_ONLY_ECO_IE',
       'crossChainPermits: maxFeeBps applies only to ECO_IE',
-    )
-  }
-  if (permit.allowFees) {
-    throw refusal(
-      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      'crossChainPermits: allowFees applies only to IntentExecutor layers',
     )
   }
   if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
@@ -78,7 +82,7 @@ export function expandCrossChainPermit(
   const claim: Permit2ClaimPolicy = {
     type: 'permit2',
     spenders: getArbitersForSettlementLayers(
-      permit.settlementLayers,
+      livePermit2Layers(permit),
       environment === 'development',
     ),
     sourceTokens,
@@ -87,6 +91,8 @@ export function expandCrossChainPermit(
     recipientIsAccount: permit.recipientIsAccount,
     permitDeadline,
     fillDeadline: permit.fillDeadline,
+    ...(chain &&
+      permit.preClaimOps && { originOps: [{ chain, required: false }] }),
   }
   const fallbackPolicies: SessionPolicy[] = []
   const limits = (permit.from ?? [])
@@ -94,6 +100,16 @@ export function expandCrossChainPermit(
     .map(({ token, maxAmount }) => ({ token, amount: maxAmount as bigint }))
   if (limits.length) fallbackPolicies.push({ type: 'spending-limits', limits })
   return { claim, fallbackPolicies }
+}
+
+/** The Permit2 layers a permit settles through: those it names, else ACROSS. */
+export function livePermit2Layers(
+  permit: CrossChainPermit,
+): CrossChainSettlementLayer[] {
+  const named = Array.isArray(permit.settlementLayers)
+    ? permit.settlementLayers
+    : []
+  return named.length ? named : ['ACROSS']
 }
 
 export function permit2ClaimPolicyMatchesMessage(
@@ -185,6 +201,10 @@ export function resolvePermit2ClaimPolicy(
       chainId: chain.id,
       min,
       max,
+    })),
+    originOps: policy.originOps?.map(({ chain, required }) => ({
+      chainId: chain.id,
+      required,
     })),
   }
 }
