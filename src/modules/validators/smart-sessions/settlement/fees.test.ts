@@ -30,7 +30,6 @@ import type {
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-  DEFAULT_SETTLEMENT_FEE_CAP,
   servedFees,
   settlementFeeCap,
   swapApprovesAsActions,
@@ -51,11 +50,12 @@ const COLLECTOR = '0x5555555555555555555555555555555555555555' as Address
 const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
 const APPROVE = toFunctionSelector('approve(address,uint256)')
-const CAP = DEFAULT_SETTLEMENT_FEE_CAP
+const CAP = settlementFeeCap(base.id, 6)
 const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
 const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 
 const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER }
+const SERVED = { ...FEES, cap: CAP }
 const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
@@ -521,7 +521,7 @@ describe('allowFees refuses', () => {
 })
 
 test('the paymaster callback pins any of several `from` tokens, one shared budget', () => {
-  const [action] = withFeeActions([], [USDC, USDC_ARB], FEES, base.id).filter(
+  const [action] = withFeeActions([], [USDC, USDC_ARB], SERVED).filter(
     (a) => a.selector === CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
   )
   expectRuns(action, [
@@ -537,12 +537,7 @@ test('the paymaster callback pins any of several `from` tokens, one shared budge
 
 test('refuses to join an action with no params policy', () => {
   expect(() =>
-    withFeeActions(
-      [{ target: USDC, selector: APPROVE }],
-      [USDC],
-      FEES,
-      base.id,
-    ),
+    withFeeActions([{ target: USDC, selector: APPROVE }], [USDC], SERVED),
   ).toThrow('has no params policy for allowFees to join')
 })
 
@@ -560,8 +555,7 @@ test('joins the params policy and keeps the other policies on the action', () =>
       },
     ],
     [USDC],
-    FEES,
-    base.id,
+    SERVED,
   )
   const action = find(joined, USDC, APPROVE)
   expect(action.policies).toHaveLength(2)
@@ -658,6 +652,7 @@ const usd = (address: Address, decimals = 6) => ({
   symbol: 'USD',
   decimals,
 })
+const lower = (address: Address) => address.toLowerCase() as Address
 
 test('a token served by any one layer counts as a stablecoin', () => {
   const USDT0 = OFT_ARB.token
@@ -668,57 +663,59 @@ test('a token served by any one layer counts as a stablecoin', () => {
       usdStablecoins: [usd(USDT0), usd(USDC)],
     },
   }
-  expect(servedFees(settlement, 1, [USDT0])).toEqual(FEES)
+  expect(servedFees(settlement, 1, [USDT0])).toEqual({
+    ...FEES,
+    cap: 30_000_000n,
+  })
   expect(() => servedFees(settlement, 1, [USDC])).toThrow(
     'must be a served USD stablecoin',
   )
 })
 
-describe('a fee token must be listed in usdStablecoins with 6 decimals', () => {
+describe('the fee cap scales by the served decimals', () => {
   const USDT0 = OFT_ARB.token
   const served = (usdStablecoins?: ReturnType<typeof usd>[]) => ({
-    1: {
+    [base.id]: {
       oft: { adapter: STRANGER, eid: 1, token: USDT0 },
+      cctp: { domain: 6, tokenMessenger: STRANGER, usdc: USDC },
       fees: FEES,
       ...(usdStablecoins ? { usdStablecoins } : {}),
     },
   })
-  const refuses = (why: string) =>
-    expect.objectContaining({
-      code: 'ALLOW_FEES_NON_STABLECOIN',
-      message: expect.stringContaining(why),
-    })
+  const refuses = (code: string, why: string) =>
+    expect.objectContaining({ code, message: expect.stringContaining(why) })
 
   test.each([
-    ['a 6-decimal entry', served([usd(USDT0)])],
-    [
-      'a 6-decimal entry, any case',
-      served([usd(USDT0.toLowerCase() as Address)]),
-    ],
-  ])('accepts %s', (_, settlement) => {
-    expect(servedFees(settlement, 1, [USDT0])).toEqual(FEES)
+    ['6 decimals', served([usd(USDT0)]), 5_000_000n],
+    ['6 decimals, any case', served([usd(lower(USDT0))]), 5_000_000n],
+    ['18 decimals', served([usd(USDT0, 18)]), 5n * 10n ** 18n],
+  ])('accepts %s', (_, settlement, cap) => {
+    expect(servedFees(settlement, base.id, [USDT0])).toEqual({ ...FEES, cap })
   })
 
   test.each([
-    ['no usdStablecoins', served(), 'is not listed with its decimals'],
+    ['no usdStablecoins', served(), 'is not listed in usdStablecoins'],
+    ['no entry for the token', served([usd(USDC)]), 'is not listed'],
+    ['two entries', served([usd(USDT0), usd(lower(USDT0))]), 'appears 2 times'],
     [
-      'no entry for the token',
-      served([usd(USDC)]),
-      'is not listed with its decimals',
-    ],
-    [
-      '2 decimals, which would scale the cap up 10^4',
+      '2 decimals',
       served([usd(USDT0, 2)]),
-      'is served with 2 decimals',
-    ],
-    ['18 decimals', served([usd(USDT0, 18)]), 'is served with 18 decimals'],
-    [
-      '2 decimals, any case',
-      served([usd(USDT0.toLowerCase() as Address, 2)]),
-      'is served with 2 decimals',
+      'is served with 2 decimals; expected 6 or 18',
     ],
   ])('refuses %s', (_, settlement, why) => {
-    expect(() => servedFees(settlement, 1, [USDT0])).toThrow(refuses(why))
+    expect(() => servedFees(settlement, base.id, [USDT0])).toThrow(
+      refuses('ALLOW_FEES_NON_STABLECOIN', why),
+    )
+  })
+
+  test('refuses `from` tokens of different decimals, which share the callback cap', () => {
+    const settlement = served([usd(USDT0), usd(USDC, 18)])
+    expect(
+      servedFees(served([usd(USDT0), usd(USDC)]), base.id, [USDT0, USDC]),
+    ).toMatchObject({ cap: 5_000_000n })
+    expect(() => servedFees(settlement, base.id, [USDT0, USDC])).toThrow(
+      refuses('ALLOW_FEES_MIXED_DECIMALS', 'they have 6 and 18'),
+    )
   })
 
   const onBase = (usdStablecoins?: ReturnType<typeof usd>[]) => {
@@ -731,14 +728,31 @@ describe('a fee token must be listed in usdStablecoins with 6 decimals', () => {
   const session = (settlement: SettlementCatalog) =>
     scope(permit(LAYERS.CCTP, { allowFees: true }), settlement)
 
-  test('a CCTP session with its USDC listed at 6 decimals scopes', () => {
-    expect(session(onBase([usd(USDC.toLowerCase() as Address)]))).toEqual(
-      session(WITH_FEES),
-    )
+  test('a CCTP session with its USDC listed at 6 decimals scopes as before', () => {
+    expect(session(onBase([usd(lower(USDC))]))).toEqual(session(WITH_FEES))
+  })
+
+  test('an 18-decimal stablecoin (BSC-like) caps each fee call at 5e18', () => {
+    const cap = 5n * 10n ** 18n
+    const actions = session(onBase([usd(USDC, 18)])).actions
+    for (const [target, selector, call] of [
+      [USDC, TRANSFER, (n: bigint) => transfer(COLLECTOR, n)],
+      [USDC, APPROVE, (n: bigint) => approve(PAYMASTER, n)],
+      [
+        PAYMASTER,
+        CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
+        (n: bigint) => callback(USDC, n),
+      ],
+    ] as const) {
+      expectRuns(find(actions, target, selector), [
+        [[call(cap), true]],
+        [[call(cap + 1n), false]],
+      ])
+    }
   })
 
   test.each([
-    ['no usdStablecoins', onBase(), 'is not listed with its decimals'],
+    ['no usdStablecoins', onBase(), 'is not listed in usdStablecoins'],
     ['USDC at 2 decimals', onBase([usd(USDC, 2)]), 'is served with 2 decimals'],
   ])('a CCTP session refuses %s', (_, settlement, why) => {
     expect(() => session(settlement)).toThrow(why)
@@ -765,7 +779,7 @@ describe('the fee cap by chain', () => {
     ['Arbitrum', 5, LAYERS.OFT],
   ] as const)('each fee call on %s caps at %s USD', (_, usd, layer) => {
     const cap = BigInt(usd) * 1_000_000n
-    expect(settlementFeeCap(layer.chain.id)).toBe(cap)
+    expect(settlementFeeCap(layer.chain.id, 6)).toBe(cap)
     const actions = scope(permit(layer, { allowFees: true })).actions
     const calls = [
       [layer.token, TRANSFER, (n: bigint) => transfer(COLLECTOR, n)],

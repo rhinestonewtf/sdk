@@ -28,7 +28,7 @@ import type {
 } from '../types'
 import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
 import { PUBLISH_AND_FUND_SELECTOR } from './eco'
-import { DEFAULT_SETTLEMENT_FEE_CAP } from './fees'
+import { settlementFeeCap } from './fees'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
@@ -470,7 +470,7 @@ describe('multi-layer settlement permits', () => {
     expect(
       satisfiesRules(
         action,
-        approve(PAYMASTER, DEFAULT_SETTLEMENT_FEE_CAP),
+        approve(PAYMASTER, settlementFeeCap(base.id, 6)),
         usage,
       ),
     ).toBe(true)

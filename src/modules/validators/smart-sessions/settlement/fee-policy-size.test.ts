@@ -37,7 +37,7 @@ import type {
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-  DEFAULT_SETTLEMENT_FEE_CAP,
+  settlementFeeCap,
   swapApprovesAsActions,
   withFeeActions,
 } from './fees'
@@ -62,12 +62,12 @@ const COLLECTOR = '0x5555555555555555555555555555555555555555' as Address
 const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
 const APPROVE = toFunctionSelector('approve(address,uint256)')
-const CAP = DEFAULT_SETTLEMENT_FEE_CAP
+const CAP = settlementFeeCap(base.id, 6)
 const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
 const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 const VALID_UNTIL = new Date(2_000_000_000_000)
 
-const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER }
+const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER, cap: CAP }
 const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
@@ -126,7 +126,7 @@ function legacyWithFeeActions(
   fees: Fees,
 ): ScopedAction[] {
   const out = [...actions]
-  const cap = () => cumulativeCap(32n, DEFAULT_SETTLEMENT_FEE_CAP)
+  const cap = () => cumulativeCap(32n, CAP)
   for (const token of sourceTokens) {
     legacyAddFeeBranch(
       out,
@@ -609,8 +609,7 @@ function expectSameJudgement(
 describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
   const input = baseActions(layer)
   const legacy = () => legacyWithFeeActions(input, [layer.token], FEES)
-  const current = () =>
-    withFeeActions(input, [layer.token], FEES, layer.chain.id)
+  const current = () => withFeeActions(input, [layer.token], FEES)
 
   test('the scoped session’s fee path is withFeeActions', () => {
     expect(scope(permit(layer, { allowFees: true })).actions).toEqual(current())
@@ -645,7 +644,7 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
 describe('two `from` tokens', () => {
   const tokens = [USDC, USDC_ARB]
   const legacy = legacyWithFeeActions([], tokens, FEES)
-  const current = withFeeActions([], tokens, FEES, base.id)
+  const current = withFeeActions([], tokens, FEES)
 
   test('no valid fee call is refused and no mutation is judged differently', () => {
     const valid = tokens.flatMap((token) => [
@@ -713,7 +712,7 @@ describe('policy size on enable', () => {
         const input = baseActions(layer)
         const args = [input, [layer.token], FEES] as const
         const old = legacyWithFeeActions(...args)
-        const now = withFeeActions(...args, layer.chain.id)
+        const now = withFeeActions(...args)
         return [
           name,
           {
@@ -758,7 +757,7 @@ describe('policy size on enable', () => {
     const args = [input, [USDC], FEES] as const
     expect({
       before: rows(legacyWithFeeActions(...args), USDC),
-      after: rows(withFeeActions(...args, base.id), USDC),
+      after: rows(withFeeActions(...args), USDC),
     }).toMatchInlineSnapshot(`
       {
         "after": {
