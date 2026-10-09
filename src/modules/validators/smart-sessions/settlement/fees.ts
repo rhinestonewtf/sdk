@@ -84,9 +84,8 @@ export function servedFees(
       { chainId },
     )
   }
-  // The cap is a USD amount at 6 decimals, so it only bounds a stablecoin the
-  // layers serve and usdStablecoins vouches for at 6 decimals: fewer decimals
-  // would scale the cap up by orders of magnitude.
+  // The cap is a USD amount, so it only bounds the stablecoins the layers serve
+  // (all 6-decimal today); any other token would make it meaningless.
   const stables = [
     chain.cctp?.usdc,
     chain.oft?.token,
@@ -95,17 +94,22 @@ export function servedFees(
     chain.lz?.cctp?.token,
   ].filter((token): token is Address => token !== undefined)
   for (const token of sourceTokens) {
-    const usd = (chain.usdStablecoins ?? []).filter((t) =>
-      isAddressEqual(t.address, token),
-    )
-    if (
-      !stables.some((stable) => isAddressEqual(stable, token)) ||
-      usd.length !== 1 ||
-      usd[0].decimals !== 6
-    ) {
+    if (!stables.some((stable) => isAddressEqual(stable, token))) {
       throw refusal(
         'ALLOW_FEES_NON_STABLECOIN',
-        `crossChainPermits: allowFees caps fees in USD at 6 decimals, so every \`from\` token must be a served 6-decimal USD stablecoin; ${token} on chain ${chainId} is not`,
+        `crossChainPermits: allowFees caps fees in USD, so every \`from\` token must be a served USD stablecoin; ${token} on chain ${chainId} is not`,
+        { chainId },
+      )
+    }
+    // The cap is in 6-decimal units: fewer decimals would scale it up by orders
+    // of magnitude. A chain serving no usdStablecoins entry for it is not checked.
+    const listed = (chain.usdStablecoins ?? []).find(
+      (t) => isAddressEqual(t.address, token) && t.decimals !== 6,
+    )
+    if (listed !== undefined) {
+      throw refusal(
+        'ALLOW_FEES_NON_STABLECOIN',
+        `crossChainPermits: allowFees caps fees in 6-decimal USD, so a \`from\` token must be 6-decimal; ${token} on chain ${chainId} is served with ${listed.decimals} decimals`,
         { chainId },
       )
     }

@@ -456,8 +456,9 @@ interface CrossChainPermit {
    *   tokens. So one token can pay up to about twice the cap (app fee plus
    *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
-   *   serves for these layers and lists in `settlement.usdStablecoins` at 6
-   *   decimals, since the cap is a 6-decimal USD amount.
+   *   serves for these layers (USD stablecoins today). The cap is a 6-decimal
+   *   USD amount, so a token `settlement.usdStablecoins` lists with other
+   *   decimals is refused.
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
    *   the session with `sdk.createSession`.
    * - The orchestrator sizes the paymaster approve and callback at the refund
@@ -613,8 +614,9 @@ interface CrossChainPermissionInput {
    *   tokens. So one token can pay up to about twice the cap (app fee plus
    *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
-   *   serves for these layers and lists in `settlement.usdStablecoins` at 6
-   *   decimals, since the cap is a 6-decimal USD amount.
+   *   serves for these layers (USD stablecoins today). The cap is a 6-decimal
+   *   USD amount, so a token `settlement.usdStablecoins` lists with other
+   *   decimals is refused.
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
    *   the session with `sdk.createSession`.
    * - The orchestrator sizes the paymaster approve and callback at the refund
