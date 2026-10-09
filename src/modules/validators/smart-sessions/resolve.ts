@@ -404,15 +404,18 @@ function resolveSession(
   const chainId = definition.chain.id
   for (const [permitIndex, permit] of resolvedPermits.entries()) {
     const at = { permitIndex, chainId }
-    // The burn is itself a pre-claim call, and an IntentExecutor layer has no claim.
+    // The burn and a fee carve are pre-claim calls, and an IntentExecutor
+    // layer has no claim.
     if (
       permit.preClaimOps &&
-      (definition.oneTimeUse || isSettlementScopedPermit(permit))
+      (definition.oneTimeUse ||
+        permit.allowFees ||
+        isSettlementScopedPermit(permit))
     ) {
       refuse(
         refusal(
           'PRE_CLAIM_OPS_NOT_APPLICABLE',
-          'crossChainPermits: preClaimOps needs a Permit2-layer permit and no oneTimeUse',
+          'crossChainPermits: preClaimOps needs a Permit2-layer permit without oneTimeUse or allowFees',
           at,
         ),
       )
@@ -441,18 +444,26 @@ function resolveSession(
             servedFees(options.settlement, chainId, [...permit2Tokens.keys()]),
         )
       : undefined
+  // The orchestrator wraps native funding of a wrapped native `from` leg. The
+  // address comes from `/chains`, so the wrap is granted only within that
+  // leg's cap.
   const wrapped = options.wrappedNativeToken
-  // The orchestrator wraps native funding and unwraps a native delivery.
-  const wraps =
-    restricted &&
-    wrapped !== undefined &&
-    permit2Permits.some(({ from = [], to = [] }) =>
-      [...from, ...to].some(
-        ({ chain, token }) =>
-          chain.id === chainId &&
-          (isNativeToken(token) || isAddressEqual(token, wrapped)),
+  const wrapCap =
+    restricted && wrapped
+      ? [...permit2Tokens].find(([token]) =>
+          isAddressEqual(token, wrapped),
+        )?.[1]
+      : undefined
+  // ValueLimitPolicy refuses a zero limit when the session is enabled.
+  if (wrapCap === 0n) {
+    refuse(
+      refusal(
+        'WRAPPED_NATIVE_ZERO_CAP',
+        'crossChainPermits: a wrapped native `from` leg needs a maxAmount above 0',
+        { chainId },
       ),
     )
+  }
   const permissions = [
     ...(definition.permissions ?? []).map(withoutWindow),
     ...(swapScope?.permissions ?? []),
@@ -465,14 +476,7 @@ function resolveSession(
         permissions,
         definition.actions ?? [],
         permit2Fees,
-        wraps && wrapped
-          ? {
-              token: wrapped,
-              cap: [...permit2Tokens].find(([token]) =>
-                isAddressEqual(token, wrapped),
-              )?.[1],
-            }
-          : undefined,
+        wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
       ),
     ) ?? []
   const userActions = permissions.length ? resolvePermissions(permissions) : []
@@ -622,12 +626,23 @@ function resolveSession(
         ),
       )
     }
-    // Smart accounts settle same-chain intents through the IntentExecutor.
-    if (!livePermit2Layers(permit).includes('ACROSS')) {
+    // Smart accounts settle same-chain intents through the IntentExecutor, so
+    // ACROSS is the one Permit2 layer a scoped session needs.
+    if (livePermit2Layers(permit).some((layer) => layer !== 'ACROSS')) {
       refuse(
         refusal(
-          'PERMIT2_ROUTE_NEEDS_ACROSS',
-          'crossChainPermits: a scoped Permit2-layer permit must admit ACROSS',
+          'PERMIT2_ROUTE_ACROSS_ONLY',
+          'crossChainPermits: a scoped Permit2-layer permit settles through ACROSS only',
+          at,
+        ),
+      )
+    }
+    // The claim pins the native token, which an ACROSS fill never delivers.
+    if (permit.to?.some(({ token }) => isNativeToken(token))) {
+      refuse(
+        refusal(
+          'NATIVE_DESTINATION_UNSUPPORTED',
+          'crossChainPermits: a scoped Permit2-layer `to` must be an ERC-20, e.g. the wrapped native token',
           at,
         ),
       )
@@ -1351,6 +1366,23 @@ export function toSession(
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(intentLayers.length ? { settlementLayers: intentLayers } : {}),
     ...(settlementCoverage ? { settlementCoverage } : {}),
+    ...(permit2Scoped && {
+      permit2Sources: [
+        ...new Map(
+          permit2Permits.flatMap(({ from = [] }) =>
+            from.map(({ chain }) => [chain.id, chain] as const),
+          ),
+        ).values(),
+      ].flatMap((chain) =>
+        [...permit2SourceTokens(permit2Permits, chain.id)].map(
+          ([token, maxAmount]) => ({
+            chain,
+            token,
+            ...(maxAmount === undefined ? {} : { maxAmount }),
+          }),
+        ),
+      ),
+    }),
     access,
     ...(definition.oneTimeUse && {
       oneTimeUse: {

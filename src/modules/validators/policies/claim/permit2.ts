@@ -131,7 +131,11 @@ function hashTokenOutArray(
   )
 }
 
-function hashOpStruct(op: {
+/** The hash of an empty `Op`: a claim that carries no pre-claim call. */
+export const NO_OPS: Hex =
+  '0x0c7bea50822ae8a3846eccbda4961a80e1e08aa92f2bf046be0011514ad2ddf1'
+
+export function hashOpStruct(op: {
   vt: Hex
   ops: readonly { to: Address; value: bigint; data: Hex }[]
 }): Hex {

@@ -1057,59 +1057,82 @@ function signingSessions(
 /**
  * The source assets a scoped Permit2-route session can fund, narrowed by any
  * explicit `sourceAssets`: its claim moves only the permit's `from` tokens, so
- * an origin swap or a native wrap of anything else would not settle.
+ * an origin swap or a native wrap of anything else would not settle. A capped
+ * token goes in `chainTokenAmounts`, which the orchestrator treats as a cap,
+ * so it never plans a spend above `maxAmount`.
  */
 function sourceAssetPin(
   signers: SignerSet | undefined,
   chainIds: readonly number[],
   explicit: OrchestratorAccountAccessList | undefined,
+  sameChain: boolean,
 ): OrchestratorAccountAccessList | undefined {
-  const derived: Record<number, Address[]> = {}
-  for (const session of signingSessions(signers, chainIds)) {
-    if (session.access?.kind !== 'scoped') continue
-    for (const claim of session.claimPolicies) {
-      for (const { chain, address } of claim.sourceTokens ?? []) {
-        ;(derived[chain.id] ??= []).push(address)
-      }
-    }
+  const legs = signingSessions(signers, chainIds).flatMap(
+    (session) => session.permit2Sources ?? [],
+  )
+  if (legs.length === 0) return explicit
+  // The orchestrator settles a smart account's same-chain intent through the
+  // IntentExecutor, which a scoped Permit2 session cannot sign for.
+  if (sameChain) {
+    throw new Error(
+      'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session, or set `fallback`',
+    )
   }
-  if (Object.keys(derived).length === 0) return explicit
-  const has = (chainId: number, token: string) =>
-    derived[chainId]?.some((t) => t.toLowerCase() === token.toLowerCase())
-  const chainTokens = Object.fromEntries(
-    Object.entries(
-      explicit?.chainTokens ?? (explicit?.chainTokenAmounts ? {} : derived),
-    ).flatMap(([chainId, tokens]) => {
-      const kept = tokens.filter(
-        (token) =>
-          has(Number(chainId), token) &&
-          (!explicit?.chainIds ||
-            explicit.chainIds.includes(Number(chainId))) &&
-          (!explicit?.tokens ||
-            explicit.tokens.some(
-              (t) => t.toLowerCase() === token.toLowerCase(),
-            )),
-      )
-      return kept.length ? [[chainId, kept]] : []
-    }),
-  )
-  const chainTokenAmounts = Object.fromEntries(
-    Object.entries(explicit?.chainTokenAmounts ?? {}).flatMap(
-      ([chainId, amounts]) => {
-        const kept = Object.entries(amounts).filter(([token]) =>
-          has(Number(chainId), token),
-        )
-        return kept.length ? [[chainId, Object.fromEntries(kept)]] : []
-      },
-    ),
-  )
+  const leg = (chainId: number, token: string) =>
+    legs.find(
+      (l) =>
+        l.chain.id === chainId && l.token.toLowerCase() === token.toLowerCase(),
+    )
+  const listed = (chainId: number, token: string) =>
+    (!explicit?.chainIds || explicit.chainIds.includes(chainId)) &&
+    (!explicit?.tokens ||
+      explicit.tokens.some((t) => t.toLowerCase() === token.toLowerCase()))
+  // The explicit tokens (with any amounts), else every leg.
+  const wanted: [number, string, bigint | undefined][] =
+    explicit?.chainTokens || explicit?.chainTokenAmounts
+      ? [
+          ...Object.entries(explicit.chainTokens ?? {}).flatMap(
+            ([chainId, tokens]) =>
+              tokens.map((token): [number, string, undefined] => [
+                Number(chainId),
+                token,
+                undefined,
+              ]),
+          ),
+          ...Object.entries(explicit.chainTokenAmounts ?? {}).flatMap(
+            ([chainId, amounts]) =>
+              Object.entries(amounts).map(
+                ([token, amount]): [number, string, bigint] => [
+                  Number(chainId),
+                  token,
+                  amount,
+                ],
+              ),
+          ),
+        ]
+      : legs.map(({ chain, token }) => [chain.id, token, undefined])
+  const chainTokens: Record<number, string[]> = {}
+  const chainTokenAmounts: Record<number, Record<Address, bigint>> = {}
+  for (const [chainId, token, amount] of wanted) {
+    const cap = leg(chainId, token)
+    if (!cap || !listed(chainId, token)) continue
+    const bound =
+      cap.maxAmount === undefined ||
+      (amount !== undefined && amount < cap.maxAmount)
+        ? amount
+        : cap.maxAmount
+    if (bound === undefined) {
+      if (!chainTokens[chainId]?.includes(token))
+        (chainTokens[chainId] ??= []).push(token)
+    } else (chainTokenAmounts[chainId] ??= {})[token as Address] = bound
+  }
   const pinned = {
     ...(Object.keys(chainTokens).length && { chainTokens }),
     ...(Object.keys(chainTokenAmounts).length && { chainTokenAmounts }),
   }
   if (Object.keys(pinned).length === 0) {
     throw new Error(
-      "sourceAssets: no source asset is left; the session funds intents only from its permit's `from` tokens",
+      "No source asset is left for the intent: a scoped Permit2 session funds it only from its permit's `from` tokens on the intent's source chains",
     )
   }
   return pinned
@@ -1255,6 +1278,10 @@ export function adaptTransaction(
               evmSources?.map(({ id }) => id),
             )
           : undefined,
+        Boolean(
+          evmSources?.length &&
+            evmSources.every(({ id }) => id === destinationChainId),
+        ),
       )
       return accountAccessList ? { accountAccessList } : {}
     })(),

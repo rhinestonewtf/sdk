@@ -32,7 +32,6 @@ import { encodeActionPolicies } from './policies/encode'
 import {
   permit2RouteScope,
   permit2SourceTokens,
-  WITHDRAW_SELECTOR,
 } from './policies/permit2-approval'
 import {
   DEFAULT_POLICY_ADDRESSES,
@@ -111,21 +110,6 @@ const approve = (spender: Address, amount: bigint): Hex =>
     abi: erc20Abi,
     functionName: 'approve',
     args: [spender, amount],
-  })
-
-const withdraw = (amount: bigint): Hex =>
-  encodeFunctionData({
-    abi: [
-      {
-        type: 'function',
-        name: 'withdraw',
-        inputs: [{ name: 'wad', type: 'uint256' }],
-        outputs: [],
-        stateMutability: 'nonpayable',
-      },
-    ],
-    functionName: 'withdraw',
-    args: [amount],
   })
 
 const codes = (definition: SessionDefinition, options = OPTIONS) =>
@@ -243,8 +227,8 @@ describe('the actions a Permit2-route permit scopes', () => {
     ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
   })
 
-  test('wraps and unwraps the wrapped native token within its cap', () => {
-    const [, deposit, unwrap] = permit2RouteScope(
+  test('wraps the wrapped native token within its cap', () => {
+    const [, deposit] = permit2RouteScope(
       new Map([[WETH, 5n]]),
       [],
       [],
@@ -256,19 +240,6 @@ describe('the actions a Permit2-route permit scopes', () => {
       selector: DEPOSIT,
       policies: [{ type: 'value-limit', limit: 5n }],
     })
-    expect(unwrap.selector).toBe(WITHDRAW_SELECTOR)
-    expect(satisfiesRules(unwrap, withdraw(5n))).toBe(true)
-    expect(satisfiesRules(unwrap, withdraw(6n))).toBe(false)
-    // Uncapped when the leg is.
-    expect(
-      permit2RouteScope(new Map(), [], [], undefined, {
-        token: WETH,
-        cap: undefined,
-      }),
-    ).toEqual([
-      { target: WETH, selector: DEPOSIT },
-      { target: WETH, selector: WITHDRAW_SELECTOR },
-    ])
   })
 })
 
@@ -343,8 +314,11 @@ describe('a scoped Permit2-route session', () => {
     expect(fallbackOf(session([oncePermit()], otu))).toBeUndefined()
   })
 
-  test('settles unsponsored intents with allowFees', () => {
-    const built = toSession(session([permit({ allowFees: true })]), OPTIONS)
+  test('pays fees with allowFees', () => {
+    const built = toSession(
+      session([oncePermit({ allowFees: true })], otu),
+      OPTIONS,
+    )
     expect(actionOn(built.actions, USDC, TRANSFER)).toBeDefined()
     expect(
       actionOn(built.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
@@ -354,38 +328,38 @@ describe('a scoped Permit2-route session', () => {
     expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
   })
 
-  test('wraps and unwraps when a leg is the wrapped native token', () => {
-    const wrapping = (from: Address, toToken: Address = USDC_ARB) =>
+  test('wraps native funding only within a wrapped native `from` cap', () => {
+    const wrapping = (from: { token: Address; maxAmount?: bigint }) =>
       toSession(
-        session([
-          permit({
-            from: { chain: base, token: from },
-            to: [
-              { chain: arbitrum, token: USDC_ARB },
-              { chain: base, token: toToken },
-            ],
-          }),
-        ]),
+        session([oncePermit({ from: { chain: base, ...from } })], otu),
         { ...OPTIONS, wrappedNativeToken: WETH },
       ).actions
-    for (const actions of [wrapping(WETH), wrapping(USDC, zeroAddress)]) {
-      expect(actionOn(actions, WETH, DEPOSIT)).toBeDefined()
-      expect(actionOn(actions, WETH, WITHDRAW_SELECTOR)).toBeDefined()
-    }
-    expect(actionOn(wrapping(USDC), WETH, DEPOSIT)).toBeUndefined()
+    expect(
+      actionOn(wrapping({ token: WETH, maxAmount: 5n }), WETH, DEPOSIT)
+        ?.actionPolicies[0],
+    ).toEqual({
+      policy: VALUE_LIMIT_POLICY_ADDRESS,
+      initData: pad(toHex(5n)),
+    })
+    // Never a deposit without a cap, nor for another token.
+    expect(actionOn(wrapping({ token: WETH }), WETH, DEPOSIT)).toBeUndefined()
+    expect(
+      actionOn(wrapping({ token: USDC, maxAmount: 5n }), WETH, DEPOSIT),
+    ).toBeUndefined()
   })
 
   test('with a fallback keeps only the unscoped deposit it had before', () => {
     const actions = toSession(
-      session([oncePermit({ from: { chain: base, token: WETH } })], {
-        fallback: 'intentExecution',
-      }),
+      session(
+        [oncePermit({ from: { chain: base, token: WETH, maxAmount: 5n } })],
+        { fallback: 'intentExecution', ...otu },
+      ),
       { ...OPTIONS, wrappedNativeToken: WETH },
     ).actions
-    expect(actionOn(actions, WETH, DEPOSIT)?.actionPolicies).toEqual([
-      { policy: SUDO_POLICY_ADDRESS, initData: '0x' },
-    ])
-    expect(actionOn(actions, WETH, WITHDRAW_SELECTOR)).toBeUndefined()
+    // Sudo, then the once-policy every action carries.
+    expect(
+      actionOn(actions, WETH, DEPOSIT)?.actionPolicies.map((p) => p.policy),
+    ).toEqual([SUDO_POLICY_ADDRESS, ONE_TIME_USE])
   })
 
   test.each<[string, SessionDefinition, ResolveSessionOptions, string]>([
@@ -423,18 +397,40 @@ describe('a scoped Permit2-route session', () => {
       'NATIVE_SOURCE_UNSUPPORTED',
     ],
     [
-      'allowFees without the catalog',
+      "preClaimOps: 'none' beside allowFees",
       session([permit({ allowFees: true })]),
+      OPTIONS,
+      'PRE_CLAIM_OPS_NOT_APPLICABLE',
+    ],
+    [
+      'allowFees without the catalog',
+      session([oncePermit({ allowFees: true })], otu),
       {},
       'ALLOW_FEES_CATALOG_MISSING',
     ],
     [
       'allowFees on a token that is not a served stablecoin',
-      session([
-        permit({ allowFees: true, from: { chain: base, token: WETH } }),
-      ]),
+      session(
+        [oncePermit({ allowFees: true, from: { chain: base, token: WETH } })],
+        otu,
+      ),
       OPTIONS,
       'ALLOW_FEES_NON_STABLECOIN',
+    ],
+    [
+      'a native `to` token',
+      session([permit({ to: { chain: arbitrum, token: zeroAddress } })]),
+      OPTIONS,
+      'NATIVE_DESTINATION_UNSUPPORTED',
+    ],
+    [
+      'a wrapped native `from` leg capped at 0',
+      session(
+        [oncePermit({ from: { chain: base, token: WETH, maxAmount: 0n } })],
+        otu,
+      ),
+      { ...OPTIONS, wrappedNativeToken: WETH },
+      'WRAPPED_NATIVE_ZERO_CAP',
     ],
     [
       'a permit without `from`',
@@ -450,7 +446,7 @@ describe('a scoped Permit2-route session', () => {
     ],
     [
       'allowFees without `from`, even with a fallback',
-      session([permit({ from: undefined, allowFees: true })], {
+      session([oncePermit({ from: undefined, allowFees: true })], {
         fallback: 'sudo',
       }),
       OPTIONS,
@@ -460,7 +456,13 @@ describe('a scoped Permit2-route session', () => {
       'a SAME_CHAIN-only permit',
       session([permit({ settlementLayers: ['SAME_CHAIN'] })]),
       OPTIONS,
-      'PERMIT2_ROUTE_NEEDS_ACROSS',
+      'PERMIT2_ROUTE_ACROSS_ONLY',
+    ],
+    [
+      'SAME_CHAIN beside ACROSS',
+      session([permit({ settlementLayers: ['ACROSS', 'SAME_CHAIN'] })]),
+      OPTIONS,
+      'PERMIT2_ROUTE_ACROSS_ONLY',
     ],
     [
       'an ECO-only permit',
@@ -488,10 +490,7 @@ describe('a scoped Permit2-route session', () => {
   })
 
   test.each<[CrossChainPermissionInput['settlementLayers'], string[]]>([
-    [
-      ['ACROSS', 'SAME_CHAIN'],
-      ['ACROSS', 'SAME_CHAIN'],
-    ],
+    [['ACROSS'], ['ACROSS']],
     [undefined, ['ACROSS']],
     [[], ['ACROSS']],
   ])('naming %j settles through %j', (settlementLayers, layers) => {

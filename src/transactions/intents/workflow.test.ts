@@ -657,30 +657,142 @@ describe('intent workflow', () => {
         },
       ],
     })
-    const prepare = (enabled: boolean) =>
-      prepareIntent(
-        context({
-          checkpoints: {
-            read: vi.fn(async (checkpoint) => [
-              { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
-            ]),
-          },
-        }),
-        {
-          ...input,
-          signers: { kind: 'smart-session', byChain: { 1: { session } } },
+    const enableData = {
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` as const },
+      ],
+      sessionToEnableIndex: 0,
+    }
+    const permit2Quote = (
+      ops: { to: typeof address; value: bigint; data: `0x${string}` }[],
+    ): OrchestratorQuote => {
+      const typedData = {
+        domain: {
+          name: 'Permit2',
+          chainId: 1,
+          verifyingContract: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
         },
-      )
+        types: {
+          PermitBatchWitnessTransferFrom: [
+            { name: 'permitted', type: 'TokenPermissions[]' },
+            { name: 'spender', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'mandate', type: 'Mandate' },
+          ],
+          TokenPermissions: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Mandate: [
+            { name: 'target', type: 'Target' },
+            { name: 'minGas', type: 'uint128' },
+            { name: 'originOps', type: 'Op' },
+            { name: 'destOps', type: 'Op' },
+            { name: 'q', type: 'bytes32' },
+          ],
+          Target: [
+            { name: 'recipient', type: 'address' },
+            { name: 'tokenOut', type: 'Token[]' },
+            { name: 'targetChain', type: 'uint256' },
+            { name: 'fillExpiry', type: 'uint256' },
+          ],
+          Token: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Op: [
+            { name: 'vt', type: 'bytes32' },
+            { name: 'ops', type: 'Ops[]' },
+          ],
+          Ops: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+          ],
+        },
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        message: {
+          permitted: [{ token: address, amount: 1n }],
+          spender: address,
+          nonce: 1n,
+          deadline: 1n,
+          mandate: {
+            target: {
+              recipient: address,
+              tokenOut: [{ token: address, amount: 1n }],
+              targetChain: 42161n,
+              fillExpiry: 1n,
+            },
+            minGas: 0n,
+            originOps: { vt: `0x${'00'.repeat(32)}`, ops },
+            destOps: { vt: `0x${'00'.repeat(32)}`, ops: [] },
+            q: `0x${'00'.repeat(32)}`,
+          },
+        },
+      }
+      return {
+        ...quote(),
+        signData: { ...quote().signData, origin: [typedData as never] },
+      }
+    }
+    const workflowFor = (enabled: boolean, route = quote()) =>
+      context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+          ]),
+        },
+        quoteClient: {
+          createQuote: vi.fn(async () => ({
+            traceId: 'trace-1',
+            routes: [route as never],
+          })),
+        },
+      })
+    const signers = (withEnable: boolean) => ({
+      kind: 'smart-session' as const,
+      byChain: { 1: { session, ...(withEnable && { enableData }) } },
+    })
 
     test('must be enabled before its first intent', async () => {
-      await expect(prepare(false)).rejects.toThrow(
+      await expect(
+        prepareIntent(workflowFor(false), { ...input, signers: signers(true) }),
+      ).rejects.toThrow(
         "The session's claim may not carry pre-claim calls, so enable it on chain 1 before its first intent",
       )
     })
 
-    test('once enabled, adds no pre-claim call', async () => {
-      const prepared = await prepare(true)
-      expect(prepared.request.preClaimExecutions?.[1] ?? []).toEqual([])
+    test('needs the intent to list its sourceChains', async () => {
+      await expect(
+        prepareIntent(workflowFor(true), {
+          ...input,
+          sourceChains: undefined,
+          signers: signers(false),
+        } as never),
+      ).rejects.toThrow('needs the intent to list its sourceChains')
+    })
+
+    test('refuses before signing a claim that carries a pre-claim call', async () => {
+      const workflow = workflowFor(
+        true,
+        permit2Quote([{ to: address, value: 0n, data: '0x' }]),
+      )
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        signers: signers(false),
+      })
+      await expect(signIntent(workflow, prepared)).rejects.toThrow(
+        "This intent needs a pre-claim call, which the session's claim may not carry",
+      )
+      const clean = workflowFor(true, permit2Quote([]))
+      await expect(
+        signIntent(
+          clean,
+          await prepareIntent(clean, { ...input, signers: signers(false) }),
+        ),
+      ).resolves.toBeDefined()
     })
   })
 

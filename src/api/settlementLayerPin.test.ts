@@ -54,7 +54,8 @@ function layersFor(
   const intent = adaptTransaction(
     { account: {} } as never,
     {
-      chain: base,
+      targetChain: arbitrum,
+      sourceChains: [base],
       calls: [],
       signers: { type: 'session', session: session(layers, fallback) },
       ...(explicit ? { settlementLayers: explicit } : {}),
@@ -93,7 +94,8 @@ describe('settlement layer pin', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        targetChain: arbitrum,
+        sourceChains: [base],
         calls: [],
         signers: { type: 'session', session: eco },
       } as never,
@@ -126,7 +128,8 @@ describe('settlement layer pin', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        targetChain: arbitrum,
+        sourceChains: [base],
         calls: [],
         signers: { type: 'session', session: multi },
       } as never,
@@ -159,7 +162,8 @@ describe('settlement layer pin', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        targetChain: arbitrum,
+        sourceChains: [base],
         calls: [],
         signers: { type: 'session', session: all },
       } as never,
@@ -206,7 +210,8 @@ describe('settlement layer pin', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        targetChain: arbitrum,
+        sourceChains: [base],
         calls: [],
         signers: { type: 'session', session: sameChain },
       } as never,
@@ -215,12 +220,7 @@ describe('settlement layer pin', () => {
   })
 
   test('a scoped Permit2 session limits the intent to ACROSS', () => {
-    for (const layers of [
-      ['ACROSS'],
-      ['ACROSS', 'SAME_CHAIN'],
-      undefined,
-      [],
-    ]) {
+    for (const layers of [['ACROSS'], undefined, []]) {
       expect(layersFor(layers)).toEqual({ include: ['ACROSS'] })
     }
   })
@@ -294,7 +294,7 @@ describe('settlement layer pin', () => {
   })
 
   test('the Permit2 layers do not change the session encoding', () => {
-    const layerSets = [['ACROSS'], ['ACROSS', 'SAME_CHAIN'], undefined]
+    const layerSets = [['ACROSS'], undefined]
     expect(
       Object.fromEntries(
         layerSets.map((layers) => [
@@ -311,8 +311,6 @@ describe('settlement layer pin', () => {
 // they took preClaimOps: 'none' and omitted layers came to admit ACROSS alone.
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
   ACROSS: '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
-  'ACROSS,SAME_CHAIN':
-    '0x314e71c5cc23dd00400123db6d2320a5eaa0aada1009d5146702c64cb0212c91',
   // Omitted layers admit ACROSS alone, as naming it does.
   undefined:
     '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
@@ -328,7 +326,8 @@ describe('source asset pin', () => {
       adaptTransaction(
         { account: {} } as never,
         {
-          chain: base,
+          targetChain: arbitrum,
+          sourceChains: [base],
           calls: [],
           signers: {
             type: 'session',
@@ -343,6 +342,22 @@ describe('source asset pin', () => {
     expect(accessFor()).toEqual({ chainTokens: { [base.id]: [USDC] } })
   })
 
+  test('refuses a same-chain intent', () => {
+    const sameChain = (fallback?: 'sudo') =>
+      adaptTransaction(
+        { account: {} } as never,
+        {
+          chain: base,
+          calls: [],
+          signers: { type: 'session', session: session(['ACROSS'], fallback) },
+        } as never,
+      )
+    expect(() => sameChain()).toThrow(
+      'A scoped Permit2 session settles cross-chain intents only',
+    )
+    expect(() => sameChain('sudo')).not.toThrow()
+  })
+
   test('an explicit sourceAssets can only narrow it', () => {
     expect(accessFor([USDC, OTHER])).toEqual({
       chainTokens: { [base.id]: [USDC] },
@@ -351,7 +366,7 @@ describe('source asset pin', () => {
       chainTokenAmounts: { [base.id]: { [USDC]: 5n } },
     })
     expect(() => accessFor({ [base.id]: [OTHER] })).toThrow(
-      'sourceAssets: no source asset is left',
+      'No source asset is left for the intent',
     )
   })
 
@@ -381,7 +396,8 @@ describe('source asset pin', () => {
         adaptTransaction(
           { account: {} } as never,
           {
-            chain: base,
+            targetChain: arbitrum,
+            sourceChains: [base],
             calls: [],
             signers: { type: 'session', session: multi },
             ...(sourceAssets ? { sourceAssets } : {}),
@@ -391,6 +407,75 @@ describe('source asset pin', () => {
     // The intent's source chain is base, so arbitrum's leg is left out.
     expect(pin()).toEqual({ chainTokens: { [base.id]: [USDC, OTHER] } })
     expect(pin([OTHER])).toEqual({ chainTokens: { [base.id]: [OTHER] } })
+  })
+
+  describe('with a capped `from` leg', () => {
+    const capped = toSession(
+      {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        account: ACCOUNT,
+        oneTimeUse: { id: 7n },
+        policyAddresses: {
+          oneTimeUseId: '0x3333333333333333333333333333333333333333',
+        },
+        crossChainPermits: [
+          {
+            from: { chain: base, token: USDC, maxAmount: 5n },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ACROSS'],
+          },
+        ],
+      } as never,
+      { settlement: SETTLEMENT_CATALOG },
+    )
+    const pin = (extra: object = {}) =>
+      (
+        adaptTransaction(
+          { account: {} } as never,
+          {
+            targetChain: arbitrum,
+            sourceChains: [base],
+            calls: [],
+            signers: { type: 'session', session: capped },
+            ...extra,
+          } as never,
+        ) as { accountAccessList?: unknown }
+      ).accountAccessList
+    const atMost = (amount: bigint) => ({
+      chainTokenAmounts: { [base.id]: { [USDC]: amount } },
+    })
+
+    test('caps what the orchestrator may plan to spend, whatever the intent asks', () => {
+      // Max-out (no amount), and a request whose input plus fees exceeds the cap.
+      expect(pin()).toEqual(atMost(5n))
+      expect(
+        pin({ tokenRequests: [{ address: USDC_ARB, amount: 10n }] }),
+      ).toEqual(atMost(5n))
+    })
+
+    test('an explicit amount can only lower the cap', () => {
+      const amount = (value: bigint) => ({
+        sourceAssets: [{ chain: base, address: USDC, amount: value }],
+      })
+      expect(pin(amount(9n))).toEqual(atMost(5n))
+      expect(pin(amount(3n))).toEqual(atMost(3n))
+      expect(pin({ sourceAssets: [USDC] })).toEqual(atMost(5n))
+    })
+
+    test('an explicit amount on another token is dropped', () => {
+      expect(() =>
+        pin({ sourceAssets: [{ chain: base, address: OTHER, amount: 5n }] }),
+      ).toThrow('No source asset is left for the intent')
+      expect(
+        pin({
+          sourceAssets: [
+            { chain: base, address: USDC, amount: 5n },
+            { chain: base, address: OTHER, amount: 7n },
+          ],
+        }),
+      ).toEqual(atMost(5n))
+    })
   })
 
   test.each(['intentExecution', 'sudo'] as const)(

@@ -106,10 +106,13 @@ export const SESSION_REFUSAL_CODES = {
     '`fallback` without a Permit2-layer permit, or with restrictToActions or swap',
   PERMIT2_ROUTE_NEEDS_BOUND:
     "a Permit2-layer permit without oneTimeUse, preClaimOps: 'none' or `fallback`",
-  PERMIT2_ROUTE_NEEDS_ACROSS:
-    'a Permit2-layer permit without ACROSS or `fallback`',
+  PERMIT2_ROUTE_ACROSS_ONLY:
+    'a Permit2-layer permit naming a layer other than ACROSS, without `fallback`',
   PRE_CLAIM_OPS_NOT_APPLICABLE:
-    "preClaimOps: 'none' with oneTimeUse or on an IntentExecutor-layer permit",
+    "preClaimOps: 'none' with oneTimeUse or allowFees, or on an IntentExecutor-layer permit",
+  NATIVE_DESTINATION_UNSUPPORTED:
+    'a native `to` token on a Permit2-layer permit, without `fallback`',
+  WRAPPED_NATIVE_ZERO_CAP: 'a wrapped native `from` leg with maxAmount 0',
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
   CLAIM_POLICIES_SIGNING_MODE:

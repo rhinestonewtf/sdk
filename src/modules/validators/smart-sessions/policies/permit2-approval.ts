@@ -7,9 +7,8 @@ import { cumulativeCap, pin, swapAction } from '../swap/rules'
 import { PERMIT2 } from '../swap/stable-floor'
 import type { CrossChainPermit, Permission, ScopedAction } from '../types'
 
-// deposit() and withdraw(uint256) on the wrapped native token.
+/** `deposit()` on the wrapped native token. */
 export const DEPOSIT_SELECTOR = '0xd0e30db0' as const
-export const WITHDRAW_SELECTOR = '0x2e1a7d4d' as const
 
 export const isNativeToken = (token: Address): boolean =>
   isAddressEqual(token, zeroAddress) || isAddressEqual(token, NATIVE_SENTINEL)
@@ -44,7 +43,7 @@ export function permit2SourceTokens(
 /**
  * The scoped actions a Permit2-route permit settles through: per `from` token,
  * `approve(Permit2, amount)` capped cumulatively at its largest `maxAmount`;
- * the wrapped-native `deposit()` and `withdraw(uint256)` when `wrap` is given;
+ * the wrapped-native `deposit()`, its value capped, when `wrap` is given;
  * and the fee calls when `fees` is. A declared approve on a `from` token is
  * refused: the permit adds its own.
  */
@@ -53,7 +52,7 @@ export function permit2RouteScope(
   permissions: readonly Permission[],
   declaredActions: readonly ScopedAction[],
   fees: NonNullable<SettlementAddresses['fees']> | undefined,
-  wrap?: { readonly token: Address; readonly cap: bigint | undefined },
+  wrap?: { readonly token: Address; readonly cap: bigint },
 ): ScopedAction[] {
   const actions: ScopedAction[] = []
   for (const [token, cap] of sourceTokens) {
@@ -80,19 +79,11 @@ export function permit2RouteScope(
     )
   }
   if (wrap) {
-    const { token, cap } = wrap
-    actions.push(
-      {
-        target: token,
-        selector: DEPOSIT_SELECTOR,
-        ...(cap !== undefined && {
-          policies: [{ type: 'value-limit', limit: cap }],
-        }),
-      },
-      cap === undefined
-        ? { target: token, selector: WITHDRAW_SELECTOR }
-        : swapAction(token, WITHDRAW_SELECTOR, [cumulativeCap(0n, cap)]),
-    )
+    actions.push({
+      target: wrap.token,
+      selector: DEPOSIT_SELECTOR,
+      policies: [{ type: 'value-limit', limit: wrap.cap }],
+    })
   }
   return fees === undefined
     ? actions

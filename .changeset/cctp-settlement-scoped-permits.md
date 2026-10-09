@@ -11,6 +11,6 @@ Add settlement-scoped cross-chain permits, starting with CCTP (RHI-7826). A `cro
 - Only sponsored intents without an app fee can settle through it: the paymaster and fee-carve calls are not authorised.
 - Intents signed with the session are limited to its layers (`settlementLayers: { include: ['CCTP'] }`); an explicit filter can only narrow it.
 
-Permits that name only `SAME_CHAIN`, `ECO` or `ACROSS` are unchanged.
+Permits that name only Permit2 layers are not settlement-scoped (see the scoped Permit2 sessions entry for how they resolve).
 
 `getArbitersForSettlementLayers` now throws on a layer with no Permit2 arbiter instead of returning an empty (any-arbiter) list.

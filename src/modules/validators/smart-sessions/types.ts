@@ -457,6 +457,13 @@ export interface Session {
   /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
    *  like `swap`; absent on sessions stored before it existed. */
   settlementCoverage?: SettlementCoverage
+  /** A scoped Permit2-route session's `from` tokens per chain, each with its
+   *  cap, so intents are funded only from them. Metadata only. */
+  permit2Sources?: readonly {
+    readonly chain: Chain
+    readonly token: Address
+    readonly maxAmount?: bigint
+  }[]
   /** Whether the session keeps the intent-execution fallback, and why. Metadata
    *  only; absent on sessions stored before it existed. */
   access?: SessionAccess

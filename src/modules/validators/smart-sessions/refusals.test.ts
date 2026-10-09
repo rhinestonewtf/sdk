@@ -154,8 +154,10 @@ describe('refusal codes', () => {
       'PERMIT2_APPROVE_CONFLICT',
       'FALLBACK_NOT_APPLICABLE',
       'PERMIT2_ROUTE_NEEDS_BOUND',
-      'PERMIT2_ROUTE_NEEDS_ACROSS',
+      'PERMIT2_ROUTE_ACROSS_ONLY',
       'PRE_CLAIM_OPS_NOT_APPLICABLE',
+      'NATIVE_DESTINATION_UNSUPPORTED',
+      'WRAPPED_NATIVE_ZERO_CAP',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
       'CLAIM_POLICIES_SIGNING_MODE',
       'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
@@ -279,7 +281,7 @@ describe('collectSessionRefusals', () => {
       session(
         [
           permit2({ maxFeeBps: 10 }),
-          permit2({ allowFees: true }),
+          permit2({ allowFees: true, preClaimOps: undefined }),
           permit2({ to: { chain: arbitrum, token: USDC_ARB, minAmount: 1n } }),
         ],
         { restrictToActions: true } as Partial<SessionDefinition>,
@@ -474,15 +476,21 @@ describe('collectSessionRefusals', () => {
       ]),
     ],
     ['MAX_FEE_BPS_ONLY_ECO_IE', session([cctp({ maxFeeBps: 10 })])],
-    ['FEES_NOT_SERVED', session([permit2({ allowFees: true })])],
+    [
+      'FEES_NOT_SERVED',
+      session(
+        [permit2({ allowFees: true, preClaimOps: undefined })],
+        oneTimeUse,
+      ),
+    ],
     ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
     [
       'PERMIT2_ROUTE_NEEDS_BOUND',
       session([permit2({ preClaimOps: undefined })]),
     ],
     [
-      'PERMIT2_ROUTE_NEEDS_ACROSS',
-      session([permit2({ settlementLayers: ['SAME_CHAIN'] })]),
+      'PERMIT2_ROUTE_ACROSS_ONLY',
+      session([permit2({ settlementLayers: ['ACROSS', 'SAME_CHAIN'] })]),
     ],
     ['PRE_CLAIM_OPS_NOT_APPLICABLE', session([permit2()], oneTimeUse)],
     [
