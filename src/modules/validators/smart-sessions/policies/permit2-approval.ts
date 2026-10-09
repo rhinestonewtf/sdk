@@ -104,7 +104,7 @@ export function permit2FallbackScope(
   )
   return fees === undefined
     ? []
-    : withFeeActions([], [...sourceTokens.keys()], fees, { approve: false })
+    : withFeeActions([], [...sourceTokens.keys()], fees, false)
 }
 
 function refuseDeclaredApproves(

@@ -434,9 +434,13 @@ function resolveSession(
     }
   }
   const permit2Tokens = permit2SourceTokens(permit2Permits, chainId)
-  const feesIndex = resolvedPermits.findIndex(
-    (permit) => !isSettlementScopedPermit(permit) && permit.allowFees,
-  )
+  // A sudo wildcard already admits every fee call, so allowFees adds nothing.
+  const feesIndex =
+    fallback === 'sudo'
+      ? -1
+      : resolvedPermits.findIndex(
+          (permit) => !isSettlementScopedPermit(permit) && permit.allowFees,
+        )
   const permit2Fees =
     permit2Tokens.size && feesIndex !== -1
       ? recover(
@@ -617,7 +621,10 @@ function resolveSession(
   for (const permit of permit2Permits) {
     const at = { permitIndex: resolvedPermits.indexOf(permit), chainId }
     const fromHere = permit.from?.some((leg) => leg.chain.id === chainId)
-    if (!fromHere && (fallback === undefined || permit.allowFees)) {
+    if (
+      !fromHere &&
+      (fallback === undefined || (permit.allowFees && fallback !== 'sudo'))
+    ) {
       refuse(
         refusal(
           'PERMIT2_ROUTE_NEEDS_FROM',

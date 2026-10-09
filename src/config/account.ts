@@ -456,9 +456,11 @@ interface CrossChainPermit {
    * an app fee or a protocol fee taken from the `from` token does not settle,
    * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
    * layer it also needs a `from` token on the session's chain, even with
-   * `fallback`, and cannot be combined with `preClaimOps: 'none'`. With
-   * `fallback`, the paymaster approve is left to the wildcard: only the
-   * transfer and the callback are added.
+   * `fallback: 'intentExecution'`, and cannot be combined with
+   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
+   * approve is left to the wildcard: only the transfer and the callback are
+   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
+   * fee call.
    *
    * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster
@@ -646,9 +648,11 @@ interface CrossChainPermissionInput {
    * an app fee or a protocol fee taken from the `from` token does not settle,
    * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
    * layer it also needs a `from` token on the session's chain, even with
-   * `fallback`, and cannot be combined with `preClaimOps: 'none'`. With
-   * `fallback`, the paymaster approve is left to the wildcard: only the
-   * transfer and the callback are added.
+   * `fallback: 'intentExecution'`, and cannot be combined with
+   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
+   * approve is left to the wildcard: only the transfer and the callback are
+   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
+   * fee call.
    *
    * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster

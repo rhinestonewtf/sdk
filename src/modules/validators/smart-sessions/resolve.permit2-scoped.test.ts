@@ -446,9 +446,9 @@ describe('a scoped Permit2-route session', () => {
       'PERMIT2_ROUTE_NEEDS_FROM',
     ],
     [
-      'allowFees without `from`, even with a fallback',
+      'allowFees without `from`, even with an intentExecution fallback',
       session([oncePermit({ from: undefined, allowFees: true })], {
-        fallback: 'sudo',
+        fallback: 'intentExecution',
       }),
       OPTIONS,
       'PERMIT2_ROUTE_NEEDS_FROM',
@@ -626,30 +626,55 @@ describe.each([
     ).toEqual([])
   })
 
-  test('keeps the fee transfer and paymaster callback with allowFees', () => {
-    const fallbackBuilt = toSession(
-      session([oncePermit({ allowFees: true })], { fallback, ...otu }),
-      OPTIONS,
-    )
-    const scopedBuilt = toSession(
-      session([oncePermit({ allowFees: true })], otu),
-      OPTIONS,
-    )
-    // The same capped calls a scoped session gets.
-    for (const [target, selector] of [
-      [USDC, TRANSFER],
-      [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
-    ] as const) {
-      const kept = actionOn(fallbackBuilt.actions, target, selector)
-      expect(kept).toBeDefined()
-      expect(kept).toEqual(actionOn(scopedBuilt.actions, target, selector))
-    }
-    const plain = toSession(session([oncePermit()], { fallback }), OPTIONS)
-    expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
-    expect(
-      actionOn(plain.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
-    ).toBeUndefined()
-  })
+  test.skipIf(fallback === 'sudo')(
+    'keeps the fee transfer and paymaster callback with allowFees',
+    () => {
+      const fallbackBuilt = toSession(
+        session([oncePermit({ allowFees: true })], { fallback, ...otu }),
+        OPTIONS,
+      )
+      const scopedBuilt = toSession(
+        session([oncePermit({ allowFees: true })], otu),
+        OPTIONS,
+      )
+      // The same capped calls a scoped session gets.
+      for (const [target, selector] of [
+        [USDC, TRANSFER],
+        [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
+      ] as const) {
+        const kept = actionOn(fallbackBuilt.actions, target, selector)
+        expect(kept).toBeDefined()
+        expect(kept).toEqual(actionOn(scopedBuilt.actions, target, selector))
+      }
+      const plain = toSession(session([oncePermit()], { fallback }), OPTIONS)
+      expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
+      expect(
+        actionOn(plain.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
+      ).toBeUndefined()
+    },
+  )
+
+  test.skipIf(fallback !== 'sudo')(
+    'adds no rule for allowFees under sudo, which admits every fee call',
+    () => {
+      const built = (permitExtra: Partial<CrossChainPermissionInput>) =>
+        toSession(
+          session([oncePermit(permitExtra)], { fallback, ...otu }),
+          OPTIONS,
+        )
+      expect(built({ allowFees: true }).actions).toEqual(built({}).actions)
+      // Nothing to scope, so none of the fee checks apply.
+      for (const [permitExtra, options] of [
+        [{ allowFees: true, from: undefined }, OPTIONS],
+        [{ allowFees: true }, {}],
+        [{ allowFees: true, from: { chain: base, token: WETH } }, OPTIONS],
+      ] as const) {
+        expect(
+          codes(session([oncePermit(permitExtra)], { fallback }), options),
+        ).toEqual([])
+      }
+    },
+  )
 
   test('leaves approve to the wildcard in the enabled session data', () => {
     for (const permitExtra of [{}, { allowFees: true }]) {

@@ -239,7 +239,7 @@ export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: ServedFees,
-  { approve = true }: { readonly approve?: boolean } = {},
+  approve = true,
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
