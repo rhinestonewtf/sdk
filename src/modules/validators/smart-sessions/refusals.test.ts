@@ -487,7 +487,16 @@ describe('collectSessionRefusals', () => {
     ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
     [
       'PERMIT2_ROUTE_NEEDS_BOUND',
-      session([permit2({ preClaimOps: undefined })]),
+      // Linea has no Permit2SenderPolicy to bound a reusable session with.
+      session(
+        [
+          permit2({
+            preClaimOps: undefined,
+            from: { chain: linea, token: USDC },
+          }),
+        ],
+        { chain: linea } as Partial<SessionDefinition>,
+      ),
     ],
     [
       'PERMIT2_ROUTE_ACROSS_ONLY',

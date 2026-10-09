@@ -477,12 +477,13 @@ interface CrossChainPermit {
    */
   allowFees?: boolean
   /**
-   * Permit2 layers only: the claim may not carry pre-claim calls. This bounds
-   * a session without `oneTimeUse`, so it can be scoped and reusable. The
-   * session then settles only intents that need no pre-claim call: the
-   * account already holds enough Permit2 allowance for the `from` token, no
-   * fee is taken from it, and no native token is wrapped; one that needs a
-   * pre-claim call is refused before signing. Intents must list their
+   * Permit2 layers only: the claim may not carry pre-claim calls. A reusable
+   * scoped session does not need it on a chain with Permit2SenderPolicy (see
+   * `fallback`); elsewhere it is what bounds one. The session then settles
+   * only intents that need no pre-claim call: the account already holds
+   * enough Permit2 allowance for the `from` token, no fee is taken from it,
+   * and no native token is wrapped; one that needs a pre-claim call is
+   * refused before signing. Intents must list their
    * `sourceChains`. It cannot be combined with `oneTimeUse`, whose burn is
    * itself a pre-claim call, or with `allowFees`.
    *
@@ -664,12 +665,13 @@ interface CrossChainPermissionInput {
    */
   allowFees?: boolean
   /**
-   * Permit2 layers only: the claim may not carry pre-claim calls. This bounds
-   * a session without `oneTimeUse`, so it can be scoped and reusable. The
-   * session then settles only intents that need no pre-claim call: the
-   * account already holds enough Permit2 allowance for the `from` token, no
-   * fee is taken from it, and no native token is wrapped; one that needs a
-   * pre-claim call is refused before signing. Intents must list their
+   * Permit2 layers only: the claim may not carry pre-claim calls. A reusable
+   * scoped session does not need it on a chain with Permit2SenderPolicy (see
+   * `fallback`); elsewhere it is what bounds one. The session then settles
+   * only intents that need no pre-claim call: the account already holds
+   * enough Permit2 allowance for the `from` token, no fee is taken from it,
+   * and no native token is wrapped; one that needs a pre-claim call is
+   * refused before signing. Intents must list their
    * `sourceChains`. It cannot be combined with `oneTimeUse`, whose burn is
    * itself a pre-claim call, or with `allowFees`.
    *
@@ -1136,9 +1138,11 @@ interface SessionDefinition<
   /**
    * Add a wildcard action to a session holding a Permit2-layer
    * `crossChainPermits` entry. Without it, such a session is scoped to the
-   * calls its settlement needs, and needs `oneTimeUse` or the permit's
-   * `preClaimOps: 'none'` (refused with `PERMIT2_ROUTE_NEEDS_BOUND`
-   * otherwise).
+   * calls its settlement needs. Without `oneTimeUse` or the permit's
+   * `preClaimOps: 'none'`, its ERC-1271 list also gets Permit2SenderPolicy,
+   * which accepts a claim signature only when Permit2 presents it, so its
+   * pre-claim calls are checked as executions. On a chain without that policy
+   * such a session is refused with `PERMIT2_ROUTE_NEEDS_BOUND`.
    *
    * - `'intentExecution'`: the session key may also make the calls
    *   Rhinestone's intent-execution policy admits, with the permit's
