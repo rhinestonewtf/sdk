@@ -30,7 +30,7 @@ import type {
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-  SETTLEMENT_FEE_CAP,
+  DEFAULT_SETTLEMENT_FEE_CAP,
   servedFees,
   settlementFeeCap,
   swapApprovesAsActions,
@@ -51,7 +51,7 @@ const COLLECTOR = '0x5555555555555555555555555555555555555555' as Address
 const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
 const APPROVE = toFunctionSelector('approve(address,uint256)')
-const CAP = SETTLEMENT_FEE_CAP
+const CAP = DEFAULT_SETTLEMENT_FEE_CAP
 const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
 const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 
@@ -483,7 +483,7 @@ describe('allowFees refuses', () => {
           allowFees: true,
         }),
       ),
-    ).toThrow('must be a served USD stablecoin')
+    ).toThrow('must be a served 6-decimal USD stablecoin')
   })
 
   test('every layer on a chain with no fees block', () => {
@@ -653,15 +653,61 @@ test('a swap approve trades its spending limit for the cap and keeps maxUses', (
   ])
 })
 
+const usd = (address: Address, decimals = 6) => ({
+  address,
+  symbol: 'USD',
+  decimals,
+})
+
 test('a token served by any one layer counts as a stablecoin', () => {
   const USDT0 = OFT_ARB.token
   const settlement = {
-    1: { oft: { adapter: STRANGER, eid: 1, token: USDT0 }, fees: FEES },
+    1: {
+      oft: { adapter: STRANGER, eid: 1, token: USDT0 },
+      fees: FEES,
+      usdStablecoins: [usd(USDT0), usd(USDC)],
+    },
   }
   expect(servedFees(settlement, 1, [USDT0])).toEqual(FEES)
   expect(() => servedFees(settlement, 1, [USDC])).toThrow(
-    'must be a served USD stablecoin',
+    'must be a served 6-decimal USD stablecoin',
   )
+})
+
+describe('a fee token needs one 6-decimal usdStablecoins entry', () => {
+  const USDT0 = OFT_ARB.token
+  const served = (usdStablecoins?: ReturnType<typeof usd>[]) => ({
+    1: {
+      oft: { adapter: STRANGER, eid: 1, token: USDT0 },
+      fees: FEES,
+      ...(usdStablecoins ? { usdStablecoins } : {}),
+    },
+  })
+
+  test.each([
+    ['no usdStablecoins', served()],
+    ['no entry for the token', served([usd(USDC)])],
+    ['2 decimals, which would scale the cap up 10^4', served([usd(USDT0, 2)])],
+    ['18 decimals', served([usd(USDT0, 18)])],
+    ['two entries', served([usd(USDT0), usd(USDT0)])],
+  ])('refuses %s', (_, settlement) => {
+    expect(() => servedFees(settlement, 1, [USDT0])).toThrow(
+      expect.objectContaining({ code: 'ALLOW_FEES_NON_STABLECOIN' }),
+    )
+  })
+
+  test('refuses it through the session too', () => {
+    const settlement: SettlementCatalog = {
+      ...WITH_FEES,
+      [base.id]: {
+        ...WITH_FEES[base.id],
+        usdStablecoins: [usd(USDC, 2)],
+      },
+    }
+    expect(() =>
+      scope(permit(LAYERS.CCTP, { allowFees: true }), settlement),
+    ).toThrow('must be a served 6-decimal USD stablecoin')
+  })
 })
 
 describe('the fee cap by chain', () => {
@@ -669,6 +715,7 @@ describe('the fee cap by chain', () => {
     ...LAYERS.CCTP,
     chain: mainnet,
     token: SETTLEMENT_CATALOG[mainnet.id].cctp!.usdc,
+    spender: SETTLEMENT_CATALOG[mainnet.id].cctp!.tokenMessenger,
   }
   const fingerprint = (layer: Layer) =>
     sessionFingerprint(
@@ -678,7 +725,7 @@ describe('the fee cap by chain', () => {
     )
 
   test.each([
-    ['Ethereum', 15, ON_ETHEREUM],
+    ['Ethereum', 30, ON_ETHEREUM],
     ['Base', 5, LAYERS.CCTP],
     ['Arbitrum', 5, LAYERS.OFT],
   ] as const)('each fee call on %s caps at %s USD', (_, usd, layer) => {
@@ -700,6 +747,24 @@ describe('the fee cap by chain', () => {
         [[call(cap + 1n), false]],
       ])
     }
+  })
+
+  test('the Ethereum cap is cumulative', () => {
+    const actions = scope(permit(ON_ETHEREUM, { allowFees: true })).actions
+    const token = ON_ETHEREUM.token
+    expectRuns(find(actions, token, TRANSFER), [
+      [
+        [transfer(COLLECTOR, 20_000_000n), true],
+        [transfer(COLLECTOR, 11_000_000n), false],
+        [transfer(COLLECTOR, 10_000_000n), true],
+      ],
+    ])
+    expectRuns(find(actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR), [
+      [
+        [callback(token, 20_000_000n), true],
+        [callback(token, 11_000_000n), false],
+      ],
+    ])
   })
 
   test('sessions off Ethereum keep the fingerprints taken before the change', () => {

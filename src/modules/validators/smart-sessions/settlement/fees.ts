@@ -31,18 +31,21 @@ import type { SettlementAddresses, SettlementCatalog } from './types'
  * approve, one shared across tokens for the callback.
  */
 
-/** 5 USD at 6 decimals. Cumulative: the burning transaction admits every later op. */
-export const SETTLEMENT_FEE_CAP = 5_000_000n
+/**
+ * The per-call cap where {@link settlementFeeCap} has no chain entry: 5 USD at
+ * 6 decimals. Cumulative: the burning transaction admits every later op.
+ */
+export const DEFAULT_SETTLEMENT_FEE_CAP = 5_000_000n
 
-/** Chains whose cap differs from {@link SETTLEMENT_FEE_CAP}, in USD at 6 decimals. */
+/** Chains whose cap differs from the default, in USD at 6 decimals. */
 const SETTLEMENT_FEE_CAP_BY_CHAIN: Readonly<Record<number, bigint>> = {
   // Ethereum mainnet: a session enable needs a gas refund above 5 USD.
-  1: 15_000_000n,
+  1: 30_000_000n,
 }
 
 /** The per-call fee cap on `chainId`, in USD at 6 decimals. */
 export function settlementFeeCap(chainId: number): bigint {
-  return SETTLEMENT_FEE_CAP_BY_CHAIN[chainId] ?? SETTLEMENT_FEE_CAP
+  return SETTLEMENT_FEE_CAP_BY_CHAIN[chainId] ?? DEFAULT_SETTLEMENT_FEE_CAP
 }
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
@@ -81,8 +84,9 @@ export function servedFees(
       { chainId },
     )
   }
-  // The cap is a USD amount, so it only bounds the stablecoins the layers serve
-  // (all 6-decimal today); any other token would make it meaningless.
+  // The cap is a USD amount at 6 decimals, so it only bounds a stablecoin the
+  // layers serve and usdStablecoins vouches for at 6 decimals: fewer decimals
+  // would scale the cap up by orders of magnitude.
   const stables = [
     chain.cctp?.usdc,
     chain.oft?.token,
@@ -91,10 +95,17 @@ export function servedFees(
     chain.lz?.cctp?.token,
   ].filter((token): token is Address => token !== undefined)
   for (const token of sourceTokens) {
-    if (!stables.some((stable) => isAddressEqual(stable, token))) {
+    const usd = (chain.usdStablecoins ?? []).filter((t) =>
+      isAddressEqual(t.address, token),
+    )
+    if (
+      !stables.some((stable) => isAddressEqual(stable, token)) ||
+      usd.length !== 1 ||
+      usd[0].decimals !== 6
+    ) {
       throw refusal(
         'ALLOW_FEES_NON_STABLECOIN',
-        `crossChainPermits: allowFees caps fees in USD, so every \`from\` token must be a served USD stablecoin; ${token} on chain ${chainId} is not`,
+        `crossChainPermits: allowFees caps fees in USD at 6 decimals, so every \`from\` token must be a served 6-decimal USD stablecoin; ${token} on chain ${chainId} is not`,
         { chainId },
       )
     }

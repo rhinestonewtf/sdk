@@ -450,13 +450,14 @@ interface CrossChainPermit {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - Each fee call has its own cumulative cap of 5 USD (15 USD on Ethereum
+   * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster
    *   approve one per `from` token, the paymaster callback one shared across
    *   tokens. So one token can pay up to about twice the cap (app fee plus
    *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
-   *   serves for these layers (USD stablecoins today).
+   *   serves for these layers and lists in `settlement.usdStablecoins` at 6
+   *   decimals, since the cap is a 6-decimal USD amount.
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
    *   the session with `sdk.createSession`.
    * - The orchestrator sizes the paymaster approve and callback at the refund
@@ -606,13 +607,14 @@ interface CrossChainPermissionInput {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - Each fee call has its own cumulative cap of 5 USD (15 USD on Ethereum
+   * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster
    *   approve one per `from` token, the paymaster callback one shared across
    *   tokens. So one token can pay up to about twice the cap (app fee plus
    *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
-   *   serves for these layers (USD stablecoins today).
+   *   serves for these layers and lists in `settlement.usdStablecoins` at 6
+   *   decimals, since the cap is a 6-decimal USD amount.
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
    *   the session with `sdk.createSession`.
    * - The orchestrator sizes the paymaster approve and callback at the refund
