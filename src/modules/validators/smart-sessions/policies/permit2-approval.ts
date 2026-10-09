@@ -1,8 +1,11 @@
 import { type Address, isAddressEqual, zeroAddress } from 'viem'
 import { refusal } from '../refusals'
-import { APPROVE_SELECTOR, withFeeActions } from '../settlement/fees'
+import {
+  APPROVE_SELECTOR,
+  type ServedFees,
+  withFeeActions,
+} from '../settlement/fees'
 import { NATIVE_SENTINEL } from '../settlement/same-chain'
-import type { SettlementAddresses } from '../settlement/types'
 import { cumulativeCap, pin, swapAction } from '../swap/rules'
 import { PERMIT2 } from '../swap/stable-floor'
 import type { CrossChainPermit, Permission, ScopedAction } from '../types'
@@ -51,7 +54,7 @@ export function permit2RouteScope(
   sourceTokens: ReadonlyMap<Address, bigint | undefined>,
   permissions: readonly Permission[],
   declaredActions: readonly ScopedAction[],
-  fees: NonNullable<SettlementAddresses['fees']> | undefined,
+  fees: ServedFees | undefined,
   wrap?: { readonly token: Address; readonly cap: bigint },
 ): ScopedAction[] {
   const actions: ScopedAction[] = []

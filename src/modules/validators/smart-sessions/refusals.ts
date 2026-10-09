@@ -93,7 +93,9 @@ export const SESSION_REFUSAL_CODES = {
     "allowFees without the orchestrator's settlement addresses",
   FEES_NOT_SERVED: 'allowFees on a chain with no served fee addresses',
   ALLOW_FEES_NON_STABLECOIN:
-    'allowFees with a `from` token that is not a served USD stablecoin',
+    'allowFees with a `from` token that is not a served USD stablecoin with known decimals',
+  ALLOW_FEES_MIXED_DECIMALS:
+    'allowFees with `from` tokens of different decimals on one chain',
   ALLOW_FEES_ONLY_INTENT_EXECUTOR: 'retired: allowFees applies to Permit2 too',
   SIGNING_WITH_INTENT_EXECUTOR_PERMIT:
     'an IntentExecutor-layer permit with `signing` enabled',
