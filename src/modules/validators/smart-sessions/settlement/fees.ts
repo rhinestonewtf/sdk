@@ -102,14 +102,15 @@ export function servedFees(
       )
     }
     // The cap is in 6-decimal units: fewer decimals would scale it up by orders
-    // of magnitude. A chain serving no usdStablecoins entry for it is not checked.
-    const listed = (chain.usdStablecoins ?? []).find(
-      (t) => isAddressEqual(t.address, token) && t.decimals !== 6,
+    // of magnitude, so unknown decimals fail closed.
+    const listed = (chain.usdStablecoins ?? []).filter((t) =>
+      isAddressEqual(t.address, token),
     )
-    if (listed !== undefined) {
+    const wrong = listed.find((t) => t.decimals !== 6)
+    if (listed.length === 0 || wrong !== undefined) {
       throw refusal(
         'ALLOW_FEES_NON_STABLECOIN',
-        `crossChainPermits: allowFees caps fees in 6-decimal USD, so a \`from\` token must be 6-decimal; ${token} on chain ${chainId} is served with ${listed.decimals} decimals`,
+        `crossChainPermits: allowFees caps fees in 6-decimal USD, so a \`from\` token must be listed in usdStablecoins with 6 decimals; ${token} on chain ${chainId} ${wrong === undefined ? 'is not listed with its decimals' : `is served with ${wrong.decimals} decimals`}`,
         { chainId },
       )
     }

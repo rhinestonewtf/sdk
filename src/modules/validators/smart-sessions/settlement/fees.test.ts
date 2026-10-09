@@ -662,7 +662,11 @@ const usd = (address: Address, decimals = 6) => ({
 test('a token served by any one layer counts as a stablecoin', () => {
   const USDT0 = OFT_ARB.token
   const settlement = {
-    1: { oft: { adapter: STRANGER, eid: 1, token: USDT0 }, fees: FEES },
+    1: {
+      oft: { adapter: STRANGER, eid: 1, token: USDT0 },
+      fees: FEES,
+      usdStablecoins: [usd(USDT0), usd(USDC)],
+    },
   }
   expect(servedFees(settlement, 1, [USDT0])).toEqual(FEES)
   expect(() => servedFees(settlement, 1, [USDC])).toThrow(
@@ -670,7 +674,7 @@ test('a token served by any one layer counts as a stablecoin', () => {
   )
 })
 
-describe('a fee token usdStablecoins lists must be 6-decimal', () => {
+describe('a fee token must be listed in usdStablecoins with 6 decimals', () => {
   const USDT0 = OFT_ARB.token
   const served = (usdStablecoins?: ReturnType<typeof usd>[]) => ({
     1: {
@@ -679,10 +683,13 @@ describe('a fee token usdStablecoins lists must be 6-decimal', () => {
       ...(usdStablecoins ? { usdStablecoins } : {}),
     },
   })
+  const refuses = (why: string) =>
+    expect.objectContaining({
+      code: 'ALLOW_FEES_NON_STABLECOIN',
+      message: expect.stringContaining(why),
+    })
 
   test.each([
-    ['no usdStablecoins', served()],
-    ['no entry for the token', served([usd(USDC, 2)])],
     ['a 6-decimal entry', served([usd(USDT0)])],
     [
       'a 6-decimal entry, any case',
@@ -693,13 +700,25 @@ describe('a fee token usdStablecoins lists must be 6-decimal', () => {
   })
 
   test.each([
-    ['2 decimals, which would scale the cap up 10^4', served([usd(USDT0, 2)])],
-    ['18 decimals', served([usd(USDT0, 18)])],
-    ['2 decimals, any case', served([usd(USDT0.toLowerCase() as Address, 2)])],
-  ])('refuses %s', (_, settlement) => {
-    expect(() => servedFees(settlement, 1, [USDT0])).toThrow(
-      expect.objectContaining({ code: 'ALLOW_FEES_NON_STABLECOIN' }),
-    )
+    ['no usdStablecoins', served(), 'is not listed with its decimals'],
+    [
+      'no entry for the token',
+      served([usd(USDC)]),
+      'is not listed with its decimals',
+    ],
+    [
+      '2 decimals, which would scale the cap up 10^4',
+      served([usd(USDT0, 2)]),
+      'is served with 2 decimals',
+    ],
+    ['18 decimals', served([usd(USDT0, 18)]), 'is served with 18 decimals'],
+    [
+      '2 decimals, any case',
+      served([usd(USDT0.toLowerCase() as Address, 2)]),
+      'is served with 2 decimals',
+    ],
+  ])('refuses %s', (_, settlement, why) => {
+    expect(() => servedFees(settlement, 1, [USDT0])).toThrow(refuses(why))
   })
 
   const onBase = (usdStablecoins?: ReturnType<typeof usd>[]) => {
@@ -709,17 +728,20 @@ describe('a fee token usdStablecoins lists must be 6-decimal', () => {
       [base.id]: { ...rest, ...(usdStablecoins ? { usdStablecoins } : {}) },
     }
   }
+  const session = (settlement: SettlementCatalog) =>
+    scope(permit(LAYERS.CCTP, { allowFees: true }), settlement)
 
-  test('a CCTP session on a chain with no usdStablecoins scopes as on main', () => {
-    expect(scope(permit(LAYERS.CCTP, { allowFees: true }), onBase())).toEqual(
-      scope(permit(LAYERS.CCTP, { allowFees: true })),
+  test('a CCTP session with its USDC listed at 6 decimals scopes', () => {
+    expect(session(onBase([usd(USDC.toLowerCase() as Address)]))).toEqual(
+      session(WITH_FEES),
     )
   })
 
-  test('a CCTP session refuses a USDC served with 2 decimals', () => {
-    expect(() =>
-      scope(permit(LAYERS.CCTP, { allowFees: true }), onBase([usd(USDC, 2)])),
-    ).toThrow('is served with 2 decimals')
+  test.each([
+    ['no usdStablecoins', onBase(), 'is not listed with its decimals'],
+    ['USDC at 2 decimals', onBase([usd(USDC, 2)]), 'is served with 2 decimals'],
+  ])('a CCTP session refuses %s', (_, settlement, why) => {
+    expect(() => session(settlement)).toThrow(why)
   })
 })
 
