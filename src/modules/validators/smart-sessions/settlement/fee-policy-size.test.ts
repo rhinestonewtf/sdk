@@ -609,7 +609,8 @@ function expectSameJudgement(
 describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
   const input = baseActions(layer)
   const legacy = () => legacyWithFeeActions(input, [layer.token], FEES)
-  const current = () => withFeeActions(input, [layer.token], FEES)
+  const current = () =>
+    withFeeActions(input, [layer.token], FEES, layer.chain.id)
 
   test('the scoped session’s fee path is withFeeActions', () => {
     expect(scope(permit(layer, { allowFees: true })).actions).toEqual(current())
@@ -644,7 +645,7 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
 describe('two `from` tokens', () => {
   const tokens = [USDC, USDC_ARB]
   const legacy = legacyWithFeeActions([], tokens, FEES)
-  const current = withFeeActions([], tokens, FEES)
+  const current = withFeeActions([], tokens, FEES, base.id)
 
   test('no valid fee call is refused and no mutation is judged differently', () => {
     const valid = tokens.flatMap((token) => [
@@ -712,7 +713,7 @@ describe('policy size on enable', () => {
         const input = baseActions(layer)
         const args = [input, [layer.token], FEES] as const
         const old = legacyWithFeeActions(...args)
-        const now = withFeeActions(...args)
+        const now = withFeeActions(...args, layer.chain.id)
         return [
           name,
           {
@@ -757,7 +758,7 @@ describe('policy size on enable', () => {
     const args = [input, [USDC], FEES] as const
     expect({
       before: rows(legacyWithFeeActions(...args), USDC),
-      after: rows(withFeeActions(...args), USDC),
+      after: rows(withFeeActions(...args, base.id), USDC),
     }).toMatchInlineSnapshot(`
       {
         "after": {

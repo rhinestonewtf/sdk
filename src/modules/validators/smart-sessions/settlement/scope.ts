@@ -349,7 +349,7 @@ function scopePermit(
       ...swapApprovesAsActions(sameChain.permissions, cap),
     ]
     return {
-      actions: withFeeActions(actions, sourceTokens, fees),
+      actions: withFeeActions(actions, sourceTokens, fees, options.chainId),
       permissions: [],
       settlementLayers,
       dropped: [],
@@ -513,7 +513,7 @@ function scopePermit(
     actions:
       fees === undefined
         ? actions
-        : withFeeActions(actions, sourceTokens, fees),
+        : withFeeActions(actions, sourceTokens, fees, options.chainId),
     permissions: [],
     settlementLayers,
     dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),

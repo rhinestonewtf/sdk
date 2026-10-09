@@ -450,10 +450,11 @@ interface CrossChainPermit {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
-   *   collector transfer and the paymaster approve one per `from` token, the
-   *   paymaster callback one shared across tokens. So one token can pay up to
-   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
+   * - Each fee call has its own cumulative cap of 5 USD (15 USD on Ethereum
+   *   mainnet), not one per session: the collector transfer and the paymaster
+   *   approve one per `from` token, the paymaster callback one shared across
+   *   tokens. So one token can pay up to about twice the cap (app fee plus
+   *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
@@ -461,7 +462,7 @@ interface CrossChainPermit {
    * - The orchestrator sizes the paymaster approve and callback at the refund
    *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
    *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
-   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   Ethereum mainnet gas at high prices, an app fee over the cap, or a reusable
    *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean
@@ -605,10 +606,11 @@ interface CrossChainPermissionInput {
    * approve and call its paymaster for unsponsored gas. Defaults to `false`:
    * only sponsored intents without an app fee settle.
    *
-   * - Each fee call has its own cumulative 5 USD cap, not one per session: the
-   *   collector transfer and the paymaster approve one per `from` token, the
-   *   paymaster callback one shared across tokens. So one token can pay up to
-   *   about 10 USD (app fee plus gas), and N tokens up to N × 5 USD of app fee.
+   * - Each fee call has its own cumulative cap of 5 USD (15 USD on Ethereum
+   *   mainnet), not one per session: the collector transfer and the paymaster
+   *   approve one per `from` token, the paymaster callback one shared across
+   *   tokens. So one token can pay up to about twice the cap (app fee plus
+   *   gas), and N tokens up to N times the cap of app fee.
    * - Every `from` token on the session's chain must be one the orchestrator
    *   serves for these layers (USD stablecoins today).
    * - The fee addresses come from the orchestrator's `GET /chains`, so create
@@ -616,7 +618,7 @@ interface CrossChainPermissionInput {
    * - The orchestrator sizes the paymaster approve and callback at the refund
    *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
    *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
-   *   Ethereum mainnet gas at high prices, an app fee over 5 USD, or a reusable
+   *   Ethereum mainnet gas at high prices, an app fee over the cap, or a reusable
    *   session that has used its budget) is refused: it fails closed.
    */
   allowFees?: boolean

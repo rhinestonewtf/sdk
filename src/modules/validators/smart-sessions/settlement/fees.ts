@@ -27,12 +27,23 @@ import type { SettlementAddresses, SettlementCatalog } from './types'
 /**
  * `allowFees` (RHI-7884): the app-fee transfer and the unsponsored-gas paymaster
  * calls the orchestrator adds before the layer calls. Each call has its own
- * 5 USD cap: per `from` token for the transfer and approve, one shared across
- * tokens for the callback.
+ * USD cap ({@link settlementFeeCap}): per `from` token for the transfer and
+ * approve, one shared across tokens for the callback.
  */
 
 /** 5 USD at 6 decimals. Cumulative: the burning transaction admits every later op. */
 export const SETTLEMENT_FEE_CAP = 5_000_000n
+
+/** Chains whose cap differs from {@link SETTLEMENT_FEE_CAP}, in USD at 6 decimals. */
+const SETTLEMENT_FEE_CAP_BY_CHAIN: Readonly<Record<number, bigint>> = {
+  // Ethereum mainnet: a session enable needs a gas refund above 5 USD.
+  1: 15_000_000n,
+}
+
+/** The per-call fee cap on `chainId`, in USD at 6 decimals. */
+export function settlementFeeCap(chainId: number): bigint {
+  return SETTLEMENT_FEE_CAP_BY_CHAIN[chainId] ?? SETTLEMENT_FEE_CAP
+}
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
 const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
@@ -183,16 +194,17 @@ function addFeeBranch(
   }
 }
 
-/** Add the fee calls to a scoped session. */
+/** Add the fee calls to a session scoped on `chainId`. */
 export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: Fees,
+  chainId: number,
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  const cap = () => cumulativeOnly(32n, SETTLEMENT_FEE_CAP)
+  const cap = () => cumulativeOnly(32n, settlementFeeCap(chainId))
   for (const token of sourceTokens) {
     addFeeBranch(out, token, TRANSFER_SELECTOR, [
       pin(0n, fees.appFeeCollector),

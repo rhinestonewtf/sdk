@@ -10,10 +10,11 @@ import {
   parseAbi,
   toFunctionSelector,
 } from 'viem'
-import { arbitrum, base, plasma } from 'viem/chains'
+import { arbitrum, base, mainnet, plasma } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { satisfiesRules } from '../../../../../test/utils/policy-rules'
+import { sessionFingerprint } from '../../../../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
 import { encodeSessionPolicy } from '../policies/encode'
@@ -31,6 +32,7 @@ import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
   SETTLEMENT_FEE_CAP,
   servedFees,
+  settlementFeeCap,
   swapApprovesAsActions,
   withFeeActions,
 } from './fees'
@@ -58,6 +60,7 @@ const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
   [arbitrum.id]: { ...SETTLEMENT_CATALOG[arbitrum.id], fees: FEES },
+  [mainnet.id]: { ...SETTLEMENT_CATALOG[mainnet.id], fees: FEES },
 }
 const VALID_UNTIL = new Date(2_000_000_000_000)
 
@@ -518,7 +521,7 @@ describe('allowFees refuses', () => {
 })
 
 test('the paymaster callback pins any of several `from` tokens, one shared budget', () => {
-  const [action] = withFeeActions([], [USDC, USDC_ARB], FEES).filter(
+  const [action] = withFeeActions([], [USDC, USDC_ARB], FEES, base.id).filter(
     (a) => a.selector === CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
   )
   expectRuns(action, [
@@ -534,7 +537,12 @@ test('the paymaster callback pins any of several `from` tokens, one shared budge
 
 test('refuses to join an action with no params policy', () => {
   expect(() =>
-    withFeeActions([{ target: USDC, selector: APPROVE }], [USDC], FEES),
+    withFeeActions(
+      [{ target: USDC, selector: APPROVE }],
+      [USDC],
+      FEES,
+      base.id,
+    ),
   ).toThrow('has no params policy for allowFees to join')
 })
 
@@ -553,6 +561,7 @@ test('joins the params policy and keeps the other policies on the action', () =>
     ],
     [USDC],
     FEES,
+    base.id,
   )
   const action = find(joined, USDC, APPROVE)
   expect(action.policies).toHaveLength(2)
@@ -653,6 +662,72 @@ test('a token served by any one layer counts as a stablecoin', () => {
   expect(() => servedFees(settlement, 1, [USDC])).toThrow(
     'must be a served USD stablecoin',
   )
+})
+
+describe('the fee cap by chain', () => {
+  const ON_ETHEREUM: Layer = {
+    ...LAYERS.CCTP,
+    chain: mainnet,
+    token: SETTLEMENT_CATALOG[mainnet.id].cctp!.usdc,
+  }
+  const fingerprint = (layer: Layer) =>
+    sessionFingerprint(
+      toSession(definition(permit(layer, { allowFees: true })), {
+        settlement: WITH_FEES,
+      }),
+    )
+
+  test.each([
+    ['Ethereum', 15, ON_ETHEREUM],
+    ['Base', 5, LAYERS.CCTP],
+    ['Arbitrum', 5, LAYERS.OFT],
+  ] as const)('each fee call on %s caps at %s USD', (_, usd, layer) => {
+    const cap = BigInt(usd) * 1_000_000n
+    expect(settlementFeeCap(layer.chain.id)).toBe(cap)
+    const actions = scope(permit(layer, { allowFees: true })).actions
+    const calls = [
+      [layer.token, TRANSFER, (n: bigint) => transfer(COLLECTOR, n)],
+      [layer.token, APPROVE, (n: bigint) => approve(PAYMASTER, n)],
+      [
+        PAYMASTER,
+        CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
+        (n: bigint) => callback(layer.token, n),
+      ],
+    ] as const
+    for (const [target, selector, call] of calls) {
+      expectRuns(find(actions, target, selector), [
+        [[call(cap), true]],
+        [[call(cap + 1n), false]],
+      ])
+    }
+  })
+
+  test('sessions off Ethereum keep the fingerprints taken before the change', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(LAYERS).map(([name, layer]) => [
+          name,
+          fingerprint(layer),
+        ]),
+      ),
+    ).toEqual({
+      CCTP: '0xf52a8746263b839bbd3ac2275afa56ae0504a15e09ab6f4169a8788b947b1ae3',
+      ECO_IE:
+        '0x73d704fb24ace41950d624beefc001fc9bc9bcbee80b801638acc292c121e438',
+      LZ: '0x7268b8d6485c266fee6eedc4987a5b588d5c255206b954bbb5fb704a53d4bb75',
+      OFT: '0x49e5202053dc24727cad3976ab0db8650edcac8e558c24801015d82afc77d8ea',
+      'SAME_CHAIN_IE swap':
+        '0x365b4366c4795086fe83b43de7e91a7b947f31ebc55c56ea973092935e35ad66',
+      'SAME_CHAIN_IE transfer':
+        '0xade8ace201214a669aedc5d05f46a3f9895d846a86472346e880a5c94a49165f',
+    })
+  })
+
+  test('a session on Ethereum no longer matches the one taken before', () => {
+    expect(fingerprint(ON_ETHEREUM)).not.toBe(
+      '0x44849fcb3a6b0393ffcb3b16b03b2763dc8d43d5edfbd808f027093c24132400',
+    )
+  })
 })
 
 const argPolicyAbi = [
