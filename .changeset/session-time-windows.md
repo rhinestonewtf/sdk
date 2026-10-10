@@ -2,6 +2,11 @@
 '@rhinestone/sdk': minor
 ---
 
-Express a session's time window as the one-time-use deadline. To bound a session in time, set `oneTimeUse: { id, validUntil }`: one deadline for the whole session. `validUntil` on a `permissions` function, on a raw `time-frame` action policy or on a Permit2-layer `crossChainPermits` entry is optional, requires `oneTimeUse` and can only shorten that deadline (the earliest applies; there is no per-function deadline); without `oneTimeUse` it throws when the session is built, and `validAfter` on any of them always throws. Sessions that set such a window get a different permissionId and enable digest; sessions without one, and `signing` validity windows, are unchanged, except a Permit2-layer `crossChainPermits` entry without `maxAmount`, whose permissionId moves too: re-enable it, or keep the stored `Session`.
+Enforce session time windows on executions with the new TimeFramePolicy at `0xEAAb79CA50a37514E3Bd2538Aa80ee8cB0eCe9d3`, and accept them without `oneTimeUse`.
 
-A session enabled earlier with any of these windows, or with such a permit, cannot be rebuilt with `toSession` after upgrading (it throws, or resolves to a different permissionId): keep and pass the `Session` you stored at enable (for example, to disable it), or disable such sessions before upgrading.
+- `validUntil` / `validAfter` on a `permissions` function and a raw `time-frame` action policy compile to a time-frame policy on that action.
+- A `crossChainPermits` entry's `validUntil` / `validAfter` puts a time-frame policy on every action the permit adds: on a Permit2 layer its approve, wrapped-native `deposit()`, fee calls and pre-claim action (with `fallback`, also the wildcard); on an IntentExecutor layer each layer's calls. On a Permit2 layer the claim still bounds the Permit2 deadline by the window, and a `validAfter` also joins the ERC-1271 policies, narrowed with any `signing` window into one entry. A window that opens after it closes is refused with `VALID_AFTER_EXCEEDS_VALID_UNTIL`.
+- `oneTimeUse.validUntil` is the one-time-use deadline on its own; other windows no longer shorten it. `ECO_IE` pins Eco's deadlines under the earlier of the permit's `validUntil` and `oneTimeUse.validUntil`.
+- `signing` validity windows also use the new address. Set `policyAddresses.timeFrame` to `0x0000000000D30f611fA3bf652ac6879428586930` to rebuild a session enabled with the previous one.
+
+Sessions without a window keep their permissionId and enable digest, except a Permit2-layer `crossChainPermits` entry without `maxAmount`, whose permissionId moves: re-enable it, or keep the stored `Session`. A session with any window gets a new permissionId and digest; to disable one enabled earlier, pass the `Session` stored at enable.

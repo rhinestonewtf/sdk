@@ -241,10 +241,9 @@ interface SpendingLimitsPolicy {
 }
 
 /**
- * A raw action's time window. Optional: bound a session with
- * `oneTimeUse.validUntil`. On a `oneTimeUse` session, `validUntil` (unix ms)
- * can only shorten that one session-wide deadline (the earliest applies), and
- * `validAfter` must be `0`. Any other use throws.
+ * A raw action's time window, unix ms: the action runs only while
+ * `validAfter <= block.timestamp <= validUntil`. `validUntil` must be in the
+ * future and not before `validAfter`; use `0` for no lower bound.
  */
 interface TimeFramePolicy {
   type: 'time-frame'
@@ -354,8 +353,8 @@ interface Permit2ClaimPolicy {
  *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
  *   app fee can settle
  *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount` and a delivery floor. The session's earliest deadline (the
- *   permit's `validUntil` or `oneTimeUse.validUntil`) must be at least 7 days
+ *   `maxAmount` and a delivery floor. The earlier of the
+ *   permit's `validUntil` and `oneTimeUse.validUntil` must be at least 7 days
  *   from now, since the session pins Eco's route and reward deadlines under it
  *   and Eco quotes that ~7 days out, so `ECO_IE` is usable only until that
  *   deadline minus 7 days. Only a session with no deadline at all (no
@@ -412,12 +411,11 @@ interface CrossChainPermit {
    */
   to?: ToLeg[]
   /**
-   * Optional upper bound on the permit deadline (Permit2 deadline) — unix
-   * seconds. Requires `oneTimeUse` and can only shorten its session-wide
-   * deadline; see {@link CrossChainPermissionInput}.
+   * Optional end of the permit's window — unix seconds. See
+   * {@link CrossChainPermissionInput}.
    */
   validUntil?: bigint
-  /** Not supported; a permit that sets it throws. */
+  /** Optional start of the permit's window — unix seconds. */
   validAfter?: bigint
   /** Per-destination fill-deadline windows — unix seconds */
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
@@ -605,18 +603,25 @@ interface CrossChainPermissionInput {
    */
   to?: ToLeg | ToLeg[]
   /**
-   * Optional upper bound on the permit deadline. Bound a session with
-   * `oneTimeUse.validUntil`; this requires `oneTimeUse` and can only shorten
-   * that one session-wide deadline (the earliest `validUntil` in the session
-   * applies, to the permit deadline too). A future `Date`.
+   * Optional end of the permit's window, a future `Date`. With `validAfter`,
+   * it becomes a time-frame policy on every action the permit adds: its
+   * Permit2 approve, wrapped-native `deposit()`, fee calls and pre-claim
+   * action (with `fallback`, also the wildcard), or each IntentExecutor
+   * layer's calls. On a Permit2 layer it also caps the Permit2 deadline the
+   * claim accepts. Needs no `oneTimeUse`.
    *
-   * For `ECO_IE` the session's earliest deadline must be at least 7 days
-   * ahead, and `ECO_IE` is usable only until it minus 7 days. Only when the
-   * session has no deadline at all (none here and none on the session) does
-   * an unfilled `ECO_IE` reward have no refund deadline.
+   * For `ECO_IE` the earlier of this and `oneTimeUse.validUntil` must be at
+   * least 7 days ahead, and `ECO_IE` is usable only until it minus 7 days.
+   * Only when neither is set does an unfilled `ECO_IE` reward have no refund
+   * deadline.
    */
   validUntil?: Date
-  /** Not supported; a permit that sets it throws. */
+  /**
+   * Optional start of the permit's window; not after `validUntil`. On a
+   * Permit2 layer it is also the earliest Permit2 deadline the claim accepts,
+   * and the window joins the session's ERC-1271 policies so no claim is
+   * signed before it opens (a `signing` window there is narrowed to both).
+   */
   validAfter?: Date
   /** Per-destination fill-deadline windows. */
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
@@ -879,13 +884,13 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Optional. Bound a session with `oneTimeUse.validUntil`; this requires
-   * `oneTimeUse` and can only shorten that one session-wide deadline (the
-   * earliest `validUntil` in the session applies). It bounds the whole
-   * session, not this function alone. A future `Date`.
+   * Upper bound on `block.timestamp` for this function, a future `Date`.
+   * Pairs with `validAfter` into one `time-frame` policy. If only one of the
+   * two is set, the other defaults to "always passes" (validAfter=0 /
+   * validUntil=year-2100).
    */
   validUntil?: Date
-  /** Not supported; a permission that sets it throws. */
+  /** Lower bound on `block.timestamp`; not after `validUntil`. */
   validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
@@ -937,6 +942,11 @@ interface SessionPolicyAddresses {
   universalActionCopies?: readonly Address[]
   argPolicy?: Address
   spendingLimits?: Address
+  /**
+   * The TimeFramePolicy every window installs. To rebuild a session enabled
+   * with the previous deployment, pass
+   * `0x0000000000D30f611fA3bf652ac6879428586930`.
+   */
   timeFrame?: Address
   usageLimit?: Address
   valueLimit?: Address
@@ -1247,13 +1257,10 @@ interface SessionDefinition<
    * that is also one of several sources. A Permit2-route session must also supply `claimPolicies`, each
    * pinning its `spenders` (the arbiter); without them the session has no signing
    * surface and a `signing` mode is rejected.
-   * `validUntil` (a future Date; omit for never) is the way to bound a session
-   * in time: one deadline for the whole session, including its `permissions`,
-   * `actions` and `crossChainPermits`. A `validUntil` on a permission function,
-   * a raw `time-frame` action policy or a `crossChainPermits` entry is optional
-   * and can only shorten it (the earliest applies); there is no per-function
-   * deadline. Without `oneTimeUse` those fields throw, and `validAfter` always
-   * does.
+   * `validUntil` (a future Date; omit for never) bounds when the id can be
+   * spent, and so every action in the session. Windows on permission
+   * functions, raw `time-frame` actions or `crossChainPermits` entries are
+   * their own time-frame policies and do not change it.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
