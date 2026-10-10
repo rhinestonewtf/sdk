@@ -321,6 +321,17 @@ describe('Smart Session signing capability', () => {
           validUntil: new Date(1_999),
         },
       }),
-    ).toThrow('validUntil is before validAfter')
+    ).toThrow('validAfter must be earlier than validUntil')
+    // The same second: an empty window.
+    expect(() =>
+      toSession({
+        ...definition(),
+        signing: {
+          mode: 'unrestricted',
+          validAfter: new Date(2_000),
+          validUntil: new Date(2_999),
+        },
+      }),
+    ).toThrow('validAfter must be earlier than validUntil')
   })
 })

@@ -1,4 +1,5 @@
 import { FAR_FUTURE_MS } from '../../permissions'
+import { refusal } from '../refusals'
 import type { Permission, SessionPolicy } from '../types'
 
 export type TimeFrame = Extract<SessionPolicy, { type: 'time-frame' }>
@@ -40,6 +41,14 @@ export function intersectTimeFrames(a: TimeFrame, b: TimeFrame): TimeFrame {
   }
 }
 
+/** Whether no second passes the policy's `validAfter <= t < validUntil`. */
+export function isEmptyTimeFrame({
+  validAfter,
+  validUntil,
+}: Omit<TimeFrame, 'type'>): boolean {
+  return Math.floor(validAfter / 1000) >= Math.floor(validUntil / 1000)
+}
+
 /**
  * The action with `window` among its policies. An action keeps one config per
  * policy contract, so a window it already has is narrowed to both.
@@ -50,13 +59,17 @@ export function withTimeFrame<
   if (window === undefined) return action
   const policies = action.policies ?? []
   const own = policies.find((policy) => policy.type === 'time-frame')
+  if (!own) return { ...action, policies: [...policies, window] }
+  const narrowed = intersectTimeFrames(own, window)
+  if (isEmptyTimeFrame(narrowed)) {
+    throw refusal(
+      'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+      "an action's time windows do not overlap",
+    )
+  }
   return {
     ...action,
-    policies: own
-      ? policies.map((policy) =>
-          policy === own ? intersectTimeFrames(own, window) : policy,
-        )
-      : [...policies, window],
+    policies: policies.map((policy) => (policy === own ? narrowed : policy)),
   }
 }
 

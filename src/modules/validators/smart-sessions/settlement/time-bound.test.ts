@@ -214,9 +214,6 @@ function deadlineOf(action: ResolvedAction) {
 
 const isBurn = (action: ResolvedAction) =>
   isAddressEqual(action.actionTarget, ONE_TIME_USE)
-// Injected for every session without oneTimeUse; the permit contributes none.
-const isDummy = (action: ResolvedAction) =>
-  isAddressEqual(action.actionTarget, DUMMY_PRECLAIMOP_TARGET)
 
 const WINDOWS: Record<string, Window> = {
   validUntil: { validUntil: UNTIL },
@@ -247,7 +244,7 @@ describe("a permit's window is a time-frame policy on each action it contributes
 
   test.each(cases)('%s', (_, shape, window, once) => {
     const actions = resolve(shape, window, once)
-    const scoped = actions.filter((a) => !isBurn(a) && !isDummy(a))
+    const scoped = actions.filter((a) => !isBurn(a))
     expect(scoped.length).toBeGreaterThan(0)
     for (const action of scoped) {
       expect(timeFrameOf(action)).toEqual({
@@ -255,7 +252,15 @@ describe("a permit's window is a time-frame policy on each action it contributes
         validAfter: window.validAfter ?? 0n,
       })
     }
-    for (const action of actions.filter((a) => isBurn(a) || isDummy(a))) {
+    // The pre-claim action of a session without oneTimeUse carries it too.
+    if (!shape.oneTimeUse) {
+      expect(
+        scoped.some((a) =>
+          isAddressEqual(a.actionTarget, DUMMY_PRECLAIMOP_TARGET),
+        ),
+      ).toBe(true)
+    }
+    for (const action of actions.filter(isBurn)) {
       expect(timeFrameOf(action)).toBeUndefined()
     }
     if (!shape.oneTimeUse) return
@@ -306,8 +311,11 @@ describe('an IntentExecutor-layer permit validUntil must be in the future', () =
   })
 })
 
-test('a validAfter later than validUntil is refused', () => {
-  expect(() =>
-    resolve(SHAPES.CCTP, { validAfter: UNTIL + 1n, validUntil: UNTIL }),
-  ).toThrow('validAfter (2000000001) is greater than validUntil (2000000000)')
-})
+test.each([UNTIL + 1n, UNTIL])(
+  'a validAfter of %s with validUntil 2000000000 is refused',
+  (validAfter) => {
+    expect(() =>
+      resolve(SHAPES.CCTP, { validAfter, validUntil: UNTIL }),
+    ).toThrow('crossChainPermits: validAfter must be earlier than validUntil')
+  },
+)

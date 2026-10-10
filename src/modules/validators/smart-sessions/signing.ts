@@ -182,8 +182,10 @@ function resolveSigningPolicy(input: {
     input.validUntil ?? new Date(FAR_FUTURE_MS),
     'validUntil',
   )
-  if (validUntil < validAfter) {
-    throw new Error('Session signing validUntil is before validAfter')
+  if (validUntil <= validAfter) {
+    throw new Error(
+      'Session signing validAfter must be earlier than validUntil',
+    )
   }
   return encodeSessionPolicy(
     {

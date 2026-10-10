@@ -49,12 +49,12 @@ export function resolveCrossChainPermission(
   if (
     validUntil !== undefined &&
     validAfter !== undefined &&
-    validAfter > validUntil
+    validAfter >= validUntil
   ) {
     refuse(
       refusal(
         'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-        `crossChainPermits: validAfter (${validAfter}) is greater than validUntil (${validUntil})`,
+        'crossChainPermits: validAfter must be earlier than validUntil',
       ),
     )
   }

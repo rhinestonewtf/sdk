@@ -274,9 +274,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
           : FAR_FUTURE_MS
       const validAfter =
         config.validAfter !== undefined ? config.validAfter.getTime() : 0
-      if (validUntil < validAfter) {
+      if (Math.floor(validUntil / 1000) <= Math.floor(validAfter / 1000)) {
         throw new Error(
-          `Function "${fnName}": validUntil (${validUntil}) is before validAfter (${validAfter}).`,
+          `Function "${fnName}": validAfter must be earlier than validUntil`,
         )
       }
       policies.push({ type: 'time-frame', validUntil, validAfter })

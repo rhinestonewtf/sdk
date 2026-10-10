@@ -9,7 +9,7 @@ import type {
  * Codes never change once published; the messages beside them may.
  */
 export const SESSION_REFUSAL_CODES = {
-  VALID_AFTER_EXCEEDS_VALID_UNTIL: 'validAfter is later than validUntil',
+  VALID_AFTER_EXCEEDS_VALID_UNTIL: 'a validAfter not earlier than validUntil',
   VALID_UNTIL_NOT_IN_FUTURE: 'a validUntil that is not a future Date',
   PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
     'maxAmount on a Permit2-layer permit without oneTimeUse',

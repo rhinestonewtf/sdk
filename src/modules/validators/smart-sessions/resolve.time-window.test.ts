@@ -11,12 +11,16 @@ import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
-import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
+import {
+  encodePermit2ClaimPolicyInitData,
+  PERMIT2_CLAIM_POLICY_ADDRESS,
+} from '../policies/claim/permit2'
 import { getSessionData } from './digest'
 import {
   INTENT_EXECUTION_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
 } from './policies/addresses'
+import { resolvePermit2ClaimPolicy } from './policies/claim'
 import { withTimeFrame } from './policies/time-frame'
 import {
   DUMMY_PRECLAIMOP_TARGET,
@@ -623,15 +627,18 @@ describe("a Permit2-route permit's window", () => {
       ).toEqual(window(T + 5n, seconds(AFTER)))
     })
 
-    test('that does not overlap is refused', () => {
+    test.each([
+      ['ends before the permit window opens', T - 20n],
+      ['ends as the permit window opens', T - 10n],
+    ])('that %s is refused', (_, signingUntil) => {
       expect(() =>
         resolve(
           permit2(
             { validAfter: at(T - 10n), validUntil: UNTIL },
-            signing(undefined, at(T - 20n)),
+            signing(undefined, at(signingUntil)),
           ),
         ),
-      ).toThrow('the permit window and the signing window do not overlap')
+      ).toThrow('the permit and signing time windows do not overlap')
     })
   })
 })
@@ -656,13 +663,11 @@ describe("an IntentExecutor-layer permit's window", () => {
       ...extra,
     }) as SessionDefinition
 
-  test('goes on each scoped layer action, without oneTimeUse', () => {
+  test('goes on each scoped layer action and the pre-claim action, without oneTimeUse', () => {
     const { actions } = resolve(cctp({ validAfter: AFTER, validUntil: UNTIL }))
-    const scoped = actions.filter(
-      (a) => !isAddressEqual(a.actionTarget, DUMMY_PRECLAIMOP_TARGET),
-    )
-    expect(scoped).toHaveLength(2)
-    for (const action of scoped) {
+    expect(actions).toHaveLength(3)
+    actionOf(actions, DUMMY_PRECLAIMOP_TARGET)
+    for (const action of actions) {
       expect(timeFramesOf(action.actionPolicies)).toEqual(
         window(T, seconds(AFTER)),
       )
@@ -743,6 +748,37 @@ describe('oneTimeUse.validUntil alone is the once-policy deadline', () => {
     expect(claim(earlier, UNTIL)).toBe(claim(UNTIL, earlier))
     expect(claim(earlier, UNTIL)).not.toBe(claim(UNTIL, UNTIL))
   })
+
+  // Signing builds the claim calldata from Session.claimPolicies.
+  test.each([
+    ['oneTimeUse', at(T - 100n), UNTIL],
+    ['the permit', UNTIL, at(T - 100n)],
+  ])(
+    'the session keeps the installed claim when %s ends first',
+    (_, oneTimeUseUntil, permitUntil) => {
+      const session = toSession({
+        chain: base,
+        owners,
+        ...otu(oneTimeUseUntil),
+        crossChainPermits: [permit(permitUntil)],
+      } as SessionDefinition)
+      const installed = getSessionData(
+        session,
+      ).erc7739Policies.erc1271Policies.filter((p) =>
+        isAddressEqual(p.policy, PERMIT2_CLAIM_POLICY_ADDRESS),
+      )
+      expect(session.claimPolicies).toHaveLength(1)
+      expect(installed).toEqual([
+        {
+          policy: PERMIT2_CLAIM_POLICY_ADDRESS,
+          initData: encodePermit2ClaimPolicyInitData(
+            resolvePermit2ClaimPolicy(session.claimPolicies[0]),
+          ),
+        },
+      ])
+      expect(session.claimPolicies[0].permitDeadline?.max).toBe(T - 100n)
+    },
+  )
 })
 
 describe('ECO_IE pins the earlier of oneTimeUse.validUntil and the permit validUntil', () => {
@@ -801,6 +837,17 @@ test('policyAddresses.timeFrame rebuilds a session enabled with the previous add
     timeFramesOf(byDefault),
   )
   expect(timeFramesOf(previous)).toEqual([])
+})
+
+test('a window that leaves the action no time is refused', () => {
+  expect(() =>
+    withTimeFrame(
+      {
+        policies: [{ type: 'time-frame', validUntil: 2_000, validAfter: 0 }],
+      },
+      { type: 'time-frame', validUntil: 3_000, validAfter: 2_000 },
+    ),
+  ).toThrow("an action's time windows do not overlap")
 })
 
 test('a window it already has is narrowed to both', () => {
@@ -897,11 +944,13 @@ describe('a window is refused at resolve when', () => {
   })
 
   test.each(Object.entries(SOURCES))(
-    '%s: validAfter is later than validUntil',
+    '%s: validAfter is not earlier than validUntil',
     (_, { define }) => {
-      expect(() =>
-        toSession(session(define, { validAfter: UNTIL, validUntil: AFTER })),
-      ).toThrow(/validAfter .*(later|greater) than validUntil/)
+      for (const validAfter of [UNTIL, at(T + 1n)]) {
+        expect(() =>
+          toSession(session(define, { validAfter, validUntil: UNTIL })),
+        ).toThrow('validAfter must be earlier than validUntil')
+      }
     },
   )
 

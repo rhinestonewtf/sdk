@@ -46,6 +46,7 @@ import {
 import {
   dateTimeFrame,
   intersectTimeFrames,
+  isEmptyTimeFrame,
   permissionWithTimeFrame,
   permitTimeFrame,
   withTimeFrame,
@@ -97,6 +98,8 @@ export const DUMMY_PRECLAIMOP_TARGET =
   '0x0000000000000000000000000000000000000420' as const
 export const DUMMY_PRECLAIMOP_SELECTOR = '0x69123456' as const
 
+const seconds = (date: Date) => BigInt(Math.floor(date.getTime() / 1000))
+
 function isFutureDate(value: unknown): value is Date {
   return (
     value instanceof Date &&
@@ -113,7 +116,7 @@ function refuseInvalidWindows(
   definition: SessionDefinition,
   refuse: Refuse,
 ): void {
-  const check = (field: string, validUntil: unknown, validAfter?: number) => {
+  const check = (field: string, validUntil: unknown, validAfter = 0) => {
     if (validUntil === undefined) return
     // 0 or less would read as "never expires".
     if (!isFutureDate(validUntil)) {
@@ -123,11 +126,13 @@ function refuseInvalidWindows(
           `${field}: validUntil must be a valid Date in the future`,
         ),
       )
-    } else if (validAfter !== undefined && validAfter > validUntil.getTime()) {
+    } else if (
+      isEmptyTimeFrame({ validAfter, validUntil: validUntil.getTime() })
+    ) {
       refuse(
         refusal(
           'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-          `${field}: validAfter is later than validUntil`,
+          `${field}: validAfter must be earlier than validUntil`,
         ),
       )
     }
@@ -325,9 +330,7 @@ function resolveSession(
   )
   // An invalid oneTimeUse.validUntil is left out here and refused below.
   const otuUntil = definition.oneTimeUse?.validUntil
-  const sessionDeadline = isFutureDate(otuUntil)
-    ? BigInt(Math.floor(otuUntil.getTime() / 1000))
-    : undefined
+  const sessionDeadline = isFutureDate(otuUntil) ? seconds(otuUntil) : undefined
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -532,16 +535,10 @@ function resolveSession(
   const validUntil = definition.oneTimeUse?.validUntil
   // A deadline that rounds to 0 would read as "never expires"; a past one only
   // fails at enable, as an opaque signature error.
-  if (
-    validUntil !== undefined &&
-    !(
-      Number.isFinite(validUntil.getTime()) && validUntil.getTime() > Date.now()
-    )
-  ) {
+  if (validUntil !== undefined && !isFutureDate(validUntil)) {
     throw new Error('oneTimeUse.validUntil must be a valid Date in the future')
   }
-  const onceDeadline =
-    validUntil && BigInt(Math.floor(validUntil.getTime() / 1000))
+  const onceDeadline = sessionDeadline
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -705,7 +702,9 @@ function resolveSession(
               ? [{ type: 'value-limit', limit: 1n }]
               : [{ type: 'sudo' }],
           } satisfies ScopedAction,
-        ].map((action) => withTimeFrame(action, permit2Window))),
+        ].map((action) =>
+          withTimeFrame(action, permit2Window ?? settlementWindow),
+        )),
   ]
   // A Permit2-route session without `from` has already been refused.
   if (
@@ -944,10 +943,10 @@ function resolveSession(
           dateTimeFrame(signing?.validAfter, signing?.validUntil),
         )
         // Each was checked alone; one entry per policy holds both.
-        if (window.validAfter > window.validUntil) {
+        if (isEmptyTimeFrame(window)) {
           throw refusal(
             'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-            'crossChainPermits: the permit window and the signing window do not overlap',
+            'crossChainPermits: the permit and signing time windows do not overlap',
           )
         }
       }
@@ -1373,12 +1372,14 @@ export function toSession(
     : permit2Scoped
       ? permit2LayerSet(permit2Permits)
       : namedPermit2Layers(resolvedPermits)
+  // The same deadline as the installed claim, which signing re-encodes from here.
+  const otuUntil = definition.oneTimeUse?.validUntil
   const expandedClaims = permit2Permits.map(
     (permit) =>
       expandCrossChainPermit(
         permit,
         environment,
-        undefined,
+        otuUntil && seconds(otuUntil),
         undefined,
         definition.chain,
       ).claim,

@@ -793,20 +793,23 @@ describe('resolvePermission sugar fields', () => {
     expect(policy.validAfter).toBe(after)
   })
 
-  test('rejects validUntil < validAfter', () => {
-    expect(() =>
-      resolvePermission({
-        abi: erc20Abi,
-        address: USDC,
-        functions: {
-          transfer: {
-            validUntil: new Date('2026-01-01'),
-            validAfter: new Date('2027-01-01'),
+  test.each(['2027-01-01', '2026-01-01'])(
+    'rejects validAfter %s with validUntil 2026-01-01',
+    (validAfter) => {
+      expect(() =>
+        resolvePermission({
+          abi: erc20Abi,
+          address: USDC,
+          functions: {
+            transfer: {
+              validUntil: new Date('2026-01-01'),
+              validAfter: new Date(validAfter),
+            },
           },
-        },
-      }),
-    ).toThrow(/before validAfter/)
-  })
+        }),
+      ).toThrow('validAfter must be earlier than validUntil')
+    },
+  )
 
   test('spendingLimit on an ERC-20-transfer-shaped ABI emits spending-limits', () => {
     const actions = resolvePermission({
