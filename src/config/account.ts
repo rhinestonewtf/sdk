@@ -242,8 +242,9 @@ interface SpendingLimitsPolicy {
 
 /**
  * A raw action's time window, unix ms: the action runs only while
- * `validAfter <= block.timestamp <= validUntil`. `validUntil` must be in the
- * future and later than `validAfter`; use `0` for no lower bound.
+ * `validAfter <= block.timestamp < validUntil`, in whole seconds (`validAfter`
+ * rounds up). `validUntil` must be in the future and later than `validAfter`;
+ * use `0` for no lower bound and `4102444800000` (year 2100) for no end.
  */
 interface TimeFramePolicy {
   type: 'time-frame'
@@ -335,7 +336,7 @@ interface Permit2ClaimPolicy {
  *   `LZ` that can settle the permit on the session's chain, and silently
  *   drops the rest: a layer that does not route there, does not move the
  *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
- *   `maxFeeBps` or a session deadline under 7 days ahead, `OFT`'s and
+ *   `maxFeeBps` or a deadline under 7 days ahead, `OFT`'s and
  *   `LZ`'s `oneTimeUse`), or cannot enforce the `to.minAmount` given
  *   (always `CCTP`). Setting `maxFeeBps` asks
  *   for `ECO_IE`, so a dropped `ECO_IE` is then refused with its reason, and
@@ -357,9 +358,8 @@ interface Permit2ClaimPolicy {
  *   permit's `validUntil` and `oneTimeUse.validUntil` must be at least 7 days
  *   from now, since the session pins Eco's route and reward deadlines under it
  *   and Eco quotes that ~7 days out, so `ECO_IE` is usable only until that
- *   deadline minus 7 days. Only a session with no deadline at all (no
- *   `validUntil` on the permit and none on the session) leaves an unfilled
- *   `ECO_IE` reward with no refund deadline. Both tokens must be ones the orchestrator serves
+ *   deadline minus 7 days. Only a session with neither `validUntil` leaves
+ *   an unfilled `ECO_IE` reward with no refund deadline. Both tokens must be ones the orchestrator serves
  *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
  *   served, or a `to.minAmount` on every leg, for any two such tokens; given
  *   both, the higher applies. Without `maxFeeBps`, `ECO_IE` needs every `from`
@@ -603,12 +603,13 @@ interface CrossChainPermissionInput {
    */
   to?: ToLeg | ToLeg[]
   /**
-   * Optional end of the permit's window, a future `Date`. With `validAfter`,
-   * it becomes a time-frame policy on every action the permit adds: its
-   * Permit2 approve, wrapped-native `deposit()`, fee calls and pre-claim
-   * action (with `fallback`, also the wildcard), or each IntentExecutor
-   * layer's calls and, without `oneTimeUse`, the pre-claim action. On a Permit2 layer it also caps the Permit2 deadline the
-   * claim accepts. Needs no `oneTimeUse`.
+   * Optional end (exclusive) of the permit's window, a future `Date`. Either
+   * end alone sets the window, a time-frame policy on every action the permit
+   * adds: its Permit2 approve, wrapped-native `deposit()`, fee calls and
+   * pre-claim action (with `fallback`, also the wildcard), or each
+   * IntentExecutor layer's calls and, without `oneTimeUse`, the pre-claim
+   * action. On a Permit2 layer the claim accepts a Permit2 deadline before
+   * it. Needs no `oneTimeUse`.
    *
    * For `ECO_IE` the earlier of this and `oneTimeUse.validUntil` must be at
    * least 7 days ahead, and `ECO_IE` is usable only until it minus 7 days.
@@ -617,7 +618,8 @@ interface CrossChainPermissionInput {
    */
   validUntil?: Date
   /**
-   * Optional start of the permit's window; earlier than `validUntil`. On a
+   * Optional start of the permit's window, earlier than `validUntil` and
+   * rounded up to a whole second. On a
    * Permit2 layer it is also the earliest Permit2 deadline the claim accepts,
    * and the window joins the session's ERC-1271 policies so no claim is
    * signed before it opens (a `signing` window there is narrowed to both).
@@ -884,13 +886,17 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Upper bound on `block.timestamp` for this function, a future `Date`.
-   * Pairs with `validAfter` into one `time-frame` policy. If only one of the
-   * two is set, the other defaults to "always passes" (validAfter=0 /
-   * validUntil=year-2100).
+   * Exclusive upper bound on `block.timestamp` for this function, a future
+   * `Date`. Pairs with `validAfter` into one `time-frame` policy. If only one
+   * of the two is set, the other defaults to "always passes" (validAfter=0 /
+   * validUntil=year-2100). While any action has a window, an ERC-1271 signing
+   * surface outside claim policies is bounded by the time they allow together.
    */
   validUntil?: Date
-  /** Lower bound on `block.timestamp`; earlier than `validUntil`. */
+  /**
+   * Lower bound on `block.timestamp`, rounded up to a whole second; earlier
+   * than `validUntil`.
+   */
   validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
@@ -943,9 +949,12 @@ interface SessionPolicyAddresses {
   argPolicy?: Address
   spendingLimits?: Address
   /**
-   * The TimeFramePolicy every window installs. To rebuild a session enabled
-   * with the previous deployment, pass
-   * `0x0000000000D30f611fA3bf652ac6879428586930`.
+   * The TimeFramePolicy every window installs. The default holds a window on
+   * actions and ERC-1271 checks; on a chain where it is not deployed, an
+   * action window needs this set, and a `signing` window uses the previous
+   * deployment, `0x0000000000D30f611fA3bf652ac6879428586930`. That deployment
+   * holds a window on ERC-1271 checks only, so pass it only to rebuild a
+   * session enabled with it.
    */
   timeFrame?: Address
   usageLimit?: Address
