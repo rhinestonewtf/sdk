@@ -1416,7 +1416,10 @@ export function toSession(
         definition.actions?.length ||
         definition.swap ||
         scopedPermits.length ||
-        permit2Scoped,
+        permit2Scoped ||
+        // The fallback action admits the IntentExecutor layers' calls; its
+        // ERC-1271 list holds only the claim policy, which refuses them.
+        definition.fallback,
     ),
     permissionId: getPermissionIdFromData(data),
     sessionValidator: data.sessionValidator,
