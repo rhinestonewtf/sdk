@@ -1,12 +1,18 @@
 import { domainSeparator, encodePacked, zeroHash } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import {
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
 } from './policies/addresses'
 import { toSession } from './resolve'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const domain = {
   name: 'Permit2',
@@ -321,6 +327,17 @@ describe('Smart Session signing capability', () => {
           validUntil: new Date(1_999),
         },
       }),
-    ).toThrow('validUntil is before validAfter')
+    ).toThrow('validAfter must be earlier than validUntil')
+    // The same second: an empty window.
+    expect(() =>
+      toSession({
+        ...definition(),
+        signing: {
+          mode: 'unrestricted',
+          validAfter: new Date(2_000),
+          validUntil: new Date(2_999),
+        },
+      }),
+    ).toThrow('validAfter must be earlier than validUntil')
   })
 })

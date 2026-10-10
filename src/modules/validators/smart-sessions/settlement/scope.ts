@@ -1,6 +1,5 @@
 import { type Address, isAddressEqual } from 'viem'
 import { recipientNotAllowed } from '../cross-chain-permits'
-import { sessionWindowRefusal } from '../one-time-use'
 import {
   RefusalCollectionHalted,
   type Refuse,
@@ -128,7 +127,7 @@ export interface SettlementScopeOptions {
   readonly settlement?: SettlementCatalog
   /** Dry run only: receives each independent refusal instead of throwing it. */
   readonly collect?: Refuse
-  /** The earliest deadline set elsewhere on the session, in seconds. */
+  /** `oneTimeUse.validUntil`, in seconds. */
   readonly sessionDeadline?: bigint
 }
 
@@ -139,8 +138,6 @@ export interface ResolvedSettlementScope {
   readonly settlementLayers: IntentExecutorSettlementLayer[]
   /** The layers `'all'` dropped, with the refusal that dropped each. */
   readonly dropped: DroppedSettlementLayer[]
-  /** The latest deadline the once-policy may carry: the permit's validUntil. */
-  readonly onceDeadline?: bigint
 }
 
 export function resolveSettlementScope(
@@ -171,32 +168,16 @@ export function resolveSettlementScope(
   const permitIndex = permits.indexOf(permit)
   const refuse = refuser(options.collect, { permitIndex })
   // A refusal that leaves nothing valid to scope ends the dry run here.
-  const scope = recover(refuse, () =>
-    scopePermit(permit, permitIndex, options, refuse),
-  )
+  const scope = recover(refuse, () => scopePermit(permit, options, refuse))
   if (scope === undefined) throw new RefusalCollectionHalted()
   return scope
 }
 
 function scopePermit(
   permit: CrossChainPermit,
-  permitIndex: number,
   options: SettlementScopeOptions,
   refuse: Refuse,
 ): ResolvedSettlementScope {
-  // The one-time-use deadline bounds every action in time, so a window it cannot
-  // carry is refused. A hard error, never a per-layer skip.
-  if (
-    permit.validAfter !== undefined ||
-    (permit.validUntil !== undefined && !options.oneTimeUse)
-  ) {
-    refuse(
-      refusal(
-        'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
-        sessionWindowRefusal(`crossChainPermits[${permitIndex}]`),
-      ),
-    )
-  }
   const named = permit.settlementLayers
   const all = named === 'all'
   const layers = all ? [...CROSS_CHAIN_LAYERS] : (named ?? [])
@@ -304,10 +285,6 @@ function scopePermit(
     }),
   )
 
-  // resolve has refused a validUntil that is not in the future.
-  const onceDeadline =
-    permit.validUntil === undefined ? {} : { onceDeadline: permit.validUntil }
-
   const sameChainOnly = requested[0] === 'SAME_CHAIN_IE'
   // Only ECO_IE prices its delivery against the reward; elsewhere the field would
   // be silently ignored.
@@ -343,7 +320,7 @@ function scopePermit(
       cap,
     })
     if (fees === undefined) {
-      return { ...sameChain, settlementLayers, dropped: [], ...onceDeadline }
+      return { ...sameChain, settlementLayers, dropped: [] }
     }
     // A swap's approve is a permission; as a raw action the paymaster approve can
     // join it. Only the swap shape has permissions.
@@ -356,7 +333,6 @@ function scopePermit(
       permissions: [],
       settlementLayers,
       dropped: [],
-      ...onceDeadline,
     }
   }
   // No bundled fallback: the orchestrator is the one source for these addresses.
@@ -369,7 +345,8 @@ function scopePermit(
     )
   }
   const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
-  // ECO_IE pins Eco's deadlines under the session's earliest deadline.
+  // ECO_IE pins Eco's deadlines under the earlier of the permit's validUntil and
+  // the one-time-use deadline.
   const validUntil =
     permit.validUntil === undefined ||
     (options.sessionDeadline !== undefined &&
@@ -520,6 +497,5 @@ function scopePermit(
     permissions: [],
     settlementLayers,
     dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),
-    ...onceDeadline,
   }
 }

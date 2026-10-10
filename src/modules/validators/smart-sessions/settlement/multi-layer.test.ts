@@ -11,7 +11,7 @@ import {
   toHex,
 } from 'viem'
 import { arbitrum, base, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import {
   type RuleUsage,
@@ -19,6 +19,7 @@ import {
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
 import { encodeSessionPolicy } from '../policies/encode'
 import { resolveSessionData, toSession } from '../resolve'
 import type {
@@ -32,6 +33,12 @@ import { settlementFeeCap } from './fees'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -224,7 +231,7 @@ describe('multi-layer settlement permits', () => {
       {
         "CCTP": "0x579b4c3f004b4df034c8e28b13a5f5aadca12060696a508e3c33d921d58a27f7",
         "CCTP with fees": "0xa39eff6593ad08ecc8aec6c71910b8cc19d30364dca8088889d8d2231c1de4bf",
-        "ECO_IE": "0xf88bcf66cc02f04fc5ac6cfd8026a8d813b416cdc1edc0d9b7ea24b9cd23795c",
+        "ECO_IE": "0x144645ed09cbd1686a2788e73ad42aeb7b07cddd954ac8cf0efa2cb41425fc0f",
         "LZ": "0x782b98c47fd0664eeacb6907c683cfd622aacb2713dfd65322b96b0437146d85",
         "OFT": "0xafb81473b9789f2853937b3fd3fc384cb4832bec534fd853d45830f27aec0c45",
       }
@@ -292,32 +299,28 @@ describe('multi-layer settlement permits', () => {
     expect(resolve(['CCTP', 'CCTP'])).toEqual(resolve(['CCTP']))
   })
 
-  test('every action carries the once-policy and no time frame', () => {
+  test('every action carries the once-policy, and each layer call the window', () => {
     const def = definition({
       settlementLayers: ['CCTP', 'LZ'],
       validUntil: VALID_UNTIL,
     })
     const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
     for (const action of data.actions) {
-      expect(action.actionPolicies.map((p) => p.policy)).toContain(ONE_TIME_USE)
-    }
-    const resolved = scope({
-      settlementLayers: ['CCTP', 'LZ'],
-      validUntil: VALID_UNTIL,
-    })
-    for (const action of resolved.actions) {
-      expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
+      const policies = action.actionPolicies.map((p) => p.policy)
+      expect(policies).toContain(ONE_TIME_USE)
+      expect(policies.includes(TIME_FRAME_POLICY_ADDRESS)).toBe(
+        action.actionTarget !== ONE_TIME_USE,
+      )
     }
   })
 
-  test("'all' refuses validAfter outright rather than dropping a layer", () => {
-    expect(() =>
-      scope({
-        settlementLayers: 'all',
-        validUntil: VALID_UNTIL,
-        validAfter: new Date(1_000_000_000_000),
-      }),
-    ).toThrow('validAfter is not supported')
+  test("'all' keeps the same layers with validAfter", () => {
+    const layers = (window: Partial<CrossChainPermissionInput>) =>
+      scope({ settlementLayers: 'all', validUntil: VALID_UNTIL, ...window })
+        .settlementLayers
+    expect(layers({ validAfter: new Date(1_000_000_000_000) })).toEqual(
+      layers({}),
+    )
   })
 
   test('refuses a validUntil that would read as no deadline', () => {
@@ -326,7 +329,7 @@ describe('multi-layer settlement permits', () => {
         definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
         { settlement: SETTLEMENT_CATALOG },
       ),
-    ).toThrow('validUntil must be a valid Date in the future')
+    ).toThrow('a validUntil that is not a future Date')
   })
 
   test('refuses an approve to a layer the permit did not name', () => {

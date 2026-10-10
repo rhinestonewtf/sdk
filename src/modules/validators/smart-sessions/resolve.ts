@@ -20,13 +20,14 @@ import {
   CONSUME_FOR_SELECTOR,
   CONSUME_SELECTOR,
   oneTimeUseIdErc1271Policy,
-  sessionWindowRefusal,
 } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
   defaultPermit2SenderPolicy,
   oneTimeUseIdPolicyMissing,
+  PREVIOUS_TIME_FRAME_POLICY_ADDRESS,
   resolvePolicyAddresses,
+  timeFramePolicyDeployed,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_COPIES,
   UNIVERSAL_ACTION_POLICY_COPY_CHAINS,
@@ -36,7 +37,7 @@ import {
   livePermit2Layers,
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
-import { encodeActionPolicies } from './policies/encode'
+import { encodeActionPolicies, encodeSessionPolicy } from './policies/encode'
 import {
   DEPOSIT_SELECTOR,
   isNativeToken,
@@ -45,6 +46,17 @@ import {
   permit2SourceTokens,
 } from './policies/permit2-approval'
 import {
+  intersectTimeFrames,
+  isEmptyTimeFrame,
+  isWindowTime,
+  permissionWithTimeFrame,
+  permitTimeFrame,
+  type TimeFrame,
+  timeFrame,
+  unionTimeFrames,
+  withTimeFrame,
+} from './policies/time-frame'
+import {
   collectRefusals,
   RefusalCollectionHalted,
   type Refuse,
@@ -52,6 +64,7 @@ import {
   refusal,
   type refusalLog,
   refuser,
+  SESSION_REFUSAL_CODES,
   type SessionValidation,
   type SessionWarning,
 } from './refusals'
@@ -92,111 +105,91 @@ export const DUMMY_PRECLAIMOP_TARGET =
   '0x0000000000000000000000000000000000000420' as const
 export const DUMMY_PRECLAIMOP_SELECTOR = '0x69123456' as const
 
-function minDefined(a?: bigint, b?: bigint): bigint | undefined {
-  if (a === undefined) return b
-  if (b === undefined) return a
-  return a < b ? a : b
+const seconds = (date: Date) => BigInt(Math.floor(date.getTime() / 1000))
+
+function isFutureDate(value: unknown): value is Date {
+  return (
+    value instanceof Date &&
+    isWindowTime(value.getTime()) &&
+    value.getTime() > Date.now()
+  )
 }
 
 /**
- * Each validUntil the session's actions set, in seconds. A session's time window
- * is expressed as the one-time-use deadline, so a window without oneTimeUse, or
- * any validAfter, is refused; a dry run records it and skips that window.
+ * The permissions and raw actions with each window checked, and the windows
+ * that hold. A dry run records a refused window and drops it, so it is
+ * reported once and the run goes on.
  */
-function sessionWindowDeadlines(
+function sessionWindows(
   definition: SessionDefinition,
   refuse: Refuse,
-): bigint[] {
-  const deadlines: bigint[] = []
-  const take = (
-    field: string,
-    validUntil: unknown,
-    hasValidAfter: boolean,
-    permitIndex?: number,
-  ) => {
-    const context = permitIndex === undefined ? {} : { permitIndex }
-    if (hasValidAfter || (validUntil !== undefined && !definition.oneTimeUse)) {
-      refuse(
-        refusal(
-          'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
-          sessionWindowRefusal(field),
-          context,
-        ),
-      )
-      return
-    }
-    if (validUntil === undefined) return
-    // As for oneTimeUse.validUntil: 0 or less would read as "never expires".
-    if (
-      !(
-        validUntil instanceof Date &&
-        Number.isFinite(validUntil.getTime()) &&
-        validUntil.getTime() > Date.now()
-      )
-    ) {
-      refuse(
-        refusal(
-          'VALID_UNTIL_NOT_IN_FUTURE',
-          `${field}: validUntil must be a valid Date in the future`,
-          context,
-        ),
-      )
-      return
-    }
-    deadlines.push(BigInt(Math.floor(validUntil.getTime() / 1000)))
+): {
+  readonly permissions: Permission[]
+  readonly actions: ScopedAction[]
+  readonly windows: TimeFrame[]
+} {
+  const windows: TimeFrame[] = []
+  const holds = (field: string, validUntil: unknown, validAfter: unknown) => {
+    const window = timeFrame(
+      validAfter as number,
+      (validUntil as Date | undefined)?.getTime?.(),
+    )
+    const code =
+      validAfter !== undefined && !isWindowTime(validAfter)
+        ? 'VALID_AFTER_INVALID'
+        : // 0 or less would read as "never expires".
+          validUntil !== undefined && !isFutureDate(validUntil)
+          ? 'VALID_UNTIL_NOT_IN_FUTURE'
+          : isEmptyTimeFrame(window)
+            ? 'VALID_AFTER_EXCEEDS_VALID_UNTIL'
+            : undefined
+    if (code) refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
+    else windows.push(window)
+    return !code
   }
-  for (const { address, functions } of definition.permissions ?? []) {
-    for (const [name, config] of Object.entries(functions)) {
-      if (config) {
-        take(
-          `permissions[${address}].${name}`,
-          config.validUntil,
-          config.validAfter !== undefined,
-        )
-      }
-    }
-  }
-  for (const { target, selector, policies } of definition.actions ?? []) {
-    for (const policy of policies ?? []) {
-      if (policy.type === 'time-frame') {
-        take(
-          `actions[${target}:${selector}]`,
-          typeof policy.validUntil === 'number'
-            ? new Date(policy.validUntil)
-            : policy.validUntil,
-          policy.validAfter !== 0,
-        )
-      }
-    }
-  }
-  // An IntentExecutor-layer permit's window is resolved with its scope.
-  for (const [index, permit] of (
-    definition.crossChainPermits ?? []
-  ).entries()) {
-    if (!isSettlementScopedPermit(permit)) {
-      take(
-        `crossChainPermits[${index}]`,
-        permit.validUntil,
-        permit.validAfter !== undefined,
-        index,
-      )
-    }
-  }
-  return deadlines
-}
-
-/** The permission without its window, which the session carries as its deadline. */
-function withoutWindow(permission: Permission): Permission {
-  return {
+  const permissions = (definition.permissions ?? []).map((permission) => ({
     ...permission,
     functions: Object.fromEntries(
       Object.entries(permission.functions).map(([name, config]) => {
-        if (!config) return [name, config]
-        const { validUntil: _until, validAfter: _after, ...rest } = config
-        return [name, rest]
+        if (
+          !config ||
+          (config.validUntil === undefined && config.validAfter === undefined)
+        ) {
+          return [name, config]
+        }
+        const { validUntil, validAfter, ...rest } = config
+        return [
+          name,
+          holds(
+            `permissions[${permission.address}].${name}`,
+            validUntil,
+            validAfter instanceof Date ? validAfter.getTime() : validAfter,
+          )
+            ? config
+            : rest,
+        ]
       }),
     ),
-  } as Permission
+  }))
+  const actions = (definition.actions ?? []).map((action) =>
+    action.policies?.some((policy) => policy.type === 'time-frame')
+      ? {
+          ...action,
+          policies: action.policies.filter(
+            (policy) =>
+              policy.type !== 'time-frame' ||
+              holds(
+                `actions[${action.target}:${action.selector}]`,
+                typeof policy.validUntil === 'number'
+                  ? new Date(policy.validUntil)
+                  : policy.validUntil,
+                policy.validAfter,
+              ),
+          ),
+        }
+      : action,
+  )
+  return { permissions, actions, windows }
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -318,7 +311,7 @@ function resolveSession(
       )
     : undefined
   const refuse = refuser(collect)
-  const windowDeadlines = sessionWindowDeadlines(definition, refuse)
+  const windowed = sessionWindows(definition, refuse)
   const stableFloor = definition.swap?.stableFloor !== undefined
   if (stableFloor && definition.swap) {
     assertStableFloorIsolated({
@@ -348,18 +341,13 @@ function resolveSession(
   // sessions scoped by hand.
   const resolvedPermits = (definition.crossChainPermits ?? []).map(
     (input, permitIndex) => {
-      const until = input.validUntil
       // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
       // and a past deadline only fails at enable, as an opaque signature error.
-      if (
-        until !== undefined &&
-        isSettlementScopedPermit(input) &&
-        !(Number.isFinite(until.getTime()) && until.getTime() > Date.now())
-      ) {
+      if (input.validUntil !== undefined && !isFutureDate(input.validUntil)) {
         refuse(
           refusal(
             'VALID_UNTIL_NOT_IN_FUTURE',
-            'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
+            `crossChainPermits[${permitIndex}]: ${SESSION_REFUSAL_CODES.VALID_UNTIL_NOT_IN_FUTURE}`,
             { permitIndex },
           ),
         )
@@ -371,14 +359,7 @@ function resolveSession(
   )
   // An invalid oneTimeUse.validUntil is left out here and refused below.
   const otuUntil = definition.oneTimeUse?.validUntil
-  const sessionDeadline = windowDeadlines.reduce(
-    minDefined,
-    otuUntil !== undefined &&
-      Number.isFinite(otuUntil.getTime()) &&
-      otuUntil.getTime() > Date.now()
-      ? BigInt(Math.floor(otuUntil.getTime() / 1000))
-      : undefined,
-  )
+  const onceDeadline = isFutureDate(otuUntil) ? seconds(otuUntil) : undefined
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -388,7 +369,7 @@ function resolveSession(
     oneTimeUse: Boolean(definition.oneTimeUse),
     ...(options.settlement ? { settlement: options.settlement } : {}),
     ...(collect ? { collect } : {}),
-    ...(sessionDeadline === undefined ? {} : { sessionDeadline }),
+    ...(onceDeadline === undefined ? {} : { sessionDeadline: onceDeadline }),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
   // none of the calldata pins ever see.
@@ -414,6 +395,12 @@ function resolveSession(
   }
   const permit2Permits = resolvedPermits.filter(
     (permit) => !isSettlementScopedPermit(permit),
+  )
+  // A permit's window goes on every action it adds. A session holds one
+  // Permit2-route permit: a second claim policy is refused below.
+  const permit2Window = permitTimeFrame(permit2Permits[0] ?? {})
+  const settlementWindow = permitTimeFrame(
+    resolvedPermits.find(isSettlementScopedPermit) ?? {},
   )
   const fallback = definition.fallback
   if (
@@ -504,9 +491,11 @@ function resolveSession(
     )
   }
   const permissions = [
-    ...(definition.permissions ?? []).map(withoutWindow),
+    ...windowed.permissions,
     ...(swapScope?.permissions ?? []),
-    ...(settlementScope?.permissions ?? []),
+    ...(settlementScope?.permissions ?? []).map((permission) =>
+      permissionWithTimeFrame(permission, settlementWindow),
+    ),
   ]
   // The wildcard admits a fallback session's approves; an exact approve action
   // would take precedence over it and refuse every other spender.
@@ -516,34 +505,27 @@ function resolveSession(
         ? permit2RouteScope(
             permit2Tokens,
             permissions,
-            definition.actions ?? [],
+            windowed.actions,
             permit2Fees,
             wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
           )
         : permit2FallbackScope(
             permit2Tokens,
             permissions,
-            definition.actions ?? [],
+            windowed.actions,
             permit2Fees,
           ),
-    ) ?? []
+    )?.map((action) => withTimeFrame(action, permit2Window)) ?? []
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
-  // A time-frame policy is carried as the deadline; an action left with no
-  // policy is sudo, as a permission with only a window is.
   const rawActions = [
-    ...(definition.actions ?? []).map((action): ScopedAction => {
-      if (!action.policies?.some((policy) => policy.type === 'time-frame')) {
-        return action
-      }
-      const { policies, ...rest } = action
-      const kept = policies.filter((policy) => policy.type !== 'time-frame')
-      return kept.length ? { ...rest, policies: kept } : rest
-    }),
+    ...windowed.actions,
     ...(swapScope?.actions ?? []),
-    ...(settlementScope?.actions ?? []),
+    ...(settlementScope?.actions ?? []).map((action) =>
+      withTimeFrame(action, settlementWindow),
+    ),
     ...permit2Actions,
   ]
   // Raw claimPolicies keep their spending guardrails on the fallback action, so
@@ -577,21 +559,9 @@ function resolveSession(
   const validUntil = definition.oneTimeUse?.validUntil
   // A deadline that rounds to 0 would read as "never expires"; a past one only
   // fails at enable, as an opaque signature error.
-  if (
-    validUntil !== undefined &&
-    !(
-      Number.isFinite(validUntil.getTime()) && validUntil.getTime() > Date.now()
-    )
-  ) {
+  if (validUntil !== undefined && !isFutureDate(validUntil)) {
     throw new Error('oneTimeUse.validUntil must be a valid Date in the future')
   }
-  // Every other validUntil on the session joins it as the session deadline.
-  const onceDeadline = definition.oneTimeUse
-    ? [settlementScope?.onceDeadline, ...windowDeadlines].reduce(
-        minDefined,
-        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
-      )
-    : undefined
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -707,12 +677,15 @@ function resolveSession(
   // the explicit permissions are the ONLY authorized ops — a non-listed selector
   // then reverts instead of escaping via the global intent-execution target
   // whitelist (RHI-6286).
-  const fallbackAction: SessionAction = {
-    policies:
-      fallback === 'sudo'
-        ? [{ type: 'sudo' }]
-        : [{ type: 'intent-execution' }, ...permitFallbackPolicies],
-  }
+  const fallbackAction: SessionAction = withTimeFrame(
+    {
+      policies:
+        fallback === 'sudo'
+          ? [{ type: 'sudo' }]
+          : [{ type: 'intent-execution' }, ...permitFallbackPolicies],
+    },
+    permit2Window,
+  )
   const injectedActions: SessionAction[] = [
     // Native-wrap `deposit()` is only permitted when the caller supplies the
     // chain's wrapped-native token (e.g. via `RhinestoneSDK.createSession`,
@@ -720,10 +693,13 @@ function resolveSession(
     // can't add an unrequested sudo action beyond the caller's permissions.
     ...(options.wrappedNativeToken && !restricted
       ? [
-          {
-            target: options.wrappedNativeToken,
-            selector: DEPOSIT_SELECTOR,
-          },
+          withTimeFrame<ScopedAction>(
+            {
+              target: options.wrappedNativeToken,
+              selector: DEPOSIT_SELECTOR,
+            },
+            permit2Window,
+          ),
         ]
       : []),
     ...(restricted ? [] : [fallbackAction]),
@@ -749,7 +725,9 @@ function resolveSession(
               ? [{ type: 'value-limit', limit: 1n }]
               : [{ type: 'sudo' }],
           } satisfies ScopedAction,
-        ]),
+        ].map((action) =>
+          withTimeFrame(action, permit2Window ?? settlementWindow),
+        )),
   ]
   // A Permit2-route session without `from` has already been refused.
   if (
@@ -885,14 +863,59 @@ function resolveSession(
       'oneTimeUse without claim policies cannot sign; leave `signing` unset',
     )
   }
+  let signing: SessionDefinition['signing'] =
+    definition.signing ??
+    ((restricted && rawClaimPolicies.length === 0) || executorOnlyOneTimeUse
+      ? { mode: 'disabled' }
+      : undefined)
+  // A signing surface would outlive the action windows, so it is bounded by the
+  // time any of them allows. Claim policies replace it, keeping only `signing`.
+  const actionWindow = windowed.windows.reduce<TimeFrame | undefined>(
+    (a, b) => (a ? unionTimeFrames(a, b) : b),
+    undefined,
+  )
+  if (actionWindow && signing?.mode !== 'disabled') {
+    const window = intersectTimeFrames(
+      actionWindow,
+      timeFrame(signing?.validAfter?.getTime(), signing?.validUntil?.getTime()),
+    )
+    if (isEmptyTimeFrame(window)) {
+      throw refusal(
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+        'signing: its window does not overlap the action or permit windows',
+      )
+    }
+    signing = {
+      ...(signing ?? { mode: 'unrestricted' }),
+      validAfter: new Date(window.validAfter),
+      validUntil: new Date(window.validUntil),
+    }
+  }
+  // The previous TimeFramePolicy holds a window on ERC-1271 checks, so signing
+  // keeps it where the current one is not deployed.
+  const timeFrameMissing =
+    definition.policyAddresses?.timeFrame === undefined &&
+    !timeFramePolicyDeployed(chainId)
+  const signingAddresses = timeFrameMissing
+    ? { ...addresses, timeFrame: PREVIOUS_TIME_FRAME_POLICY_ADDRESS }
+    : addresses
+  if (
+    timeFrameMissing &&
+    actions.some(({ actionPolicies }) =>
+      actionPolicies.some(({ policy }) => policy === addresses.timeFrame),
+    )
+  ) {
+    refuse(
+      refusal(
+        'TIME_FRAME_POLICY_UNAVAILABLE',
+        `chain ${chainId}: ${SESSION_REFUSAL_CODES.TIME_FRAME_POLICY_UNAVAILABLE}; set policyAddresses.timeFrame`,
+      ),
+    )
+  }
   const erc7739Policies = resolveSessionSigning({
-    signing:
-      definition.signing ??
-      ((restricted && rawClaimPolicies.length === 0) || executorOnlyOneTimeUse
-        ? { mode: 'disabled' }
-        : undefined),
+    signing,
     environment,
-    addresses,
+    addresses: signingAddresses,
   })
   let erc1271Policies = erc7739Policies.erc1271Policies
   let onceErc1271Policy: { policy: Address; initData: Hex } | undefined
@@ -972,6 +995,36 @@ function resolveSession(
         'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
       )
     }
+    // Permit2 refuses an expired permit and the claim caps its deadline, but a
+    // permit signed before the window opens is stopped only here.
+    const claimWindow = permit2Permits.some(
+      (permit) => permit.validAfter !== undefined,
+    )
+      ? permit2Window
+      : undefined
+    let windowPolicies = hasWindow ? erc1271Policies : []
+    if (claimWindow) {
+      let window = claimWindow
+      if (hasWindow) {
+        window = intersectTimeFrames(
+          window,
+          timeFrame(
+            signing?.validAfter?.getTime(),
+            signing?.validUntil?.getTime(),
+          ),
+        )
+        // Each was checked alone; one entry per policy holds both.
+        if (isEmptyTimeFrame(window)) {
+          throw refusal(
+            'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+            'signing: its window does not overlap the action or permit windows',
+          )
+        }
+      }
+      windowPolicies = [
+        encodeSessionPolicy(window, environment, signingAddresses),
+      ]
+    }
     erc1271Policies = [
       ...claimPolicies,
       // Only where no other bound holds, so those sessions keep their ids.
@@ -980,7 +1033,7 @@ function resolveSession(
       permit2Permits.some((permit) => !boundsPreClaimCalls(definition, permit))
         ? [{ policy: permit2Sender, initData: '0x' as Hex }]
         : []),
-      ...(hasWindow ? erc1271Policies : []),
+      ...windowPolicies,
       ...(onceErc1271Policy ? [onceErc1271Policy] : []),
     ]
     claimPolicies = []
@@ -1392,12 +1445,14 @@ export function toSession(
     : permit2Scoped
       ? permit2LayerSet(permit2Permits)
       : namedPermit2Layers(resolvedPermits)
+  // The same deadline as the installed claim, which signing re-encodes from here.
+  const otuUntil = definition.oneTimeUse?.validUntil
   const expandedClaims = permit2Permits.map(
     (permit) =>
       expandCrossChainPermit(
         permit,
         environment,
-        undefined,
+        otuUntil && seconds(otuUntil),
         undefined,
         definition.chain,
       ).claim,
