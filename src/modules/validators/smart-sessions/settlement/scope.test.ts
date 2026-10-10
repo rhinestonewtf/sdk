@@ -17,7 +17,7 @@ import {
   plasma,
   soneium,
 } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import {
   execute,
@@ -49,6 +49,12 @@ import { OFT_SEND_SELECTOR, oftAbi } from './oft'
 import { resolveSettlementScope } from './scope'
 import { SettlementLayerRefusal } from './served'
 import type { SettlementAddresses, SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const withSettlement = (options: ResolveSessionOptions = {}) => ({
   settlement: SETTLEMENT_CATALOG,

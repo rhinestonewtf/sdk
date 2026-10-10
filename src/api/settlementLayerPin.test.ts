@@ -1,10 +1,21 @@
 import { arbitrum, base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import { sessionFingerprint } from '../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { adaptTransaction } from './account'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock(
+  '../modules/validators/smart-sessions/policies/addresses',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../modules/validators/smart-sessions/policies/addresses')
+    >()),
+    timeFramePolicyDeployed: () => true,
+  }),
+)
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const

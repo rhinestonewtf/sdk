@@ -9,6 +9,10 @@ import {
   size,
   toFunctionSelector,
 } from 'viem'
+import {
+  isEmptyTimeFrame,
+  timeFrame,
+} from './smart-sessions/policies/time-frame'
 import type {
   ArgPolicyExpression,
   Permission,
@@ -219,11 +223,6 @@ const ERC20_SPENDING_LIMIT_SELECTORS = new Set<Hex>([
   '0x23b872dd', // transferFrom(address,address,uint256)
 ])
 
-// Year 2100 in ms — well within uint128 after the encoder's ms→s conversion.
-// Used as the one-sided default for `validUntil` when only `validAfter` is set.
-// Exported so permit and signing windows apply the same always-passing bound.
-export const FAR_FUTURE_MS = 4_102_444_800_000
-
 function resolvePermission(permission: Permission): ScopedAction[] {
   const { abi, address, functions } = permission
   const actions: ScopedAction[] = []
@@ -243,9 +242,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
     if (abiEntries.length > 1) {
       throw new Error(
-        `Function "${fnName}" is overloaded (${abiEntries.length} variants). ` +
-          'Permission entries do not support overloaded functions. ' +
-          'Pre-filter the ABI to a single overload before passing it.',
+        `Function "${fnName}" is overloaded (${abiEntries.length} variants); pass an ABI with a single overload.`,
       )
     }
 
@@ -254,8 +251,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
 
     if (Object.hasOwn(config, 'policies')) {
       throw new Error(
-        `Function "${fnName}": \`policies\` was removed from permission configs. ` +
-          'Use params, maxUses, validUntil/validAfter, valueLimit, or spendingLimit instead.',
+        `Function "${fnName}": \`policies\` was removed from permission configs; use params, maxUses, validUntil/validAfter, valueLimit or spendingLimit.`,
       )
     }
 
@@ -268,18 +264,16 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
 
     if (config.validUntil !== undefined || config.validAfter !== undefined) {
-      const validUntil =
-        config.validUntil !== undefined
-          ? config.validUntil.getTime()
-          : FAR_FUTURE_MS
-      const validAfter =
-        config.validAfter !== undefined ? config.validAfter.getTime() : 0
-      if (Math.floor(validUntil / 1000) <= Math.floor(validAfter / 1000)) {
+      const window = timeFrame(
+        config.validAfter?.getTime(),
+        config.validUntil?.getTime(),
+      )
+      if (isEmptyTimeFrame(window)) {
         throw new Error(
           `Function "${fnName}": validAfter must be earlier than validUntil`,
         )
       }
-      policies.push({ type: 'time-frame', validUntil, validAfter })
+      policies.push(window)
     }
 
     if (config.valueLimit !== undefined) {
@@ -289,9 +283,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       // but it leaks intent — throw rather than encode dead weight.
       if (abiEntry.stateMutability !== 'payable') {
         throw new Error(
-          `Function "${fnName}" is not payable — \`valueLimit\` only constrains native ETH ` +
-            'attached to the call, which is always zero for non-payable functions. ' +
-            'Remove `valueLimit`.',
+          `Function "${fnName}" is not payable; remove \`valueLimit\`, which bounds only attached native value.`,
         )
       }
       policies.push({ type: 'value-limit', limit: config.valueLimit })
@@ -304,9 +296,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       if (!ERC20_SPENDING_LIMIT_SELECTORS.has(selector)) {
         throw new Error(
           `Function "${fnName}" (selector ${selector}) is not an ERC-20 transfer/approve ` +
-            'selector; `spendingLimit` only works on approve, increaseAllowance, ' +
-            'transfer, or transferFrom. The on-chain policy dispatches by selector ' +
-            'and would fail every call for other functions.',
+            'selector; `spendingLimit` works only on approve, increaseAllowance, transfer and transferFrom.',
         )
       }
       policies.push({
@@ -337,9 +327,7 @@ function resolvePermission(permission: Permission): ScopedAction[] {
           const param = abiEntry.inputs[paramIndex]
           if (!isStaticAbiType(param.type)) {
             throw new Error(
-              `Parameter "${paramName}" has dynamic type "${param.type}". ` +
-                'Permission rules only support static types ' +
-                '(address, bool, uint*, int*, bytes1–bytes32).',
+              `Parameter "${paramName}" has dynamic type "${param.type}"; rules support only static types.`,
             )
           }
 
@@ -542,9 +530,7 @@ function resolvePermissions(
         const fnName = findFunctionName(permission, action.selector)
         throw new Error(
           `Duplicate permission for function "${fnName}" (selector ${action.selector}) ` +
-            `on ${action.target}: permission entries for the same function on the same ` +
-            "contract share one on-chain action, so the later entry's policies would " +
-            'silently overwrite the earlier ones. Merge them into a single entry.',
+            `on ${action.target}: entries for one function on one contract share an on-chain action; merge them into a single entry.`,
         )
       }
       seen.add(key)

@@ -8,7 +8,7 @@ import {
   stringToHex,
 } from 'viem'
 import { arbitrum, base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import {
@@ -21,16 +21,22 @@ import {
   TIME_FRAME_POLICY_ADDRESS,
 } from './policies/addresses'
 import { resolvePermit2ClaimPolicy } from './policies/claim'
-import { withTimeFrame } from './policies/time-frame'
 import {
   DUMMY_PRECLAIMOP_TARGET,
   resolveSessionData,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   toSession,
+  validateSessionDefinition,
 } from './resolve'
 import { PUBLISH_AND_FUND_SELECTOR } from './settlement/eco'
 import type { SettlementCatalog } from './settlement/types'
 import type { ResolvedAction, ResolvedPolicy, SessionDefinition } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -317,8 +323,7 @@ const WINDOWED: Record<string, SessionDefinition> = {
   },
 }
 
-// Each window is now a time-frame policy at the new address on the actions it
-// applies to, so these moved; the first seven were pinned before.
+// Each window is a time-frame policy on the actions it applies to.
 const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   'signing window': {
     permissionId:
@@ -352,8 +357,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'Permit2 permit validUntil, oneTimeUse': {
     permissionId:
-      '0xb58fc9513c914fd93fc22e388555f3ff84f08031fd71f829925f26639ca5dee6',
-    data: '0xdd40889e6b5efe9885c153d364bd916382a513805c06bf058cb2b2cc0515c2ca',
+      '0x92105b215ecd41d1335b269a009baf7a5df7a05d0e2d57166eafa4b38952711b',
+    data: '0xf8b1f72eda30b62868146d7471a58952e2acc80590182f58998a073e735a92ec',
   },
   'permissions validAfter and validUntil': {
     permissionId:
@@ -362,8 +367,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'Permit2 permit validAfter and validUntil': {
     permissionId:
-      '0xec6da27b40945afd6d81783e014589837ac4903f995c3edab9a7194885fa6519',
-    data: '0xa354f43fe2762addbd4eb7c53979a882787c3894b23d67e542123a158f394ef9',
+      '0x9a78f5fbb8ef9f5849c11562dffe57b1716fa3a44afa540d0809296fb97667ca',
+    data: '0x6ad12ca9a55b2dfbd78ec63a68bafc98c38da3c3622a786c97dd10a8af0990d2',
   },
 }
 
@@ -563,16 +568,23 @@ describe("a Permit2-route permit's window", () => {
     ).toEqual(window(T))
   })
 
-  test('bounds the claim deadline', () => {
-    const claim = (definition: SessionDefinition) =>
-      resolve(definition).erc7739Policies.erc1271Policies.find((p) =>
+  // Permit2 accepts a deadline it has reached, so the claim stops 1s short.
+  test.each([
+    ['both', { validAfter: AFTER, validUntil: UNTIL }, seconds(AFTER), T - 1n],
+    ['validUntil', { validUntil: UNTIL }, undefined, T - 1n],
+    ['validAfter', { validAfter: AFTER }, seconds(AFTER), undefined],
+  ])('bounds the claim deadline by %s', (_, permitWindow, min, max) => {
+    const session = toSession(permit2(permitWindow))
+    expect(session.claimPolicies[0].permitDeadline).toEqual({ min, max })
+    expect(
+      getSessionData(session).erc7739Policies.erc1271Policies.find((p) =>
         isAddressEqual(p.policy, PERMIT2_CLAIM_POLICY_ADDRESS),
-      )?.initData
-    // The claim encodes {min: validAfter, max: validUntil}.
-    expect(claim(permit2({ validAfter: AFTER, validUntil: UNTIL }))).not.toBe(
-      claim(permit2({ validUntil: UNTIL })),
+      )?.initData,
+    ).toBe(
+      encodePermit2ClaimPolicyInitData(
+        resolvePermit2ClaimPolicy(session.claimPolicies[0]),
+      ),
     )
-    expect(claim(permit2({ validUntil: UNTIL }))).not.toBe(claim(permit2({})))
   })
 
   test('with only validUntil, leaves the 1271 list without a time frame', () => {
@@ -638,7 +650,9 @@ describe("a Permit2-route permit's window", () => {
             signing(undefined, at(signingUntil)),
           ),
         ),
-      ).toThrow('the permit and signing time windows do not overlap')
+      ).toThrow(
+        'signing: its window does not overlap the action or permit windows',
+      )
     })
   })
 })
@@ -744,18 +758,18 @@ describe('oneTimeUse.validUntil alone is the once-policy deadline', () => {
       } as SessionDefinition).erc7739Policies.erc1271Policies.find((p) =>
         isAddressEqual(p.policy, PERMIT2_CLAIM_POLICY_ADDRESS),
       )?.initData
-    const earlier = at(T - 100n)
-    expect(claim(earlier, UNTIL)).toBe(claim(UNTIL, earlier))
-    expect(claim(earlier, UNTIL)).not.toBe(claim(UNTIL, UNTIL))
+    // The permit's validUntil caps the claim 1s short of it.
+    expect(claim(at(T - 100n), UNTIL)).toBe(claim(UNTIL, at(T - 99n)))
+    expect(claim(at(T - 100n), UNTIL)).not.toBe(claim(UNTIL, UNTIL))
   })
 
   // Signing builds the claim calldata from Session.claimPolicies.
   test.each([
-    ['oneTimeUse', at(T - 100n), UNTIL],
-    ['the permit', UNTIL, at(T - 100n)],
+    ['oneTimeUse', at(T - 100n), UNTIL, T - 100n],
+    ['the permit', UNTIL, at(T - 100n), T - 101n],
   ])(
     'the session keeps the installed claim when %s ends first',
-    (_, oneTimeUseUntil, permitUntil) => {
+    (_, oneTimeUseUntil, permitUntil, max) => {
       const session = toSession({
         chain: base,
         owners,
@@ -776,7 +790,7 @@ describe('oneTimeUse.validUntil alone is the once-policy deadline', () => {
           ),
         },
       ])
-      expect(session.claimPolicies[0].permitDeadline?.max).toBe(T - 100n)
+      expect(session.claimPolicies[0].permitDeadline?.max).toBe(max)
     },
   )
 })
@@ -839,33 +853,6 @@ test('policyAddresses.timeFrame rebuilds a session enabled with the previous add
   expect(timeFramesOf(previous)).toEqual([])
 })
 
-test('a window that leaves the action no time is refused', () => {
-  expect(() =>
-    withTimeFrame(
-      {
-        policies: [{ type: 'time-frame', validUntil: 2_000, validAfter: 0 }],
-      },
-      { type: 'time-frame', validUntil: 3_000, validAfter: 2_000 },
-    ),
-  ).toThrow("an action's time windows do not overlap")
-})
-
-test('a window it already has is narrowed to both', () => {
-  const narrowed = withTimeFrame(
-    {
-      policies: [
-        { type: 'usage-limit', limit: 1n },
-        { type: 'time-frame', validUntil: 2_000, validAfter: 500 },
-      ],
-    },
-    { type: 'time-frame', validUntil: 3_000, validAfter: 1_000 },
-  )
-  expect(narrowed.policies).toEqual([
-    { type: 'usage-limit', limit: 1n },
-    { type: 'time-frame', validUntil: 2_000, validAfter: 1_000 },
-  ])
-})
-
 describe('a window is refused at resolve when', () => {
   type Window = { readonly validUntil?: Date; readonly validAfter?: Date }
   const SOURCES = {
@@ -912,6 +899,63 @@ describe('a window is refused at resolve when', () => {
   const session = (define: (w: Window) => object, w: Window) =>
     ({ chain: base, owners, ...define(w) }) as SessionDefinition
 
+  test.each(Object.entries(SOURCES))(
+    '%s: validAfter is not a valid Date',
+    (_, { define }) => {
+      expect(() =>
+        toSession(
+          session(define, {
+            validAfter: new Date(Number.NaN),
+            validUntil: UNTIL,
+          }),
+        ),
+      ).toThrow('a validAfter that is not a Date within uint48 seconds')
+    },
+  )
+
+  test.each(Object.entries(SOURCES))(
+    '%s: validAfter reaches the open end',
+    (_, { define }) => {
+      expect(() =>
+        toSession(session(define, { validAfter: new Date(4_102_444_800_000) })),
+      ).toThrow('a validAfter not earlier than validUntil')
+    },
+  )
+
+  test('actions: validAfter past uint48 seconds', () => {
+    expect(() =>
+      toSession({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: TARGET,
+            selector: '0x12345678',
+            policies: [
+              {
+                type: 'time-frame',
+                validUntil: UNTIL.getTime(),
+                validAfter: 2 ** 48 * 1000,
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow('a validAfter that is not a Date within uint48 seconds')
+  })
+
+  test.each(Object.entries(SOURCES))(
+    '%s: a dry run reports it once, with its code',
+    (_, { define }) => {
+      const { refusals } = validateSessionDefinition(
+        session(define, { validAfter: UNTIL, validUntil: AFTER }),
+      )
+      expect(refusals.map(({ code }) => code)).toEqual([
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+      ])
+    },
+  )
+
   const INVALID: Record<string, Date> = {
     'the epoch': new Date(0),
     'in the past': new Date(Date.now() - 86_400_000),
@@ -926,7 +970,7 @@ describe('a window is refused at resolve when', () => {
     ),
   )('%s: validUntil is not in the future', (_, field, define, validUntil) => {
     expect(() => toSession(session(define, { validUntil }))).toThrow(
-      `${field}: validUntil must be a valid Date in the future`,
+      `${field}: a validUntil that is not a future Date`,
     )
   })
 
@@ -940,7 +984,7 @@ describe('a window is refused at resolve when', () => {
     const { field, define } = SOURCES[name]
     expect(() =>
       toSession(session(define, { validUntil } as unknown as Window)),
-    ).toThrow(`${field}: validUntil must be a valid Date in the future`)
+    ).toThrow(`${field}: a validUntil that is not a future Date`)
   })
 
   test.each(Object.entries(SOURCES))(
@@ -949,7 +993,7 @@ describe('a window is refused at resolve when', () => {
       for (const validAfter of [UNTIL, at(T + 1n)]) {
         expect(() =>
           toSession(session(define, { validAfter, validUntil: UNTIL })),
-        ).toThrow('validAfter must be earlier than validUntil')
+        ).toThrow('a validAfter not earlier than validUntil')
       }
     },
   )
@@ -981,4 +1025,166 @@ test('a Permit2-route maxAmount still requires oneTimeUse, window or not', () =>
   ).toThrow(
     "a Permit2-route permit's maxAmount is enforced only with oneTimeUse",
   )
+})
+
+test('a window that ends within the second it opens is refused', () => {
+  expect(() =>
+    toSession({
+      chain: base,
+      owners,
+      actions: [
+        {
+          target: TARGET,
+          selector: '0x12345678',
+          policies: [
+            {
+              type: 'time-frame',
+              validUntil: UNTIL.getTime(),
+              validAfter: UNTIL.getTime() - 500,
+            },
+          ],
+        },
+      ],
+    }),
+  ).toThrow('a validAfter not earlier than validUntil')
+})
+
+test('a validAfter between seconds opens at the next one', () => {
+  const after = new Date(AFTER.getTime() + 1)
+  const { actions } = resolve({
+    chain: base,
+    owners,
+    restrictToActions: true,
+    permissions: [
+      {
+        abi: erc20Abi,
+        address: USDC,
+        functions: { approve: { validAfter: after } },
+      },
+    ],
+  })
+  expect(timeFramesOf(actions[0].actionPolicies)).toEqual(
+    window(FAR_FUTURE, seconds(AFTER) + 1n),
+  )
+  const session = toSession({
+    chain: base,
+    owners,
+    crossChainPermits: [
+      {
+        from: { chain: base, token: USDC },
+        to: { chain: arbitrum, token: USDC_ARB },
+        settlementLayers: ['ACROSS'],
+        validAfter: after,
+      },
+    ],
+  })
+  expect(session.claimPolicies[0].permitDeadline?.min).toBe(seconds(AFTER) + 1n)
+  const signing = resolve({
+    chain: base,
+    owners,
+    signing: { mode: 'unrestricted', validAfter: after },
+  }).erc7739Policies.erc1271Policies
+  expect(timeFramesOf(signing)).toEqual(window(FAR_FUTURE, seconds(AFTER) + 1n))
+})
+
+describe('an open signing surface is bounded by the action windows', () => {
+  const definition = (extra: Partial<SessionDefinition> = {}) =>
+    ({
+      chain: base,
+      owners,
+      permissions: [
+        {
+          abi: erc20Abi,
+          address: USDC,
+          functions: { approve: { validUntil: UNTIL } },
+        },
+      ],
+      actions: [
+        {
+          target: TARGET,
+          selector: '0x12345678',
+          policies: [
+            {
+              type: 'time-frame',
+              validUntil: UNTIL.getTime() + 50_000,
+              validAfter: AFTER.getTime(),
+            },
+          ],
+        },
+      ],
+      ...extra,
+    }) as SessionDefinition
+  const erc1271 = (d: SessionDefinition) =>
+    resolve(d).erc7739Policies.erc1271Policies
+
+  test('by their union, with signing left unrestricted', () => {
+    expect(erc1271(definition())).toHaveLength(1)
+    expect(timeFramesOf(erc1271(definition()))).toEqual(window(T + 50n, 0n))
+  })
+
+  test('an open end stays open', () => {
+    const d = definition({ actions: [] })
+    d.permissions = [
+      {
+        abi: erc20Abi,
+        address: USDC,
+        functions: { approve: { validAfter: AFTER } },
+      },
+    ]
+    expect(timeFramesOf(erc1271(d))).toEqual(window(FAR_FUTURE, seconds(AFTER)))
+  })
+
+  test('narrowed by a signing window', () => {
+    expect(
+      timeFramesOf(
+        erc1271(
+          definition({
+            signing: {
+              mode: 'unrestricted',
+              validAfter: at(seconds(AFTER) + 5n),
+              validUntil: at(T + 100n),
+            },
+          }),
+        ),
+      ),
+    ).toEqual(window(T + 50n, seconds(AFTER) + 5n))
+  })
+
+  test('a signing window that misses them is refused', () => {
+    expect(() =>
+      resolve(
+        definition({
+          signing: { mode: 'unrestricted', validAfter: at(T + 60n) },
+        }),
+      ),
+    ).toThrow(
+      'signing: its window does not overlap the action or permit windows',
+    )
+  })
+
+  test.each([
+    ['signing disabled', { signing: { mode: 'disabled' } }],
+    [
+      'a restricted session, whose signing defaults to disabled',
+      { restrictToActions: true },
+    ],
+    [
+      'claim policies, which bound the ERC-1271 list',
+      { claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }] },
+    ],
+  ] as const)('not with %s', (_, extra) => {
+    expect(
+      timeFramesOf(erc1271(definition(extra as Partial<SessionDefinition>))),
+    ).toEqual([])
+  })
+
+  test('a session without action windows keeps its signing list', () => {
+    expect(erc1271({ chain: base, owners })).toEqual(
+      erc1271({
+        chain: base,
+        owners,
+        actions: [{ target: TARGET, selector: '0x12345678' }],
+      }),
+    )
+  })
 })

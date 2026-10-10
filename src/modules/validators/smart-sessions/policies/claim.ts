@@ -74,11 +74,13 @@ export function expandCrossChainPermit(
       address: recipient as `0x${string}` | 'any',
     }))
   // The once-policy refuses a settlement past its deadline, so the claim does too.
+  // Permit2 accepts a deadline it has reached, and the window has closed then.
+  const until =
+    permit.validUntil === undefined ? undefined : permit.validUntil - 1n
   const maxDeadline =
-    onceDeadline !== undefined &&
-    (permit.validUntil === undefined || onceDeadline < permit.validUntil)
+    onceDeadline !== undefined && (until === undefined || onceDeadline < until)
       ? onceDeadline
-      : permit.validUntil
+      : until
   const permitDeadline =
     permit.validAfter !== undefined || maxDeadline !== undefined
       ? { min: permit.validAfter, max: maxDeadline }

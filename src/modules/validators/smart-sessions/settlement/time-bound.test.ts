@@ -5,7 +5,7 @@ import {
   isAddressEqual,
 } from 'viem'
 import { arbitrum, base, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
@@ -16,6 +16,12 @@ import type {
   SessionDefinition,
 } from '../types'
 import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 /**
  * A settlement-scoped permit's window is a time-frame policy on each action the
@@ -305,9 +311,7 @@ describe('an IntentExecutor-layer permit validUntil must be in the future', () =
     ]
     expect(() =>
       resolveSessionData(definition, { settlement: SETTLEMENT_CATALOG }),
-    ).toThrow(
-      'crossChainPermits[0]: validUntil must be a valid Date in the future',
-    )
+    ).toThrow('crossChainPermits[0]: a validUntil that is not a future Date')
   })
 })
 
@@ -316,6 +320,6 @@ test.each([UNTIL + 1n, UNTIL])(
   (validAfter) => {
     expect(() =>
       resolve(SHAPES.CCTP, { validAfter, validUntil: UNTIL }),
-    ).toThrow('crossChainPermits: validAfter must be earlier than validUntil')
+    ).toThrow('crossChainPermits: a validAfter not earlier than validUntil')
   },
 )

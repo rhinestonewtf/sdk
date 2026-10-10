@@ -1,6 +1,6 @@
 import { decodeAbiParameters, zeroHash } from 'viem'
 import { arbitrum, base, linea, sepolia } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
@@ -14,6 +14,12 @@ import {
 } from './policies/addresses'
 import { resolveSessionData, toSession } from './resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 // Kept out of resolve.test.ts because that file imports fast-check (declared in
 // package.json but not installed in every working copy); these are plain

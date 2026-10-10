@@ -11,7 +11,7 @@ import {
   toHex,
 } from 'viem'
 import { arbitrum, base, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import {
   type RuleUsage,
@@ -33,6 +33,12 @@ import { settlementFeeCap } from './fees'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -323,7 +329,7 @@ describe('multi-layer settlement permits', () => {
         definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
         { settlement: SETTLEMENT_CATALOG },
       ),
-    ).toThrow('validUntil must be a valid Date in the future')
+    ).toThrow('a validUntil that is not a future Date')
   })
 
   test('refuses an approve to a layer the permit did not name', () => {

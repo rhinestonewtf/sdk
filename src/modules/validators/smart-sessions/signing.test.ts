@@ -1,12 +1,18 @@
 import { domainSeparator, encodePacked, zeroHash } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import {
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
 } from './policies/addresses'
 import { toSession } from './resolve'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const domain = {
   name: 'Permit2',

@@ -145,7 +145,7 @@ describe('resolveCrossChainPermission', () => {
         validAfter: new Date('2030-01-01T00:00:00Z'),
         validUntil: new Date('2020-01-01T00:00:00Z'),
       }),
-    ).toThrow('validAfter must be earlier than validUntil')
+    ).toThrow('a validAfter not earlier than validUntil')
   })
 
   // TimeFramePolicy passes no second of an empty window.
@@ -158,7 +158,7 @@ describe('resolveCrossChainPermission', () => {
         validAfter: instant,
         validUntil: instant,
       }),
-    ).toThrow('validAfter must be earlier than validUntil')
+    ).toThrow('a validAfter not earlier than validUntil')
   })
 
   test('maxAmount = 0n is preserved (not coerced away)', () => {

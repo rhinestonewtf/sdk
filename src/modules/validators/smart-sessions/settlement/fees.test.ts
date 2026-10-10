@@ -11,7 +11,7 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { arbitrum, base, mainnet, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { satisfiesRules } from '../../../../../test/utils/policy-rules'
 import { sessionFingerprint } from '../../../../../test/utils/session-fingerprint'
@@ -39,6 +39,12 @@ import {
 import { OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address

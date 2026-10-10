@@ -25,7 +25,9 @@ import {
   DEFAULT_POLICY_ADDRESSES,
   defaultPermit2SenderPolicy,
   oneTimeUseIdPolicyMissing,
+  PREVIOUS_TIME_FRAME_POLICY_ADDRESS,
   resolvePolicyAddresses,
+  timeFramePolicyDeployed,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_COPIES,
   UNIVERSAL_ACTION_POLICY_COPY_CHAINS,
@@ -44,11 +46,14 @@ import {
   permit2SourceTokens,
 } from './policies/permit2-approval'
 import {
-  dateTimeFrame,
   intersectTimeFrames,
   isEmptyTimeFrame,
+  isWindowTime,
   permissionWithTimeFrame,
   permitTimeFrame,
+  type TimeFrame,
+  timeFrame,
+  unionTimeFrames,
   withTimeFrame,
 } from './policies/time-frame'
 import {
@@ -59,6 +64,7 @@ import {
   refusal,
   type refusalLog,
   refuser,
+  SESSION_REFUSAL_CODES,
   type SessionValidation,
   type SessionWarning,
 } from './refusals'
@@ -103,47 +109,51 @@ const seconds = (date: Date) => BigInt(Math.floor(date.getTime() / 1000))
 function isFutureDate(value: unknown): value is Date {
   return (
     value instanceof Date &&
-    Number.isFinite(value.getTime()) &&
+    isWindowTime(value.getTime()) &&
     value.getTime() > Date.now()
   )
 }
 
 /**
- * Refuses a permission or raw action window whose validUntil is not in the
- * future, or that opens after it closes; a dry run records each.
+ * The permission and raw action windows. A dry run records each refused one,
+ * then stops: the permission resolver would report it again.
  */
-function refuseInvalidWindows(
+function sessionWindows(
   definition: SessionDefinition,
   refuse: Refuse,
-): void {
-  const check = (field: string, validUntil: unknown, validAfter = 0) => {
-    if (validUntil === undefined) return
-    // 0 or less would read as "never expires".
-    if (!isFutureDate(validUntil)) {
-      refuse(
-        refusal(
-          'VALID_UNTIL_NOT_IN_FUTURE',
-          `${field}: validUntil must be a valid Date in the future`,
-        ),
-      )
-    } else if (
-      isEmptyTimeFrame({ validAfter, validUntil: validUntil.getTime() })
-    ) {
-      refuse(
-        refusal(
-          'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-          `${field}: validAfter must be earlier than validUntil`,
-        ),
-      )
-    }
+): TimeFrame[] {
+  const windows: TimeFrame[] = []
+  let refused = false
+  const check = (field: string, validUntil: unknown, validAfter: unknown) => {
+    const window = timeFrame(
+      validAfter as number,
+      (validUntil as Date | undefined)?.getTime?.(),
+    )
+    const code =
+      validAfter !== undefined && !isWindowTime(validAfter)
+        ? 'VALID_AFTER_INVALID'
+        : // 0 or less would read as "never expires".
+          validUntil !== undefined && !isFutureDate(validUntil)
+          ? 'VALID_UNTIL_NOT_IN_FUTURE'
+          : isEmptyTimeFrame(window)
+            ? 'VALID_AFTER_EXCEEDS_VALID_UNTIL'
+            : undefined
+    if (code) {
+      refused = true
+      refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
+    } else windows.push(window)
   }
   for (const { address, functions } of definition.permissions ?? []) {
     for (const [name, config] of Object.entries(functions)) {
-      if (config) {
+      if (
+        config &&
+        (config.validUntil !== undefined || config.validAfter !== undefined)
+      ) {
+        const { validAfter } = config
         check(
           `permissions[${address}].${name}`,
           config.validUntil,
-          config.validAfter?.getTime(),
+          validAfter instanceof Date ? validAfter.getTime() : validAfter,
         )
       }
     }
@@ -161,6 +171,8 @@ function refuseInvalidWindows(
       }
     }
   }
+  if (refused) throw new RefusalCollectionHalted()
+  return windows
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -282,7 +294,7 @@ function resolveSession(
       )
     : undefined
   const refuse = refuser(collect)
-  refuseInvalidWindows(definition, refuse)
+  const actionWindows = sessionWindows(definition, refuse)
   const stableFloor = definition.swap?.stableFloor !== undefined
   if (stableFloor && definition.swap) {
     assertStableFloorIsolated({
@@ -318,7 +330,7 @@ function resolveSession(
         refuse(
           refusal(
             'VALID_UNTIL_NOT_IN_FUTURE',
-            `crossChainPermits[${permitIndex}]: validUntil must be a valid Date in the future`,
+            `crossChainPermits[${permitIndex}]: ${SESSION_REFUSAL_CODES.VALID_UNTIL_NOT_IN_FUTURE}`,
             { permitIndex },
           ),
         )
@@ -330,7 +342,7 @@ function resolveSession(
   )
   // An invalid oneTimeUse.validUntil is left out here and refused below.
   const otuUntil = definition.oneTimeUse?.validUntil
-  const sessionDeadline = isFutureDate(otuUntil) ? seconds(otuUntil) : undefined
+  const onceDeadline = isFutureDate(otuUntil) ? seconds(otuUntil) : undefined
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -340,7 +352,7 @@ function resolveSession(
     oneTimeUse: Boolean(definition.oneTimeUse),
     ...(options.settlement ? { settlement: options.settlement } : {}),
     ...(collect ? { collect } : {}),
-    ...(sessionDeadline === undefined ? {} : { sessionDeadline }),
+    ...(onceDeadline === undefined ? {} : { sessionDeadline: onceDeadline }),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
   // none of the calldata pins ever see.
@@ -367,14 +379,9 @@ function resolveSession(
   const permit2Permits = resolvedPermits.filter(
     (permit) => !isSettlementScopedPermit(permit),
   )
-  // A permit's window goes on every action it contributes. The Permit2-route
-  // permits share theirs, so those carry the time every one of them allows.
-  const permit2Window = permit2Permits
-    .map(permitTimeFrame)
-    .reduce(
-      (a, b) => (a && b ? intersectTimeFrames(a, b) : (a ?? b)),
-      undefined,
-    )
+  // A permit's window goes on every action it adds. A session holds one
+  // Permit2-route permit: a second claim policy is refused below.
+  const permit2Window = permitTimeFrame(permit2Permits[0] ?? {})
   const settlementWindow = permitTimeFrame(
     resolvedPermits.find(isSettlementScopedPermit) ?? {},
   )
@@ -538,7 +545,6 @@ function resolveSession(
   if (validUntil !== undefined && !isFutureDate(validUntil)) {
     throw new Error('oneTimeUse.validUntil must be a valid Date in the future')
   }
-  const onceDeadline = sessionDeadline
   // Guard raw actions from reintroducing the wildcard: reject one without
   // target+selector (would map to the fallback flags), or one that targets the
   // fallback sentinel outright — either would re-add the wildcard action that
@@ -713,10 +719,7 @@ function resolveSession(
     !rawActions.length &&
     !permit2Permits.length
   ) {
-    throw new Error(
-      'restrictToActions drops the fallback, so the session must supply at ' +
-        'least one permission or action — none were given',
-    )
+    throw new Error('restrictToActions needs at least one permission or action')
   }
   // Raw actions bypass resolvePermissions' duplicate guard, so a raw action that
   // collides with an ABI permission (or another raw action) on the same
@@ -840,14 +843,59 @@ function resolveSession(
       'oneTimeUse without claim policies cannot sign; leave `signing` unset',
     )
   }
+  let signing: SessionDefinition['signing'] =
+    definition.signing ??
+    ((restricted && rawClaimPolicies.length === 0) || executorOnlyOneTimeUse
+      ? { mode: 'disabled' }
+      : undefined)
+  // A signing surface would outlive the action windows, so it is bounded by the
+  // time any of them allows. Claim policies replace it, keeping only `signing`.
+  const actionWindow = actionWindows.reduce<TimeFrame | undefined>(
+    (a, b) => (a ? unionTimeFrames(a, b) : b),
+    undefined,
+  )
+  if (actionWindow && signing?.mode !== 'disabled') {
+    const window = intersectTimeFrames(
+      actionWindow,
+      timeFrame(signing?.validAfter?.getTime(), signing?.validUntil?.getTime()),
+    )
+    if (isEmptyTimeFrame(window)) {
+      throw refusal(
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+        'signing: its window does not overlap the action or permit windows',
+      )
+    }
+    signing = {
+      ...(signing ?? { mode: 'unrestricted' }),
+      validAfter: new Date(window.validAfter),
+      validUntil: new Date(window.validUntil),
+    }
+  }
+  // The previous TimeFramePolicy holds a window on ERC-1271 checks, so signing
+  // keeps it where the current one is not deployed.
+  const timeFrameMissing =
+    definition.policyAddresses?.timeFrame === undefined &&
+    !timeFramePolicyDeployed(chainId)
+  const signingAddresses = timeFrameMissing
+    ? { ...addresses, timeFrame: PREVIOUS_TIME_FRAME_POLICY_ADDRESS }
+    : addresses
+  if (
+    timeFrameMissing &&
+    actions.some(({ actionPolicies }) =>
+      actionPolicies.some(({ policy }) => policy === addresses.timeFrame),
+    )
+  ) {
+    refuse(
+      refusal(
+        'TIME_FRAME_POLICY_UNAVAILABLE',
+        `chain ${chainId}: ${SESSION_REFUSAL_CODES.TIME_FRAME_POLICY_UNAVAILABLE}; set policyAddresses.timeFrame`,
+      ),
+    )
+  }
   const erc7739Policies = resolveSessionSigning({
-    signing:
-      definition.signing ??
-      ((restricted && rawClaimPolicies.length === 0) || executorOnlyOneTimeUse
-        ? { mode: 'disabled' }
-        : undefined),
+    signing,
     environment,
-    addresses,
+    addresses: signingAddresses,
   })
   let erc1271Policies = erc7739Policies.erc1271Policies
   let onceErc1271Policy: { policy: Address; initData: Hex } | undefined
@@ -906,7 +954,7 @@ function resolveSession(
     if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw refusal(
         'CLAIM_POLICIES_SIGNING_MODE',
-        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
+        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured; omit \`signing\`, or bound them with \`{ mode: 'unrestricted', validAfter, validUntil }\``,
       )
     }
     const hasWindow =
@@ -924,7 +972,7 @@ function resolveSession(
     ) {
       throw refusal(
         'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
-        'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
+        'signing.validUntil must be a valid Date in the future when the session carries claim policies',
       )
     }
     // Permit2 refuses an expired permit and the claim caps its deadline, but a
@@ -940,17 +988,22 @@ function resolveSession(
       if (hasWindow) {
         window = intersectTimeFrames(
           window,
-          dateTimeFrame(signing?.validAfter, signing?.validUntil),
+          timeFrame(
+            signing?.validAfter?.getTime(),
+            signing?.validUntil?.getTime(),
+          ),
         )
         // Each was checked alone; one entry per policy holds both.
         if (isEmptyTimeFrame(window)) {
           throw refusal(
             'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-            'crossChainPermits: the permit and signing time windows do not overlap',
+            'signing: its window does not overlap the action or permit windows',
           )
         }
       }
-      windowPolicies = [encodeSessionPolicy(window, environment, addresses)]
+      windowPolicies = [
+        encodeSessionPolicy(window, environment, signingAddresses),
+      ]
     }
     erc1271Policies = [
       ...claimPolicies,
@@ -976,7 +1029,7 @@ function resolveSession(
       if (seen.has(key)) {
         throw refusal(
           'DUPLICATE_ERC1271_POLICY',
-          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
+          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain. Split them across sessions.`,
         )
       }
       seen.add(key)

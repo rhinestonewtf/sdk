@@ -1,44 +1,49 @@
-import { FAR_FUTURE_MS } from '../../permissions'
-import { refusal } from '../refusals'
 import type { Permission, SessionPolicy } from '../types'
+
+/** Year 2100 in ms: the always-passing validUntil of a one-sided window. */
+export const FAR_FUTURE_MS = 4_102_444_800_000
 
 export type TimeFrame = Extract<SessionPolicy, { type: 'time-frame' }>
 
-/** A permit's window (unix seconds) as a time-frame policy; an open end always passes. */
+/** Whether `ms` is a time TimeFramePolicy can hold: whole seconds in uint48. */
+export function isWindowTime(ms: unknown): ms is number {
+  return typeof ms === 'number' && ms >= 0 && ms < 2 ** 48 * 1000
+}
+
+/** A window (unix ms) as a time-frame policy; an open end always passes. */
+export function timeFrame(validAfter?: number, validUntil?: number): TimeFrame {
+  return {
+    type: 'time-frame',
+    validUntil: validUntil ?? FAR_FUTURE_MS,
+    validAfter: validAfter ?? 0,
+  }
+}
+
+/** A permit's window (unix seconds) as a time-frame policy, if it sets one. */
 export function permitTimeFrame(permit: {
   readonly validAfter?: bigint
   readonly validUntil?: bigint
 }): TimeFrame | undefined {
-  if (permit.validAfter === undefined && permit.validUntil === undefined) {
-    return undefined
-  }
-  return {
-    type: 'time-frame',
-    validUntil:
-      permit.validUntil === undefined
-        ? FAR_FUTURE_MS
-        : Number(permit.validUntil * 1000n),
-    validAfter:
-      permit.validAfter === undefined ? 0 : Number(permit.validAfter * 1000n),
-  }
-}
-
-/** A window of `Date`s as a time-frame policy; an open end always passes. */
-export function dateTimeFrame(validAfter?: Date, validUntil?: Date): TimeFrame {
-  return {
-    type: 'time-frame',
-    validUntil: validUntil?.getTime() ?? FAR_FUTURE_MS,
-    validAfter: validAfter?.getTime() ?? 0,
-  }
+  const ms = (s?: bigint) => (s === undefined ? s : Number(s * 1000n))
+  return permit.validAfter === undefined && permit.validUntil === undefined
+    ? undefined
+    : timeFrame(ms(permit.validAfter), ms(permit.validUntil))
 }
 
 /** The time both windows allow: the later start and the earlier end. */
 export function intersectTimeFrames(a: TimeFrame, b: TimeFrame): TimeFrame {
-  return {
-    type: 'time-frame',
-    validUntil: Math.min(a.validUntil, b.validUntil),
-    validAfter: Math.max(a.validAfter, b.validAfter),
-  }
+  return timeFrame(
+    Math.max(a.validAfter, b.validAfter),
+    Math.min(a.validUntil, b.validUntil),
+  )
+}
+
+/** The time either window allows, and any gap between them. */
+export function unionTimeFrames(a: TimeFrame, b: TimeFrame): TimeFrame {
+  return timeFrame(
+    Math.min(a.validAfter, b.validAfter),
+    Math.max(a.validUntil, b.validUntil),
+  )
 }
 
 /** Whether no second passes the policy's `validAfter <= t < validUntil`. */
@@ -46,31 +51,16 @@ export function isEmptyTimeFrame({
   validAfter,
   validUntil,
 }: Omit<TimeFrame, 'type'>): boolean {
-  return Math.floor(validAfter / 1000) >= Math.floor(validUntil / 1000)
+  return Math.ceil(validAfter / 1000) >= Math.floor(validUntil / 1000)
 }
 
-/**
- * The action with `window` among its policies. An action keeps one config per
- * policy contract, so a window it already has is narrowed to both.
- */
+/** The action with `window` added to its policies. */
 export function withTimeFrame<
   T extends { readonly policies?: SessionPolicy[] },
 >(action: T, window: TimeFrame | undefined): T {
-  if (window === undefined) return action
-  const policies = action.policies ?? []
-  const own = policies.find((policy) => policy.type === 'time-frame')
-  if (!own) return { ...action, policies: [...policies, window] }
-  const narrowed = intersectTimeFrames(own, window)
-  if (isEmptyTimeFrame(narrowed)) {
-    throw refusal(
-      'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-      "an action's time windows do not overlap",
-    )
-  }
-  return {
-    ...action,
-    policies: policies.map((policy) => (policy === own ? narrowed : policy)),
-  }
+  return window
+    ? { ...action, policies: [...(action.policies ?? []), window] }
+    : action
 }
 
 /** The permission with `window` on every function, as `validAfter`/`validUntil`. */

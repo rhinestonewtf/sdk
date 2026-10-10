@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Address, Chain } from 'viem'
 import { arbitrum, base, linea, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import {
@@ -25,6 +25,12 @@ import type {
   SessionAccess,
   SessionDefinition,
 } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
@@ -92,7 +98,9 @@ describe('refusal codes', () => {
   test('the published codes do not change', () => {
     expect(Object.keys(SESSION_REFUSAL_CODES)).toEqual([
       'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+      'VALID_AFTER_INVALID',
       'VALID_UNTIL_NOT_IN_FUTURE',
+      'TIME_FRAME_POLICY_UNAVAILABLE',
       'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       'SETTLEMENT_SCOPED_SALT_V1',
       'MIXED_PERMIT_KINDS',

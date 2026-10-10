@@ -1,8 +1,8 @@
 import { domainSeparator, type TypedData, zeroHash } from 'viem'
-import { FAR_FUTURE_MS } from '../permissions'
 import { encodeErc7739ContentType } from './erc7739'
 import type { ResolvedPolicyAddresses } from './policies/addresses'
 import { encodeSessionPolicy } from './policies/encode'
+import { FAR_FUTURE_MS } from './policies/time-frame'
 import type {
   ResolvedERC7739Policies,
   SessionSigning,
@@ -177,7 +177,12 @@ function resolveSigningPolicy(input: {
     )
   }
 
-  const validAfter = dateSeconds(input.validAfter ?? new Date(0), 'validAfter')
+  // Rounded up, so the window never opens early.
+  const validAfter = dateSeconds(
+    input.validAfter ?? new Date(0),
+    'validAfter',
+    Math.ceil,
+  )
   const validUntil = dateSeconds(
     input.validUntil ?? new Date(FAR_FUTURE_MS),
     'validUntil',
@@ -198,13 +203,13 @@ function resolveSigningPolicy(input: {
   )
 }
 
-function dateSeconds(date: Date, field: string): number {
+function dateSeconds(date: Date, field: string, round = Math.floor): number {
   const milliseconds = date.getTime()
   if (!Number.isFinite(milliseconds)) {
     throw new Error(`Session signing ${field} must be a valid Date`)
   }
-  const seconds = Math.floor(milliseconds / 1000)
-  if (seconds < 0 || seconds > UINT48_MAX) {
+  const seconds = round(milliseconds / 1000)
+  if (milliseconds < 0 || seconds > UINT48_MAX) {
     throw new Error(`Session signing ${field} is outside the uint48 range`)
   }
   return seconds

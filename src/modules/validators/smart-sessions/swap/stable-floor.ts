@@ -64,9 +64,7 @@ export function resolveStableFloor(
   }
   if (stablecoins === undefined) {
     throw new Error(
-      "swap.stableFloor needs the orchestrator's stablecoins for this chain to " +
-        'confirm both tokens are USD stablecoins — create the session with ' +
-        'sdk.createSession on a chain that serves them',
+      "swap.stableFloor needs the orchestrator's stablecoins for this chain; create the session with sdk.createSession",
     )
   }
   const stable = (token: Address, side: 'sell' | 'buy'): ServedStablecoin => {

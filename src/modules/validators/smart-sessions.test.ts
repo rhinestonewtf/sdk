@@ -11,7 +11,7 @@ import {
   zeroHash,
 } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
@@ -48,6 +48,14 @@ import type {
   SessionPolicy,
   SmartSessionMockShape,
 } from './smart-sessions/types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./smart-sessions/policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('./smart-sessions/policies/addresses')
+  >()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const getPolicyData = (policy: SessionPolicy, useDevContracts?: boolean) =>
   encodeSessionPolicy(policy, useDevContracts ? 'development' : 'production')
