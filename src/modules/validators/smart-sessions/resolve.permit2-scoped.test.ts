@@ -692,7 +692,7 @@ describe.each([
     expect(actionOn(built.actions, USDC, APPROVE)).toBeUndefined()
     // Intents keep the routes the fallback can settle.
     expect(built.settlementLayers).toEqual(['ACROSS'])
-    expect(built.hasExplicitPermissions).toBe(false)
+    expect(built.hasExplicitPermissions).toBe(true)
   })
 
   test('admits a permit without `from`, or naming only SAME_CHAIN', () => {

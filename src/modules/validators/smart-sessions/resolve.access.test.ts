@@ -157,7 +157,8 @@ describe('session access', () => {
     // and again when it took preClaimOps: 'none'. `acrossReusable` was refused
     // until Permit2SenderPolicy bounded it. The fallback rows moved when they
     // stopped carrying the Permit2 approve, which the wildcard admits;
-    // acrossIntentExecution is back to the pre-RHI-8045 `across`.
+    // They moved again when a fallback session started signing in
+    // verify-execution mode (hasExplicitPermissions); permissionId and data are unchanged.
     expect(
       Object.fromEntries(
         Object.keys(DEFINITIONS).map((name) => [
@@ -179,9 +180,9 @@ describe('session access', () => {
       acrossReusable:
         '0x8fab4865c997ab10f3ac94309e9f41b5039e1b33012a4d071dedf3028d6801b8',
       acrossIntentExecution:
-        '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
+        '0x1371fa4e7dfdd3399358a051e30844886f58dd7f27fd174e49555182ffc66b84',
       acrossSudo:
-        '0x2aa92407fa43a899863534d89934bfacdc45aa7c23237a9530c890737115bde4',
+        '0xa87ea8ce519e3d210d774336b0849c5044530b69480fcac5a215d5a25b7b31d3',
       cctp: '0x3e848b71c89c12576c20ad3bf3ab943be1e85c5e611f1ae93ea76494a3d9ef46',
       restrictToActions:
         '0x706042507973928c950a6c52a0a670153375d07be64e38ea5df7b8fe36783804',

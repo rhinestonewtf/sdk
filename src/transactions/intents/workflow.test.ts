@@ -682,6 +682,45 @@ describe('intent workflow', () => {
     expect(originSignature.notarizedClaimSig).toMatch(/^0x/u)
   })
 
+  test.each(['intentExecution', 'sudo'] as const)(
+    'keeps an already-enabled %s fallback session in verify-execution mode',
+    async (fallback) => {
+      const session = toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+        crossChainPermits: [
+          {
+            from: {
+              chain: mainnet,
+              token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+            },
+            to: {
+              chain: arbitrum,
+              token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+            },
+          },
+        ],
+        fallback,
+      })
+      const workflow = context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            {
+              kind: 'session-enabled' as const,
+              id: checkpoint.id,
+              enabled: true,
+            },
+          ]),
+        },
+      })
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      })
+      expect(prepared.request.options.signatureMode).toBe(5)
+    },
+  )
+
   describe('a session whose claim may not carry pre-claim calls', () => {
     const session = toSession({
       chain: mainnet,
