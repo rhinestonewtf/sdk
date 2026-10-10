@@ -16,7 +16,10 @@ export const PREVIOUS_TIME_FRAME_POLICY_ADDRESS: Address =
   '0x0000000000D30f611fA3bf652ac6879428586930'
 // Chains where TIME_FRAME_POLICY_ADDRESS has code, checked with eth_getCode.
 // The one list to extend as it is deployed.
-const TIME_FRAME_POLICY_CHAINS: readonly number[] = []
+const TIME_FRAME_POLICY_CHAINS: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155420,
+]
 
 /** Whether TIME_FRAME_POLICY_ADDRESS is deployed on a chain. */
 export function timeFramePolicyDeployed(chainId: number): boolean {
