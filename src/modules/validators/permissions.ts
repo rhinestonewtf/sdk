@@ -242,7 +242,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
     if (abiEntries.length > 1) {
       throw new Error(
-        `Function "${fnName}" is overloaded (${abiEntries.length} variants); pass an ABI with a single overload.`,
+        `Function "${fnName}" is overloaded (${abiEntries.length} variants). ` +
+          'Permission entries do not support overloaded functions. ' +
+          'Pre-filter the ABI to a single overload before passing it.',
       )
     }
 
@@ -251,7 +253,8 @@ function resolvePermission(permission: Permission): ScopedAction[] {
 
     if (Object.hasOwn(config, 'policies')) {
       throw new Error(
-        `Function "${fnName}": \`policies\` was removed from permission configs; use params, maxUses, validUntil/validAfter, valueLimit or spendingLimit.`,
+        `Function "${fnName}": \`policies\` was removed from permission configs. ` +
+          'Use params, maxUses, validUntil/validAfter, valueLimit, or spendingLimit instead.',
       )
     }
 
@@ -283,7 +286,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       // but it leaks intent — throw rather than encode dead weight.
       if (abiEntry.stateMutability !== 'payable') {
         throw new Error(
-          `Function "${fnName}" is not payable; remove \`valueLimit\`, which bounds only attached native value.`,
+          `Function "${fnName}" is not payable — \`valueLimit\` only constrains native ETH ` +
+            'attached to the call, which is always zero for non-payable functions. ' +
+            'Remove `valueLimit`.',
         )
       }
       policies.push({ type: 'value-limit', limit: config.valueLimit })
@@ -296,7 +301,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       if (!ERC20_SPENDING_LIMIT_SELECTORS.has(selector)) {
         throw new Error(
           `Function "${fnName}" (selector ${selector}) is not an ERC-20 transfer/approve ` +
-            'selector; `spendingLimit` works only on approve, increaseAllowance, transfer and transferFrom.',
+            'selector; `spendingLimit` only works on approve, increaseAllowance, ' +
+            'transfer, or transferFrom. The on-chain policy dispatches by selector ' +
+            'and would fail every call for other functions.',
         )
       }
       policies.push({
@@ -327,7 +334,9 @@ function resolvePermission(permission: Permission): ScopedAction[] {
           const param = abiEntry.inputs[paramIndex]
           if (!isStaticAbiType(param.type)) {
             throw new Error(
-              `Parameter "${paramName}" has dynamic type "${param.type}"; rules support only static types.`,
+              `Parameter "${paramName}" has dynamic type "${param.type}". ` +
+                'Permission rules only support static types ' +
+                '(address, bool, uint*, int*, bytes1–bytes32).',
             )
           }
 
@@ -530,7 +539,9 @@ function resolvePermissions(
         const fnName = findFunctionName(permission, action.selector)
         throw new Error(
           `Duplicate permission for function "${fnName}" (selector ${action.selector}) ` +
-            `on ${action.target}: entries for one function on one contract share an on-chain action; merge them into a single entry.`,
+            `on ${action.target}: permission entries for the same function on the same ` +
+            "contract share one on-chain action, so the later entry's policies would " +
+            'silently overwrite the earlier ones. Merge them into a single entry.',
         )
       }
       seen.add(key)

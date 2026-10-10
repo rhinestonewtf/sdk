@@ -82,6 +82,7 @@ import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
   IntentExecutorSettlementLayer,
+  Permission,
   ResolvedAction,
   ResolvedERC7739Policies,
   ResolvedPolicy,
@@ -115,16 +116,20 @@ function isFutureDate(value: unknown): value is Date {
 }
 
 /**
- * The permission and raw action windows. A dry run records each refused one,
- * then stops: the permission resolver would report it again.
+ * The permissions and raw actions with each window checked, and the windows
+ * that hold. A dry run records a refused window and drops it, so it is
+ * reported once and the run goes on.
  */
 function sessionWindows(
   definition: SessionDefinition,
   refuse: Refuse,
-): TimeFrame[] {
+): {
+  readonly permissions: Permission[]
+  readonly actions: ScopedAction[]
+  readonly windows: TimeFrame[]
+} {
   const windows: TimeFrame[] = []
-  let refused = false
-  const check = (field: string, validUntil: unknown, validAfter: unknown) => {
+  const holds = (field: string, validUntil: unknown, validAfter: unknown) => {
     const window = timeFrame(
       validAfter as number,
       (validUntil as Date | undefined)?.getTime?.(),
@@ -138,41 +143,53 @@ function sessionWindows(
           : isEmptyTimeFrame(window)
             ? 'VALID_AFTER_EXCEEDS_VALID_UNTIL'
             : undefined
-    if (code) {
-      refused = true
-      refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
-    } else windows.push(window)
+    if (code) refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
+    else windows.push(window)
+    return !code
   }
-  for (const { address, functions } of definition.permissions ?? []) {
-    for (const [name, config] of Object.entries(functions)) {
-      if (
-        config &&
-        (config.validUntil !== undefined || config.validAfter !== undefined)
-      ) {
-        const { validAfter } = config
-        check(
-          `permissions[${address}].${name}`,
-          config.validUntil,
-          validAfter instanceof Date ? validAfter.getTime() : validAfter,
-        )
-      }
-    }
-  }
-  for (const { target, selector, policies } of definition.actions ?? []) {
-    for (const policy of policies ?? []) {
-      if (policy.type === 'time-frame') {
-        check(
-          `actions[${target}:${selector}]`,
-          typeof policy.validUntil === 'number'
-            ? new Date(policy.validUntil)
-            : policy.validUntil,
-          policy.validAfter,
-        )
-      }
-    }
-  }
-  if (refused) throw new RefusalCollectionHalted()
-  return windows
+  const permissions = (definition.permissions ?? []).map((permission) => ({
+    ...permission,
+    functions: Object.fromEntries(
+      Object.entries(permission.functions).map(([name, config]) => {
+        if (
+          !config ||
+          (config.validUntil === undefined && config.validAfter === undefined)
+        ) {
+          return [name, config]
+        }
+        const { validUntil, validAfter, ...rest } = config
+        return [
+          name,
+          holds(
+            `permissions[${permission.address}].${name}`,
+            validUntil,
+            validAfter instanceof Date ? validAfter.getTime() : validAfter,
+          )
+            ? config
+            : rest,
+        ]
+      }),
+    ),
+  }))
+  const actions = (definition.actions ?? []).map((action) =>
+    action.policies?.some((policy) => policy.type === 'time-frame')
+      ? {
+          ...action,
+          policies: action.policies.filter(
+            (policy) =>
+              policy.type !== 'time-frame' ||
+              holds(
+                `actions[${action.target}:${action.selector}]`,
+                typeof policy.validUntil === 'number'
+                  ? new Date(policy.validUntil)
+                  : policy.validUntil,
+                policy.validAfter,
+              ),
+          ),
+        }
+      : action,
+  )
+  return { permissions, actions, windows }
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -294,7 +311,7 @@ function resolveSession(
       )
     : undefined
   const refuse = refuser(collect)
-  const actionWindows = sessionWindows(definition, refuse)
+  const windowed = sessionWindows(definition, refuse)
   const stableFloor = definition.swap?.stableFloor !== undefined
   if (stableFloor && definition.swap) {
     assertStableFloorIsolated({
@@ -474,7 +491,7 @@ function resolveSession(
     )
   }
   const permissions = [
-    ...(definition.permissions ?? []),
+    ...windowed.permissions,
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []).map((permission) =>
       permissionWithTimeFrame(permission, settlementWindow),
@@ -488,14 +505,14 @@ function resolveSession(
         ? permit2RouteScope(
             permit2Tokens,
             permissions,
-            definition.actions ?? [],
+            windowed.actions,
             permit2Fees,
             wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
           )
         : permit2FallbackScope(
             permit2Tokens,
             permissions,
-            definition.actions ?? [],
+            windowed.actions,
             permit2Fees,
           ),
     )?.map((action) => withTimeFrame(action, permit2Window)) ?? []
@@ -504,7 +521,7 @@ function resolveSession(
   // addressed by the ABI-name `permissions` sugar — e.g. a fynd swap scoped by
   // its raw selector with no ABI (RHI-6286).
   const rawActions = [
-    ...(definition.actions ?? []),
+    ...windowed.actions,
     ...(swapScope?.actions ?? []),
     ...(settlementScope?.actions ?? []).map((action) =>
       withTimeFrame(action, settlementWindow),
@@ -719,7 +736,10 @@ function resolveSession(
     !rawActions.length &&
     !permit2Permits.length
   ) {
-    throw new Error('restrictToActions needs at least one permission or action')
+    throw new Error(
+      'restrictToActions drops the fallback, so the session must supply at ' +
+        'least one permission or action — none were given',
+    )
   }
   // Raw actions bypass resolvePermissions' duplicate guard, so a raw action that
   // collides with an ABI permission (or another raw action) on the same
@@ -850,7 +870,7 @@ function resolveSession(
       : undefined)
   // A signing surface would outlive the action windows, so it is bounded by the
   // time any of them allows. Claim policies replace it, keeping only `signing`.
-  const actionWindow = actionWindows.reduce<TimeFrame | undefined>(
+  const actionWindow = windowed.windows.reduce<TimeFrame | undefined>(
     (a, b) => (a ? unionTimeFrames(a, b) : b),
     undefined,
   )
@@ -954,7 +974,7 @@ function resolveSession(
     if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw refusal(
         'CLAIM_POLICIES_SIGNING_MODE',
-        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured; omit \`signing\`, or bound them with \`{ mode: 'unrestricted', validAfter, validUntil }\``,
+        `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
       )
     }
     const hasWindow =
@@ -972,7 +992,7 @@ function resolveSession(
     ) {
       throw refusal(
         'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
-        'signing.validUntil must be a valid Date in the future when the session carries claim policies',
+        'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
       )
     }
     // Permit2 refuses an expired permit and the claim caps its deadline, but a
@@ -1029,7 +1049,7 @@ function resolveSession(
       if (seen.has(key)) {
         throw refusal(
           'DUPLICATE_ERC1271_POLICY',
-          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain. Split them across sessions.`,
+          `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
         )
       }
       seen.add(key)

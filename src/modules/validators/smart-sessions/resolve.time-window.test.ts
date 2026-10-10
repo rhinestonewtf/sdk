@@ -944,6 +944,33 @@ describe('a window is refused at resolve when', () => {
     ).toThrow('a validAfter that is not a Date within uint48 seconds')
   })
 
+  test.each(['permissions', 'actions'] as const)(
+    '%s: a dry run reports it and goes on to the next refusal',
+    (name) => {
+      const definition = {
+        ...session(SOURCES[name].define, {
+          validAfter: UNTIL,
+          validUntil: AFTER,
+        }),
+        crossChainPermits: [
+          {
+            from: { chain: base, token: WETH, maxAmount: 1n },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ACROSS'],
+          },
+        ],
+      } as SessionDefinition
+      expect(
+        validateSessionDefinition(definition)
+          .refusals.map(({ code }) => code)
+          .sort(),
+      ).toEqual([
+        'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+      ])
+    },
+  )
+
   test.each(Object.entries(SOURCES))(
     '%s: a dry run reports it once, with its code',
     (_, { define }) => {
