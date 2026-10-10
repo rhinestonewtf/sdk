@@ -2,6 +2,7 @@ import {
   type Address,
   encodeFunctionData,
   erc20Abi,
+  isAddressEqual,
   maxUint64,
   pad,
   toFunctionSelector,
@@ -32,6 +33,7 @@ import {
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
 import {
   type ResolveSessionOptions,
   resolveSessionData as resolveBare,
@@ -831,10 +833,12 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
-    test('requires oneTimeUse, through its validUntil and maxAmount', () => {
+    test('requires oneTimeUse, through its maxAmount', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
-      ).toThrow('a session time window requires oneTimeUse')
+      ).toThrow(
+        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
+      )
     })
 
     test.each([
@@ -997,15 +1001,48 @@ describe('settlement-scoped crossChainPermits', () => {
           },
         )
 
+      // The publish call's argument rules, without its window or once-policy.
+      const publishRules = (definition: SessionDefinition) =>
+        resolveSessionData(definition)
+          .actions.find(
+            (action) =>
+              action.actionTargetSelector === PUBLISH_AND_FUND_SELECTOR,
+          )
+          ?.actionPolicies.filter(
+            ({ policy }) =>
+              !isAddressEqual(policy, TIME_FRAME_POLICY_ADDRESS) &&
+              !isAddressEqual(policy, ONE_TIME_USE),
+          )
+
       test('oneTimeUse.validUntil alone pins both deadlines as a permit validUntil does', () => {
-        expect(resolveSessionData(session(undefined, LATER))).toEqual(
-          resolveSessionData(session(LATER, undefined)),
+        expect(publishRules(session(undefined, LATER))).toEqual(
+          publishRules(session(LATER, undefined)),
+        )
+        expect(publishRules(session(undefined, LATER))).not.toEqual(
+          publishRules(session(undefined, undefined)),
         )
       })
 
-      test('a later permit validUntil pins the earlier session deadline', () => {
-        expect(resolveSessionData(session(LATER, EARLIER))).toEqual(
-          resolveSessionData(session(EARLIER, undefined)),
+      test('the earlier of the permit validUntil and oneTimeUse.validUntil pins them', () => {
+        expect(publishRules(session(LATER, EARLIER))).toEqual(
+          publishRules(session(EARLIER, undefined)),
+        )
+        expect(publishRules(session(EARLIER, LATER))).toEqual(
+          publishRules(session(EARLIER, undefined)),
+        )
+      })
+
+      test('a permission window does not pin them', () => {
+        const withPermission = session(undefined, undefined)
+        withPermission.permissions = [
+          {
+            abi: erc20Abi,
+            address: OTHER,
+            functions: { transfer: { validUntil: EARLIER } },
+          },
+        ]
+        expect(publishRules(withPermission)).toEqual(
+          publishRules(session(undefined, undefined)),
         )
       })
 
@@ -1506,10 +1543,8 @@ describe('resolveSettlementScope', () => {
       'validUntil without oneTimeUse',
       { validUntil: new Date(2_000_000_000_000) },
     ],
-  ])('refuses %s, a window that needs oneTimeUse', (_, window) => {
-    expect(() => scope(window)).toThrow(
-      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
-    )
+  ])('accepts %s', (_, window) => {
+    expect(() => scope(window)).not.toThrow()
   })
 
   test('refuses a permit with no `from` legs', () => {

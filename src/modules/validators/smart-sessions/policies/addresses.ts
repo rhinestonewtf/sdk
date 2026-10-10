@@ -5,8 +5,9 @@ import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x000000000033212E272655D8a22402Db819477A6'
+// Enforces its window on executions too. Same address on every chain.
 export const TIME_FRAME_POLICY_ADDRESS: Address =
-  '0x0000000000D30f611fA3bf652ac6879428586930'
+  '0xEAAb79CA50a37514E3Bd2538Aa80ee8cB0eCe9d3'
 export const SUDO_POLICY_ADDRESS: Address =
   '0x0000000000FEEc8D74e3143fBaBbca515358d869'
 export const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =

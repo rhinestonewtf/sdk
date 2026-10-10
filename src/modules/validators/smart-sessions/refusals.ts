@@ -10,8 +10,6 @@ import type {
  */
 export const SESSION_REFUSAL_CODES = {
   VALID_AFTER_EXCEEDS_VALID_UNTIL: 'validAfter is later than validUntil',
-  SESSION_WINDOW_REQUIRES_ONE_TIME_USE:
-    'a validAfter, or a validUntil without oneTimeUse',
   VALID_UNTIL_NOT_IN_FUTURE: 'a validUntil that is not a future Date',
   PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
     'maxAmount on a Permit2-layer permit without oneTimeUse',

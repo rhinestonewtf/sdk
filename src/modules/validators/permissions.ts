@@ -198,11 +198,11 @@ type RawParamConstraint = {
 }
 
 type RawFunctionConfig = {
-  validUntil?: unknown
-  validAfter?: unknown
   valueLimitPerUse?: bigint
   params?: Record<string, RawParamConstraint | undefined>
   maxUses?: bigint
+  validUntil?: Date
+  validAfter?: Date
   valueLimit?: bigint
   spendingLimit?: { token: `0x${string}`; amount: bigint }
 }
@@ -218,6 +218,11 @@ const ERC20_SPENDING_LIMIT_SELECTORS = new Set<Hex>([
   '0xa9059cbb', // transfer(address,uint256)
   '0x23b872dd', // transferFrom(address,address,uint256)
 ])
+
+// Year 2100 in ms — well within uint128 after the encoder's ms→s conversion.
+// Used as the one-sided default for `validUntil` when only `validAfter` is set.
+// Exported so permit and signing windows apply the same always-passing bound.
+export const FAR_FUTURE_MS = 4_102_444_800_000
 
 function resolvePermission(permission: Permission): ScopedAction[] {
   const { abi, address, functions } = permission
@@ -262,12 +267,19 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       policies.push({ type: 'usage-limit', limit: config.maxUses })
     }
 
-    // The session resolver folds a window into the one-time-use deadline and
-    // strips it; one that reaches here was never folded.
     if (config.validUntil !== undefined || config.validAfter !== undefined) {
-      throw new Error(
-        `Function "${fnName}": validUntil/validAfter belong to the session deadline; build the session with toSession`,
-      )
+      const validUntil =
+        config.validUntil !== undefined
+          ? config.validUntil.getTime()
+          : FAR_FUTURE_MS
+      const validAfter =
+        config.validAfter !== undefined ? config.validAfter.getTime() : 0
+      if (validUntil < validAfter) {
+        throw new Error(
+          `Function "${fnName}": validUntil (${validUntil}) is before validAfter (${validAfter}).`,
+        )
+      }
+      policies.push({ type: 'time-frame', validUntil, validAfter })
     }
 
     if (config.valueLimit !== undefined) {

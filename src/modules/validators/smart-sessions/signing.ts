@@ -1,4 +1,5 @@
 import { domainSeparator, type TypedData, zeroHash } from 'viem'
+import { FAR_FUTURE_MS } from '../permissions'
 import { encodeErc7739ContentType } from './erc7739'
 import type { ResolvedPolicyAddresses } from './policies/addresses'
 import { encodeSessionPolicy } from './policies/encode'
@@ -9,8 +10,6 @@ import type {
 } from './types'
 
 const UINT48_MAX = 2 ** 48 - 1
-// Year 2100: the always-passing upper bound when only `validAfter` is set.
-const FAR_FUTURE_MS = 4_102_444_800_000
 const DOMAIN_FIELDS = new Set([
   'name',
   'version',

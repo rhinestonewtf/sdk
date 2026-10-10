@@ -92,7 +92,6 @@ describe('refusal codes', () => {
   test('the published codes do not change', () => {
     expect(Object.keys(SESSION_REFUSAL_CODES)).toEqual([
       'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-      'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
       'VALID_UNTIL_NOT_IN_FUTURE',
       'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       'SETTLEMENT_SCOPED_SALT_V1',
@@ -268,8 +267,6 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
-      ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 0],
-      ['SESSION_WINDOW_REQUIRES_ONE_TIME_USE', 1],
       ['VALID_AFTER_EXCEEDS_VALID_UNTIL', 0],
       ['VALID_AFTER_EXCEEDS_VALID_UNTIL', 1],
       // Two Permit2 permits install the claim policy twice.

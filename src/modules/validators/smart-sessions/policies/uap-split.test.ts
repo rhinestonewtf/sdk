@@ -241,6 +241,7 @@ const withCopies = (
 })
 
 // The permit sessions opt out of the copies they now default to on these chains.
+// Their rows moved when the permit's validUntil became a time frame on each action.
 test('every session encodes and digests as pinned', async () => {
   const table: Record<string, unknown> = {}
   for (const [name, { definition, settlement }] of Object.entries(SESSIONS)) {
@@ -252,39 +253,39 @@ test('every session encodes and digests as pinned', async () => {
   expect(table).toMatchInlineSnapshot(`
     {
       "all": {
-        "digest": "0x8353aa4e92bcdd90db51d290144a2ed44558b4d4bc6d7021b1ba55800e36a52c",
-        "permissionId": "0x6fc58e71ed4bf5f3409b466d6c90fafefe5efb1cef816d98a3d66ae29171196e",
-        "policies": "0x9b17b4c1df34f443315f551d1d38e00d787ff02761350303b4dee50a7e2fd46d",
+        "digest": "0x40ce081c0833bf52da95878f51e598906f8156e1c69653ec3b1db1db101f984a",
+        "permissionId": "0xf755d70bdb248ecc46bd6b153441e406412ad7b04fc9db11c7cc6ba27b823a87",
+        "policies": "0xa3d014dbe7809ef1087503f73f390f171b62abb50daee64f5e6c9243d1216fec",
       },
       "all, fees": {
-        "digest": "0xc405c2d94aa302d4a4b3837d181b92d452344bb1b3a6cc8623b19b369ed4b5cd",
-        "permissionId": "0x26930db6b0b38c5b287f729b073727342ffb5a79fec256371da3c6031b7d47d5",
-        "policies": "0xbd50c5e1d9cf3a227a7a6e02af331141340d8fbe61fdeea3d48a5f25023af5fb",
+        "digest": "0xe704174fda7e394c5aaab413b8ff42e3d992214e30d031153fa650ff0b9ac8e8",
+        "permissionId": "0xf701f9ef9d3294a1bb7c91fccd62efaad1585412e694f22204b6748af0a18bd3",
+        "policies": "0x1f307bf68e6639c7aac787b0521030e4c597b9b151da16b2027c460fab8c29a8",
       },
       "cctp": {
-        "digest": "0x268bb41e6059231718a68ead89c2e296d91554b5e67940015949ecf01586a21e",
-        "permissionId": "0xb9be9af903902150898a7293b11d669f451cd20f2a88313defb2f281f30011aa",
-        "policies": "0x23025509f108c5edea3b6af214f939dd6c379055fcaa28fadec515e13a6c9802",
+        "digest": "0x40de9deff6afa61ec431283548d189569465e8e41c6a73034425fed971d118d7",
+        "permissionId": "0x1f3f9408456d63557b8f8c03c04090068bf424713271e4933e1959ef764d8da9",
+        "policies": "0xd5adbc9de802a511a7a1debe56c72532fe5308f6f9b9fb2f05e0f147e7760717",
       },
       "eco": {
-        "digest": "0x9f1cf4e6684f3f02c104e10b0131a10431929e73457626de61fd5a8203e2bf9d",
-        "permissionId": "0x64d5b09c11b93fe1aedc0cef9f04747cfb3e9c58dd2f8f4ac6877de5fc705f76",
-        "policies": "0xdd8522a6c711ad210a9467c005c90fd5704c567282c2917e9f35126a7a861951",
+        "digest": "0x539feb87861df630a87043a2bb3bd3b9d9f5c1fca1717e737380b884cbf2b1c3",
+        "permissionId": "0xb6950e348f3257cda5c7be9495292e44d6bd373064ca3c7414ec523a8a109889",
+        "policies": "0x9eeb789b74c809dc4465937064a114f0244b21a5dbc2deefd73815906445aee5",
       },
       "lz": {
-        "digest": "0x9c449aaca124cee3d97ea05f989ae16d9f4ddb06d9b63061dc96df3e0c105ad6",
-        "permissionId": "0xdcb30f15b1ff348422079202ec27ade215d83ba54f44eaff63b7dab61c1e2df4",
-        "policies": "0x3829b0ef2fda8c6b2e8ad4eda31f6f459a3e1799d3a59e28c2dca914bc6a9a13",
+        "digest": "0xdde48bf10fe63e4cb67cf660eb8bff4cc9098fa962d2a6de00e4a76c369aa0fc",
+        "permissionId": "0x25eaa03c4ff0c07a7bac349ed965961bf65ffb4978563fb9eb3eca28640efbca",
+        "policies": "0xee4b597eb0a8dd7c8aa5a8abc66b4a6cddd8eac9a2d729bed19ab0c16cc7f020",
       },
       "lz, fees": {
-        "digest": "0xaf24552ebea6c804e83850c267dc763d2bbd175177991adad896fe7b2be25c46",
-        "permissionId": "0x9a329600de42b3a03f942225e46cc86279e5817cdf81ab9b63fd9e9896d714e9",
-        "policies": "0xd9ba9bb72c214267fc9930b3af10da9b15e554063f4b3b3b7b2ad96f218c1ef2",
+        "digest": "0x01ac1078010363139d276b12919053606e13dc599e03ed14fbbd3003aae091d3",
+        "permissionId": "0x57a9d6fa5c26bf45870152e10914f2d66fe7c5546dfca240905bfaf43a5553a5",
+        "policies": "0x757ff186f4370ec6865ab0f120e966a6e499af2cd88afce85d126eca15664166",
       },
       "oft": {
-        "digest": "0x1280c602a435f49276b8018ef09789b4662b3b7f997591b631c9d0295f8bfefc",
-        "permissionId": "0x4a13d6f8e2baea79e5c3a297c46fff03babd06227b4f2511a10ea4736d10bfc6",
-        "policies": "0xfe85155a99133b7d740d75aa48b4a791ec27d00aef9cdf90648f6b091acbec31",
+        "digest": "0x8f54db82aebfb96156cb6033eabac1413d5e7cc389bb95d6d2b9ebce156aaab1",
+        "permissionId": "0xc488fd9d461dd36d6a3280dd175bc99952acd5d7bae1adab25f964e76e6ea92b",
+        "policies": "0x773ba9023814148a4004c61c8739c1277e2eefbf7048ea3d0aa6828238a79cb8",
       },
       "raw actions": {
         "digest": "0x336beb6a24ded8a118e1a94307e9b6a8c41cc809b01a9556beb4570d954f7ab0",
@@ -292,9 +293,9 @@ test('every session encodes and digests as pinned', async () => {
         "policies": "0x85ba9cbc3aec5e67fc5d5d8a13bc8f6f7f1990de99158c93d3423aa63665d4e0",
       },
       "same chain": {
-        "digest": "0x64e481c988c10d6169510d9524f3571a27f6fa365732dcfbc660081bc99bcad7",
-        "permissionId": "0xe2c55653e3a81e99c67757776d94a597847837459641559b56577004fbf5e16a",
-        "policies": "0x2728392e08651e982cf96a5f0e8fc1d7e471aa364f277e9f4892f98961cb9218",
+        "digest": "0xdfd50ffbb53918bb5c0d3648fd1830c599223a34690bfdbeb9ac22d82aa31238",
+        "permissionId": "0x0bebf60639a8836161edef57b5b45fe383703289790c67f8001da392a9184dae",
+        "policies": "0x96bfb44b3476c5414ee64af7a6e56670ad7c1f3c4ba37e4703c5102577256940",
       },
     }
   `)
@@ -827,6 +828,7 @@ test('an LZ session installs its execute policy across the copies', () => {
   }).actions.find((a) => a.actionTargetSelector === LZ_EXECUTE_SELECTOR)!
   expect(execute.actionPolicies.map((p) => p.policy)).toEqual([
     ...UNIVERSAL.slice(0, 3),
+    TIME_FRAME_POLICY_ADDRESS,
     ONE_TIME_USE,
   ])
 })
