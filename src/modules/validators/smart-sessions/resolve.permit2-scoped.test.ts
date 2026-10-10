@@ -13,7 +13,7 @@ import {
   zeroAddress,
   zeroHash,
 } from 'viem'
-import { arbitrum, base } from 'viem/chains'
+import { arbitrum, base, linea } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { satisfiesRules } from '../../../../test/utils/policy-rules'
@@ -24,6 +24,7 @@ import { getSessionData } from './digest'
 import { CONSUME_SELECTOR } from './one-time-use'
 import {
   INTENT_EXECUTION_POLICY_ADDRESS,
+  PERMIT2_SENDER_POLICY_ADDRESS,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
@@ -105,6 +106,13 @@ const session = (
   crossChainPermits: permits,
   ...extra,
 })
+
+/** A reusable permit on a chain with no Permit2SenderPolicy. */
+const onLinea = (extra: Partial<SessionDefinition> = {}) =>
+  session([oncePermit({ from: { chain: linea, token: USDC } })], {
+    chain: linea,
+    ...extra,
+  })
 
 const approve = (spender: Address, amount: bigint): Hex =>
   encodeFunctionData({
@@ -365,14 +373,14 @@ describe('a scoped Permit2-route session', () => {
 
   test.each<[string, SessionDefinition, ResolveSessionOptions, string]>([
     [
-      'a permit without oneTimeUse, preClaimOps or fallback',
-      session([oncePermit()]),
+      'a permit without a bound, on a chain without Permit2SenderPolicy',
+      onLinea(),
       OPTIONS,
       'PERMIT2_ROUTE_NEEDS_BOUND',
     ],
     [
       'restrictToActions without a bound either',
-      session([oncePermit()], {
+      onLinea({
         restrictToActions: true,
         actions: [{ target: OTHER, selector: '0x12345678' }],
       }),
@@ -561,6 +569,107 @@ describe('the fee actions a fallback permit scopes', () => {
         fees,
       ),
     ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
+  })
+})
+
+describe('a reusable scoped Permit2-route session', () => {
+  const erc1271 = (definition: SessionDefinition) =>
+    getSessionData(toSession(definition, OPTIONS)).erc7739Policies
+      .erc1271Policies
+  const SENDER = { policy: PERMIT2_SENDER_POLICY_ADDRESS, initData: '0x' }
+
+  test('carries Permit2SenderPolicy beside its claim policy, with empty init data', () => {
+    const definition = session([oncePermit()])
+    expect(codes(definition)).toEqual([])
+    const built = toSession(definition, OPTIONS)
+    expect(built.access).toEqual({
+      kind: 'scoped',
+      reason: 'Permit2-route permit (ACROSS)',
+    })
+    const policies = erc1271(definition)
+    expect(policies.map(({ policy }) => policy)).toEqual([
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+      PERMIT2_SENDER_POLICY_ADDRESS,
+    ])
+    expect(policies[1]).toEqual(SENDER)
+    // Its claim may carry pre-claim calls, checked as executions.
+    expect(built.claimPolicies[0].originOps).toBeUndefined()
+    expect(built.hasExplicitPermissions).toBe(true)
+    expect(built.salt).not.toBe(zeroHash)
+    expect(
+      built.actions.map(({ actionTarget, actionTargetSelector }) => [
+        actionTarget,
+        actionTargetSelector,
+      ]),
+    ).toEqual([
+      [USDC, APPROVE],
+      [DUMMY_PRECLAIMOP_TARGET, '0x69123456'],
+    ])
+  })
+
+  test('uses the same address under either environment', () => {
+    expect(
+      getSessionData(
+        toSession(session([oncePermit()]), {
+          ...OPTIONS,
+          environment: 'development',
+        }),
+      ).erc7739Policies.erc1271Policies[1],
+    ).toEqual(SENDER)
+  })
+
+  test('keeps its fee calls with allowFees', () => {
+    const definition = session([oncePermit({ allowFees: true })])
+    expect(codes(definition)).toEqual([])
+    const built = toSession(definition, OPTIONS)
+    expect(actionOn(built.actions, USDC, TRANSFER)).toBeDefined()
+    expect(
+      actionOn(built.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
+    ).toBeDefined()
+    expect(erc1271(definition)[1]).toEqual(SENDER)
+  })
+
+  test('keeps a signing window after it', () => {
+    const policies = erc1271(
+      session([oncePermit()], {
+        signing: {
+          mode: 'unrestricted',
+          validUntil: new Date(Date.now() + 3_600_000),
+        },
+      }),
+    )
+    expect(policies.slice(0, 2)).toEqual([
+      expect.objectContaining({ policy: PERMIT2_CLAIM_POLICY_ADDRESS }),
+      SENDER,
+    ])
+    expect(policies).toHaveLength(3)
+  })
+
+  test.each<[string, SessionDefinition]>([
+    ['oneTimeUse', session([oncePermit()], otu)],
+    ["preClaimOps: 'none'", session([permit()])],
+    [
+      "fallback: 'intentExecution'",
+      session([oncePermit()], { fallback: 'intentExecution' }),
+    ],
+    ["fallback: 'sudo'", session([oncePermit()], { fallback: 'sudo' })],
+  ])('is left off a session bounded by %s', (_, definition) => {
+    expect(codes(definition)).toEqual([])
+    expect(
+      erc1271(definition).map(({ policy }) => policy.toLowerCase()),
+    ).not.toContain(PERMIT2_SENDER_POLICY_ADDRESS.toLowerCase())
+  })
+
+  test('is refused on a chain without the policy, naming every bound', () => {
+    expect(validateSessionDefinition(onLinea(), OPTIONS).refusals).toEqual([
+      expect.objectContaining({
+        code: 'PERMIT2_ROUTE_NEEDS_BOUND',
+        message: `crossChainPermits: a Permit2-layer permit needs one of oneTimeUse, preClaimOps: 'none', Permit2SenderPolicy, fallback; chain ${linea.id} has no Permit2SenderPolicy`,
+      }),
+    ])
+    // The other bounds still apply there.
+    expect(codes(onLinea(otu))).toEqual([])
+    expect(codes(onLinea({ fallback: 'sudo' }))).toEqual([])
   })
 })
 

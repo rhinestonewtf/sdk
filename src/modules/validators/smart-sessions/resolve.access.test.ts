@@ -45,6 +45,11 @@ const DEFINITIONS = {
     owners,
     crossChainPermits: [{ ...permit(['ACROSS']), preClaimOps: 'none' }],
   },
+  acrossReusable: {
+    chain: base,
+    owners,
+    crossChainPermits: [permit(['ACROSS'])],
+  },
   acrossIntentExecution: {
     chain: base,
     owners,
@@ -109,6 +114,10 @@ describe('session access', () => {
     ],
     ['across', { kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' }],
     [
+      'acrossReusable',
+      { kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' },
+    ],
+    [
       'acrossIntentExecution',
       { kind: 'open', reason: 'fallback: intentExecution' },
     ],
@@ -145,8 +154,9 @@ describe('session access', () => {
   test('pins the encoded session of each shape', () => {
     // Captured from origin/main (ade12708), before sessions carried access.
     // `across` moved when Permit2-route sessions became scoped (RHI-8045)
-    // and again when it took preClaimOps: 'none'. The fallback rows moved when
-    // they stopped carrying the Permit2 approve, which the wildcard admits;
+    // and again when it took preClaimOps: 'none'. `acrossReusable` was refused
+    // until Permit2SenderPolicy bounded it. The fallback rows moved when they
+    // stopped carrying the Permit2 approve, which the wildcard admits;
     // acrossIntentExecution is back to the pre-RHI-8045 `across`.
     expect(
       Object.fromEntries(
@@ -166,6 +176,8 @@ describe('session access', () => {
         '0x54f7b11d9665425cf479f3cb77f49b80b28129026aeb7042a14926c1adbe9649',
       across:
         '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
+      acrossReusable:
+        '0x8fab4865c997ab10f3ac94309e9f41b5039e1b33012a4d071dedf3028d6801b8',
       acrossIntentExecution:
         '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
       acrossSudo:

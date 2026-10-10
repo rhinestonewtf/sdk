@@ -40,6 +40,25 @@ const ONE_TIME_USE_ID_POLICY_CHAINS: readonly number[] = [
   11155420,
 ]
 
+// Accepts a claim signature only when Permit2 presents it. The constructor
+// takes only Permit2, so both environments share one address.
+export const PERMIT2_SENDER_POLICY_ADDRESS: Address =
+  '0xb590a7409de9e9f2A42B56CB62C1f7bA5ea0f959'
+// Chains where the address has code, checked with eth_getCode.
+const PERMIT2_SENDER_POLICY_CHAINS: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
+]
+
+/** The deployed Permit2SenderPolicy on a chain, or undefined where there is none. */
+export function defaultPermit2SenderPolicy(
+  chainId: number,
+): Address | undefined {
+  return PERMIT2_SENDER_POLICY_CHAINS.includes(chainId)
+    ? PERMIT2_SENDER_POLICY_ADDRESS
+    : undefined
+}
+
 /** The deployed OneTimeUseIdPolicy on a chain, or undefined where there is none. */
 export function defaultOneTimeUseIdPolicy(
   chainId: number,
