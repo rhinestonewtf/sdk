@@ -88,7 +88,10 @@ export function permit2RouteScope(
  * The fee calls of a `fallback` session's Permit2-route permit: the capped
  * transfer to the fee collector and the paymaster callback. An exact
  * (token, approve) action would replace the wildcard for every approve of that
- * token, so approves, the paymaster's included, are left to the wildcard.
+ * token, so approves, the paymaster's included, are left to the wildcard. The
+ * transfer takes nothing from it: the intent-execution policy admits a token's
+ * `transfer` only when the token is itself a whitelisted target (an OFT that is
+ * its own adapter).
  */
 export function permit2FallbackScope(
   sourceTokens: ReadonlyMap<Address, bigint | undefined>,
