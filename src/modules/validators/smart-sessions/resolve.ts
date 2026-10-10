@@ -40,6 +40,7 @@ import { encodeActionPolicies } from './policies/encode'
 import {
   DEPOSIT_SELECTOR,
   isNativeToken,
+  permit2FallbackScope,
   permit2RouteScope,
   permit2SourceTokens,
 } from './policies/permit2-approval'
@@ -52,6 +53,7 @@ import {
   type refusalLog,
   refuser,
   type SessionValidation,
+  type SessionWarning,
 } from './refusals'
 import { servedFees } from './settlement/fees'
 import {
@@ -236,9 +238,41 @@ export function validateSessionDefinition(
     (collect) => resolveSession(definition, options, collect),
     log,
   )
-  if (result === undefined) return { refusals }
+  const warnings = sessionWarnings(definition)
+  const warned = warnings.length ? { warnings } : {}
+  if (result === undefined) return { refusals, ...warned }
   const { access, settlementCoverage } = result
-  return { refusals, access, ...(settlementCoverage && { settlementCoverage }) }
+  return {
+    refusals,
+    access,
+    ...(settlementCoverage && { settlementCoverage }),
+    ...warned,
+  }
+}
+
+/**
+ * Under `fallback`, the wildcard admits IntentExecutor-layer settlement
+ * without reading its recipient, and the claim policy that pins it checks
+ * only Permit2 (`ACROSS`) claims.
+ */
+function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
+  if (definition.fallback === undefined) return []
+  return (definition.crossChainPermits ?? []).flatMap((permit, permitIndex) =>
+    !isSettlementScopedPermit(permit) &&
+    (!permit.allowRecipientNotAccount ||
+      [permit.to ?? []]
+        .flat()
+        .some(({ recipient }) => recipient && recipient !== 'any'))
+      ? [
+          {
+            code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
+            message:
+              'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled by ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+            permitIndex,
+          },
+        ]
+      : [],
+  )
 }
 
 /**
@@ -434,9 +468,13 @@ function resolveSession(
     }
   }
   const permit2Tokens = permit2SourceTokens(permit2Permits, chainId)
-  const feesIndex = resolvedPermits.findIndex(
-    (permit) => !isSettlementScopedPermit(permit) && permit.allowFees,
-  )
+  // A sudo wildcard already admits every fee call, so allowFees adds nothing.
+  const feesIndex =
+    fallback === 'sudo'
+      ? -1
+      : resolvedPermits.findIndex(
+          (permit) => !isSettlementScopedPermit(permit) && permit.allowFees,
+        )
   const permit2Fees =
     permit2Tokens.size && feesIndex !== -1
       ? recover(
@@ -470,15 +508,24 @@ function resolveSession(
     ...(swapScope?.permissions ?? []),
     ...(settlementScope?.permissions ?? []),
   ]
+  // The wildcard admits a fallback session's approves; an exact approve action
+  // would take precedence over it and refuse every other spender.
   const permit2Actions =
     recover(refuse, () =>
-      permit2RouteScope(
-        permit2Tokens,
-        permissions,
-        definition.actions ?? [],
-        permit2Fees,
-        wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
-      ),
+      fallback === undefined
+        ? permit2RouteScope(
+            permit2Tokens,
+            permissions,
+            definition.actions ?? [],
+            permit2Fees,
+            wrapped && wrapCap ? { token: wrapped, cap: wrapCap } : undefined,
+          )
+        : permit2FallbackScope(
+            permit2Tokens,
+            permissions,
+            definition.actions ?? [],
+            permit2Fees,
+          ),
     ) ?? []
   const userActions = permissions.length ? resolvePermissions(permissions) : []
   // Raw scoped actions (target + selector + policies) for calls that can't be
@@ -609,7 +656,10 @@ function resolveSession(
   for (const permit of permit2Permits) {
     const at = { permitIndex: resolvedPermits.indexOf(permit), chainId }
     const fromHere = permit.from?.some((leg) => leg.chain.id === chainId)
-    if (!fromHere && (fallback === undefined || permit.allowFees)) {
+    if (
+      !fromHere &&
+      (fallback === undefined || (permit.allowFees && fallback !== 'sudo'))
+    ) {
       refuse(
         refusal(
           'PERMIT2_ROUTE_NEEDS_FROM',

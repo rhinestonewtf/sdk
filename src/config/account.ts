@@ -276,7 +276,12 @@ interface Permit2ClaimPolicy {
   destinationTokens?: { chain: Chain; address: Address }[]
   /** Permitted recipients per destination chain (use `'any'` to allow all) */
   recipients?: { chain: Chain; address: Address | 'any' }[]
-  /** Enforce that the destination recipient is the smart account */
+  /**
+   * Enforce that the destination recipient is the smart account. The claim
+   * policy checks Permit2 claims only, so beside the session's wildcard
+   * fallback this holds for intents settled through `ACROSS`, not for those
+   * settled through an IntentExecutor layer.
+   */
   recipientIsAccount?: boolean
   /** Bounds for the Permit2 signature deadline */
   permitDeadline?: { min?: bigint; max?: bigint }
@@ -402,6 +407,8 @@ interface CrossChainPermit {
    * Allowed destination legs: chain + token (+ optional recipient pin).
    * Omit for no destination-token restriction. Note `recipientIsAccount`
    * still constrains the destination recipient even when `to` is absent.
+   * With `fallback`, a recipient pin holds only for intents settled through
+   * `ACROSS` (see `allowRecipientNotAccount`).
    */
   to?: ToLeg[]
   /**
@@ -417,7 +424,8 @@ interface CrossChainPermit {
   /**
    * Enforce bridge-to-self (the destination recipient must be the smart
    * account). Defaults to `true` when resolved from
-   * {@link CrossChainPermissionInput}.
+   * {@link CrossChainPermissionInput}. With `fallback`, it holds only for
+   * intents settled through `ACROSS` (see `allowRecipientNotAccount`).
    */
   recipientIsAccount?: boolean
   /**
@@ -456,7 +464,11 @@ interface CrossChainPermit {
    * an app fee or a protocol fee taken from the `from` token does not settle,
    * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
    * layer it also needs a `from` token on the session's chain, even with
-   * `fallback`, and cannot be combined with `preClaimOps: 'none'`.
+   * `fallback: 'intentExecution'`, and cannot be combined with
+   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
+   * approve is left to the wildcard: only the transfer and the callback are
+   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
+   * fee call.
    *
    * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster
@@ -510,6 +522,11 @@ interface FromLeg {
 interface ToLeg {
   chain: Chain
   token: Address
+  /**
+   * The recipient this leg must deliver to, or `'any'`. With `fallback`, the
+   * pin holds only for intents settled through `ACROSS` (see
+   * `allowRecipientNotAccount`).
+   */
   recipient?: Address | 'any'
   /**
    * `SAME_CHAIN_IE` swaps, `ECO_IE`, `OFT` and `LZ`: the least amount of
@@ -568,7 +585,8 @@ interface CrossChainPermissionInput {
    *
    * On a Permit2 layer, each `from` token on the session's chain gets the
    * `approve(Permit2, amount)` its settlement needs, capped at the largest
-   * `maxAmount` of its legs (uncapped if any leg sets none). A Permit2-layer
+   * `maxAmount` of its legs (uncapped if any leg sets none); with `fallback`
+   * it gets none, and the wildcard admits its approves. A Permit2-layer
    * permit must name an ERC-20 `from` token on the session's chain unless the
    * session sets `fallback`. A wrapped native `from` leg with a `maxAmount`
    * also gets the wrapped native `deposit()`, its value capped at that amount,
@@ -581,7 +599,9 @@ interface CrossChainPermissionInput {
    * leg or an array for fan-out destinations. Omit for no
    * destination-token restriction; `recipientIsAccount` still constrains
    * the recipient. On a Permit2 layer without `fallback`, a native token is
-   * refused: name the wrapped native token.
+   * refused: name the wrapped native token. With `fallback`, a recipient pin
+   * holds only for intents settled through `ACROSS` (see
+   * `allowRecipientNotAccount`).
    */
   to?: ToLeg | ToLeg[]
   /**
@@ -602,10 +622,18 @@ interface CrossChainPermissionInput {
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   /**
    * Allow the destination recipient to differ from the smart account
-   * (the sponsor funding the cross-chain transfer). Defaults to
-   * `false`, which enforces bridge-to-self on-chain — the safer default
-   * since it prevents a compromised session key from routing funds to
-   * an attacker-controlled address. Set to `true` to opt out explicitly.
+   * (the sponsor funding the cross-chain transfer). Defaults to `false`,
+   * which enforces bridge-to-self on-chain, so the session key can only
+   * deliver to the account. Set to `true` to opt out explicitly.
+   *
+   * On a Permit2-layer permit the recipient (this default, or a `to` leg's
+   * `recipient`) is enforced by the Permit2 claim policy, which checks
+   * `ACROSS` claims. With `fallback` set, intents may also settle through
+   * IntentExecutor layers, whose calls the wildcard admits without reading
+   * their recipient: there the pin is not enforced. `validateSession` warns
+   * with `FALLBACK_RECIPIENT_PIN_ACROSS_ONLY`. For a recipient enforced on
+   * IntentExecutor layers, use a settlement-scoped permit (the recipient is
+   * pinned in the layer's calldata) without `fallback`.
    */
   allowRecipientNotAccount?: boolean
   /**
@@ -644,7 +672,11 @@ interface CrossChainPermissionInput {
    * an app fee or a protocol fee taken from the `from` token does not settle,
    * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
    * layer it also needs a `from` token on the session's chain, even with
-   * `fallback`, and cannot be combined with `preClaimOps: 'none'`.
+   * `fallback: 'intentExecution'`, and cannot be combined with
+   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
+   * approve is left to the wildcard: only the transfer and the callback are
+   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
+   * fee call.
    *
    * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
    *   mainnet), not one per session: the collector transfer and the paymaster
@@ -1158,6 +1190,10 @@ interface SessionDefinition<
    * destination call or leftover sweep on the destination chain needs the
    * destination session to declare those actions or set a fallback. Refused with `FALLBACK_NOT_APPLICABLE` on a session
    * without a Permit2-layer permit, and with `restrictToActions` or `swap`.
+   *
+   * A recipient pin (`allowRecipientNotAccount: false`, the default, or a `to`
+   * leg's `recipient`) then holds only for intents settled through `ACROSS`;
+   * see `allowRecipientNotAccount`.
    */
   fallback?: 'intentExecution' | 'sudo'
   /**

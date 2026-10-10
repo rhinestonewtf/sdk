@@ -155,7 +155,9 @@ describe('session access', () => {
     // Captured from origin/main (ade12708), before sessions carried access.
     // `across` moved when Permit2-route sessions became scoped (RHI-8045)
     // and again when it took preClaimOps: 'none'. `acrossReusable` was refused
-    // until Permit2SenderPolicy bounded it.
+    // until Permit2SenderPolicy bounded it. The fallback rows moved when they
+    // stopped carrying the Permit2 approve, which the wildcard admits;
+    // acrossIntentExecution is back to the pre-RHI-8045 `across`.
     expect(
       Object.fromEntries(
         Object.keys(DEFINITIONS).map((name) => [
@@ -177,9 +179,9 @@ describe('session access', () => {
       acrossReusable:
         '0x8fab4865c997ab10f3ac94309e9f41b5039e1b33012a4d071dedf3028d6801b8',
       acrossIntentExecution:
-        '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
+        '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
       acrossSudo:
-        '0x61631c1ee23420849c69a697d304b6606ada7a29506d65e513f9b3a949a0f6a3',
+        '0x2aa92407fa43a899863534d89934bfacdc45aa7c23237a9530c890737115bde4',
       cctp: '0x3e848b71c89c12576c20ad3bf3ab943be1e85c5e611f1ae93ea76494a3d9ef46',
       restrictToActions:
         '0x706042507973928c950a6c52a0a670153375d07be64e38ea5df7b8fe36783804',

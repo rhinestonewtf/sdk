@@ -31,6 +31,7 @@ import {
 } from './policies/addresses'
 import { encodeActionPolicies } from './policies/encode'
 import {
+  permit2FallbackScope,
   permit2RouteScope,
   permit2SourceTokens,
 } from './policies/permit2-approval'
@@ -453,9 +454,9 @@ describe('a scoped Permit2-route session', () => {
       'PERMIT2_ROUTE_NEEDS_FROM',
     ],
     [
-      'allowFees without `from`, even with a fallback',
+      'allowFees without `from`, even with an intentExecution fallback',
       session([oncePermit({ from: undefined, allowFees: true })], {
-        fallback: 'sudo',
+        fallback: 'intentExecution',
       }),
       OPTIONS,
       'PERMIT2_ROUTE_NEEDS_FROM',
@@ -525,6 +526,49 @@ describe('a scoped Permit2-route session', () => {
     expect(actionOn(built.actions, USDC, APPROVE)).toBeDefined()
     expect(actionOn(built.actions, OTHER, '0x12345678')).toBeDefined()
     expect(fallbackOf(definition)).toBeUndefined()
+  })
+})
+
+describe('the fee actions a fallback permit scopes', () => {
+  const fees = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER, cap: 5n }
+  const transfer = (to: Address, amount: bigint): Hex =>
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [to, amount],
+    })
+
+  test('is nothing without fees', () => {
+    expect(
+      permit2FallbackScope(new Map([[USDC, 5n]]), [], [], undefined),
+    ).toEqual([])
+  })
+
+  test('is the capped transfer and callback, with no approve', () => {
+    const actions = permit2FallbackScope(
+      new Map([[USDC, undefined]]),
+      [],
+      [],
+      fees,
+    )
+    expect(actions.map(({ target, selector }) => [target, selector])).toEqual([
+      [USDC, TRANSFER],
+      [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
+    ])
+    expect(satisfiesRules(actions[0], transfer(COLLECTOR, 5n))).toBe(true)
+    expect(satisfiesRules(actions[0], transfer(COLLECTOR, 6n))).toBe(false)
+    expect(satisfiesRules(actions[0], transfer(OTHER, 1n))).toBe(false)
+  })
+
+  test('refuses a declared approve on the token', () => {
+    expect(() =>
+      permit2FallbackScope(
+        new Map([[USDC, undefined]]),
+        [],
+        [{ target: USDC, selector: APPROVE }],
+        fees,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PERMIT2_APPROVE_CONFLICT' }))
   })
 })
 
@@ -636,7 +680,7 @@ describe.each([
   const definition = (extra: Partial<CrossChainPermissionInput> = {}) =>
     session([oncePermit(extra)], { fallback })
 
-  test('is open, with that fallback beside its scoped approve', () => {
+  test('is open, with that fallback and no approve action of its own', () => {
     const built = toSession(definition(), OPTIONS)
     expect(built.access).toEqual({
       kind: 'open',
@@ -645,7 +689,7 @@ describe.each([
     expect(
       fallbackOf(definition())?.actionPolicies.map((p) => p.policy),
     ).toEqual([policy])
-    expect(actionOn(built.actions, USDC, APPROVE)).toBeDefined()
+    expect(actionOn(built.actions, USDC, APPROVE)).toBeUndefined()
     // Intents keep the routes the fallback can settle.
     expect(built.settlementLayers).toEqual(['ACROSS'])
     expect(built.hasExplicitPermissions).toBe(false)
@@ -672,6 +716,101 @@ describe.each([
             ONE_TIME_USE,
           ],
     )
+  })
+
+  // An exact (token, approve) action takes precedence over the wildcard, so it
+  // would refuse every approve the wildcard admits (another layer's spender,
+  // the paymaster).
+  test.each<[string, Partial<CrossChainPermissionInput>, object]>([
+    ['without allowFees', {}, {}],
+    ['with allowFees', { allowFees: true }, {}],
+    ['with allowFees and oneTimeUse', { allowFees: true }, otu],
+  ])('holds no approve on its `from` token %s', (_, extra, more) => {
+    const built = toSession(
+      session([oncePermit(extra)], { fallback, ...more }),
+      OPTIONS,
+    )
+    expect(
+      built.actions.filter((a) => a.actionTargetSelector === APPROVE),
+    ).toEqual([])
+  })
+
+  test.skipIf(fallback === 'sudo')(
+    'keeps the fee transfer and paymaster callback with allowFees',
+    () => {
+      const fallbackBuilt = toSession(
+        session([oncePermit({ allowFees: true })], { fallback, ...otu }),
+        OPTIONS,
+      )
+      const scopedBuilt = toSession(
+        session([oncePermit({ allowFees: true })], otu),
+        OPTIONS,
+      )
+      // The same capped calls a scoped session gets.
+      for (const [target, selector] of [
+        [USDC, TRANSFER],
+        [PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR],
+      ] as const) {
+        const kept = actionOn(fallbackBuilt.actions, target, selector)
+        expect(kept).toBeDefined()
+        expect(kept).toEqual(actionOn(scopedBuilt.actions, target, selector))
+      }
+      const plain = toSession(session([oncePermit()], { fallback }), OPTIONS)
+      expect(actionOn(plain.actions, USDC, TRANSFER)).toBeUndefined()
+      expect(
+        actionOn(plain.actions, PAYMASTER, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR),
+      ).toBeUndefined()
+    },
+  )
+
+  test.skipIf(fallback !== 'sudo')(
+    'adds no rule for allowFees under sudo, which admits every fee call',
+    () => {
+      const built = (permitExtra: Partial<CrossChainPermissionInput>) =>
+        toSession(
+          session([oncePermit(permitExtra)], { fallback, ...otu }),
+          OPTIONS,
+        )
+      expect(built({ allowFees: true }).actions).toEqual(built({}).actions)
+      // Nothing to scope, so none of the fee checks apply.
+      for (const [permitExtra, options] of [
+        [{ allowFees: true, from: undefined }, OPTIONS],
+        [{ allowFees: true }, {}],
+        [{ allowFees: true, from: { chain: base, token: WETH } }, OPTIONS],
+      ] as const) {
+        expect(
+          codes(session([oncePermit(permitExtra)], { fallback }), options),
+        ).toEqual([])
+      }
+    },
+  )
+
+  test('leaves approve to the wildcard in the enabled session data', () => {
+    for (const permitExtra of [{}, { allowFees: true }]) {
+      const data = getSessionData(
+        toSession(session([oncePermit(permitExtra)], { fallback }), OPTIONS),
+      )
+      const governing = data.actions.filter(
+        (a) =>
+          a.actionTargetSelector === APPROVE ||
+          a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      )
+      expect(governing.map((a) => a.actionTarget)).toEqual([
+        SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+      ])
+      expect(governing[0].actionPolicies[0].policy).toBe(policy)
+    }
+  })
+
+  test('still refuses a declared approve on its `from` token', () => {
+    expect(
+      codes(
+        session([oncePermit()], {
+          fallback,
+          actions: [{ target: USDC, selector: APPROVE }],
+        }),
+      ),
+    ).toContain('PERMIT2_APPROVE_CONFLICT')
   })
 })
 
@@ -702,5 +841,54 @@ describe('fallback outside a Permit2-route session', () => {
   ])('is refused on %s', (_, extra) => {
     const definition = session([oncePermit()], { fallback: 'sudo', ...extra })
     expect(codes(definition)).toContain('FALLBACK_NOT_APPLICABLE')
+  })
+})
+
+describe('a recipient pin beside a fallback', () => {
+  const warningsOf = (definition: SessionDefinition) =>
+    validateSessionDefinition(definition, OPTIONS).warnings
+  const optOut = { allowRecipientNotAccount: true }
+  const to = (recipient?: Address | 'any') => ({
+    chain: arbitrum,
+    token: USDC_ARB,
+    ...(recipient === undefined ? {} : { recipient }),
+  })
+
+  describe.each(['intentExecution', 'sudo'] as const)('%s', (fallback) => {
+    test.each<[string, Partial<CrossChainPermissionInput>]>([
+      ['bridge-to-self by default', {}],
+      ['a pinned recipient', { ...optOut, to: to(OTHER) }],
+      ['the account pinned with the opt-out', { ...optOut, to: to(ACCOUNT) }],
+      ['one pinned leg of several', { ...optOut, to: [to('any'), to(OTHER)] }],
+    ])('warns on %s, refusing nothing', (_, extra) => {
+      const definition = session([oncePermit(extra)], { fallback })
+      expect(codes(definition)).toEqual([])
+      expect(warningsOf(definition)).toEqual([
+        {
+          code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
+          message:
+            'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled by ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+          permitIndex: 0,
+        },
+      ])
+      expect(() => toSession(definition, OPTIONS)).not.toThrow()
+    })
+
+    test.each<[string, Partial<CrossChainPermissionInput>]>([
+      ['no recipient with the opt-out', { ...optOut, to: to() }],
+      ["recipient 'any'", { ...optOut, to: to('any') }],
+    ])('does not warn on %s', (_, extra) => {
+      expect(
+        warningsOf(session([oncePermit(extra)], { fallback })),
+      ).toBeUndefined()
+    })
+  })
+
+  test('does not warn on a scoped session', () => {
+    for (const extra of [{}, { ...optOut, to: to(OTHER) }]) {
+      const definition = session([permit(extra)])
+      expect(codes(definition)).toEqual([])
+      expect(warningsOf(definition)).toBeUndefined()
+    }
   })
 })
