@@ -24,6 +24,7 @@ import {
 } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
+  defaultPermit2SenderPolicy,
   oneTimeUseIdPolicyMissing,
   resolvePolicyAddresses,
   UNIVERSAL_ACTION_POLICY_ADDRESS,
@@ -603,6 +604,7 @@ function resolveSession(
   })
   // The claims a dry run dropped feed the checks below, so it stops here.
   if (expansionRefused) throw new RefusalCollectionHalted()
+  const permit2Sender = defaultPermit2SenderPolicy(chainId)
   // After the claim checks, so a refused claim reports its own reason first.
   for (const permit of permit2Permits) {
     const at = { permitIndex: resolvedPermits.indexOf(permit), chainId }
@@ -617,11 +619,11 @@ function resolveSession(
       )
     }
     if (fallback !== undefined) continue
-    if (!boundsPreClaimCalls(definition, permit)) {
+    if (!boundsPreClaimCalls(definition, permit, permit2Sender)) {
       refuse(
         refusal(
           'PERMIT2_ROUTE_NEEDS_BOUND',
-          `crossChainPermits: a Permit2-layer permit needs one of ${[...PRE_CLAIM_BOUNDS, 'fallback'].join(', ')}`,
+          `crossChainPermits: a Permit2-layer permit needs one of ${[...PRE_CLAIM_BOUNDS, 'fallback'].join(', ')}; chain ${chainId} has no Permit2SenderPolicy`,
           at,
         ),
       )
@@ -922,6 +924,12 @@ function resolveSession(
     }
     erc1271Policies = [
       ...claimPolicies,
+      // Only where no other bound holds, so those sessions keep their ids.
+      ...(fallback === undefined &&
+      permit2Sender &&
+      permit2Permits.some((permit) => !boundsPreClaimCalls(definition, permit))
+        ? [{ policy: permit2Sender, initData: '0x' as Hex }]
+        : []),
       ...(hasWindow ? erc1271Policies : []),
       ...(onceErc1271Policy ? [onceErc1271Policy] : []),
     ]
@@ -1245,19 +1253,28 @@ function namedPermit2Layers(
 }
 
 /** The ways a Permit2-route session's ERC-1271 list bounds the calls a claim carries. */
-const PRE_CLAIM_BOUNDS = ['oneTimeUse', "preClaimOps: 'none'"]
+const PRE_CLAIM_BOUNDS = [
+  'oneTimeUse',
+  "preClaimOps: 'none'",
+  'Permit2SenderPolicy',
+]
 
 /**
  * Whether the session's ERC-1271 list bounds the pre-claim calls a claim
  * through this permit may carry, which a scoped session needs: the once-policy
- * admits only Permit2 as the requester, and `preClaimOps: 'none'` admits no
- * pre-claim call.
+ * and Permit2SenderPolicy admit only Permit2 as the requester, so pre-claim
+ * calls are checked as executions, and `preClaimOps: 'none'` admits none.
  */
 function boundsPreClaimCalls(
   definition: SessionDefinition,
   permit: CrossChainPermit,
+  permit2Sender?: Address,
 ): boolean {
-  return Boolean(definition.oneTimeUse) || permit.preClaimOps === 'none'
+  return (
+    Boolean(definition.oneTimeUse) ||
+    permit.preClaimOps === 'none' ||
+    permit2Sender !== undefined
+  )
 }
 
 /** Every Permit2 layer the permits settle through, once each. */
