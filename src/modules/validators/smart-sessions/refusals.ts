@@ -138,7 +138,7 @@ export type SessionRefusalCode = keyof typeof SESSION_REFUSAL_CODES
 /** Every stable code a session warning carries, with what it means. */
 export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
-    'a recipient pin on a `fallback` session, which holds only for intents settled through ACROSS',
+    'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
 } as const
 
 export type SessionWarningCode = keyof typeof SESSION_WARNING_CODES

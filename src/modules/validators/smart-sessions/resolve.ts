@@ -267,7 +267,7 @@ function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
           {
             code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
             message:
-              'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled through ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+              'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled by ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
             permitIndex,
           },
         ]
