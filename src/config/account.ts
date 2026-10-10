@@ -243,7 +243,7 @@ interface SpendingLimitsPolicy {
 /**
  * A raw action's time window, unix ms: the action runs only while
  * `validAfter <= block.timestamp <= validUntil`. `validUntil` must be in the
- * future and not before `validAfter`; use `0` for no lower bound.
+ * future and later than `validAfter`; use `0` for no lower bound.
  */
 interface TimeFramePolicy {
   type: 'time-frame'
@@ -607,7 +607,7 @@ interface CrossChainPermissionInput {
    * it becomes a time-frame policy on every action the permit adds: its
    * Permit2 approve, wrapped-native `deposit()`, fee calls and pre-claim
    * action (with `fallback`, also the wildcard), or each IntentExecutor
-   * layer's calls. On a Permit2 layer it also caps the Permit2 deadline the
+   * layer's calls and, without `oneTimeUse`, the pre-claim action. On a Permit2 layer it also caps the Permit2 deadline the
    * claim accepts. Needs no `oneTimeUse`.
    *
    * For `ECO_IE` the earlier of this and `oneTimeUse.validUntil` must be at
@@ -617,7 +617,7 @@ interface CrossChainPermissionInput {
    */
   validUntil?: Date
   /**
-   * Optional start of the permit's window; not after `validUntil`. On a
+   * Optional start of the permit's window; earlier than `validUntil`. On a
    * Permit2 layer it is also the earliest Permit2 deadline the claim accepts,
    * and the window joins the session's ERC-1271 policies so no claim is
    * signed before it opens (a `signing` window there is narrowed to both).
@@ -890,7 +890,7 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    * validUntil=year-2100).
    */
   validUntil?: Date
-  /** Lower bound on `block.timestamp`; not after `validUntil`. */
+  /** Lower bound on `block.timestamp`; earlier than `validUntil`. */
   validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
