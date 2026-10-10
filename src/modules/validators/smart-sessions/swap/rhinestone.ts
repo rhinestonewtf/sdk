@@ -323,7 +323,8 @@ export function scopeRhinestone(
   // anything the proxy is approved for.
   if (venue.routes !== undefined && venue.routes.length === 0) {
     throw new Error(
-      'rhinestoneSwap routes must list at least one aggregator; omit `routes` to leave the tail open.',
+      'rhinestoneSwap routes must list at least one aggregator — an empty ' +
+        'list would authorise nothing. Omit `routes` to leave the tail open.',
     )
   }
 

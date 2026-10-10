@@ -138,7 +138,10 @@ export function resolveSwapScope(
   // reach the checks below as `[undefined]`.
   const { token, tokens } = scope.sell
   if (token !== undefined && tokens !== undefined) {
-    throw new Error('swap.sell names both token and tokens; pass one.')
+    throw new Error(
+      'swap.sell names both token and tokens — they are mutually exclusive, so ' +
+        'which tokens the session may spend is ambiguous. Pass one.',
+    )
   }
   if (token === undefined && tokens === undefined) {
     throw new Error('swap.sell must name a token or a non-empty tokens list')
@@ -295,7 +298,9 @@ function dedupeActions(actions: ScopedAction[]): ScopedAction[] {
       JSON.stringify(action, replaceBigInt)
     ) {
       throw new Error(
-        `Conflicting swap actions for ${action.target} ${action.selector}: give both venues the same cap, or list one.`,
+        `Conflicting swap actions for ${action.target} ${action.selector}: ` +
+          'two venues authorise the same call with different policies. Give ' +
+          'them the same cap, or list only one.',
       )
     }
   }

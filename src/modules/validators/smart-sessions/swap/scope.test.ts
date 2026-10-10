@@ -1093,7 +1093,7 @@ describe('resolveSwapScope — several sell tokens', () => {
         token: USDC,
         tokens: [USDC, USDT0],
       } as unknown as { tokens: [Address, ...Address[]] }),
-    ).toThrow(/names both token and tokens/)
+    ).toThrow(/mutually exclusive/)
   })
 
   test('refuses a scope naming neither', () => {
