@@ -114,7 +114,9 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
   // sets fallback: 'intentExecution', which a reusable session without
   // preClaimOps: 'none' needs. They moved again when a fallback session
   // stopped carrying the Permit2 approve, which the wildcard admits; the two
-  // rows naming ACROSS are back to their pre-RHI-8045 values.
+  // rows naming ACROSS were back to their pre-RHI-8045 values. All moved again when a
+  // fallback session started signing in verify-execution mode; permissionId and
+  // data are unchanged.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(
@@ -125,15 +127,15 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
       ),
     ).toEqual({
       otherWithOptOut:
-        '0x5c14b1be114bc8fd2e6fc2e8f3bbda18295318cb6c9312f50d69d2b0b7ce439a',
+        '0xc7394952fedc270fa5d9e16b40841dc418177380010095fdd1cb40f527a63ed9',
       anyWithOptOut:
-        '0xaffd40a19c56633c09f299b24d8d6326e837f2857c8d3cb5a69fa19e5c65a38f',
+        '0x3e460eede50f3833ab2b27253c675c418b6237ec8fe3e34fb21e4a8fc9b0d96b',
       account:
-        '0xd211a58d5b9604cdd498386987d19089c518ca24c538bb2727e1062955c08185',
+        '0x62fa21a4d139eedc798021660399c9b40f2a41003ffc3f2d8f0973592c3d1d01',
       noRecipient:
-        '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
+        '0x1371fa4e7dfdd3399358a051e30844886f58dd7f27fd174e49555182ffc66b84',
       otherWithoutAccount:
-        '0x04779655315c89122ded6a9327f176053fb94a07a0e0f83f40d737e8eb66a6d2',
+        '0x127c4e3476963f94dbcafba0389e895e2234bfd711d7f30fc85e870a2be61fb8',
     })
   })
 })
