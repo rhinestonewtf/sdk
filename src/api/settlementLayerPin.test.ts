@@ -365,7 +365,7 @@ describe('source asset pin', () => {
         } as never,
       )
     expect(() => sameChain()).toThrow(
-      'A scoped Permit2 session settles cross-chain intents only',
+      'A scoped Permit2 session without a `swap` scope settles cross-chain intents only',
     )
     expect(() => sameChain('sudo')).not.toThrow()
   })
@@ -373,7 +373,7 @@ describe('source asset pin', () => {
   describe('with a swap scope', () => {
     const SELL = '0x2222222222222222222222222222222222222222' as const
     const BUY = '0x4444444444444444444444444444444444444444' as const
-    const swapSession = (sell: object, chain: Chain = base) => {
+    const swapSession = (sell: object | undefined, chain: Chain = base) => {
       const [from, to] =
         chain === base
           ? [
@@ -389,7 +389,7 @@ describe('source asset pin', () => {
           chain,
           owners: { type: 'ecdsa', accounts: [accountA] },
           account: ACCOUNT,
-          swap: { sell, buy: { token: BUY }, to: ACCOUNT },
+          ...(sell ? { swap: { sell, buy: { token: BUY }, to: ACCOUNT } } : {}),
           crossChainPermits: [
             { from, to, settlementLayers: ['ACROSS'], preClaimOps: 'none' },
           ],
@@ -428,7 +428,7 @@ describe('source asset pin', () => {
       ).toEqual({ chainTokenAmounts: { [base.id]: { [SELL]: 3n } } })
     })
 
-    test('an explicit sourceAssets can only narrow it', () => {
+    test('an explicit sourceAssets can only narrow the sell tokens', () => {
       expect(
         one({ tokens: [SELL, OTHER] }, { sourceAssets: [OTHER, USDC] }),
       ).toEqual({ chainTokens: { [base.id]: [OTHER] } })
@@ -438,20 +438,38 @@ describe('source asset pin', () => {
       )
     })
 
-    test("refuses when the intent's chain is signed by a session without one", () => {
-      expect(() =>
-        intent({
-          type: 'session',
-          sessions: {
-            [base.id]: { session: session(['ACROSS']) },
-            [arbitrum.id]: {
-              session: swapSession({ token: SELL }, arbitrum),
-            },
-          },
-        }),
-      ).toThrow(
-        'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session or a session with a `swap` scope',
+    test("only the intent's chain session needs the swap scope", () => {
+      const sessions = (arbitrumSell?: object) => ({
+        type: 'session',
+        sessions: {
+          [base.id]: { session: swapSession({ token: SELL }) },
+          [arbitrum.id]: { session: swapSession(arbitrumSell, arbitrum) },
+        },
+      })
+      expect(intent(sessions())).toEqual({
+        chainTokens: { [base.id]: [SELL] },
+      })
+      expect(intent(sessions({ token: OTHER }))).toEqual({
+        chainTokens: { [base.id]: [SELL] },
+      })
+    })
+
+    test('a swap scope without crossChainPermits leaves the source assets to the caller', () => {
+      const plain = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          account: ACCOUNT,
+          swap: { sell: { token: SELL }, buy: { token: BUY }, to: ACCOUNT },
+        } as never,
+        { settlement: SETTLEMENT_CATALOG },
       )
+      expect(intent({ type: 'session', session: plain })).toEqual({
+        chainIds: [base.id],
+      })
+      expect(
+        intent({ type: 'session', session: plain }, { sourceAssets: [USDC] }),
+      ).toEqual({ chainIds: [base.id], tokens: [USDC] })
     })
 
     test('a swap scope on another chain funds nothing here', () => {

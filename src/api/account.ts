@@ -1077,11 +1077,13 @@ function sourceAssetPin(
       // through its swap scope.
       if (!session.swap) {
         throw new Error(
-          'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session or a session with a `swap` scope, or set `fallback`',
+          'A scoped Permit2 session without a `swap` scope settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session, add a `swap` scope, or set `fallback`',
         )
       }
       const { sell } = session.swap
-      return (sell.tokens ?? [sell.token as Address]).map((token) => ({
+      // On-chain several sell tokens share one maxTotal counter, so a plan
+      // spending more than it across them reverts.
+      return (sell.tokens ?? (sell.token ? [sell.token] : [])).map((token) => ({
         chain: session.chain,
         token,
         maxAmount: sell.maxTotal,
