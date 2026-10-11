@@ -154,6 +154,10 @@ export interface SwapScopeInput {
   readonly via?: readonly SwapVenue[]
   /** Opt-in rate floor for a stable-to-stable swap. See `SwapScope.stableFloor`. */
   readonly stableFloor?: StableSwapFloor
+  /** Exclusive end of the swap window. See `SwapScope.validUntil`. */
+  readonly validUntil?: Date
+  /** Start of the swap window, rounded up to a whole second. */
+  readonly validAfter?: Date
 }
 
 /** `true` for the default 100 bps slippage, or an explicit tolerance. */
