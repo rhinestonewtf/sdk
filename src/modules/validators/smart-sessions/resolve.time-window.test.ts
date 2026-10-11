@@ -1256,3 +1256,118 @@ describe('an open signing surface is bounded by the action windows', () => {
     )
   })
 })
+
+describe('ACTION_WINDOW_SHARED_PERMISSION_ID', () => {
+  const approveWindow = {
+    permissions: [
+      {
+        abi: erc20Abi,
+        address: USDC,
+        functions: { approve: { validUntil: UNTIL } },
+      },
+    ],
+  }
+  const rawWindow = {
+    actions: [
+      {
+        target: TARGET,
+        selector: '0x12345678',
+        policies: [
+          { type: 'time-frame', validUntil: UNTIL.getTime(), validAfter: 0 },
+        ],
+      },
+    ],
+  }
+  const warnings = (extra: object) => {
+    const validation = validateSessionDefinition(
+      { chain: base, owners, ...extra } as never,
+      { settlement: SETTLEMENT_CATALOG },
+    )
+    expect(validation.refusals).toEqual([])
+    return validation.warnings?.map(({ code }) => code) ?? []
+  }
+  const messages = (extra: object) =>
+    validateSessionDefinition({ chain: base, owners, ...extra } as never, {
+      settlement: SETTLEMENT_CATALOG,
+    }).warnings?.map(({ message }) => message) ?? []
+
+  test.each([
+    ['a permissions window', approveWindow],
+    ['a raw time-frame action', rawWindow],
+  ])('warns on %s under the default salt', (_, windowed) => {
+    expect(warnings({ restrictToActions: true, ...windowed })).toEqual([
+      'ACTION_WINDOW_SHARED_PERMISSION_ID',
+    ])
+    expect(messages({ restrictToActions: true, ...windowed })[0]).toMatch(
+      /use saltMode 'strict' or a fresh session key$/,
+    )
+    expect(
+      warnings({ restrictToActions: true, saltMode: 'none', ...windowed }),
+    ).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
+  })
+
+  test.each([
+    ["saltMode 'strict'", { restrictToActions: true, saltMode: 'strict' }],
+    ["saltMode 'v1'", { restrictToActions: true, saltMode: 'v1' }],
+    ['oneTimeUse', { restrictToActions: true, ...otu() }],
+    [
+      'a Permit2-route permit, whose claim policy salts it',
+      {
+        crossChainPermits: [
+          {
+            from: { chain: base, token: WETH },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ACROSS'],
+            preClaimOps: 'none',
+          },
+        ],
+      },
+    ],
+  ])('not with %s', (_, extra) => {
+    expect(warnings({ ...extra, ...approveWindow })).toEqual([])
+    expect(warnings({ ...extra, ...rawWindow })).toEqual([])
+  })
+
+  test.each([
+    ['a permissions window', approveWindow],
+    ['a raw time-frame action', rawWindow],
+  ])(
+    'warns on %s in an unrestricted session, with only the fresh-key remedy',
+    (_, windowed) => {
+      expect(warnings(windowed)).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
+      expect(messages(windowed)[0]).toMatch(/; use a fresh session key$/)
+      expect(warnings({ saltMode: 'strict', ...windowed })).toEqual([
+        'ACTION_WINDOW_SHARED_PERMISSION_ID',
+      ])
+    },
+  )
+
+  test('warns when a swap scope alone restricts the session', () => {
+    const swapScoped = {
+      swap: { sell: { token: WETH }, buy: { token: USDC_ARB }, to: ACCOUNT },
+      ...approveWindow,
+    }
+    expect(warnings(swapScoped)).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
+    expect(messages(swapScoped)[0]).toMatch(/saltMode 'strict'/)
+  })
+
+  test('not with a windowed swap scope, which is salted', () => {
+    const swap = {
+      sell: { token: WETH },
+      buy: { token: USDC_ARB },
+      to: ACCOUNT,
+      validUntil: UNTIL,
+    }
+    expect(warnings({ swap })).toEqual([])
+    expect(warnings({ swap, ...approveWindow })).toEqual([])
+  })
+
+  test('not without a window', () => {
+    expect(
+      warnings({
+        restrictToActions: true,
+        actions: [{ target: TARGET, selector: '0x12345678' }],
+      }),
+    ).toEqual([])
+  })
+})
