@@ -1245,6 +1245,10 @@ describe('ACTION_WINDOW_SHARED_PERMISSION_ID', () => {
     expect(validation.refusals).toEqual([])
     return validation.warnings?.map(({ code }) => code) ?? []
   }
+  const messages = (extra: object) =>
+    validateSessionDefinition({ chain: base, owners, ...extra } as never, {
+      settlement: SETTLEMENT_CATALOG,
+    }).warnings?.map(({ message }) => message) ?? []
 
   test.each([
     ['a permissions window', approveWindow],
@@ -1253,6 +1257,9 @@ describe('ACTION_WINDOW_SHARED_PERMISSION_ID', () => {
     expect(warnings({ restrictToActions: true, ...windowed })).toEqual([
       'ACTION_WINDOW_SHARED_PERMISSION_ID',
     ])
+    expect(messages({ restrictToActions: true, ...windowed })[0]).toMatch(
+      /use saltMode 'strict' or a fresh session key$/,
+    )
     expect(
       warnings({ restrictToActions: true, saltMode: 'none', ...windowed }),
     ).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
@@ -1275,10 +1282,32 @@ describe('ACTION_WINDOW_SHARED_PERMISSION_ID', () => {
         ],
       },
     ],
-    ['an unrestricted session', {}],
   ])('not with %s', (_, extra) => {
     expect(warnings({ ...extra, ...approveWindow })).toEqual([])
     expect(warnings({ ...extra, ...rawWindow })).toEqual([])
+  })
+
+  test.each([
+    ['a permissions window', approveWindow],
+    ['a raw time-frame action', rawWindow],
+  ])(
+    'warns on %s in an unrestricted session, with only the fresh-key remedy',
+    (_, windowed) => {
+      expect(warnings(windowed)).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
+      expect(messages(windowed)[0]).toMatch(/; use a fresh session key$/)
+      expect(warnings({ saltMode: 'strict', ...windowed })).toEqual([
+        'ACTION_WINDOW_SHARED_PERMISSION_ID',
+      ])
+    },
+  )
+
+  test('warns when a swap scope alone restricts the session', () => {
+    const swapScoped = {
+      swap: { sell: { token: WETH }, buy: { token: USDC_ARB }, to: ACCOUNT },
+      ...approveWindow,
+    }
+    expect(warnings(swapScoped)).toEqual(['ACTION_WINDOW_SHARED_PERMISSION_ID'])
+    expect(messages(swapScoped)[0]).toMatch(/saltMode 'strict'/)
   })
 
   test('not without a window', () => {

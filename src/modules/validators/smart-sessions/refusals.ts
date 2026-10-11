@@ -141,7 +141,7 @@ export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
     'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
   ACTION_WINDOW_SHARED_PERMISSION_ID:
-    'an action window on a session whose permissionId any other session of the same owners shares',
+    'an action window on a session whose permissionId any other zero-salt session of the same owners shares',
 } as const
 
 export type SessionWarningCode = keyof typeof SESSION_WARNING_CODES

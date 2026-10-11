@@ -1258,10 +1258,10 @@ interface SessionDefinition<
    * A settlement-scoped session (a `crossChainPermits` entry naming an
    * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
    *
-   * A restricted session on `zeroHash` shares its permissionId with every
-   * other such session of the same owners. Enabling skips an id already
-   * enabled, so an action window on it may never be installed: use
-   * `'strict'` or a fresh session key (`validateSession` warns with
+   * An intent sends no enable data for a permissionId already enabled, so on
+   * `zeroHash` an action window, like the session's other policies, may not
+   * be installed when an intent enables the session. Use `'strict'` or a
+   * fresh session key (`validateSession` warns with
    * `ACTION_WINDOW_SHARED_PERMISSION_ID`).
    */
   saltMode?: 'none' | 'v1' | 'strict'
