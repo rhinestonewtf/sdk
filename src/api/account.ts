@@ -1059,7 +1059,8 @@ function signingSessions(
  * explicit `sourceAssets`: its claim moves only the permit's `from` tokens, so
  * an origin swap or a native wrap of anything else would not settle. A capped
  * token goes in `chainTokenAmounts`, which the orchestrator treats as a cap,
- * so it never plans a spend above `maxAmount`.
+ * so it never plans a spend above `maxAmount`. A same-chain intent is funded
+ * from the session's `swap` sell tokens instead, capped at `maxTotal`.
  */
 function sourceAssetPin(
   signers: SignerSet | undefined,
@@ -1067,17 +1068,26 @@ function sourceAssetPin(
   explicit: OrchestratorAccountAccessList | undefined,
   sameChain: boolean,
 ): OrchestratorAccountAccessList | undefined {
-  const legs = signingSessions(signers, chainIds).flatMap(
-    (session) => session.permit2Sources ?? [],
-  )
+  const legs = signingSessions(signers, chainIds)
+    .filter((session) => session.permit2Sources?.length)
+    .flatMap((session) => {
+      if (!sameChain) return session.permit2Sources ?? []
+      // The orchestrator settles a smart account's same-chain intent through
+      // the IntentExecutor, which a scoped Permit2 session signs for only
+      // through its swap scope.
+      if (!session.swap) {
+        throw new Error(
+          'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session or a session with a `swap` scope, or set `fallback`',
+        )
+      }
+      const { sell } = session.swap
+      return (sell.tokens ?? [sell.token as Address]).map((token) => ({
+        chain: session.chain,
+        token,
+        maxAmount: sell.maxTotal,
+      }))
+    })
   if (legs.length === 0) return explicit
-  // The orchestrator settles a smart account's same-chain intent through the
-  // IntentExecutor, which a scoped Permit2 session cannot sign for.
-  if (sameChain) {
-    throw new Error(
-      'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session, or set `fallback`',
-    )
-  }
   const leg = (chainId: number, token: string) =>
     legs.find(
       (l) =>
@@ -1132,7 +1142,9 @@ function sourceAssetPin(
   }
   if (Object.keys(pinned).length === 0) {
     throw new Error(
-      "No source asset is left for the intent: a scoped Permit2 session funds it only from its permit's `from` tokens on the intent's source chains",
+      sameChain
+        ? "No source asset is left for the intent: a scoped Permit2 session funds a same-chain intent only from its swap scope's sell tokens on the session's chain"
+        : "No source asset is left for the intent: a scoped Permit2 session funds it only from its permit's `from` tokens on the intent's source chains",
     )
   }
   return pinned

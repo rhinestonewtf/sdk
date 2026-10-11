@@ -1,3 +1,4 @@
+import type { Chain } from 'viem'
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
@@ -367,6 +368,119 @@ describe('source asset pin', () => {
       'A scoped Permit2 session settles cross-chain intents only',
     )
     expect(() => sameChain('sudo')).not.toThrow()
+  })
+
+  describe('with a swap scope', () => {
+    const SELL = '0x2222222222222222222222222222222222222222' as const
+    const BUY = '0x4444444444444444444444444444444444444444' as const
+    const swapSession = (sell: object, chain: Chain = base) => {
+      const [from, to] =
+        chain === base
+          ? [
+              { chain: base, token: USDC },
+              { chain: arbitrum, token: USDC_ARB },
+            ]
+          : [
+              { chain: arbitrum, token: USDC_ARB },
+              { chain: base, token: USDC },
+            ]
+      return toSession(
+        {
+          chain,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          account: ACCOUNT,
+          swap: { sell, buy: { token: BUY }, to: ACCOUNT },
+          crossChainPermits: [
+            { from, to, settlementLayers: ['ACROSS'], preClaimOps: 'none' },
+          ],
+        } as never,
+        { settlement: SETTLEMENT_CATALOG },
+      )
+    }
+    const intent = (signers: unknown, extra: object = {}) =>
+      (
+        adaptTransaction(
+          { account: {} } as never,
+          { chain: base, calls: [], signers, ...extra } as never,
+        ) as { accountAccessList?: unknown }
+      ).accountAccessList
+    const one = (sell: object, extra?: object) =>
+      intent({ type: 'session', session: swapSession(sell) }, extra)
+
+    test('funds a same-chain intent from its sell tokens', () => {
+      expect(one({ token: SELL })).toEqual({
+        chainTokens: { [base.id]: [SELL] },
+      })
+      expect(one({ tokens: [SELL, OTHER] })).toEqual({
+        chainTokens: { [base.id]: [SELL, OTHER] },
+      })
+    })
+
+    test('caps the sell tokens at maxTotal', () => {
+      expect(one({ tokens: [SELL, OTHER], maxTotal: 5n })).toEqual({
+        chainTokenAmounts: { [base.id]: { [SELL]: 5n, [OTHER]: 5n } },
+      })
+      expect(
+        one(
+          { token: SELL, maxTotal: 5n },
+          { sourceAssets: [{ chain: base, address: SELL, amount: 3n }] },
+        ),
+      ).toEqual({ chainTokenAmounts: { [base.id]: { [SELL]: 3n } } })
+    })
+
+    test('an explicit sourceAssets can only narrow it', () => {
+      expect(
+        one({ tokens: [SELL, OTHER] }, { sourceAssets: [OTHER, USDC] }),
+      ).toEqual({ chainTokens: { [base.id]: [OTHER] } })
+      // The permit's `from` token does not fund a same-chain intent.
+      expect(() => one({ token: SELL }, { sourceAssets: [USDC] })).toThrow(
+        "No source asset is left for the intent: a scoped Permit2 session funds a same-chain intent only from its swap scope's sell tokens",
+      )
+    })
+
+    test("refuses when the intent's chain is signed by a session without one", () => {
+      expect(() =>
+        intent({
+          type: 'session',
+          sessions: {
+            [base.id]: { session: session(['ACROSS']) },
+            [arbitrum.id]: {
+              session: swapSession({ token: SELL }, arbitrum),
+            },
+          },
+        }),
+      ).toThrow(
+        'A scoped Permit2 session settles cross-chain intents only; sign a same-chain intent with a SAME_CHAIN_IE session or a session with a `swap` scope',
+      )
+    })
+
+    test('a swap scope on another chain funds nothing here', () => {
+      expect(() =>
+        intent({
+          type: 'session',
+          session: swapSession({ token: SELL }, arbitrum),
+        }),
+      ).toThrow('No source asset is left for the intent')
+    })
+
+    test('a cross-chain intent is still funded from the permit', () => {
+      expect(
+        (
+          adaptTransaction(
+            { account: {} } as never,
+            {
+              targetChain: arbitrum,
+              sourceChains: [base],
+              calls: [],
+              signers: {
+                type: 'session',
+                session: swapSession({ token: SELL }),
+              },
+            } as never,
+          ) as { accountAccessList?: unknown }
+        ).accountAccessList,
+      ).toEqual({ chainTokens: { [base.id]: [USDC] } })
+    })
   })
 
   test('an explicit sourceAssets can only narrow it', () => {
