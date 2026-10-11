@@ -9,6 +9,10 @@ import {
   size,
   toFunctionSelector,
 } from 'viem'
+import {
+  isEmptyTimeFrame,
+  timeFrame,
+} from './smart-sessions/policies/time-frame'
 import type {
   ArgPolicyExpression,
   Permission,
@@ -198,11 +202,11 @@ type RawParamConstraint = {
 }
 
 type RawFunctionConfig = {
-  validUntil?: unknown
-  validAfter?: unknown
   valueLimitPerUse?: bigint
   params?: Record<string, RawParamConstraint | undefined>
   maxUses?: bigint
+  validUntil?: Date
+  validAfter?: Date
   valueLimit?: bigint
   spendingLimit?: { token: `0x${string}`; amount: bigint }
 }
@@ -262,12 +266,17 @@ function resolvePermission(permission: Permission): ScopedAction[] {
       policies.push({ type: 'usage-limit', limit: config.maxUses })
     }
 
-    // The session resolver folds a window into the one-time-use deadline and
-    // strips it; one that reaches here was never folded.
     if (config.validUntil !== undefined || config.validAfter !== undefined) {
-      throw new Error(
-        `Function "${fnName}": validUntil/validAfter belong to the session deadline; build the session with toSession`,
+      const window = timeFrame(
+        config.validAfter?.getTime(),
+        config.validUntil?.getTime(),
       )
+      if (isEmptyTimeFrame(window)) {
+        throw new Error(
+          `Function "${fnName}": validAfter must be earlier than validUntil`,
+        )
+      }
+      policies.push(window)
     }
 
     if (config.valueLimit !== undefined) {

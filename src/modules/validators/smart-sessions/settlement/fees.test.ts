@@ -11,12 +11,13 @@ import {
   toFunctionSelector,
 } from 'viem'
 import { arbitrum, base, mainnet, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { satisfiesRules } from '../../../../../test/utils/policy-rules'
 import { sessionFingerprint } from '../../../../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
 import { encodeSessionPolicy } from '../policies/encode'
 import { resolveSessionData, toSession } from '../resolve'
 import { swapperAddresses } from '../swap/rhinestone'
@@ -38,6 +39,12 @@ import {
 import { OFT_SEND_SELECTOR } from './oft'
 import { resolveSettlementScope } from './scope'
 import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
@@ -285,10 +292,7 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
     }
   })
 
-  test('the once-policy carries validUntil, with no time frame', () => {
-    for (const action of on()) {
-      expect(action.policies?.map((p) => p.type)).not.toContain('time-frame')
-    }
+  test('validUntil is a time frame on each fee call, not the once-policy deadline', () => {
     const data = resolveSessionData(
       definition(permit(layer, { allowFees: true })),
       { settlement: WITH_FEES },
@@ -302,7 +306,15 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
         [{ type: 'uint256' }, { type: 'uint256' }],
         once!.initData,
       )
-      expect(deadline).toBe(BigInt(VALID_UNTIL.getTime() / 1000))
+      expect(deadline).toBe(0n)
+      const isBurn =
+        action.actionTarget.toLowerCase() === ONE_TIME_USE.toLowerCase()
+      expect(
+        action.actionPolicies.some(
+          (p) =>
+            p.policy.toLowerCase() === TIME_FRAME_POLICY_ADDRESS.toLowerCase(),
+        ),
+      ).toBe(!isBurn)
     }
   })
 
@@ -816,6 +828,7 @@ describe('the fee cap by chain', () => {
     ])
   })
 
+  // Re-pinned when the permit's validUntil became a time frame on each action.
   test('sessions off Ethereum keep the fingerprints taken before the change', () => {
     expect(
       Object.fromEntries(
@@ -825,15 +838,15 @@ describe('the fee cap by chain', () => {
         ]),
       ),
     ).toEqual({
-      CCTP: '0xf52a8746263b839bbd3ac2275afa56ae0504a15e09ab6f4169a8788b947b1ae3',
+      CCTP: '0x48e13e0f528135f6546ec52b6aa70f536d6be3db28022d42d5b954021cc5c513',
       ECO_IE:
-        '0x73d704fb24ace41950d624beefc001fc9bc9bcbee80b801638acc292c121e438',
-      LZ: '0x7268b8d6485c266fee6eedc4987a5b588d5c255206b954bbb5fb704a53d4bb75',
-      OFT: '0x49e5202053dc24727cad3976ab0db8650edcac8e558c24801015d82afc77d8ea',
+        '0xa11551a18adaa35a41240262b35b80969198efb126f1ff9ea1aef4a11b2419b3',
+      LZ: '0x3009f97b908b1846653f3f3ce9bff1a50df378d27b8c833ae2569658eef7260e',
+      OFT: '0xb917df40756f3701371d903b824b18f32d209fb6d127e0942358bb01a1dd3edf',
       'SAME_CHAIN_IE swap':
-        '0x365b4366c4795086fe83b43de7e91a7b947f31ebc55c56ea973092935e35ad66',
+        '0xc78d24c6fe3f6623a1d0bc914d88340db386b5ecb2dcefd5c1b6c4787e24f987',
       'SAME_CHAIN_IE transfer':
-        '0xade8ace201214a669aedc5d05f46a3f9895d846a86472346e880a5c94a49165f',
+        '0x95dc44abfa3e1fd9dc97d48597c76f00ef5299caea5a8ea0d3e617588e016fe9',
     })
   })
 

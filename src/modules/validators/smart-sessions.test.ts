@@ -11,7 +11,7 @@ import {
   zeroHash,
 } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
@@ -48,6 +48,14 @@ import type {
   SessionPolicy,
   SmartSessionMockShape,
 } from './smart-sessions/types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./smart-sessions/policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('./smart-sessions/policies/addresses')
+  >()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const getPolicyData = (policy: SessionPolicy, useDevContracts?: boolean) =>
   encodeSessionPolicy(policy, useDevContracts ? 'development' : 'production')
@@ -738,8 +746,8 @@ describe('crossChainPermits expansion', () => {
     ).toBe(true)
   })
 
-  test('permit with validUntil requires oneTimeUse', () => {
-    expect(() =>
+  test('permit with validUntil puts a time frame on each of its actions, without oneTimeUse', () => {
+    const data = getSessionData(
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
@@ -751,9 +759,17 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(
-      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
     )
+    expect(data.actions.length).toBeGreaterThan(0)
+    for (const action of data.actions) {
+      expect(action.actionPolicies.map((p) => p.policy)).toContain(
+        TIME_FRAME_POLICY_ADDRESS,
+      )
+    }
+    // Permit2 refuses an expired permit, so the 1271 list needs no window.
+    expect(
+      data.erc7739Policies.erc1271Policies.map((p) => p.policy),
+    ).not.toContain(TIME_FRAME_POLICY_ADDRESS)
   })
 
   test('refuses user claimPolicies combined with crossChainPermits', () => {
@@ -838,8 +854,8 @@ describe('crossChainPermits expansion', () => {
     expect(bare.length).toBeLessThan(tokened.length)
   })
 
-  test('permit with validAfter is refused', () => {
-    expect(() =>
+  test('permit with validAfter also puts a time frame on the 1271 list', () => {
+    const data = getSessionData(
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
@@ -851,8 +867,9 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(
-      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
+    )
+    expect(data.erc7739Policies.erc1271Policies.map((p) => p.policy)).toContain(
+      TIME_FRAME_POLICY_ADDRESS,
     )
   })
 })

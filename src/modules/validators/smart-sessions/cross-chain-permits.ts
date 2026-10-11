@@ -1,5 +1,11 @@
 import type { Address } from 'viem'
-import { type Refuse, refusal, refuser } from './refusals'
+import { FAR_FUTURE_MS, isWindowTime } from './policies/time-frame'
+import {
+  type Refuse,
+  refusal,
+  refuser,
+  SESSION_REFUSAL_CODES,
+} from './refusals'
 import type { CrossChainPermissionInput, CrossChainPermit } from './types'
 
 /** The refusal for a recipient `allowRecipientNotAccount` has not opened, on either route. */
@@ -44,17 +50,33 @@ export function resolveCrossChainPermission(
     ...(leg.recipient === undefined ? {} : { recipient: leg.recipient }),
     ...(leg.minAmount === undefined ? {} : { minAmount: leg.minAmount }),
   }))
-  const validUntil = input.validUntil ? seconds(input.validUntil) : undefined
-  const validAfter = input.validAfter ? seconds(input.validAfter) : undefined
+  const until = input.validUntil
+  // resolve refuses a validUntil that is not a future Date.
+  const validUntil =
+    until instanceof Date && isWindowTime(until.getTime())
+      ? seconds(until)
+      : undefined
+  const after = input.validAfter
+  let validAfter: bigint | undefined
+  if (after instanceof Date && isWindowTime(after.getTime())) {
+    // Rounded up, so the window never opens early.
+    validAfter = BigInt(Math.ceil(after.getTime() / 1000))
+  } else if (after !== undefined) {
+    refuse(
+      refusal(
+        'VALID_AFTER_INVALID',
+        `crossChainPermits: ${SESSION_REFUSAL_CODES.VALID_AFTER_INVALID}`,
+      ),
+    )
+  }
   if (
-    validUntil !== undefined &&
     validAfter !== undefined &&
-    validAfter > validUntil
+    validAfter >= (validUntil ?? BigInt(FAR_FUTURE_MS / 1000))
   ) {
     refuse(
       refusal(
         'VALID_AFTER_EXCEEDS_VALID_UNTIL',
-        `crossChainPermits: validAfter (${validAfter}) is greater than validUntil (${validUntil})`,
+        `crossChainPermits: ${SESSION_REFUSAL_CODES.VALID_AFTER_EXCEEDS_VALID_UNTIL}`,
       ),
     )
   }
