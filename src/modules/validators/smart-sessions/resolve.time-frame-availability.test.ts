@@ -26,6 +26,7 @@ vi.mock('./policies/addresses', async (importOriginal) => ({
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 const OVERRIDE = '0x00000000000000000000000000000000000000d3' as Address
+const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const UNTIL = new Date(2_000_000_000_000)
 const owners = { type: 'ecdsa' as const, accounts: [accountA] }
 
@@ -43,6 +44,17 @@ const windowed = (extra: Partial<SessionDefinition> = {}): SessionDefinition =>
     ],
     ...extra,
   }) as SessionDefinition
+
+const swapWindow: SessionDefinition = {
+  chain: base,
+  owners,
+  swap: {
+    sell: { token: USDC },
+    buy: { token: USDC_ARB },
+    to: ACCOUNT,
+    validUntil: UNTIL,
+  },
+}
 
 const policiesOf = (definition: SessionDefinition) => {
   const data = getSessionData(toSession(definition))
@@ -85,21 +97,9 @@ describe('on a chain without the TimeFramePolicy', () => {
   })
 
   test("a swap scope's window is refused", () => {
-    const definition: SessionDefinition = {
-      chain: base,
-      owners,
-      swap: {
-        sell: { token: USDC },
-        buy: { token: USDC_ARB },
-        to: OVERRIDE,
-        validUntil: UNTIL,
-      },
-    }
     expect(
-      validateSessionDefinition(definition).refusals.map(({ code }) => code),
+      validateSessionDefinition(swapWindow).refusals.map(({ code }) => code),
     ).toEqual(['TIME_FRAME_POLICY_UNAVAILABLE'])
-    deployed.chains = [base.id]
-    expect(validateSessionDefinition(definition).refusals).toEqual([])
   })
 
   test('policyAddresses.timeFrame resolves it with that address', () => {
@@ -137,4 +137,9 @@ test('on a chain with it, an action window uses it', () => {
     policies.some((p) => isAddressEqual(p, TIME_FRAME_POLICY_ADDRESS)),
   ).toBe(true)
   expect(policies).not.toContain(PREVIOUS_TIME_FRAME_POLICY_ADDRESS)
+})
+
+test("on a chain with it, a swap scope's window builds", () => {
+  deployed.chains = [base.id]
+  expect(validateSessionDefinition(swapWindow).refusals).toEqual([])
 })

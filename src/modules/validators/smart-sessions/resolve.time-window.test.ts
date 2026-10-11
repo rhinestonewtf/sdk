@@ -397,8 +397,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   'swap scope validAfter and validUntil': {
     permissionId:
-      '0xb45b15b276c19135237bb960e9fc0b5226a65d673ffdb7a31717a713faf4e1b4',
-    data: '0xf9c76d310422324b82351f0d8336c294e23a3c3bf8666f97573ab05fd38893bd',
+      '0x65cef2b88267803c0dbaef6cb4c95825cb587f384cbfeb28bbd2f2941d891929',
+    data: '0xb21d8774553bf8b4692ff8499f4219ab30b7a94bd5e6e1a71c8613da66f80d3c',
   },
 }
 

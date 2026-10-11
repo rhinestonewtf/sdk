@@ -2,6 +2,6 @@
 '@rhinestone/sdk': minor
 ---
 
-A `swap` scope takes optional `validUntil` / `validAfter`, with the same meaning as a `crossChainPermits` window: `validAfter <= t < validUntil` in whole seconds, `validAfter` rounded up. The window is a time-frame policy on every action the scope adds (each sell token's `approve` and each venue's swap call), so the session stops swapping when it closes, independently of any permit window on the same session. Like an action window, it bounds an ERC-1271 signing surface outside claim policies.
+Add `validUntil` / `validAfter` to a session's `swap` scope, so the session swaps only inside that window: `validAfter <= t < validUntil` in whole seconds, with `validAfter` rounded up, as for a `crossChainPermits` window. The window covers each sell token's `approve` and each venue's swap call, and nothing else in the session; a permit window on the same session stays on the permit's actions.
 
-It is refused as a permit window is: `VALID_UNTIL_NOT_IN_FUTURE`, `VALID_AFTER_INVALID`, `VALID_AFTER_EXCEEDS_VALID_UNTIL`, and `TIME_FRAME_POLICY_UNAVAILABLE` on a chain without the TimeFramePolicy unless `policyAddresses.timeFrame` is set. A swap scope without a window builds the same session data as before.
+A windowed swap scope is salted as with `saltMode: 'strict'` (unless `saltMode` is `'v1'`), so it gets its own permissionId and is never folded into another enabled session. It is refused like a permit window: `VALID_UNTIL_NOT_IN_FUTURE`, `VALID_AFTER_INVALID`, `VALID_AFTER_EXCEEDS_VALID_UNTIL`, and `TIME_FRAME_POLICY_UNAVAILABLE` on a chain without the TimeFramePolicy unless `policyAddresses.timeFrame` is set. A swap scope without a window builds the same session as before.

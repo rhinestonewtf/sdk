@@ -130,7 +130,9 @@ function sessionWindows(
   readonly windows: TimeFrame[]
 } {
   const windows: TimeFrame[] = []
-  const holds = (field: string, validUntil: unknown, validAfter: unknown) => {
+  /** The window, once checked and recorded; undefined when refused. */
+  const holds = (field: string, validUntil: unknown, after: unknown) => {
+    const validAfter = after instanceof Date ? after.getTime() : after
     const window = timeFrame(
       validAfter as number,
       (validUntil as Date | undefined)?.getTime?.(),
@@ -144,9 +146,12 @@ function sessionWindows(
           : isEmptyTimeFrame(window)
             ? 'VALID_AFTER_EXCEEDS_VALID_UNTIL'
             : undefined
-    if (code) refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
-    else windows.push(window)
-    return !code
+    if (code) {
+      refuse(refusal(code, `${field}: ${SESSION_REFUSAL_CODES[code]}`))
+      return undefined
+    }
+    windows.push(window)
+    return window
   }
   const permissions = (definition.permissions ?? []).map((permission) => ({
     ...permission,
@@ -164,10 +169,10 @@ function sessionWindows(
           holds(
             `permissions[${permission.address}].${name}`,
             validUntil,
-            validAfter instanceof Date ? validAfter.getTime() : validAfter,
-          )
-            ? config
-            : rest,
+            validAfter,
+          ) === undefined
+            ? rest
+            : config,
         ]
       }),
     ),
@@ -185,23 +190,15 @@ function sessionWindows(
                   ? new Date(policy.validUntil)
                   : policy.validUntil,
                 policy.validAfter,
-              ),
+              ) !== undefined,
           ),
         }
       : action,
   )
   const swap = definition.swap
   const swapWindow =
-    swap &&
-    (swap.validUntil !== undefined || swap.validAfter !== undefined) &&
-    holds(
-      'swap',
-      swap.validUntil,
-      swap.validAfter instanceof Date
-        ? swap.validAfter.getTime()
-        : swap.validAfter,
-    )
-      ? windows.at(-1)
+    swap && (swap.validUntil !== undefined || swap.validAfter !== undefined)
+      ? holds('swap', swap.validUntil, swap.validAfter)
       : undefined
   return { permissions, actions, swapWindow, windows }
 }
@@ -1098,11 +1095,14 @@ function resolveSession(
     // A claim-policy session is never `restricted`, so without this it would
     // salt to zeroHash and collide with any plain session for the same signer,
     // leaving that session's signing policy beside the claim policy.
+    // A swap window too: an enable that finds the id taken would never install
+    // it. A 'v1' salt already hashes the windowed actions.
     salt: sessionSalt(
       definition.oneTimeUse ||
         stableFloor ||
         claimPoliciesMoved ||
-        settlementScope !== undefined
+        settlementScope !== undefined ||
+        (windowed.swapWindow !== undefined && definition.saltMode !== 'v1')
         ? 'strict'
         : definition.saltMode,
       restricted || Boolean(definition.oneTimeUse) || claimPoliciesMoved,

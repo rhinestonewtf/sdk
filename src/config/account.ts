@@ -1132,10 +1132,12 @@ interface SwapScope<TChainId extends number = number> {
   stableFloor?: StableSwapFloor
   /**
    * Optional end (exclusive) of the swap window, a future `Date`. Either end
-   * alone sets the window, a time-frame policy on every action the scope adds:
-   * each sell token's approve and each venue's swap call. It is independent of
-   * a `crossChainPermits` window, which covers only the permit's actions, and
-   * bounds an ERC-1271 signing surface as an action window does.
+   * alone sets the window, a time-frame policy on every action the scope adds
+   * (each sell token's approve and each venue's swap call), so the session
+   * swaps only inside it. Other actions in the session are not windowed, and
+   * an allowance granted inside the window stays. A `crossChainPermits`
+   * window covers only the permit's actions. A windowed scope is salted as in
+   * `saltMode: 'strict'`, unless `saltMode` is `'v1'`.
    */
   validUntil?: Date
   /**
@@ -1266,6 +1268,7 @@ interface SessionDefinition<
    * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
    * A settlement-scoped session (a `crossChainPermits` entry naming an
    * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
+   * So is a `swap` scope with a window, unless `saltMode` is `'v1'`.
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
@@ -1282,8 +1285,9 @@ interface SessionDefinition<
    * surface and a `signing` mode is rejected.
    * `validUntil` (a future Date; omit for never) bounds when the id can be
    * spent, and so every action in the session. Windows on permission
-   * functions, raw `time-frame` actions or `crossChainPermits` entries are
-   * their own time-frame policies and do not change it.
+   * functions, raw `time-frame` actions, a `swap` scope or
+   * `crossChainPermits` entries are their own time-frame policies and do not
+   * change it.
    * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
    */
   oneTimeUse?: { id: bigint; validUntil?: Date }
