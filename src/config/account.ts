@@ -1205,7 +1205,8 @@ interface SessionDefinition<
    * Either one reports `access.kind: 'open'`, admits a permit without `from`,
    * one naming `SAME_CHAIN` or one with a native `to` token, and leaves
    * intents free to take routes other than `ACROSS` and to fund them from any
-   * asset. A scoped session settles cross-chain intents only, and a
+   * asset. A scoped session settles cross-chain intents only (or, with
+   * `swap`, same-chain intents funded from its sell tokens), and a
    * destination call or leftover sweep on the destination chain needs the
    * destination session to declare those actions or set a fallback. Refused with `FALLBACK_NOT_APPLICABLE` on a session
    * without a Permit2-layer permit, and with `restrictToActions` or `swap`.
