@@ -1171,6 +1171,8 @@ function settlementLayerPin(
   // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
   // no bridge, and the orchestrator refuses same-chain layers in the filter,
   // so it narrows nothing; its session refuses cross-chain calls on-chain.
+  // For the same reason an `include` never blocks a same-chain intent: the
+  // orchestrator keeps its same-chain layers whatever the filter names.
   const includes: Set<Layer>[] = []
   const excluded = new Set<Layer>()
   for (const session of sessions) {

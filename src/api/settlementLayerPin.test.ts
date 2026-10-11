@@ -416,6 +416,18 @@ describe('source asset pin', () => {
       })
     })
 
+    test('keeps the ACROSS layer filter on a same-chain intent', () => {
+      const sent = adaptTransaction(
+        { account: {} } as never,
+        {
+          chain: base,
+          calls: [],
+          signers: { type: 'session', session: swapSession({ token: SELL }) },
+        } as never,
+      ) as { options?: { settlementLayers?: unknown } }
+      expect(sent.options?.settlementLayers).toEqual({ include: ['ACROSS'] })
+    })
+
     test('caps the sell tokens at maxTotal', () => {
       expect(one({ tokens: [SELL, OTHER], maxTotal: 5n })).toEqual({
         chainTokenAmounts: { [base.id]: { [SELL]: 5n, [OTHER]: 5n } },
