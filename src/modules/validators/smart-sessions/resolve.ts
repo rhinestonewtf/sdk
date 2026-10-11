@@ -116,9 +116,9 @@ function isFutureDate(value: unknown): value is Date {
 }
 
 /**
- * The permissions and raw actions with each window checked, and the windows
- * that hold. A dry run records a refused window and drops it, so it is
- * reported once and the run goes on.
+ * The permissions and raw actions with each window checked, the swap scope's
+ * window, and the windows that hold. A dry run records a refused window and
+ * drops it, so it is reported once and the run goes on.
  */
 function sessionWindows(
   definition: SessionDefinition,
@@ -126,6 +126,7 @@ function sessionWindows(
 ): {
   readonly permissions: Permission[]
   readonly actions: ScopedAction[]
+  readonly swapWindow: TimeFrame | undefined
   readonly windows: TimeFrame[]
 } {
   const windows: TimeFrame[] = []
@@ -189,7 +190,20 @@ function sessionWindows(
         }
       : action,
   )
-  return { permissions, actions, windows }
+  const swap = definition.swap
+  const swapWindow =
+    swap &&
+    (swap.validUntil !== undefined || swap.validAfter !== undefined) &&
+    holds(
+      'swap',
+      swap.validUntil,
+      swap.validAfter instanceof Date
+        ? swap.validAfter.getTime()
+        : swap.validAfter,
+    )
+      ? windows.at(-1)
+      : undefined
+  return { permissions, actions, swapWindow, windows }
 }
 
 function usesEns(definition: SessionDefinition['owners']): boolean {
@@ -492,7 +506,9 @@ function resolveSession(
   }
   const permissions = [
     ...windowed.permissions,
-    ...(swapScope?.permissions ?? []),
+    ...(swapScope?.permissions ?? []).map((permission) =>
+      permissionWithTimeFrame(permission, windowed.swapWindow),
+    ),
     ...(settlementScope?.permissions ?? []).map((permission) =>
       permissionWithTimeFrame(permission, settlementWindow),
     ),
@@ -522,7 +538,9 @@ function resolveSession(
   // its raw selector with no ABI (RHI-6286).
   const rawActions = [
     ...windowed.actions,
-    ...(swapScope?.actions ?? []),
+    ...(swapScope?.actions ?? []).map((action) =>
+      withTimeFrame(action, windowed.swapWindow),
+    ),
     ...(settlementScope?.actions ?? []).map((action) =>
       withTimeFrame(action, settlementWindow),
     ),

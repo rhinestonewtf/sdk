@@ -1130,6 +1130,19 @@ interface SwapScope<TChainId extends number = number> {
    * one full swap the remaining cap is below the floor.
    */
   stableFloor?: StableSwapFloor
+  /**
+   * Optional end (exclusive) of the swap window, a future `Date`. Either end
+   * alone sets the window, a time-frame policy on every action the scope adds:
+   * each sell token's approve and each venue's swap call. It is independent of
+   * a `crossChainPermits` window, which covers only the permit's actions, and
+   * bounds an ERC-1271 signing surface as an action window does.
+   */
+  validUntil?: Date
+  /**
+   * Optional start of the swap window, earlier than `validUntil` and rounded
+   * up to a whole second.
+   */
+  validAfter?: Date
 }
 
 interface SessionDefinition<

@@ -84,6 +84,24 @@ describe('on a chain without the TimeFramePolicy', () => {
     ).toEqual(['TIME_FRAME_POLICY_UNAVAILABLE'])
   })
 
+  test("a swap scope's window is refused", () => {
+    const definition: SessionDefinition = {
+      chain: base,
+      owners,
+      swap: {
+        sell: { token: USDC },
+        buy: { token: USDC_ARB },
+        to: OVERRIDE,
+        validUntil: UNTIL,
+      },
+    }
+    expect(
+      validateSessionDefinition(definition).refusals.map(({ code }) => code),
+    ).toEqual(['TIME_FRAME_POLICY_UNAVAILABLE'])
+    deployed.chains = [base.id]
+    expect(validateSessionDefinition(definition).refusals).toEqual([])
+  })
+
   test('policyAddresses.timeFrame resolves it with that address', () => {
     const policies = policiesOf(
       windowed({ policyAddresses: { timeFrame: OVERRIDE } }),
