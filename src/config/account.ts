@@ -245,6 +245,8 @@ interface SpendingLimitsPolicy {
  * `validAfter <= block.timestamp < validUntil`, in whole seconds (`validAfter`
  * rounds up). `validUntil` must be in the future and later than `validAfter`;
  * use `0` for no lower bound and `4102444800000` (year 2100) for no end.
+ * Under the default salt, see `ACTION_WINDOW_SHARED_PERMISSION_ID` on
+ * `saltMode`.
  */
 interface TimeFramePolicy {
   type: 'time-frame'
@@ -891,6 +893,8 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    * of the two is set, the other defaults to "always passes" (validAfter=0 /
    * validUntil=year-2100). While any action has a window, an ERC-1271 signing
    * surface outside claim policies is bounded by the time they allow together.
+   * Under the default salt, see `ACTION_WINDOW_SHARED_PERMISSION_ID` on
+   * `saltMode`.
    */
   validUntil?: Date
   /**
@@ -1253,6 +1257,12 @@ interface SessionDefinition<
    * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
    * A settlement-scoped session (a `crossChainPermits` entry naming an
    * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
+   *
+   * A restricted session on `zeroHash` shares its permissionId with every
+   * other such session of the same owners. Enabling skips an id already
+   * enabled, so an action window on it may never be installed: use
+   * `'strict'` or a fresh session key (`validateSession` warns with
+   * `ACTION_WINDOW_SHARED_PERMISSION_ID`).
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**

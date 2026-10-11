@@ -231,7 +231,18 @@ export function validateSessionDefinition(
     (collect) => resolveSession(definition, options, collect),
     log,
   )
-  const warnings = sessionWarnings(definition)
+  const warnings = [
+    ...sessionWarnings(definition),
+    ...(result?.sharedActionWindow
+      ? [
+          {
+            code: 'ACTION_WINDOW_SHARED_PERMISSION_ID' as const,
+            message:
+              "an action window on a session salted with zeroHash: it shares its permissionId with any other session of the same owners, so if one is already enabled this window is not installed; use saltMode 'strict' or a fresh session key",
+          },
+        ]
+      : []),
+  ]
   const warned = warnings.length ? { warnings } : {}
   if (result === undefined) return { refusals, ...warned }
   const { access, settlementCoverage } = result
@@ -281,6 +292,8 @@ function resolveSession(
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
   readonly settlementCoverage: SettlementCoverage | undefined
   readonly access: SessionAccess
+  /** A restricted session with an action window, salted with zeroHash. */
+  readonly sharedActionWindow: boolean
 } {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
@@ -1100,6 +1113,10 @@ function resolveSession(
   }
   return {
     data,
+    // Enabling skips a permissionId already enabled, so the window would not
+    // be installed.
+    sharedActionWindow:
+      restricted && windowed.windows.length > 0 && data.salt === zeroHash,
     settlementLayers: settlementScope?.settlementLayers ?? [],
     settlementCoverage: settlementScope && {
       dropped: settlementScope.dropped,
