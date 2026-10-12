@@ -1,6 +1,7 @@
 import {
   type Address,
   type Chain,
+  encodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
   type Hex,
@@ -1066,4 +1067,109 @@ describe('a wrapped native `from` leg on a reusable session', () => {
     expect(admits(approval, approve(PERMIT2, 1n))).toBe(false)
     expect(admits(deposit, DEPOSIT, 1n)).toBe(false)
   })
+})
+
+describe('every deposit() a session can make', () => {
+  const DEPOSIT = '0xd0e30db0'
+  const VALUE_LIMIT = DEFAULT_POLICY_ADDRESSES.valueLimit
+  const leg = (maxAmount?: bigint) => ({
+    from: {
+      chain: base,
+      token: WETH,
+      ...(maxAmount === undefined ? {} : { maxAmount }),
+    },
+    to: { chain: arbitrum, token: WETH_ARB },
+  })
+  const definitions: [string, SessionDefinition][] = [
+    [
+      'reusable capped ACROSS',
+      definition({ ...leg(100n), settlementLayers: ['ACROSS'] }),
+    ],
+    [
+      "reusable capped 'all'",
+      definition({ ...leg(100n), settlementLayers: 'all' }),
+    ],
+    [
+      'reusable uncapped ACROSS',
+      definition({ ...leg(), settlementLayers: ['ACROSS'] }),
+    ],
+    [
+      'one-shot capped ACROSS',
+      definition({ ...leg(100n), settlementLayers: ['ACROSS'] }, once),
+    ],
+    [
+      'fallback one-shot capped',
+      definition(
+        { ...leg(100n), settlementLayers: ['ACROSS'] },
+        {
+          ...once,
+          fallback: 'intentExecution',
+        },
+      ),
+    ],
+    [
+      'fallback reusable capped',
+      definition(
+        { ...leg(100n), settlementLayers: ['ACROSS'] },
+        {
+          fallback: 'intentExecution',
+        },
+      ),
+    ],
+  ]
+  const wraps: [string, Address | undefined][] = [
+    ['the served token', WETH],
+    ['no served token', undefined],
+    ['another served token', OTHER],
+  ]
+
+  test.each(
+    definitions.flatMap(([name, def]) =>
+      wraps.map(
+        ([served, token]) => [`${name}, ${served}`, def, token] as const,
+      ),
+    ),
+  )(
+    '%s: a scoped deposit() carries the lifetime cap of its leg',
+    (_, def, token) => {
+      const options = {
+        ...OPTIONS,
+        ...(token && { wrappedNativeToken: token }),
+      }
+      let session: ReturnType<typeof toSession>
+      try {
+        session = toSession(def, options)
+      } catch {
+        return
+      }
+      const deposits = session.actions.filter(
+        (a) => a.actionTargetSelector === DEPOSIT,
+      )
+      for (const deposit of deposits) {
+        // Only the served token is wrapped.
+        expect(token && isAddressEqual(deposit.actionTarget, token)).toBe(true)
+        // An open session's wildcard admits any call anyway; a scoped one
+        // bounds the wrap with one cumulative counter at the leg's cap.
+        if (session.access?.kind === 'open') continue
+        const limits = deposit.actionPolicies.filter(({ policy }) =>
+          isAddressEqual(policy, VALUE_LIMIT),
+        )
+        expect(limits).toEqual([
+          {
+            policy: VALUE_LIMIT,
+            initData: encodeAbiParameters([{ type: 'uint256' }], [100n]),
+          },
+        ])
+      }
+      // A scoped session wraps only the served token of a capped leg.
+      if (session.access?.kind === 'scoped') {
+        const capped = def.crossChainPermits?.some((permit) =>
+          [permit.from ?? []].flat().some((l) => l.maxAmount !== undefined),
+        )
+        expect(deposits.length).toBe(
+          capped && token !== undefined && isAddressEqual(token, WETH) ? 1 : 0,
+        )
+      }
+    },
+  )
 })
