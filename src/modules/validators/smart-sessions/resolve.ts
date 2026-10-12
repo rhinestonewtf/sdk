@@ -79,6 +79,7 @@ import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
+  CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
   IntentExecutorSettlementLayer,
@@ -362,7 +363,7 @@ function resolveSession(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
-  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+  const resolvedPermits = sessionPermits(definition).map(
     (input, permitIndex) => {
       // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
       // and a past deadline only fails at enable, as an opaque signature error.
@@ -1381,6 +1382,23 @@ function permit2LayerSet(
 }
 
 /**
+ * The definition's permits, a permit naming no layer read as `'all'`. With
+ * `fallback` it keeps `ACROSS`: `'all'` is settlement-scoped, and `fallback`
+ * needs a Permit2-layer permit.
+ */
+function sessionPermits(
+  definition: SessionDefinition,
+): readonly CrossChainPermissionInput[] {
+  const permits = definition.crossChainPermits ?? []
+  if (definition.fallback !== undefined) return permits
+  return permits.map((permit) =>
+    permit.settlementLayers?.length
+      ? permit
+      : { ...permit, settlementLayers: 'all' },
+  )
+}
+
+/**
  * The definition's policy addresses, with the deployed UniversalActionPolicy
  * copies defaulted in for a settlement-scoped session on a chain that has them.
  */
@@ -1400,7 +1418,7 @@ export function sessionPolicyAddresses(
     // resolve refuses it; this only spares createSession a code check first.
     definition.saltMode === 'v1' ||
     !UNIVERSAL_ACTION_POLICY_COPY_CHAINS.has(definition.chain.id) ||
-    !definition.crossChainPermits?.some(isSettlementScopedPermit)
+    !sessionPermits(definition).some(isSettlementScopedPermit)
   ) {
     return overrides
   }
@@ -1424,7 +1442,7 @@ export function toSession(
       ...(options.settlement ? { settlement: options.settlement } : {}),
     },
   )
-  const resolvedPermits = (definition.crossChainPermits ?? []).map((permit) =>
+  const resolvedPermits = sessionPermits(definition).map((permit) =>
     resolveCrossChainPermission(permit),
   )
   const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)

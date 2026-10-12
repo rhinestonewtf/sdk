@@ -341,7 +341,7 @@ function scopePermit(
   if (settlement === undefined) {
     throw refusal(
       'SETTLEMENT_CATALOG_MISSING',
-      "crossChainPermits: IntentExecutor-layer permits need the orchestrator's settlement addresses; create the session with sdk.createSession",
+      "crossChainPermits: IntentExecutor layers and 'all' (the default) need options.settlement from GET /chains; pass it or name settlementLayers, e.g. ['ACROSS']",
     )
   }
   const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)

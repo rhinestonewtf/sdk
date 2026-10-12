@@ -98,14 +98,18 @@ function toSession<
   const TChain extends Chain,
 >(
   definition: SessionDefinition<TAbis, TChain>,
-  options: { useDevContracts?: boolean } = {},
+  options: SessionValidationOptions = {},
 ): Session {
   return resolveSession(definition as DomainSessionDefinition, {
     environment: environment(options.useDevContracts),
+    ...(options.wrappedNativeToken
+      ? { wrappedNativeToken: options.wrappedNativeToken }
+      : {}),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
   }) as Session
 }
 
-/** Inputs `createSession` takes from `/chains`, for the standalone {@link validateSession}. */
+/** Inputs `createSession` takes from `/chains`, for the standalone `toSession` and {@link validateSession}. */
 interface SessionValidationOptions {
   /** The orchestrator's settlement addresses by chain id. */
   settlement?: SettlementCatalog

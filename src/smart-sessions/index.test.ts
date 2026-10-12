@@ -111,7 +111,7 @@ describe('validateSession', () => {
     expect(refusals).toEqual([
       {
         code: 'SETTLEMENT_CATALOG_MISSING',
-        message: expect.stringContaining('settlement addresses'),
+        message: expect.stringContaining('need options.settlement'),
         permitIndex: 0,
       },
     ])

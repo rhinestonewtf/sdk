@@ -535,13 +535,10 @@ describe('resolveSessionData — Permit2-route permit maxAmount', () => {
     )
   }
 
-  test.each<[string, Partial<CrossChainPermissionInput>]>([
-    ['ACROSS', { settlementLayers: ['ACROSS'] }],
-    ['omitted settlementLayers', {}],
-  ])('refuses %s with maxAmount and no oneTimeUse', (_, layers) => {
+  test('refuses ACROSS with maxAmount and no oneTimeUse', () => {
     expect(() =>
       resolve({
-        ...layers,
+        settlementLayers: ['ACROSS'],
         from: { chain: base, token: USDC, maxAmount: 1_000n },
       }),
     ).toThrow(REFUSAL)
