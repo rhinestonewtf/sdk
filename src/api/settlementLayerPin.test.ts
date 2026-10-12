@@ -318,9 +318,6 @@ describe('settlement layer pin', () => {
   })
 })
 
-// Captured from origin/main, before a Permit2 session carried its layers;
-// moved when Permit2-route sessions became scoped (RHI-8045), and again when
-// they took preClaimOps: 'none' and omitted layers came to admit ACROSS alone.
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
   ACROSS: '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
   // Omitted layers admit ACROSS alone, as naming it does.

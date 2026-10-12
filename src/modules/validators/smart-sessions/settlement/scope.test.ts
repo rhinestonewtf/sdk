@@ -320,7 +320,7 @@ describe('settlement-scoped crossChainPermits', () => {
     })
 
     test("keeps ECO_IE beside OFT under 'all' without validUntil", () => {
-      // ECO_IE no longer needs validUntil; CCTP still cannot enforce the floor.
+      // ECO_IE needs no validUntil; CCTP cannot enforce the floor.
       const resolved = resolveSettlementScope([permit('all')], options)
       expect(resolved?.settlementLayers).toEqual(['OFT', 'ECO_IE'])
       const action = sendOf(resolved)

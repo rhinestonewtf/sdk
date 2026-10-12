@@ -246,8 +246,7 @@ const withCopies = (
   policyAddresses: { ...definition.policyAddresses, universalActionCopies },
 })
 
-// The permit sessions opt out of the copies they now default to on these chains.
-// Their rows moved when the permit's validUntil became a time frame on each action.
+// The permit sessions opt out of the copies they default to on these chains.
 test('every session encodes and digests as pinned', async () => {
   const table: Record<string, unknown> = {}
   for (const [name, { definition, settlement }] of Object.entries(SESSIONS)) {

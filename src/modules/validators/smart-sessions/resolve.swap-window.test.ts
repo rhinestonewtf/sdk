@@ -312,7 +312,6 @@ describe('a windowed swap scope gets its own permissionId', () => {
   test("saltMode 'v1' keeps its own salt, which hashes the windowed actions", () => {
     const windowed = id(swap({ validUntil: UNTIL }), 'v1')
     expect(windowed).not.toBe(id(swap(), 'v1'))
-    // The 'v1' salt, as before swap windows were salted.
     expect(windowed).toBe(
       '0x6f01c96b4b47efa89c4976efb796ae9f266583e1fba222ba24edf9cb4ba7f9c8',
     )

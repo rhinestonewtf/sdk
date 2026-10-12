@@ -10,10 +10,8 @@ import {
 
 const POLICY = '0x00000000000000000000000000000000000000aa' as const
 
-// source: OneTimeUseIdPolicy.initializeWithMultiplexer (smart-sessions-v2#56 @ 493fd86):
-// `initData.length != 64` reverts InvalidInitDataLength; id = initData[0:32],
-// deadline = initData[32:64], and a zero deadline never expires. A 32-byte
-// encoding reverts at session enable (reproduced on a mainnet fork, RHI-5798).
+// OneTimeUseIdPolicy reverts unless initData is 64 bytes: id = [0:32], deadline =
+// [32:64], and a zero deadline never expires.
 const decodeInit = (hex: `0x${string}`) =>
   decodeAbiParameters([{ type: 'uint256' }, { type: 'uint256' }], hex)
 
