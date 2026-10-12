@@ -32,7 +32,7 @@ import { SettlementLayerRefusal, served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
- * Settlement-scoped cross-chain permits (RHI-7826).
+ * Settlement-scoped cross-chain permits.
  *
  * A permit that names IntentExecutor layers compiles to scoped actions with
  * its recipient, destination chain, token and amount pinned in each layer's

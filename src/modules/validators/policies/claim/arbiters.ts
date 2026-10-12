@@ -9,13 +9,10 @@ import type {
  * whitelists both arbiter impls so a session is permissioned for the 7579 and
  * multicall paths regardless of which one the orchestrator picks at intent time.
  *
- * `ECO` intentionally remains mapped to the legacy Standard ECO arbiters. The
- * solver-network ECO route uses `intentExecutorAdapter`, but the current claim
- * policy only inspects the outer origin mandate. Authorizing that generic
- * adapter would also authorize unrelated IntentExecutor-backed routes without
- * enforcing the encoded Eco destination, token, recipient, or deadline. Keep
- * solver-network ECO blocked by this built-in permission until a route-aware
- * policy is available.
+ * `ECO` stays mapped to the legacy Standard ECO arbiters: the claim policy
+ * inspects only the origin mandate, so allowing the generic
+ * `intentExecutorAdapter` would admit every IntentExecutor-backed route without
+ * its Eco destination, token, recipient or deadline checked.
  */
 const SETTLEMENT_LAYER_CONTRACT_KEYS: Record<
   Permit2SettlementLayer,

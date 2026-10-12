@@ -25,10 +25,8 @@ export function getSessionData(session: Session): SessionData {
     salt: session.salt,
     erc7739Policies: session.erc7739Policies,
     actions: session.actions,
-    // Declared claim policies are enforced from the erc1271 surface and are
-    // already in `erc7739Policies`. Encoding them here too would also place
-    // them on the on-chain claim (lockTag) surface, which the manager skips
-    // under the zero lock tag the SDK enables with.
+    // Claim policies are enforced from the erc1271 list, already in
+    // `erc7739Policies`; the manager skips this lockTag surface under a zero lock tag.
     claimPolicies: [],
   }
 }

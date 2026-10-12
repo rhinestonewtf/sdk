@@ -1167,12 +1167,10 @@ function settlementLayerPin(
   // ECO is a retired arbiter (the orchestrator's ECO is ECO_IE's solver
   // network), and SAME_CHAIN takes no bridge, so neither is filtered.
   const permit2Arbiters: readonly Layer[] = ['ACROSS']
-  // The session's layer names are the SDK's; the filter speaks the
-  // orchestrator's, where Eco's solver network is `ECO`. SAME_CHAIN_IE takes
-  // no bridge, and the orchestrator refuses same-chain layers in the filter,
-  // so it narrows nothing; its session refuses cross-chain calls on-chain.
-  // For the same reason an `include` never blocks a same-chain intent: the
-  // orchestrator keeps its same-chain layers whatever the filter names.
+  // The filter speaks the orchestrator's layer names, where Eco's solver network
+  // is `ECO`. SAME_CHAIN_IE narrows nothing: the orchestrator keeps its
+  // same-chain layers whatever the filter names, and the session refuses
+  // cross-chain calls on-chain.
   const includes: Set<Layer>[] = []
   const excluded = new Set<Layer>()
   for (const session of sessions) {

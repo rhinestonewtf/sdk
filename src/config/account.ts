@@ -296,81 +296,43 @@ interface Permit2ClaimPolicy {
 /**
  * Settlement layers supported by the cross-chain session abstraction.
  *
- * - `SAME_CHAIN` and `ACROSS` settle through Permit2: each maps to one or
- *   more arbiter addresses from the SDK's bundled allow-set. A smart account
- *   settles cross-chain through `ACROSS` and same-chain through
- *   `SAME_CHAIN_IE`, so a permit without `fallback` must name only `ACROSS`
- *   (or no layer).
- *   `ECO` is the retired Standard Eco arbiter and a permit naming it is
- *   refused: use `ECO_IE` instead.
- * - `CCTP` (USDC), `OFT` (USDT0, with an optional `to.minAmount` floor),
- *   `ECO_IE` (Eco's solver network: the USD stablecoins the orchestrator
- *   serves for it), `SAME_CHAIN_IE` (a transfer, or a Rhinestone Swapper swap
- *   with a `to.minAmount` floor, on the session's own chain) and `LZ` (USDC
- *   through the LayerZero Value Transfer API, over Stargate or CCTP, with an
- *   optional `to.minAmount` floor on a Stargate send) settle by the
- *   account executing the call. Naming any of them makes the permit
- *   **settlement-scoped**: the session is restricted to those layers' calls
- *   and their approve, with the `from` token, the `to` chains and recipients,
- *   and `maxAmount` pinned in the calldata.
+ * - `SAME_CHAIN` and `ACROSS` settle through Permit2 arbiters from the SDK's
+ *   bundled allow-set. A smart account settles cross-chain through `ACROSS`,
+ *   so a permit without `fallback` must name only `ACROSS` (or no layer).
+ *   `ECO` is the retired Standard Eco arbiter and is refused: use `ECO_IE`.
+ * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (the USD stablecoins the
+ *   orchestrator serves for Eco), `SAME_CHAIN_IE` (a transfer, or a Rhinestone
+ *   Swapper swap, on the session's own chain) and `LZ` (USDC over Stargate or
+ *   CCTP) settle by the account executing the call. Naming any of them makes
+ *   the permit **settlement-scoped**: the session may only make those layers'
+ *   calls and their approve, with the `from` token, the `to` chains and
+ *   recipients, and `maxAmount` pinned in the calldata. Their addresses come
+ *   from `GET /chains`, so create these sessions with `sdk.createSession`.
  *
- *   Such a permit may name several of `CCTP`, `OFT`, `ECO_IE` and `LZ`, and
- *   each must be able to settle it on the session's chain, or the session is
- *   refused. The session then allows each named layer's call and one approve
- *   of the `from` token to any of their contracts, with `maxAmount` one
- *   budget across those approves. Each layer's call is capped at `maxAmount`
- *   on its own, so an allowance the account already gave one of those
- *   contracts can move more than `maxAmount` in total. `OFT` and `LZ` cannot
- *   be combined (each pays a native LayerZero fee), `SAME_CHAIN_IE` cannot be
- *   combined with another layer, and `maxFeeBps` needs `ECO_IE` among the
- *   layers. A `to.minAmount` binds every layer in the permit: `ECO_IE`, `OFT`
- *   and `LZ` (on a Stargate send) floor their own delivery, and naming a layer
- *   that cannot (`CCTP` never can) is refused. A `to.minAmount` outside half
- *   of to all of any `from` leg's `maxAmount` is refused as a units mistake,
- *   `'all'` included. With `ECO_IE` among several layers, an intent settles
- *   over Eco only when it delivers at least its floor: the higher of
- *   `maxAmount × (1 − maxFeeBps / 10000)`, rescaled to the `to` token's
- *   decimals, and `to.minAmount`. Both are fixed against `maxAmount`, so the
- *   orchestrator may route a smaller intent through another layer, or the
- *   intent fails if Eco is picked.
+ *   A permit may name several of `CCTP`, `OFT`, `ECO_IE` and `LZ`, and each
+ *   must be able to settle it on the session's chain. `maxAmount` caps each
+ *   layer's call and is one budget across their approves, so an allowance the
+ *   account already gave one of their contracts can move more in total. `OFT`
+ *   and `LZ` cannot be combined, `SAME_CHAIN_IE` cannot be combined with
+ *   another layer, and `maxFeeBps` needs `ECO_IE`. A `to.minAmount` binds
+ *   every named layer. With `ECO_IE` among several layers, an intent
+ *   below Eco's floor may route through another layer, or fail if Eco is
+ *   picked.
  *
  *   `settlementLayers: 'all'` names every one of `CCTP`, `OFT`, `ECO_IE` and
- *   `LZ` that can settle the permit on the session's chain, and silently
- *   drops the rest: a layer that does not route there, does not move the
- *   `from` token, or lacks or rejects a field it needs (`ECO_IE`'s
- *   `maxFeeBps` or a deadline under 7 days ahead, `OFT`'s and
- *   `LZ`'s `oneTimeUse`), or cannot enforce the `to.minAmount` given
- *   (always `CCTP`). Setting `maxFeeBps` asks
- *   for `ECO_IE`, so a dropped `ECO_IE` is then refused with its reason, and
- *   it floors only the `ECO_IE` call. A `to.minAmount` needs no particular layer:
- *   the layers that enforce it are kept. `'all'` never includes
- *   `SAME_CHAIN_IE`, and is refused when no layer qualifies. It resolves
- *   against the orchestrator's `GET /chains` and the clock when the session
- *   is created, so store the created session
- *   (its `settlementLayers` lists the layers kept) and reuse it rather than
- *   rebuilding it from `'all'`, which can keep a different set of layers. The
- *   created session's `settlementCoverage.dropped` lists each layer left out
- *   with the reason it was dropped.
+ *   `LZ` that can settle the permit on the session's chain, fields included,
+ *   and drops the rest into `settlementCoverage.dropped` with the reason. It
+ *   never includes `SAME_CHAIN_IE`, is refused when no layer qualifies, and
+ *   refuses a dropped `ECO_IE` when `maxFeeBps` is set. It resolves against
+ *   `GET /chains` and the clock at creation, so store the created session
+ *   rather than rebuilding it from `'all'`.
  *
- *   A settlement-scoped permit cannot be combined with the Permit2 layers,
- *   `maxAmount` requires `oneTimeUse`, and only sponsored intents without an
- *   app fee can settle
- *   through it unless the permit sets `allowFees`. `ECO_IE` also requires
- *   `maxAmount` and a delivery floor. The earlier of the
- *   permit's `validUntil` and `oneTimeUse.validUntil` must be at least 7 days
- *   from now, since the session pins Eco's route and reward deadlines under it
- *   and Eco quotes that ~7 days out, so `ECO_IE` is usable only until that
- *   deadline minus 7 days. Only a session with neither `validUntil` leaves
- *   an unfilled `ECO_IE` reward with no refund deadline. Both tokens must be ones the orchestrator serves
- *   for `ECO_IE`. The floor is `maxFeeBps`, which also needs their decimals
- *   served, or a `to.minAmount` on every leg, for any two such tokens; given
- *   both, the higher applies. Without `maxFeeBps`, `ECO_IE` needs every `from`
- *   leg to give the same `maxAmount` (each source chain's session pins the
- *   same `to.minAmount` against its own cap), or `'all'` drops it. `OFT` and
- *   `LZ` require `oneTimeUse`.
- *   `CCTP`, `OFT`, `ECO_IE` and `LZ` pin
- *   addresses the orchestrator serves on `GET /chains`, so create their
- *   sessions with `sdk.createSession`.
+ *   A settlement-scoped permit cannot be combined with the Permit2 layers.
+ *   `maxAmount` requires `oneTimeUse`, as do `OFT` and `LZ`, and only
+ *   sponsored intents without an app fee settle through it unless it sets
+ *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
+ *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
+ *   {@link CrossChainPermissionInput.validUntil}).
  */
 type CrossChainSettlementLayer =
   | 'SAME_CHAIN'
@@ -430,80 +392,14 @@ interface CrossChainPermit {
   recipientIsAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for `ACROSS`.
-   *
-   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
-   * session to those layers' calls instead, and `'all'` to every bridging one
-   * that can settle the permit (see {@link CrossChainSettlementLayer}).
-   *
-   * `ECO` is the retired Permit2 Eco arbiter: a permit naming it is refused,
-   * with or without `fallback`. Use `ECO_IE`.
-   *
-   * Intents signed with the session never offer the orchestrator a route the
-   * session would refuse. IntentExecutor layers restrict them to the layers
-   * the session kept, and a Permit2-layer permit that admits `ACROSS` to
-   * `ACROSS` (`SAME_CHAIN` takes no bridge, so it adds no filter). With
-   * `fallback` set, Permit2 layers instead exclude only the Permit2 arbiters
-   * the permit does not name (a permit without `ACROSS` sends
-   * `settlementLayers: { exclude: ['ACROSS'] }`), so other routes stay open.
-   * An intent's own `settlementLayers` can only narrow this, and one that
-   * leaves no layer throws.
+   * `[]`) for `ACROSS`. See {@link CrossChainPermissionInput.settlementLayers}.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
-  /**
-   * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
-   * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
-   * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
-   * reward actually sent.
-   */
+  /** `ECO_IE` only. See {@link CrossChainPermissionInput.maxFeeBps}. */
   maxFeeBps?: number
-  /**
-   * Also let the session pay the intent's app fee (and a user-paid protocol
-   * fee) to the orchestrator's fee collector, and approve and call its
-   * paymaster for unsponsored gas. Defaults to `false`: an intent that carries
-   * an app fee or a protocol fee taken from the `from` token does not settle,
-   * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
-   * layer it also needs a `from` token on the session's chain, even with
-   * `fallback: 'intentExecution'`, and cannot be combined with
-   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
-   * approve is left to the wildcard: only the transfer and the callback are
-   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
-   * fee call.
-   *
-   * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
-   *   mainnet), not one per session: the collector transfer and the paymaster
-   *   approve one per `from` token, the paymaster callback one shared across
-   *   tokens. So one token can pay up to about twice the cap (app fee plus
-   *   gas), and N tokens up to N times the cap of app fee.
-   * - Every `from` token on the session's chain must be one the orchestrator
-   *   serves for these layers (USD stablecoins today) and lists in
-   *   `settlement.usdStablecoins` with 6 or 18 decimals; the cap is scaled to
-   *   them. All `from` tokens on the chain must have the same decimals.
-   * - The fee addresses come from the orchestrator's `GET /chains`, so create
-   *   the session with `sdk.createSession`.
-   * - The orchestrator sizes the paymaster approve and callback at the refund
-   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
-   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
-   *   Ethereum mainnet gas at high prices, an app fee over the cap, or a reusable
-   *   session that has used its budget) is refused: it fails closed.
-   */
+  /** See {@link CrossChainPermissionInput.allowFees}. */
   allowFees?: boolean
-  /**
-   * Permit2 layers only: the claim may not carry pre-claim calls. A reusable
-   * scoped session does not need it on a chain with Permit2SenderPolicy (see
-   * `fallback`); elsewhere it is what bounds one. The session then settles
-   * only intents that need no pre-claim call: the account already holds
-   * enough Permit2 allowance for the `from` token, no fee is taken from it,
-   * and no native token is wrapped; one that needs a pre-claim call is
-   * refused before signing. Intents must list their
-   * `sourceChains`. It cannot be combined with `oneTimeUse`, whose burn is
-   * itself a pre-claim call, or with `allowFees`.
-   *
-   * The session must be enabled before its first intent, since an enable
-   * rides a pre-claim call: sign `account.getSessionDetails([session])` with
-   * `account.signEnableSession`, then send `enableSession` from
-   * `@rhinestone/sdk/actions/smart-sessions` as an owner-signed transaction.
-   */
+  /** Permit2 layers only. See {@link CrossChainPermissionInput.preClaimOps}. */
   preClaimOps?: 'none'
 }
 
@@ -530,40 +426,30 @@ interface ToLeg {
   recipient?: Address | 'any'
   /**
    * `SAME_CHAIN_IE` swaps, `ECO_IE`, `OFT` and `LZ`: the least amount of
-   * `token` the swap, the Eco route or the OFT or Stargate send must deliver,
-   * in `token`'s smallest units (its own decimals, e.g. `99_000_000n` for 99
-   * of a 6-decimal stablecoin). Required for
-   * a swap (with `maxAmount`), since the session key otherwise sets the swap's
-   * output bound; `maxAmount : minAmount` is the worst rate accepted.
+   * `token` the swap, Eco route or OFT/Stargate send must deliver, in `token`'s
+   * smallest units. Required for a swap (with `maxAmount`), since the session
+   * key otherwise sets the swap's output bound; `maxAmount : minAmount` is the
+   * worst rate accepted.
    *
-   * On `ECO_IE` it prices any pair of tokens the orchestrator serves for
-   * `ECO_IE`, and stands in for `maxFeeBps` (given both, the higher floor
-   * applies). Without `maxFeeBps`, every `from` leg must give the same
-   * `maxAmount`, and a `to` leg named twice must give the same `minAmount`.
+   * Every layer in the permit must enforce it: one that cannot (always `CCTP`)
+   * is refused when named and dropped under `'all'`. Where both tokens'
+   * decimals are served, a value outside half of to all of a `from` leg's
+   * `maxAmount` is refused as a units mistake.
    *
-   * Every layer in the permit enforces it: one that cannot (always `CCTP`;
-   * `OFT` and `LZ` in the cases below) is refused when named and dropped under
-   * `'all'`. Where both tokens' decimals are served, a value outside half of
-   * to all of a `from` leg's `maxAmount` is refused as a units mistake, on
-   * any layer list.
+   * - `ECO_IE`: prices any pair of tokens served for `ECO_IE` and stands in for
+   *   `maxFeeBps` (given both, the higher floor applies). Without `maxFeeBps`,
+   *   every `from` leg must give the same `maxAmount`, and a `to` leg named
+   *   twice the same `minAmount`.
+   * - `OFT`: optional; floors the send's `minAmountLD`, so a smaller send is
+   *   refused. Both tokens need served, equal decimals; positive, at most
+   *   uint64.
+   * - `LZ`: optional, on a leg LZ reaches over Stargate; caps the pool's fee at
+   *   `amount sent − minAmount`. Refused at zero or above uint64, on a leg LZ
+   *   reaches over CCTP, beside a second `to` leg on the same chain, and unless
+   *   both tokens are served USD stablecoins with equal decimals.
    *
-   * On `OFT` it is optional and floors the send's `minAmountLD`,
-   * so it also refuses any send smaller than it; both tokens need served, equal
-   * decimals, and it must be positive and at most uint64. The orchestrator
-   * sends at 1% slippage, so set it at most 99% of
-   * the amount you expect to send.
-   *
-   * On `LZ` it is optional, on a leg LZ reaches over Stargate.
-   * The session then refuses a Stargate send whose `minAmountLD` is below it,
-   * so the pool's fee costs at most `amount sent − minAmount`. Without it
-   * the send accepts whatever fee the pool charges. It is an absolute
-   * amount, not a rate: a smaller send fails, and a quote whose own minimum
-   * is below it is refused. The LZ API quotes `minAmountLD` with about 1%
-   * slippage, so set `minAmount` to at most ~99% of the expected send, or
-   * the session cannot settle it. Refused at zero or above uint64, on a leg
-   * LZ reaches over CCTP, beside a second `to` leg on the same chain, and
-   * unless the orchestrator serves both tokens as USD stablecoins with equal
-   * decimals.
+   * `OFT` and `LZ` quote with about 1% slippage, so set it to at most ~99% of
+   * the expected send or the session cannot settle it.
    */
   minAmount?: bigint
 }
@@ -649,22 +535,17 @@ interface CrossChainPermissionInput {
    * Settlement layers this session is permitted to use. Omit (or pass
    * `[]`) for `ACROSS`. A permit without `fallback` may name only `ACROSS`.
    *
-   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor layers: naming them scopes the
-   * session to those layers' calls instead, and `'all'` to every bridging one
-   * that can settle the permit (see {@link CrossChainSettlementLayer}).
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
+   * layers: naming them scopes the session to those layers' calls instead, and
+   * `'all'` to every bridging one that can settle the permit (see
+   * {@link CrossChainSettlementLayer}). `ECO`, the retired Permit2 Eco arbiter,
+   * is refused: use `ECO_IE`.
    *
-   * `ECO` is the retired Permit2 Eco arbiter: a permit naming it is refused,
-   * with or without `fallback`. Use `ECO_IE`.
-   *
-   * Intents signed with the session never offer the orchestrator a route the
-   * session would refuse. IntentExecutor layers restrict them to the layers
-   * the session kept, and a Permit2-layer permit that admits `ACROSS` to
-   * `ACROSS` (`SAME_CHAIN` takes no bridge, so it adds no filter). With
-   * `fallback` set, Permit2 layers instead exclude only the Permit2 arbiters
-   * the permit does not name (a permit without `ACROSS` sends
-   * `settlementLayers: { exclude: ['ACROSS'] }`), so other routes stay open.
-   * An intent's own `settlementLayers` can only narrow this, and one that
-   * leaves no layer throws.
+   * Intents signed with the session offer the orchestrator only routes it
+   * admits: the IntentExecutor layers kept, or `ACROSS` for a Permit2-layer
+   * permit. With `fallback`, they instead exclude only the Permit2 arbiters
+   * the permit does not name. An intent's own `settlementLayers` can only
+   * narrow this, and one that leaves no layer throws.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /**
@@ -935,19 +816,16 @@ interface SessionPolicyAddresses {
   sudo?: Address
   universalAction?: Address
   /**
-   * Further deployments of the canonical UniversalActionPolicy bytecode, each
-   * deployed on the session's chain, distinct from `universalAction`, from
-   * each other and from every other policy address. When set, an action's
-   * ArgPolicy whose expression only ANDs rules is installed as
-   * UniversalActionPolicy configs of up to 16 rules each, one per deployment,
-   * which can lower the storage written at enable. An action keeps its
-   * ArgPolicy when there are not enough deployments. `sdk.createSession`
-   * checks that each copy holds the same code as `universalAction`; `toSession`
-   * cannot, so check the deployments before using it. Not available with
-   * `saltMode: 'v1'`. Defaults to the three deployed copies for a session with
-   * an IntentExecutor-layer `crossChainPermits` entry on a chain that has them,
-   * unless `universalAction` is overridden; otherwise to none. Set `[]` to opt
-   * out.
+   * Further deployments of the canonical UniversalActionPolicy bytecode on the
+   * session's chain, each distinct from every other policy address. An
+   * action's AND-only ArgPolicy is then installed as UniversalActionPolicy
+   * configs of up to 16 rules each, one per deployment, which can lower the
+   * storage written at enable; it stays an ArgPolicy when there are too few.
+   * `sdk.createSession` checks each copy holds `universalAction`'s code;
+   * `toSession` cannot. Not available with `saltMode: 'v1'`. Defaults to the
+   * three deployed copies for a session with an IntentExecutor-layer
+   * `crossChainPermits` entry on a chain that has them, unless
+   * `universalAction` is overridden; otherwise none. Set `[]` to opt out.
    */
   universalActionCopies?: readonly Address[]
   argPolicy?: Address
@@ -1105,7 +983,7 @@ interface SwapScope<TChainId extends number = number> {
    */
   via?: readonly SwapVenueFor<TChainId>[]
   /**
-   * Opt-in rate floor for a stable-to-stable swap (RHI-7883). The Swapper takes
+   * Opt-in rate floor for a stable-to-stable swap. The Swapper takes
    * its output bound (`minAmountOut` / `amountOut`) from the caller and its
    * `calls[]` route may call anything, so without this a session key can set
    * that bound to zero and route the input away.
@@ -1282,7 +1160,7 @@ interface SessionDefinition<
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
-   * Pins a one-time-use id on the session (RHI-5798): the session settles at most
+   * Pins a one-time-use id on the session: the session settles at most
    * once per chain. Uses the deployed OneTimeUseIdPolicy for the session's chain
    * and contracts environment; on a chain without one, resolving the session
    * throws unless `policyAddresses.oneTimeUseId` is set, and so does preparing an

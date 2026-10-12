@@ -3,11 +3,11 @@ import type { ServedStablecoin, SwapScopeInput } from '../types'
 import { floorFor } from './rules'
 
 /**
- * Opt-in stable-swap floor (RHI-7883).
+ * Opt-in stable-swap floor.
  *
  * The Swapper takes its output bound from the caller and its `calls[]` route
  * may call anything, so a capped input alone lets a session key set the bound
- * to zero and route the input away (RHI-7870). Pinning the output bound to a
+ * to zero and route the input away. Pinning the output bound to a
  * floor derived from the cap bounds the rate: worst case floor/cap.
  */
 
