@@ -60,6 +60,7 @@ const LAYERS: Record<
     /**
      * Each call costs the account a native messaging fee no pin can bound, so
      * a reusable session could repeat dust sends until the balance is gone.
+     * A `maxAmount` caps the token, not that fee, so it does not lift this.
      */
     readonly requiresOneTimeUse?: true
     /** Enforces the leg's `to.minAmount` on what its call delivers. */
@@ -218,17 +219,6 @@ function scopePermit(
   const caps = fromLegs.flatMap(({ maxAmount }) =>
     maxAmount === undefined ? [] : [maxAmount],
   )
-  // Every scoped action keeps its own counter, so a cap is a total only when
-  // the session settles once. With several layers each call is still capped on
-  // its own; only the shared approve cap bounds what they draw together.
-  if (caps.length && !options.oneTimeUse) {
-    refuse(
-      refusal(
-        'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
-        'crossChainPermits: maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-      ),
-    )
-  }
   if (caps.length > 1) {
     refuse(
       refusal(
@@ -478,8 +468,10 @@ function scopePermit(
 
   // Without allowFees, only the layers' own approves: an unsponsored intent or
   // one carrying an app fee adds calls this session does not authorise.
-  // Cumulative: the burning transaction admits every op after the burn, so a
-  // per-call bound would let repeated approves grant the cap many times.
+  // Cumulative: the burning transaction admits every op after the burn, and a
+  // reusable session every later intent, so a per-call bound would let
+  // repeated approves grant the cap many times. Each layer call keeps its own
+  // counter; this one is what bounds them together, for the session's life.
   const capRules = cap === undefined ? [] : [cumulativeCap(32n, cap)]
   const spenderPins = anyOf(spenders.map((s) => allOf([pin(0n, s)])))
   const approveActions = sourceTokens.map(

@@ -942,7 +942,6 @@ describe('internal core composition', () => {
       expect(refusals.map(({ code }) => code)).toEqual([
         ...first,
         'WRAPPED_NATIVE_TOKEN_UNSERVED',
-        'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       ])
       expect(refusals[0].message).toBe(thrown)
     },

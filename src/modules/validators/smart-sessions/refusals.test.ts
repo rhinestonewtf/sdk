@@ -214,12 +214,6 @@ describe('collectSessionRefusals', () => {
     const refusals = validateRefusals(definition, OPTIONS)
     expect(refusals).toEqual([
       {
-        code: 'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
-        message:
-          'crossChainPermits: maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-        permitIndex: 0,
-      },
-      {
         code: 'FILL_DEADLINE_ONLY_PERMIT2',
         message:
           'crossChainPermits: fillDeadline applies only to Permit2 layers',
@@ -240,17 +234,6 @@ describe('collectSessionRefusals', () => {
     // Each is what createSession throws once the ones before it are fixed.
     const fixes: SessionDefinition[] = [
       definition,
-      session(
-        [
-          cctp({
-            fillDeadline: [
-              { chain: arbitrum, max: new Date(2_000_000_000_000) },
-            ],
-            settlementLayers: ['CCTP', 'OFT'],
-          }),
-        ],
-        { signing: { mode: 'unrestricted' } } as Partial<SessionDefinition>,
-      ),
       session([cctp({ settlementLayers: ['CCTP', 'OFT'] })], {
         signing: { mode: 'unrestricted' },
       } as Partial<SessionDefinition>),
@@ -613,7 +596,11 @@ describe('refusal code coverage', () => {
 
   test('every listed code is raised somewhere in src', () => {
     // A published code stays listed after it stops being raised.
-    const retired = ['SESSION_REFUSED', 'ALLOW_FEES_ONLY_INTENT_EXECUTOR']
+    const retired = [
+      'SESSION_REFUSED',
+      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
+      'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+    ]
     const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
       (code) => !retired.includes(code),
     )

@@ -1059,7 +1059,8 @@ function signingSessions(
  * explicit `sourceAssets`: its claim moves only the permit's `from` tokens, so
  * an origin swap or a native wrap of anything else would not settle. A capped
  * token goes in `chainTokenAmounts`, which the orchestrator treats as a cap,
- * so it never plans a spend above `maxAmount`. A same-chain intent is funded
+ * so it never plans a spend above `maxAmount`; on a reusable session that is
+ * the lifetime cap, and a plan above what is left reverts. A same-chain intent is funded
  * from the session's `swap` sell tokens instead, capped at `maxTotal`.
  */
 function sourceAssetPin(

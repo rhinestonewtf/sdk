@@ -312,7 +312,7 @@ function uncappedAcrossWarnings(
           {
             code: 'UNCAPPED_ACROSS_ROUTE',
             message:
-              'crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount; set oneTimeUse and maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers',
+              'crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount; set maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers',
             permitIndex,
           },
         ]
@@ -516,16 +516,21 @@ function resolveSession(
     const at = { permitIndex, chainId }
     // The burn and a fee carve are pre-claim calls, and an IntentExecutor
     // layer has no claim: beside ACROSS, the option bounds the ACROSS claim.
+    // Its claims spend an allowance the account already holds, which
+    // maxAmount does not count.
     if (
       permit.preClaimOps &&
       (definition.oneTimeUse ||
         permit.allowFees ||
+        permit.from?.some(
+          (leg) => leg.chain.id === chainId && leg.maxAmount !== undefined,
+        ) ||
         (isSettlementScopedPermit(permit) && acrossPermit === undefined))
     ) {
       refuse(
         refusal(
           'PRE_CLAIM_OPS_NOT_APPLICABLE',
-          'crossChainPermits: preClaimOps needs a Permit2-layer permit without oneTimeUse or allowFees',
+          'crossChainPermits: preClaimOps needs a Permit2-layer permit without oneTimeUse, allowFees or maxAmount',
           at,
         ),
       )
@@ -677,19 +682,22 @@ function resolveSession(
       )
     }
   }
-  // A Permit2-route maxAmount is enforced together with oneTimeUse.
-  const uncappedIndex = definition.oneTimeUse
-    ? -1
-    : resolvedPermits.findIndex(
-        (permit) =>
-          !isSettlementScopedPermit(permit) &&
-          permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
-      )
+  // A reusable session's maxAmount is a lifetime total only while every claim's
+  // pre-claim calls are checked against its counter, which `fallback` leaves
+  // to no ERC-1271 bound (and `'sudo'` installs no limit at all).
+  const uncappedIndex =
+    definition.oneTimeUse || fallback === undefined
+      ? -1
+      : resolvedPermits.findIndex(
+          (permit) =>
+            !isSettlementScopedPermit(permit) &&
+            permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
+        )
   if (uncappedIndex !== -1) {
     refuse(
       refusal(
         'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
-        "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+        "crossChainPermits: with `fallback`, a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse, drop maxAmount, or drop `fallback`",
         { permitIndex: uncappedIndex },
       ),
     )

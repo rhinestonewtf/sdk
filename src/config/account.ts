@@ -326,7 +326,7 @@ interface Permit2ClaimPolicy {
  *   the layers' approve, so what the session approves stays within one
  *   `maxAmount` across all of them. Unlike the layers, the ACROSS route has
  *   no per-call amount cap and no output floor: it is bounded by that
- *   approve cap (which needs `oneTimeUse`) and by the claim policy's token,
+ *   approve cap and by the claim policy's token,
  *   chain and recipient, and an allowance the account already gave Permit2
  *   is not counted against `maxAmount`. `ACROSS` cannot enforce
  *   `to.minAmount` or `maxFeeBps`, and the layers cannot enforce
@@ -342,7 +342,7 @@ interface Permit2ClaimPolicy {
  *   builds an ACROSS-only session. Kept or named beside the layers, ACROSS
  *   has the bounds above, so for a `from` leg without its own `maxAmount`
  *   nothing caps what it moves (`validateSession` warns with
- *   `UNCAPPED_ACROSS_ROUTE`): set `oneTimeUse` and `maxAmount` on each `from`
+ *   `UNCAPPED_ACROSS_ROUTE`): set `maxAmount` on each `from`
  *   leg, or name the other layers to leave it out. It never includes `SAME_CHAIN_IE`, is refused
  *   when no layer qualifies, and refuses a dropped `ECO_IE` when `maxFeeBps`
  *   is set. It resolves against `GET /chains` and the clock at creation, so
@@ -350,7 +350,9 @@ interface Permit2ClaimPolicy {
  *   permit without `fallback` that names no layer gets `'all'`.
  *
  *   A settlement-scoped permit cannot be combined with `SAME_CHAIN`, nor
- *   share a session with another permit. `maxAmount` requires `oneTimeUse`, as do `OFT` and `LZ`, and only
+ *   share a session with another permit. `OFT` and `LZ` require
+ *   `oneTimeUse`, since each send pays a native LayerZero fee that
+ *   `maxAmount` does not bound, and only
  *   sponsored intents without an app fee settle through it unless it sets
  *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
  *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
@@ -385,7 +387,8 @@ interface CrossChainPermit {
    * Omit for no source-token restriction (any token on any chain may be
    * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
    * flag then constrain the source side. On a Permit2-route permit,
-   * `maxAmount` requires `oneTimeUse`, and a native token is refused.
+   * `maxAmount` with `fallback` requires `oneTimeUse`, and a native token
+   * is refused.
    */
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   /**
@@ -430,10 +433,18 @@ interface FromLeg {
   chain: Chain
   token: Address
   /**
-   * Cap on the amount the session may move from this leg. On a Permit2-route
-   * permit (`SAME_CHAIN` or `ACROSS`, or no layer named with `fallback`) it
-   * requires `oneTimeUse`, and caps what the session approves to Permit2: an
-   * allowance the account already holds is not bounded by it.
+   * Cap on what the session may move from this leg's token on its chain,
+   * across every route the permit settles through: it caps the sum of the
+   * session's approves of that token. With `oneTimeUse` that is one
+   * settlement; without it, a lifetime total shared by every intent the
+   * session signs, not a per-intent cap. Only the owner enabling the same
+   * session again resets it; a changed definition is a new session with a
+   * budget of its own, beside what the old one has left.
+   *
+   * It does not count an allowance the account already holds (given by the
+   * owner or left by another session), nor the `allowFees` calls, which
+   * have caps of their own. With `fallback` it requires `oneTimeUse`, and
+   * `preClaimOps: 'none'` refuses it.
    */
   maxAmount?: bigint
 }
@@ -567,8 +578,8 @@ interface CrossChainPermissionInput {
    * ACROSS claim, when named too), and `'all'` to `ACROSS` and every bridging
    * one that can settle the permit (see {@link CrossChainSettlementLayer}).
    * Under `'all'` the ACROSS route has no per-call amount cap and no output
-   * floor, only the session's approve cap (`maxAmount`, which needs
-   * `oneTimeUse`) and the claim's token, chain and recipient; name the layers
+   * floor, only the session's approve cap (`maxAmount`) and the claim's
+   * token, chain and recipient; name the layers
    * to leave it out. `ECO`, the retired Permit2 Eco arbiter, is refused: use
    * `ECO_IE`.
    *
@@ -583,7 +594,10 @@ interface CrossChainPermissionInput {
    * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
    * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
    * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
-   * reward actually sent. `ACROSS` cannot enforce it, so a permit naming
+   * reward actually sent. Without `oneTimeUse` that holds for every intent, so
+   * one smaller than the floor does not settle through `ECO_IE`, and the
+   * solvers keep at most `maxFeeBps` of `maxAmount` over the session's
+   * lifetime. `ACROSS` cannot enforce it, so a permit naming
    * `ACROSS` refuses it and `'all'` leaves `ACROSS` out.
    */
   maxFeeBps?: number
@@ -628,7 +642,8 @@ interface CrossChainPermissionInput {
    * and no native token is wrapped; one that needs a pre-claim call is
    * refused before signing. Intents must list their
    * `sourceChains`. It cannot be combined with `oneTimeUse`, whose burn is
-   * itself a pre-claim call, or with `allowFees`.
+   * itself a pre-claim call, with `allowFees`, or with a `maxAmount`, which
+   * would not count the allowance its claims spend.
    *
    * The session must be enabled before its first intent, since an enable
    * rides a pre-claim call: sign `account.getSessionDetails([session])` with
@@ -1127,7 +1142,8 @@ interface SessionDefinition<
    *
    * - `'intentExecution'`: the session key may also make the calls
    *   Rhinestone's intent-execution policy admits, with the permit's
-   *   `maxAmount` as a spending limit. That policy is set by Rhinestone and
+   *   `maxAmount` (which then needs `oneTimeUse`) as a spending limit.
+   *   That policy is set by Rhinestone and
    *   may admit more over time.
    * - `'sudo'`: the session key may call any contract, any function, with any
    *   arguments and native value.
@@ -1276,7 +1292,9 @@ interface Session {
   /** A scoped Permit2-route session's `from` tokens per chain, each with the
    *  largest `maxAmount` of its legs (none if one leg sets none). Intents
    *  signed with the session take them as their source assets, capped at that
-   *  amount. Metadata only — it does not change the permission id. */
+   *  amount: on a reusable session the whole lifetime cap, not what is left,
+   *  which the chain enforces. Metadata only — it does not change the
+   *  permission id. */
   permit2Sources?: readonly {
     readonly chain: Chain
     readonly token: Address
