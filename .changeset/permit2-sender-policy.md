@@ -6,4 +6,4 @@ Let a scoped Permit2-route session be reusable and keep its pre-claim calls. A s
 
 - Such a definition was refused with `PERMIT2_ROUTE_NEEDS_BOUND`; it now builds on the chains the policy is deployed on. It is still refused on a chain without it, such as Avalanche or Robinhood Chain, and the refusal names that chain.
 - Sessions with `oneTimeUse`, `preClaimOps: 'none'` or `fallback` are unchanged, permissionId and enable digest included.
-- A `maxAmount` on such a permit still needs `oneTimeUse` (`PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE`), so a reusable session's Permit2 approve is uncapped and it gets no wrapped native `deposit()`.
+- A `maxAmount` on such a permit caps its Permit2 approves over the session's lifetime, and a wrapped native `from` leg with one also gets the capped `deposit()`.

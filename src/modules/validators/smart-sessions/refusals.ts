@@ -26,8 +26,6 @@ export const SESSION_REFUSAL_CODES = {
     'a Permit2 layer other than ACROSS, or ACROSS with `fallback`, named beside IntentExecutor layers in one permit',
   SAME_CHAIN_IE_WITH_OTHER_LAYERS: 'SAME_CHAIN_IE named beside another layer',
   NO_FROM_ON_CHAIN: "no `from` leg on the session's chain",
-  INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
-    'retired: without oneTimeUse, maxAmount caps the session over its lifetime',
   MULTIPLE_MAX_AMOUNTS: 'maxAmount on more than one `from` token per chain',
   RECIPIENT_ANY_NOT_ALLOWED: "recipient 'any' without allowRecipientNotAccount",
   RECIPIENT_NEEDS_ACCOUNT:

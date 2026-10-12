@@ -108,7 +108,6 @@ describe('refusal codes', () => {
       'PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER',
       'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
       'NO_FROM_ON_CHAIN',
-      'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       'MULTIPLE_MAX_AMOUNTS',
       'RECIPIENT_ANY_NOT_ALLOWED',
       'RECIPIENT_NEEDS_ACCOUNT',
@@ -596,11 +595,7 @@ describe('refusal code coverage', () => {
 
   test('every listed code is raised somewhere in src', () => {
     // A published code stays listed after it stops being raised.
-    const retired = [
-      'SESSION_REFUSED',
-      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
-    ]
+    const retired = ['SESSION_REFUSED', 'ALLOW_FEES_ONLY_INTENT_EXECUTOR']
     const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
       (code) => !retired.includes(code),
     )
