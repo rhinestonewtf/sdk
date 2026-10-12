@@ -1,9 +1,17 @@
-import type { TypedDataDefinition } from 'viem'
+import {
+  type Hex,
+  isAddressEqual,
+  keccak256,
+  slice,
+  type TypedDataDefinition,
+  toHex,
+} from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrum, base, mainnet } from 'viem/chains'
+import { arbitrum, base, mainnet, sepolia } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { passkeyAccount } from '../../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../../test/utils/settlement-catalog'
 import type {
   AccountAdapter,
   AccountRuntime,
@@ -20,7 +28,13 @@ import {
   getQuorumMerkleRootSignableHash,
   getQuorumSignableHash,
 } from '../../modules/validators/quorum'
-import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import { ONE_TIME_USE_ID_POLICY_ADDRESS_DEV } from '../../modules/validators/smart-sessions/policies/addresses'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+  toSession,
+} from '../../modules/validators/smart-sessions/resolve'
+import type { SessionDefinition } from '../../modules/validators/smart-sessions/types'
 import { createAccountSigningContext } from '../../signing/context'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
@@ -601,10 +615,8 @@ describe('intent workflow', () => {
       ...input,
       signers: { kind: 'smart-session', byChain: { 1: { session } } },
     })
-    // A permission-less session enabled on-chain would normally drop to
-    // signatureMode 1 (see the multi-factor/passkey enabled cases → 0x00). A
-    // one-time-use session must stay in mode 5 so checkAction keeps running on
-    // the executor route — otherwise the contract's action-surface guard is inert.
+    // An enabled permission-less session would drop to mode 1; a one-time-use one
+    // stays in mode 5 so checkAction keeps running on the executor route.
     expect(prepared.request.options.signatureMode).toBe(5)
     // source: cast calldata "consumeFor(uint256,uint256)" 42 0
     expect(prepared.request.preClaimExecutions?.[1]?.[0]).toMatchObject({
@@ -622,6 +634,247 @@ describe('intent workflow', () => {
     expect(prepared.request.destinationExecutions?.length).toBe(
       input.calls.length,
     )
+  })
+
+  test('keeps an already-enabled reusable scoped Permit2 session in verify-execution mode', async () => {
+    // Its Permit2SenderPolicy refuses a pre-claim check through ERC-1271.
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      crossChainPermits: [
+        {
+          from: {
+            chain: mainnet,
+            token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+          },
+          to: {
+            chain: arbitrum,
+            token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+          },
+          settlementLayers: ['ACROSS'],
+        },
+      ],
+    })
+    const workflow = context({
+      checkpoints: {
+        read: vi.fn(async (checkpoint) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: true,
+          },
+        ]),
+      },
+    })
+    const prepared = await prepareIntent(workflow, {
+      ...input,
+      signers: { kind: 'smart-session', byChain: { 1: { session } } },
+    })
+    expect(prepared.request.options.signatureMode).toBe(5)
+    const [originSignature] = (await signIntent(workflow, prepared))
+      .originSignatures
+    if (typeof originSignature !== 'object') {
+      throw new Error('Expected a Smart Session signature pair')
+    }
+    expect(originSignature.preClaimSig).toMatch(/^0x00/u)
+    expect(originSignature.notarizedClaimSig).toMatch(/^0x/u)
+  })
+
+  test.each(['intentExecution', 'sudo'] as const)(
+    'keeps an already-enabled %s fallback session in verify-execution mode',
+    async (fallback) => {
+      const session = toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+        crossChainPermits: [
+          {
+            from: {
+              chain: mainnet,
+              token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+            },
+            to: {
+              chain: arbitrum,
+              token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+            },
+          },
+        ],
+        fallback,
+      })
+      const workflow = context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            {
+              kind: 'session-enabled' as const,
+              id: checkpoint.id,
+              enabled: true,
+            },
+          ]),
+        },
+      })
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      })
+      expect(prepared.request.options.signatureMode).toBe(5)
+    },
+  )
+
+  describe('a session whose claim may not carry pre-claim calls', () => {
+    const session = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      crossChainPermits: [
+        {
+          from: {
+            chain: mainnet,
+            token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+          },
+          to: {
+            chain: arbitrum,
+            token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+          },
+          settlementLayers: ['ACROSS'],
+          preClaimOps: 'none',
+        },
+      ],
+    })
+    const enableData = {
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` as const },
+      ],
+      sessionToEnableIndex: 0,
+    }
+    const permit2Quote = (
+      ops: { to: typeof address; value: bigint; data: `0x${string}` }[],
+    ): OrchestratorQuote => {
+      const typedData = {
+        domain: {
+          name: 'Permit2',
+          chainId: 1,
+          verifyingContract: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
+        },
+        types: {
+          PermitBatchWitnessTransferFrom: [
+            { name: 'permitted', type: 'TokenPermissions[]' },
+            { name: 'spender', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'mandate', type: 'Mandate' },
+          ],
+          TokenPermissions: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Mandate: [
+            { name: 'target', type: 'Target' },
+            { name: 'minGas', type: 'uint128' },
+            { name: 'originOps', type: 'Op' },
+            { name: 'destOps', type: 'Op' },
+            { name: 'q', type: 'bytes32' },
+          ],
+          Target: [
+            { name: 'recipient', type: 'address' },
+            { name: 'tokenOut', type: 'Token[]' },
+            { name: 'targetChain', type: 'uint256' },
+            { name: 'fillExpiry', type: 'uint256' },
+          ],
+          Token: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Op: [
+            { name: 'vt', type: 'bytes32' },
+            { name: 'ops', type: 'Ops[]' },
+          ],
+          Ops: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+          ],
+        },
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        message: {
+          permitted: [{ token: address, amount: 1n }],
+          spender: address,
+          nonce: 1n,
+          deadline: 1n,
+          mandate: {
+            target: {
+              recipient: address,
+              tokenOut: [{ token: address, amount: 1n }],
+              targetChain: 42161n,
+              fillExpiry: 1n,
+            },
+            minGas: 0n,
+            originOps: { vt: `0x${'00'.repeat(32)}`, ops },
+            destOps: { vt: `0x${'00'.repeat(32)}`, ops: [] },
+            q: `0x${'00'.repeat(32)}`,
+          },
+        },
+      }
+      return {
+        ...quote(),
+        signData: { ...quote().signData, origin: [typedData as never] },
+      }
+    }
+    const workflowFor = (enabled: boolean, route = quote()) =>
+      context({
+        checkpoints: {
+          read: vi.fn(async (checkpoint) => [
+            { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+          ]),
+        },
+        quoteClient: {
+          createQuote: vi.fn(async () => ({
+            traceId: 'trace-1',
+            routes: [route as never],
+          })),
+        },
+      })
+    const signers = (withEnable: boolean) => ({
+      kind: 'smart-session' as const,
+      byChain: { 1: { session, ...(withEnable && { enableData }) } },
+    })
+
+    test('must be enabled before its first intent', async () => {
+      await expect(
+        prepareIntent(workflowFor(false), { ...input, signers: signers(true) }),
+      ).rejects.toThrow(
+        "The session's claim may not carry pre-claim calls, so enable it on chain 1 before its first intent",
+      )
+    })
+
+    test('needs the intent to list its sourceChains', async () => {
+      await expect(
+        prepareIntent(workflowFor(true), {
+          ...input,
+          sourceChains: undefined,
+          signers: signers(false),
+        } as never),
+      ).rejects.toThrow('needs the intent to list its sourceChains')
+    })
+
+    test('refuses before signing a claim that carries a pre-claim call', async () => {
+      const workflow = workflowFor(
+        true,
+        permit2Quote([{ to: address, value: 0n, data: '0x' }]),
+      )
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        signers: signers(false),
+      })
+      await expect(signIntent(workflow, prepared)).rejects.toThrow(
+        "This intent needs a pre-claim call, which the session's claim may not carry",
+      )
+      const clean = workflowFor(true, permit2Quote([]))
+      await expect(
+        signIntent(
+          clean,
+          await prepareIntent(clean, { ...input, signers: signers(false) }),
+        ),
+      ).resolves.toBeDefined()
+    })
   })
 
   describe('one-time-use destination burn', () => {
@@ -678,6 +931,68 @@ describe('intent workflow', () => {
       expect(prepared.request.destinationExecutions ?? []).toHaveLength(0)
     })
 
+    test('refuses a default policy address on an intent chain it is not deployed on', async () => {
+      // The dev deployment is on Base and mainnet but not on Sepolia.
+      const devSession = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [account] },
+          oneTimeUse: { id: 42n },
+        },
+        { environment: 'development' },
+      )
+      const workflow = enabledWorkflow()
+      const byChain = (ids: readonly number[]) => ({
+        kind: 'smart-session' as const,
+        byChain: Object.fromEntries(
+          ids.map((id) => [id, { session: devSession }]),
+        ),
+      })
+      await expect(
+        prepareIntent(workflow, {
+          ...input,
+          sourceChains: [toEvmChainReference(sepolia.id)],
+          signers: byChain([sepolia.id, input.destination.id]),
+        }),
+      ).rejects.toThrow(
+        `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${sepolia.id} (development contracts); pass its address as policyAddresses.oneTimeUseId`,
+      )
+      expect(workflow.checkpoints.read).not.toHaveBeenCalled()
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [baseChain],
+          signers: byChain([base.id, input.destination.id]),
+        }),
+      ).resolves.toBeDefined()
+    })
+
+    test('accepts an explicitly pinned canonical policy address on any chain', async () => {
+      const pinned = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [account] },
+          oneTimeUse: { id: 42n },
+          policyAddresses: { oneTimeUseId: ONE_TIME_USE_ID_POLICY_ADDRESS_DEV },
+        },
+        { environment: 'development' },
+      )
+      expect(pinned.oneTimeUse?.defaultPolicy).toBeUndefined()
+      await expect(
+        prepareIntent(enabledWorkflow(), {
+          ...input,
+          sourceChains: [toEvmChainReference(sepolia.id)],
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [sepolia.id]: { session: pinned },
+              [input.destination.id]: { session: pinned },
+            },
+          },
+        }),
+      ).resolves.toBeDefined()
+    })
+
     test('rejects an intent that does not list its sources', async () => {
       const { sourceChains: _omitted, ...withoutSources } = input
       await expect(
@@ -693,6 +1008,160 @@ describe('intent workflow', () => {
           signers,
         }),
       ).rejects.toThrow(/also one of several sources/)
+    })
+  })
+
+  describe('dummy pre-claim action', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+    const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
+    const DUMMY = {
+      to: DUMMY_PRECLAIMOP_TARGET,
+      data: DUMMY_PRECLAIMOP_SELECTOR,
+    } as const
+    // source: cast calldata "consume(uint256)" 42
+    const CONSUME =
+      '0x483f31ab000000000000000000000000000000000000000000000000000000000000002a'
+    const owners = { type: 'ecdsa' as const, accounts: [account] }
+    const once = {
+      oneTimeUse: { id: 42n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    }
+    const definitions = (
+      oneTimeUse: boolean,
+    ): Record<string, SessionDefinition> => {
+      const extra = oneTimeUse ? once : {}
+      return {
+        'settlement-scoped': {
+          chain: base,
+          owners,
+          account: address,
+          ...extra,
+          crossChainPermits: [
+            {
+              // An uncapped IntentExecutor-layer permit needs no oneTimeUse.
+              from: oneTimeUse
+                ? { chain: base, token: USDC, maxAmount: 100n }
+                : { chain: base, token: USDC },
+              to: { chain: arbitrum, token: USDC_ARB },
+              settlementLayers: ['CCTP'],
+            },
+          ],
+        },
+        restricted: {
+          chain: base,
+          owners,
+          ...extra,
+          restrictToActions: true,
+          actions: [{ target: address, selector: '0x12345678' }],
+        },
+        unrestricted: {
+          chain: base,
+          owners,
+          ...extra,
+          actions: [{ target: address, selector: '0x12345678' }],
+        },
+      }
+    }
+    const sessionOf = (definition: SessionDefinition) =>
+      toSession(definition, { settlement: SETTLEMENT_CATALOG })
+    // The emissary checks an op against the action keyed by its target and selector.
+    const hasAction = (
+      session: ReturnType<typeof toSession>,
+      op: { readonly to: Hex; readonly data: Hex },
+    ) =>
+      session.actions.some(
+        (action) =>
+          isAddressEqual(action.actionTarget, op.to) &&
+          action.actionTargetSelector === slice(op.data, 0, 4),
+      )
+    const prepareEnabling = (session: ReturnType<typeof toSession>) =>
+      prepareIntent(
+        context({
+          checkpoints: {
+            read: vi.fn(async (checkpoint) => [
+              {
+                kind: 'session-enabled' as const,
+                id: checkpoint.id,
+                enabled: false,
+              },
+            ]),
+          },
+        }),
+        {
+          ...input,
+          destination: toEvmChainReference(base.id),
+          sourceChains: [toEvmChainReference(base.id)],
+          calls: [],
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [base.id]: {
+                session,
+                enableData: {
+                  userSignature: signature,
+                  hashesAndChainIds: [
+                    {
+                      chainId: BigInt(base.id),
+                      sessionDigest: `0x${'22'.repeat(32)}`,
+                    },
+                  ],
+                  sessionToEnableIndex: 0,
+                },
+              },
+            },
+          },
+        },
+      )
+
+    test.each(Object.entries(definitions(true)))(
+      'a one-time-use %s session admits every op it enables with, and not the dummy',
+      async (_, definition) => {
+        const session = sessionOf(definition)
+        const prepared = await prepareEnabling(session)
+        const preClaim = prepared.request.preClaimExecutions?.[base.id] ?? []
+        expect(preClaim.length).toBeGreaterThan(0)
+        for (const op of preClaim) expect(hasAction(session, op)).toBe(true)
+        // The orchestrator rewrites a destination burn to `consume`.
+        expect(hasAction(session, { to: POLICY, data: CONSUME })).toBe(true)
+        expect(hasAction(session, DUMMY)).toBe(false)
+      },
+    )
+
+    test.each(Object.entries(definitions(false)))(
+      'a %s session without oneTimeUse still enables with the dummy op',
+      async (_, definition) => {
+        const session = sessionOf(definition)
+        const prepared = await prepareEnabling(session)
+        expect(prepared.request.preClaimExecutions?.[base.id]).toEqual([
+          { ...DUMMY, value: 0n },
+        ])
+        expect(hasAction(session, DUMMY)).toBe(true)
+      },
+    )
+
+    // A changed digest would be a HashMismatch for every session without
+    // oneTimeUse already signed.
+    test('sessions without oneTimeUse keep their actions', () => {
+      const digests = Object.fromEntries(
+        Object.entries(definitions(false)).map(([name, definition]) => [
+          name,
+          keccak256(
+            toHex(
+              JSON.stringify(sessionOf(definition).actions, (_, v) =>
+                typeof v === 'bigint' ? v.toString() : v,
+              ),
+            ),
+          ),
+        ]),
+      )
+      expect(digests).toMatchInlineSnapshot(`
+        {
+          "restricted": "0xe553b8ac5e91ddd5049d20fb77ef35efeb92efd50c5537ffe594cdccb39df847",
+          "settlement-scoped": "0x40cfa455e95fb4899a29f5844cf5c6ee0147cd049ad0a6edea9261bbbb5fbda0",
+          "unrestricted": "0x97d438c046b92b5e3c80b4cc720d014a37c8548ed2c7144cac2a9681650df0f6",
+        }
+      `)
     })
   })
 

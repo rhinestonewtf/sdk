@@ -1,142 +1,51 @@
 import {
   type Address,
   decodeFunctionData,
-  encodeFunctionData,
   type Hex,
   maxUint256,
-  pad,
-  parseAbi,
   toHex,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
+import {
+  ACCOUNT,
+  ARB,
+  abi,
+  BASE,
+  CAP,
+  type Call,
+  call,
+  cctp,
+  context,
+  execute,
+  fn,
+  lz,
+  MC,
+  multiCallReverts,
+  OTHER,
+  PLASMA,
+  SONEIUM,
+  SONEIUM_EID,
+  stargate,
+  USDC_ARB,
+  USDC_BASE,
+  USDC_PLASMA,
+  USDC_SONEIUM,
+} from '../../../../../test/utils/lz-calldata'
 import {
   satisfiesRules as holds,
   type RuleUsage,
 } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { encodeSessionPolicy } from '../policies/encode'
-import { LZ_CCTP_MAX_RELAY_FEE, LZ_EXECUTE_SELECTOR, scopeLz } from './lz'
+import { pinValue } from '../swap/rules'
+import type { ArgPolicyExpression } from '../types'
+import {
+  LZ_CCTP_MAX_RELAY_FEE,
+  LZ_EXECUTE_SELECTOR,
+  sameRule,
+  scopeLz,
+} from './lz'
 import type { SettlementCatalog, SettlementContext } from './types'
-
-const abi = parseAbi([
-  'function execute((address target,uint256 value,bytes data)[] calls, bytes32 quoteId)',
-  'function delegateTransferFrom(address token,address from,address to,uint256 amount)',
-  'function approve(address spender,uint256 amount)',
-  'function transfer(address to,uint256 amount)',
-  'function send((uint32 dstEid,bytes32 to,uint256 amountLD,uint256 minAmountLD,bytes extraOptions,bytes composeMsg,bytes oftCmd) sendParam,(uint256 nativeFee,uint256 lzTokenFee) fee,address refundAddress)',
-  'function depositForBurn(uint256 amount,uint32 destinationDomain,bytes32 mintRecipient,address burnToken,bytes32 destinationCaller,uint256 maxFee,uint32 minFinalityThreshold)',
-  'function sweep(address[] tokens,address recipient)',
-])
-
-const ACCOUNT = '0x7a3f5c2e9b1d4e8f6a0c3b5d7e9f1a2b4c6d8e0f' as Address
-const OTHER = '0x2222222222222222222222222222222222222222' as Address
-const BASE = 8453
-const ARB = 42161
-const PLASMA = 9745
-const lz = (chainId: number) => SETTLEMENT_CATALOG[chainId].lz!
-const USDC_BASE = lz(BASE).stargateUsdc!.token
-const USDC_ARB = lz(ARB).stargateUsdc!.token
-const USDC_PLASMA = '0x2d661C89D812261039AF9764eceaAee884f5F67F' as Address
-const MC = lz(BASE).multiCall
-const TD = lz(BASE).transferDelegate
-const POOL = lz(BASE).stargateUsdc!.pool
-const FEE_RECEIVER = lz(BASE).cctp!.feeReceiver
-const TOKEN_MESSENGER = '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d' as Address
-const QUOTE_ID = `0x${'00'.repeat(16)}01a0efa5cb93751ca4a9d25a2a4d407c` as Hex
-const CAP = 10_000_000n
-
-type Call = { target: Address; value: bigint; data: Hex }
-const call = (target: Address, data: Hex, value = 0n): Call => ({
-  target,
-  value,
-  data,
-})
-const fn = (functionName: string, args: readonly unknown[]) =>
-  encodeFunctionData({ abi, functionName, args } as never)
-const execute = (calls: Call[], quoteId = QUOTE_ID) =>
-  fn('execute', [calls, quoteId])
-
-/** The API's Stargate calls, as quoted for base -> arbitrum (10 USDC, taxi). */
-function stargate(
-  mode: 'taxi' | 'bus',
-  o: Partial<{ eid: number; to: Address; amount: bigint }> = {},
-): Call[] {
-  const amount = o.amount ?? CAP
-  return [
-    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, amount])),
-    call(USDC_BASE, fn('approve', [POOL, amount])),
-    call(
-      POOL,
-      fn('send', [
-        {
-          dstEid: o.eid ?? 30110,
-          to: pad(o.to ?? ACCOUNT),
-          amountLD: amount,
-          minAmountLD: 9_899_009n,
-          extraOptions: mode === 'taxi' ? '0x0003' : '0x',
-          composeMsg: '0x',
-          oftCmd: mode === 'taxi' ? '0x' : '0x01',
-        },
-        { nativeFee: 110_176_109_085_186n, lzTokenFee: 0n },
-        MC,
-      ]),
-      110_176_109_085_186n,
-    ),
-    call(MC, fn('sweep', [[USDC_BASE, `0x${'00'.repeat(20)}`], ACCOUNT])),
-  ]
-}
-
-/** The API's CCTP calls; to Plasma it charges no relay fee. */
-function cctp(
-  o: Partial<{
-    domain: number
-    to: Address
-    fee: bigint
-    pull: bigint
-    receiver: Address
-  }> = {},
-  feeless = false,
-): Call[] {
-  const pull = o.pull ?? CAP
-  const fee = o.fee ?? 14_061n
-  const burned = feeless || fee >= pull ? pull : pull - fee
-  return [
-    call(TD, fn('delegateTransferFrom', [USDC_BASE, ACCOUNT, MC, pull])),
-    ...(feeless
-      ? []
-      : [call(USDC_BASE, fn('transfer', [o.receiver ?? FEE_RECEIVER, fee]))]),
-    call(USDC_BASE, fn('approve', [TOKEN_MESSENGER, burned])),
-    call(
-      TOKEN_MESSENGER,
-      fn('depositForBurn', [
-        burned,
-        o.domain ?? (feeless ? 33 : 3),
-        pad(o.to ?? ACCOUNT),
-        USDC_BASE,
-        pad('0x00'),
-        1299n,
-        1000,
-      ]),
-    ),
-    call(MC, fn('sweep', [[USDC_BASE, `0x${'00'.repeat(20)}`], ACCOUNT])),
-  ]
-}
-
-function context(
-  overrides: Partial<SettlementContext> = {},
-): SettlementContext {
-  return {
-    chainId: BASE,
-    settlement: SETTLEMENT_CATALOG,
-    target: MC,
-    account: ACCOUNT,
-    sourceTokens: [USDC_BASE],
-    destinations: [{ chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }],
-    cap: CAP,
-    timeFrame: [],
-    ...overrides,
-  }
-}
 
 /** Fields the key may choose: the quote id, fees, and amounts under the cap. */
 const FREE: Record<string, readonly string[]> = {
@@ -144,7 +53,7 @@ const FREE: Record<string, readonly string[]> = {
   approve: ['amount'],
   transfer: ['amount'],
   send: ['amountLD', 'minAmountLD', 'nativeFee'],
-  depositForBurn: ['amount', 'maxFee', 'minFinalityThreshold'],
+  depositForBurn: ['amount', 'burnToken', 'maxFee', 'minFinalityThreshold'],
   sweep: [],
 }
 
@@ -185,8 +94,29 @@ function pinnedView(data: Hex) {
   })
 }
 
+const revertsOnChain = (data: Hex) => {
+  try {
+    return multiCallReverts(data, ACCOUNT)
+  } catch {
+    return false
+  }
+}
+
+const ARB_LEG = { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }
+const SONEIUM_LEG = {
+  chainId: SONEIUM,
+  token: USDC_SONEIUM,
+  recipient: ACCOUNT,
+}
+
+/** The API's Stargate TAXI batch into Soneium, which no CCTP route reaches. */
+const taxi = (o: Parameters<typeof stargate>[1] = {}) =>
+  execute(stargate('taxi', { eid: SONEIUM_EID, ...o }))
+
 describe('scopeLz', () => {
+  // Base -> Arbitrum, which CCTP reaches: no Stargate route.
   const action = scopeLz(context())
+  const toSoneium = scopeLz(context({ destinations: [SONEIUM_LEG] }))
 
   test('targets the chain LZMultiCall execute and admits native value', () => {
     expect(action.target).toBe(MC)
@@ -199,11 +129,24 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi'))],
-    ['bus', () => execute(stargate('bus'))],
-    ['cctp', () => execute(cctp())],
-  ])('accepts the API %s batch', (_, data) => {
-    expect(holds(action, data())).toBe(true)
+    ['taxi', () => toSoneium, () => taxi()],
+    ['cctp', () => action, () => execute(cctp())],
+  ])('accepts the API %s batch', (_, permit, data) => {
+    expect(holds(permit(), data())).toBe(true)
+  })
+
+  test('refuses Stargate TAXI into a leg a CCTP route reaches', () => {
+    expect(holds(action, execute(stargate('taxi')))).toBe(false)
+    const both = scopeLz(context({ destinations: [ARB_LEG, SONEIUM_LEG] }))
+    expect(holds(both, execute(stargate('taxi')))).toBe(false)
+    expect(holds(both, taxi())).toBe(true)
+    expect(holds(both, execute(cctp()))).toBe(true)
+  })
+
+  test('refuses the API Stargate BUS batch', () => {
+    expect(
+      holds(toSoneium, execute(stargate('bus', { eid: SONEIUM_EID }))),
+    ).toBe(false)
   })
 
   test('accepts the feeless CCTP batch to Plasma', () => {
@@ -221,12 +164,11 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', (a: bigint) => execute(stargate('taxi', { amount: a }))],
-    ['bus', (a: bigint) => execute(stargate('bus', { amount: a }))],
-    ['cctp', (a: bigint) => execute(cctp({ pull: a }))],
-  ])('caps the %s pull at maxAmount', (_, data) => {
-    expect(holds(action, data(CAP))).toBe(true)
-    expect(holds(action, data(CAP + 1n))).toBe(false)
+    ['taxi', () => toSoneium, (a: bigint) => taxi({ amount: a })],
+    ['cctp', () => action, (a: bigint) => execute(cctp({ pull: a }))],
+  ])('caps the %s pull at maxAmount', (_, permit, data) => {
+    expect(holds(permit(), data(CAP))).toBe(true)
+    expect(holds(permit(), data(CAP + 1n))).toBe(false)
   })
 
   test('caps the feeless CCTP pull at maxAmount', () => {
@@ -253,64 +195,62 @@ describe('scopeLz', () => {
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi', { amount: 1n }))],
+    ['taxi', () => taxi({ amount: 1n })],
     ['cctp', () => execute(cctp({ pull: 1n, fee: 0n }))],
   ])(
     'admits one execute per session: after %s, no route runs again',
     (_, first) => {
       // Even with a stale TransferDelegate allowance to fund it, a second
       // route would pull another maxAmount, and a second send another fee.
+      const both = scopeLz(context({ destinations: [ARB_LEG, SONEIUM_LEG] }))
       const usage: RuleUsage = new Map()
-      expect(holds(action, first(), usage)).toBe(true)
+      expect(holds(both, first(), usage)).toBe(true)
       for (const again of [
-        execute(stargate('taxi', { amount: 1n })),
-        execute(stargate('bus', { amount: 1n })),
+        taxi({ amount: 1n }),
         execute(cctp({ pull: 1n, fee: 0n })),
       ]) {
-        expect(holds(action, again, usage)).toBe(false)
+        expect(holds(both, again, usage)).toBe(false)
       }
     },
   )
 
   test('a refused execute does not use up the session', () => {
     const usage: RuleUsage = new Map()
-    expect(holds(action, execute(stargate('taxi', { to: OTHER })), usage)).toBe(
-      false,
-    )
-    expect(holds(action, execute(stargate('taxi')), usage)).toBe(true)
+    expect(holds(toSoneium, taxi({ to: OTHER }), usage)).toBe(false)
+    expect(holds(toSoneium, taxi(), usage)).toBe(true)
   })
 
   test('refuses a zero-amount Stargate send', () => {
-    expect(holds(action, execute(stargate('taxi', { amount: 0n })))).toBe(false)
+    expect(holds(toSoneium, taxi({ amount: 0n }))).toBe(false)
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi', { to: OTHER }))],
-    ['taxi eid', () => execute(stargate('taxi', { eid: 30101 }))],
-    ['bus', () => execute(stargate('bus', { to: OTHER }))],
-    ['cctp', () => execute(cctp({ to: OTHER }))],
-    ['cctp domain', () => execute(cctp({ domain: 0 }))],
-  ])('refuses a %s batch to another destination', (_, data) => {
-    expect(holds(action, data())).toBe(false)
+    ['taxi', () => toSoneium, () => taxi({ to: OTHER })],
+    ['taxi eid', () => toSoneium, () => taxi({ eid: 30101 })],
+    ['cctp', () => action, () => execute(cctp({ to: OTHER }))],
+    ['cctp domain', () => action, () => execute(cctp({ domain: 0 }))],
+  ])('refuses a %s batch to another destination', (_, permit, data) => {
+    expect(holds(permit(), data())).toBe(false)
   })
 
   test('refuses an extra, missing or reordered nested call', () => {
-    const calls = stargate('taxi')
+    const calls = stargate('taxi', { eid: SONEIUM_EID })
     const drain = call(USDC_BASE, fn('transfer', [OTHER, 1n]))
-    expect(holds(action, execute([...calls, drain]))).toBe(false)
-    expect(holds(action, execute(calls.slice(0, 3)))).toBe(false)
+    expect(holds(toSoneium, execute(calls))).toBe(true)
+    expect(holds(toSoneium, execute([...calls, drain]))).toBe(false)
+    expect(holds(toSoneium, execute(calls.slice(0, 3)))).toBe(false)
     expect(
-      holds(action, execute([calls[0], calls[1], calls[3], calls[2]])),
+      holds(toSoneium, execute([calls[0], calls[1], calls[3], calls[2]])),
     ).toBe(false)
   })
 
   test.each([
-    ['taxi', () => execute(stargate('taxi'))],
-    ['bus', () => execute(stargate('bus'))],
-    ['cctp', () => execute(cctp())],
+    ['taxi', () => toSoneium, () => taxi()],
+    ['cctp', () => action, () => execute(cctp())],
   ])(
     'accepts a byte-flipped %s batch only when no pinned field changed',
-    (_, data) => {
+    (_, permit, data) => {
+      const action = permit()
       const original = data()
       const expected = pinnedView(original)
       const bytes = Buffer.from(original.slice(2), 'hex')
@@ -322,6 +262,8 @@ describe('scopeLz', () => {
           const mutated = toHex(flipped)
           if (!holds(action, mutated)) continue
           accepted++
+          // LZMultiCall reverts these on-chain, whatever the policy says.
+          if (revertsOnChain(mutated)) continue
           let view: ReturnType<typeof pinnedView>
           try {
             view = pinnedView(mutated)
@@ -340,42 +282,47 @@ describe('scopeLz', () => {
       // Free fields exist, so some flips must pass: the check is not vacuous.
       expect(accepted).toBeGreaterThan(0)
     },
+    // Two flips per byte of the batch: past the 5s default under coverage.
+    30_000,
   )
 
   test('binds only the leg its own route delivers', () => {
     const both = scopeLz(
       context({
         destinations: [
-          { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+          SONEIUM_LEG,
           { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
         ],
       }),
     )
-    expect(holds(both, execute(stargate('taxi')))).toBe(true)
+    expect(holds(both, taxi())).toBe(true)
     expect(holds(both, execute(cctp({}, true)))).toBe(false)
     expect(holds(both, execute(cctp({ to: OTHER }, true)))).toBe(true)
     // Plasma has no Stargate pool, so its recipient does not open a send.
-    expect(holds(both, execute(stargate('taxi', { to: OTHER })))).toBe(false)
+    expect(holds(both, taxi({ to: OTHER }))).toBe(false)
   })
 
   test("leaves the recipient open for 'any'", () => {
     const open = scopeLz(
-      context({ destinations: [{ chainId: ARB, token: USDC_ARB }] }),
+      context({
+        destinations: [
+          { chainId: ARB, token: USDC_ARB },
+          { chainId: SONEIUM, token: USDC_SONEIUM },
+        ],
+      }),
     )
-    expect(holds(open, execute(stargate('bus', { to: OTHER })))).toBe(true)
+    expect(holds(open, taxi({ to: OTHER }))).toBe(true)
     expect(holds(open, execute(cctp({ to: OTHER })))).toBe(true)
-    expect(holds(open, execute(stargate('bus', { eid: 30101 })))).toBe(false)
+    expect(holds(open, taxi({ eid: 30101 }))).toBe(false)
   })
 
   test('without a cap, the pull is unbounded but the layout still binds', () => {
-    const uncapped = scopeLz(context({ cap: undefined }))
+    const uncapped = scopeLz(
+      context({ destinations: [SONEIUM_LEG], cap: undefined }),
+    )
     const big = 10n ** 30n
-    expect(holds(uncapped, execute(stargate('taxi', { amount: big })))).toBe(
-      true,
-    )
-    expect(holds(uncapped, execute(stargate('taxi', { to: OTHER })))).toBe(
-      false,
-    )
+    expect(holds(uncapped, taxi({ amount: big }))).toBe(true)
+    expect(holds(uncapped, taxi({ to: OTHER }))).toBe(false)
   })
 
   test('refuses a permit that would exceed the ArgPolicy rule limit', () => {
@@ -398,19 +345,20 @@ describe('scopeLz', () => {
       if (!p) throw new Error('no policy')
       return () => encodeSessionPolicy(p, 'production')
     }
-    // A Stargate leg and a feeless CCTP leg: all three layouts, and it fits.
-    expect(
-      policy([
-        { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
-        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
-      ]),
-    ).not.toThrow()
-    expect(
-      policy([
-        ...destinations,
-        { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
-      ]),
-    ).toThrow(/max is 128/)
+    // Every destination LZ serves from Base, in all three layouts, fits.
+    const all = [
+      ...destinations,
+      SONEIUM_LEG,
+      { chainId: PLASMA, token: USDC_PLASMA, recipient: OTHER },
+    ]
+    expect(policy(all)).not.toThrow()
+    // Each further recipient adds a branch, until it no longer fits.
+    const more = Array.from({ length: 12 }, (_, n) => ({
+      ...ARB_LEG,
+      recipient: `0x${(0x20 + n).toString(16).padStart(40, '0')}` as Address,
+    }))
+    expect(policy([...all, ...more.slice(0, 11)])).not.toThrow()
+    expect(policy([...all, ...more])).toThrow(/max is 128/)
   })
 
   test('refuses a token LZ does not move', () => {
@@ -436,11 +384,11 @@ describe('scopeLz', () => {
         destinations: [
           { chainId: BASE, token: USDC_BASE, recipient: OTHER },
           { chainId: 56, token: OTHER, recipient: OTHER },
-          { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT },
+          ARB_LEG,
         ],
       }),
     )
-    expect(holds(mixed, execute(stargate('taxi')))).toBe(true)
+    expect(holds(mixed, execute(cctp()))).toBe(true)
     expect(() =>
       scopeLz(
         context({
@@ -494,6 +442,39 @@ describe('scopeLz', () => {
     expect(holds(feeless, execute(cctp()))).toBe(false)
   })
 
+  test('admits Stargate TAXI where no CCTP route reaches the leg', () => {
+    const { cctp: _, ...noCctp } = lz(ARB)
+    const intoArb = scopeLz(context({ settlement: withLz(ARB, noCctp) }))
+    expect(holds(intoArb, execute(stargate('taxi')))).toBe(true)
+    expect(holds(intoArb, execute(cctp()))).toBe(false)
+    // A source without CCTP has no CCTP route to any leg.
+    const { cctp: __, ...noSourceCctp } = lz(BASE)
+    const fromBase = scopeLz(
+      context({ settlement: withLz(BASE, noSourceCctp) }),
+    )
+    expect(holds(fromBase, execute(stargate('taxi')))).toBe(true)
+    expect(holds(fromBase, execute(cctp()))).toBe(false)
+  })
+
+  test('admits Stargate TAXI for a Stargate USDC that CCTP does not mint', () => {
+    const settlement = withLz(ARB, {
+      ...lz(ARB),
+      stargateUsdc: { ...lz(ARB).stargateUsdc!, token: OTHER },
+    })
+    const toStargateUsdc = scopeLz(
+      context({
+        settlement,
+        destinations: [{ chainId: ARB, token: OTHER, recipient: ACCOUNT }],
+      }),
+    )
+    expect(holds(toStargateUsdc, execute(stargate('taxi')))).toBe(true)
+    expect(holds(toStargateUsdc, execute(cctp()))).toBe(false)
+    // The CCTP USDC leg on the same pair still gets CCTP only.
+    const toCctpUsdc = scopeLz(context({ settlement }))
+    expect(holds(toCctpUsdc, execute(cctp()))).toBe(true)
+    expect(holds(toCctpUsdc, execute(stargate('taxi')))).toBe(false)
+  })
+
   test('routes only through the blocks the orchestrator serves', () => {
     const { stargateUsdc: _, ...noPool } = lz(ARB)
     const cctpOnly = scopeLz(context({ settlement: withLz(ARB, noPool) }))
@@ -507,6 +488,13 @@ describe('scopeLz', () => {
     ).toThrow(/does not route from chain 8453/)
   })
 
+  test('never shares a usage-limited rule between branches', () => {
+    const rule = pinValue(0x40n, 4n)
+    expect(sameRule(rule, { ...rule })).toBe(true)
+    const limited = { ...rule, usageLimit: 4n }
+    expect(sameRule(limited, { ...limited })).toBe(false)
+  })
+
   test('needs the account and exactly one source token', () => {
     expect(() => scopeLz(context({ account: undefined }))).toThrow(/account/)
     expect(() =>
@@ -514,3 +502,146 @@ describe('scopeLz', () => {
     ).toThrow(/exactly one/)
   })
 })
+
+describe('scopeLz to.minAmount', () => {
+  const FLOOR = 9_800_000n
+  const floored = (minAmount: bigint = FLOOR) =>
+    scopeLz(context({ destinations: [{ ...SONEIUM_LEG, minAmount }] }))
+
+  test('admits a Stargate send whose minAmountLD is at or above the floor', () => {
+    expect(holds(floored(), taxi())).toBe(true)
+    expect(holds(floored(), taxi({ minAmount: FLOOR }))).toBe(true)
+    expect(holds(floored(), taxi({ minAmount: CAP }))).toBe(true)
+  })
+
+  test('refuses a Stargate send that accepts less than the floor', () => {
+    expect(holds(floored(), taxi({ minAmount: FLOOR - 1n }))).toBe(false)
+    expect(holds(floored(), taxi({ minAmount: 0n }))).toBe(false)
+    // Without the floor the key may accept any shortfall.
+    expect(holds(toSoneiumUnfloored(), taxi({ minAmount: 0n }))).toBe(true)
+  })
+
+  test('the floor binds only its own leg', () => {
+    const arbStargate = (() => {
+      const { cctp: _, ...noCctp } = lz(ARB)
+      return {
+        ...SETTLEMENT_CATALOG,
+        [ARB]: { ...SETTLEMENT_CATALOG[ARB], lz: noCctp },
+      }
+    })()
+    const both = scopeLz(
+      context({
+        settlement: arbStargate,
+        destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }, ARB_LEG],
+      }),
+    )
+    expect(holds(both, taxi({ minAmount: FLOOR - 1n }))).toBe(false)
+    expect(holds(both, execute(stargate('taxi', { minAmount: 0n })))).toBe(true)
+  })
+
+  test('adds one rule and keeps a one-leg policy free of ORs', () => {
+    const count = (e: ArgPolicyExpression): { rules: number; ors: number } =>
+      e.type === 'rule'
+        ? { rules: 1, ors: 0 }
+        : e.type === 'not'
+          ? count(e.child)
+          : (() => {
+              const l = count(e.left)
+              const r = count(e.right)
+              return {
+                rules: l.rules + r.rules,
+                ors: l.ors + r.ors + (e.type === 'or' ? 1 : 0),
+              }
+            })()
+    const expr = (a: ReturnType<typeof scopeLz>) => {
+      const policy = a.policies![0]
+      if (policy.type !== 'arg-policy') throw new Error('not an arg-policy')
+      return policy.expression
+    }
+    const before = count(expr(toSoneiumUnfloored()))
+    const after = count(expr(floored()))
+    expect(after).toEqual({ rules: before.rules + 1, ors: before.ors })
+    expect(after.ors).toBe(0)
+  })
+
+  test('refuses a floor no Stargate route can carry', () => {
+    // CCTP reaches Arbitrum from Base, and depositForBurn has no minimum out.
+    expect(() =>
+      scopeLz(context({ destinations: [{ ...ARB_LEG, minAmount: FLOOR }] })),
+    ).toThrow('only on a Stargate send')
+  })
+
+  test('refuses a floor that is not positive', () => {
+    expect(() => floored(0n)).toThrow(/positive/)
+  })
+
+  test('refuses a floor across tokens whose decimals are not served equal', () => {
+    const { usdStablecoins: _, ...soneium } = SETTLEMENT_CATALOG[SONEIUM]
+    expect(() =>
+      scopeLz(
+        context({
+          settlement: { ...SETTLEMENT_CATALOG, [SONEIUM]: soneium },
+          destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }],
+        }),
+      ),
+    ).toThrow(/decimals/)
+    expect(() =>
+      scopeLz(
+        context({
+          settlement: {
+            ...SETTLEMENT_CATALOG,
+            [SONEIUM]: {
+              ...soneium,
+              usdStablecoins: [
+                { address: USDC_SONEIUM, symbol: 'USDC', decimals: 18 },
+              ],
+            },
+          },
+          destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }],
+        }),
+      ),
+    ).toThrow(/decimals/)
+  })
+
+  test('refuses a second leg into the floored chain, which would bypass the floor', () => {
+    for (const second of [
+      SONEIUM_LEG,
+      { ...SONEIUM_LEG, minAmount: 1n },
+      { ...SONEIUM_LEG, recipient: undefined },
+    ]) {
+      expect(() =>
+        scopeLz(
+          context({
+            destinations: [{ ...SONEIUM_LEG, minAmount: FLOOR }, second],
+          }),
+        ),
+      ).toThrow(/one `to` leg/)
+    }
+  })
+
+  test('refuses a floor Stargate could not read as a uint64', () => {
+    expect(() =>
+      scopeLz(
+        context({
+          cap: undefined,
+          destinations: [{ ...SONEIUM_LEG, minAmount: 2n ** 64n }],
+        }),
+      ),
+    ).toThrow(/uint64/)
+    expect(
+      holds(
+        scopeLz(
+          context({
+            cap: undefined,
+            destinations: [{ ...SONEIUM_LEG, minAmount: 2n ** 64n - 1n }],
+          }),
+        ),
+        taxi({ minAmount: 2n ** 64n - 1n }),
+      ),
+    ).toBe(true)
+  })
+})
+
+function toSoneiumUnfloored() {
+  return scopeLz(context({ destinations: [SONEIUM_LEG] }))
+}

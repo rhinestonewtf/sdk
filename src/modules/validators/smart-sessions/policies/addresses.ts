@@ -1,10 +1,28 @@
-import type { Address } from 'viem'
+import { type Address, isAddressEqual } from 'viem'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
+import { refusal } from '../refusals'
 import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x000000000033212E272655D8a22402Db819477A6'
+/**
+ * The TimeFramePolicy every window installs by default: it holds its window on
+ * actions and ERC-1271 checks. Same address on every chain.
+ */
 export const TIME_FRAME_POLICY_ADDRESS: Address =
+  '0xEAAb79CA50a37514E3Bd2538Aa80ee8cB0eCe9d3'
+/** The previous TimeFramePolicy, which holds its window on ERC-1271 checks only. */
+export const PREVIOUS_TIME_FRAME_POLICY_ADDRESS: Address =
   '0x0000000000D30f611fA3bf652ac6879428586930'
+const TIME_FRAME_POLICY_CHAINS: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155420,
+]
+
+/** Whether TIME_FRAME_POLICY_ADDRESS is deployed on a chain. */
+export function timeFramePolicyDeployed(chainId: number): boolean {
+  return TIME_FRAME_POLICY_CHAINS.includes(chainId)
+}
 export const SUDO_POLICY_ADDRESS: Address =
   '0x0000000000FEEc8D74e3143fBaBbca515358d869'
 export const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =
@@ -19,16 +37,117 @@ export const INTENT_EXECUTION_POLICY_ADDRESS: Address =
   '0xe9eA54d063975cDee9e06b7636d5563d95a7A23C'
 export const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
   '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
+// The constructor takes the IntentExecutor, so each environment has its own.
+export const ONE_TIME_USE_ID_POLICY_ADDRESS: Address =
+  '0x630CEbCf54C7471154CF659088CC4197872Cf5FD'
+export const ONE_TIME_USE_ID_POLICY_ADDRESS_DEV: Address =
+  '0x86F7cB4E25626d6a07cfED305c38816F30d07224'
+
+// A chain absent here gets no default, so a session never points at an empty
+// address.
+const ONE_TIME_USE_ID_POLICY_CHAINS_DEV: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 42161, 43114, 57073, 84532, 421614, 747474,
+]
+const ONE_TIME_USE_ID_POLICY_CHAINS: readonly number[] = [
+  ...ONE_TIME_USE_ID_POLICY_CHAINS_DEV,
+  9746,
+  11155111,
+  11155420,
+]
+
+// Accepts a claim signature only when Permit2 presents it. The constructor
+// takes only Permit2, so both environments share one address.
+export const PERMIT2_SENDER_POLICY_ADDRESS: Address =
+  '0xb590a7409de9e9f2A42B56CB62C1f7bA5ea0f959'
+const PERMIT2_SENDER_POLICY_CHAINS: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
+]
+
+/** The deployed Permit2SenderPolicy on a chain, or undefined where there is none. */
+export function defaultPermit2SenderPolicy(
+  chainId: number,
+): Address | undefined {
+  return PERMIT2_SENDER_POLICY_CHAINS.includes(chainId)
+    ? PERMIT2_SENDER_POLICY_ADDRESS
+    : undefined
+}
+
+/** The deployed OneTimeUseIdPolicy on a chain, or undefined where there is none. */
+export function defaultOneTimeUseIdPolicy(
+  chainId: number,
+  environment: 'production' | 'development',
+): Address | undefined {
+  if (environment === 'development') {
+    return ONE_TIME_USE_ID_POLICY_CHAINS_DEV.includes(chainId)
+      ? ONE_TIME_USE_ID_POLICY_ADDRESS_DEV
+      : undefined
+  }
+  return ONE_TIME_USE_ID_POLICY_CHAINS.includes(chainId)
+    ? ONE_TIME_USE_ID_POLICY_ADDRESS
+    : undefined
+}
+
+/** The refusal for a chain with no OneTimeUseIdPolicy to default to. */
+export function oneTimeUseIdPolicyMissing(
+  chainId: number,
+  environment: 'production' | 'development',
+): string {
+  return (
+    `oneTimeUse: no OneTimeUseIdPolicy is deployed on chain ${chainId}` +
+    (environment === 'development' ? ' (development contracts)' : '') +
+    '; pass its address as policyAddresses.oneTimeUseId'
+  )
+}
+
+/**
+ * Throws when `policy` is a default deployment with no code on `chainId`. A
+ * session resolves its default on its own chain, but an intent can use it on
+ * others. Any other address is the caller's to vouch for.
+ */
+export function assertOneTimeUseIdPolicyDeployed(
+  policy: Address,
+  chainId: number,
+): void {
+  const environment = isAddressEqual(policy, ONE_TIME_USE_ID_POLICY_ADDRESS)
+    ? 'production'
+    : isAddressEqual(policy, ONE_TIME_USE_ID_POLICY_ADDRESS_DEV)
+      ? 'development'
+      : undefined
+  if (environment && !defaultOneTimeUseIdPolicy(chainId, environment)) {
+    throw new Error(oneTimeUseIdPolicyMissing(chainId, environment))
+  }
+}
+
+// CREATE2 deployments of the canonical UniversalActionPolicy bytecode, at the
+// same addresses on every chain in UNIVERSAL_ACTION_POLICY_COPY_CHAINS.
+export const UNIVERSAL_ACTION_POLICY_COPIES: readonly Address[] = Object.freeze(
+  [
+    '0x68744D25604872d2F81FAa864963353F3ee9b4d2',
+    '0x8a026acb4DF6EFbc9BD4664D1E8750D470E7dD9F',
+    '0x6EB915A22F2015A776eec56F11EF96cda1EDCC54',
+  ],
+)
+// Static so the encoding never depends on an RPC read.
+export const UNIVERSAL_ACTION_POLICY_COPY_CHAINS: ReadonlySet<number> = new Set(
+  [
+    1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+    8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
+  ],
+)
 
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
   readonly universalAction: Address
+  // Only present when configured or defaulted for a settlement-scoped session.
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy: Address
   readonly spendingLimits: Address
   readonly timeFrame: Address
   readonly usageLimit: Address
   readonly valueLimit: Address
-  // No canonical deployment yet, so no default — only present when overridden.
+  // Absent when neither overridden nor deployed on the session's chain.
   readonly oneTimeUseId?: Address
 }
 
@@ -44,8 +163,16 @@ export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
 
 export function resolvePolicyAddresses(
   overrides?: SessionPolicyAddresses,
+  deployment?: {
+    readonly chainId: number
+    readonly environment: 'production' | 'development'
+  },
 ): ResolvedPolicyAddresses {
-  return {
+  const oneTimeUseId =
+    overrides?.oneTimeUseId ??
+    (deployment &&
+      defaultOneTimeUseIdPolicy(deployment.chainId, deployment.environment))
+  const resolved: ResolvedPolicyAddresses = {
     sudo: overrides?.sudo ?? DEFAULT_POLICY_ADDRESSES.sudo,
     universalAction:
       overrides?.universalAction ?? DEFAULT_POLICY_ADDRESSES.universalAction,
@@ -55,8 +182,38 @@ export function resolvePolicyAddresses(
     timeFrame: overrides?.timeFrame ?? DEFAULT_POLICY_ADDRESSES.timeFrame,
     usageLimit: overrides?.usageLimit ?? DEFAULT_POLICY_ADDRESSES.usageLimit,
     valueLimit: overrides?.valueLimit ?? DEFAULT_POLICY_ADDRESSES.valueLimit,
-    ...(overrides?.oneTimeUseId
-      ? { oneTimeUseId: overrides.oneTimeUseId }
-      : {}),
+    ...(oneTimeUseId ? { oneTimeUseId } : {}),
   }
+  const copies = overrides?.universalActionCopies ?? []
+  if (!copies.length) return resolved
+  // A copy receives UniversalActionPolicy initData, so any other policy there
+  // would install the rules as something else.
+  const others = new Map<string, string>()
+  for (const [name, address] of [
+    ...Object.entries(DEFAULT_POLICY_ADDRESSES),
+    ...Object.entries(resolved),
+    ['intent-execution', INTENT_EXECUTION_POLICY_ADDRESS],
+    ['intent-execution (dev)', INTENT_EXECUTION_POLICY_ADDRESS_DEV],
+    ['Permit2 claim', PERMIT2_CLAIM_POLICY_ADDRESS],
+  ] as [string, Address][]) {
+    if (name !== 'universalAction') others.set(address.toLowerCase(), name)
+  }
+  const seen = new Set([resolved.universalAction.toLowerCase()])
+  for (const copy of copies) {
+    const other = others.get(copy.toLowerCase())
+    if (other) {
+      throw refusal(
+        'UNIVERSAL_ACTION_COPY_INVALID',
+        `universalActionCopies: ${copy} is the ${other} policy, not a UniversalActionPolicy deployment`,
+      )
+    }
+    if (seen.has(copy.toLowerCase())) {
+      throw refusal(
+        'UNIVERSAL_ACTION_COPY_INVALID',
+        `universalActionCopies must be distinct from universalAction and from each other; ${copy} repeats`,
+      )
+    }
+    seen.add(copy.toLowerCase())
+  }
+  return { ...resolved, universalActionCopies: copies }
 }

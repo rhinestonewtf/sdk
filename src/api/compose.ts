@@ -36,11 +36,13 @@ import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sess
 import {
   readSessionEnabled,
   readSessionNonce,
+  readSessionNonceAndEnabled,
 } from '../modules/validators/smart-sessions/state'
 import type {
   ResolvedSessionSignerSet,
   Session,
   SessionDetails,
+  SessionDetailsOptions,
 } from '../modules/validators/smart-sessions/types'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 import {
@@ -116,7 +118,7 @@ import type {
 import { signRuntimeMessage, signRuntimeTypedData } from './direct-signing'
 import { getAppFeeBalances } from './queries/app-fees'
 import { getPortfolio } from './queries/portfolio'
-import { createSession } from './queries/session'
+import { createSession, validateSession } from './queries/session'
 
 export type {
   AccountComposition,
@@ -155,6 +157,14 @@ export function createCoreComposition<CompatibilityConfig = unknown>(
     createSession: (definition) =>
       createSession({
         orchestrator: dependencies.orchestrator,
+        rpc: dependencies.rpc,
+        environment: config.environment,
+        definition,
+      }),
+    validateSession: (definition) =>
+      validateSession({
+        orchestrator: dependencies.orchestrator,
+        rpc: dependencies.rpc,
         environment: config.environment,
         definition,
       }),
@@ -391,8 +401,8 @@ function createAccountComposition<CompatibilityConfig>(
           .identity.address,
         kind: 'executor',
       }),
-    getSessionDetails: (context, sessions) =>
-      accountSessionDetails(context.account, sessions, dependencies),
+    getSessionDetails: (context, sessions, options) =>
+      accountSessionDetails(context.account, sessions, dependencies, options),
     isSessionEnabled: (context, session) =>
       accountSessionEnabled(context.account, session, dependencies),
     signEnableSession: (context, details) =>
@@ -674,6 +684,7 @@ function accountSessionDetails(
   account: ResolvedAccountConfig,
   sessions: readonly Session[],
   dependencies: CoreDependencies,
+  options: SessionDetailsOptions = {},
 ): Promise<SessionDetails> {
   const address = createStaticAccountRuntime(account, referenceChain(), false)
     .identity.address
@@ -682,6 +693,18 @@ function accountSessionDetails(
     account: address,
     sessions,
     environment,
+    ...(options.allowBudgetReset && { allowBudgetReset: true }),
+    readNonceAndEnabled: (session) => {
+      const chain = toEvmChainReference(session.chain.id)
+      return readSessionNonceAndEnabled({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        account: address,
+        lockTag: SESSION_LOCK_TAG,
+        session,
+        environment,
+      })
+    },
     readNonce: (session) => {
       const chain = toEvmChainReference(session.chain.id)
       return readSessionNonce({

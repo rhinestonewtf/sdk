@@ -11,7 +11,11 @@ import { getChainById } from '../../chains/catalog'
 import { getValidatorCapabilities } from '../../modules/validators/capabilities'
 import { defineValidator } from '../../modules/validators/definition'
 import type { Permit2ClaimMessage } from '../../modules/validators/policies/claim/permit2'
-import { buildPermit2ClaimPolicyCalldata } from '../../modules/validators/policies/claim/permit2'
+import {
+  buildPermit2ClaimPolicyCalldata,
+  hashOpStruct,
+  NO_OPS,
+} from '../../modules/validators/policies/claim/permit2'
 import {
   resolveAtomicValidator,
   resolveValidator,
@@ -567,6 +571,18 @@ function claimPolicyData(
     session.session.claimPolicies,
     message,
   )
+  // The claim policy would refuse it on-chain, after the user signed.
+  if (
+    policy?.originOps?.some(
+      ({ chain, required }) =>
+        !required && chain.id === session.session.chain.id,
+    ) &&
+    hashOpStruct(message.mandate.originOps) !== NO_OPS
+  ) {
+    throw new Error(
+      "This intent needs a pre-claim call, which the session's claim may not carry: give the account a Permit2 allowance for the `from` token, and drop any fee or sourceCalls",
+    )
+  }
   return policy
     ? buildPermit2ClaimPolicyCalldata(
         resolvePermit2ClaimPolicy(policy),

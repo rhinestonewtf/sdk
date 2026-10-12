@@ -64,6 +64,7 @@ function requireUsdc(
   if (!isAddressEqual(token, served(settlement, chainId, 'cctp').usdc)) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: CCTP moves only USDC; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
 }
@@ -73,6 +74,7 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: CCTP burns one token (USDC) per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   requireUsdc(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
@@ -98,12 +100,10 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
   })
   // One destination keeps its pins in the shared AND; several become an OR of
   // (domain, recipient) pairs so a recipient is only valid on its own chain.
-  const action =
-    legs.length === 1
-      ? swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, [
-          ...rules,
-          ...legs[0],
-        ])
-      : swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, rules, legs)
-  return { ...action, policies: [...(action.policies ?? []), ...ctx.timeFrame] }
+  return legs.length === 1
+    ? swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, [
+        ...rules,
+        ...legs[0],
+      ])
+    : swapAction(ctx.target, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, rules, legs)
 }

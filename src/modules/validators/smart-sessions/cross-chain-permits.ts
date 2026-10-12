@@ -1,4 +1,25 @@
+import type { Address } from 'viem'
+import { FAR_FUTURE_MS, isWindowTime } from './policies/time-frame'
+import {
+  type Refuse,
+  refusal,
+  refuser,
+  SESSION_REFUSAL_CODES,
+} from './refusals'
 import type { CrossChainPermissionInput, CrossChainPermit } from './types'
+
+/** The refusal for a recipient `allowRecipientNotAccount` has not opened, on either route. */
+export function recipientNotAllowed(recipient: Address | 'any'): Error {
+  return recipient === 'any'
+    ? refusal(
+        'RECIPIENT_ANY_NOT_ALLOWED',
+        "crossChainPermits: recipient 'any' requires allowRecipientNotAccount",
+      )
+    : refusal(
+        'RECIPIENT_NOT_ACCOUNT',
+        'crossChainPermits: a recipient other than the account requires allowRecipientNotAccount',
+      )
+}
 
 function seconds(input: Date): bigint {
   return BigInt(Math.floor(input.getTime() / 1000))
@@ -16,6 +37,7 @@ function normalizeLegs<T>(
 // so legs pass through directly; only the `Date` bounds are converted.
 export function resolveCrossChainPermission(
   input: CrossChainPermissionInput,
+  refuse: Refuse = refuser(),
 ): CrossChainPermit {
   const from = normalizeLegs(input.from)?.map((leg) => ({
     chain: leg.chain,
@@ -28,15 +50,34 @@ export function resolveCrossChainPermission(
     ...(leg.recipient === undefined ? {} : { recipient: leg.recipient }),
     ...(leg.minAmount === undefined ? {} : { minAmount: leg.minAmount }),
   }))
-  const validUntil = input.validUntil ? seconds(input.validUntil) : undefined
-  const validAfter = input.validAfter ? seconds(input.validAfter) : undefined
+  const until = input.validUntil
+  // resolve refuses a validUntil that is not a future Date.
+  const validUntil =
+    until instanceof Date && isWindowTime(until.getTime())
+      ? seconds(until)
+      : undefined
+  const after = input.validAfter
+  let validAfter: bigint | undefined
+  if (after instanceof Date && isWindowTime(after.getTime())) {
+    // Rounded up, so the window never opens early.
+    validAfter = BigInt(Math.ceil(after.getTime() / 1000))
+  } else if (after !== undefined) {
+    refuse(
+      refusal(
+        'VALID_AFTER_INVALID',
+        `crossChainPermits: ${SESSION_REFUSAL_CODES.VALID_AFTER_INVALID}`,
+      ),
+    )
+  }
   if (
-    validUntil !== undefined &&
     validAfter !== undefined &&
-    validAfter > validUntil
+    validAfter >= (validUntil ?? BigInt(FAR_FUTURE_MS / 1000))
   ) {
-    throw new Error(
-      `crossChainPermits: validAfter (${validAfter}) is greater than validUntil (${validUntil})`,
+    refuse(
+      refusal(
+        'VALID_AFTER_EXCEEDS_VALID_UNTIL',
+        `crossChainPermits: ${SESSION_REFUSAL_CODES.VALID_AFTER_EXCEEDS_VALID_UNTIL}`,
+      ),
     )
   }
   return {
@@ -59,6 +100,7 @@ export function resolveCrossChainPermission(
       : {}),
     ...(input.maxFeeBps === undefined ? {} : { maxFeeBps: input.maxFeeBps }),
     ...(input.allowFees === undefined ? {} : { allowFees: input.allowFees }),
+    ...(input.preClaimOps && { preClaimOps: input.preClaimOps }),
   }
 }
 
@@ -92,5 +134,6 @@ export function toCrossChainPermissionInput(
       : {}),
     ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
     ...(permit.allowFees === undefined ? {} : { allowFees: permit.allowFees }),
+    ...(permit.preClaimOps && { preClaimOps: permit.preClaimOps }),
   }
 }

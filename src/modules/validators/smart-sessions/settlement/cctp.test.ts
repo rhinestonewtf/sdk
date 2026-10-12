@@ -53,7 +53,6 @@ const base = {
   settlement: SETTLEMENT_CATALOG,
   target: SETTLEMENT_CATALOG[8453].cctp!.tokenMessenger,
   sourceTokens: [USDC],
-  timeFrame: [],
 } as const
 
 describe('scopeCctp', () => {

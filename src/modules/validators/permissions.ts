@@ -9,6 +9,10 @@ import {
   size,
   toFunctionSelector,
 } from 'viem'
+import {
+  isEmptyTimeFrame,
+  timeFrame,
+} from './smart-sessions/policies/time-frame'
 import type {
   ArgPolicyExpression,
   Permission,
@@ -219,12 +223,6 @@ const ERC20_SPENDING_LIMIT_SELECTORS = new Set<Hex>([
   '0x23b872dd', // transferFrom(address,address,uint256)
 ])
 
-// Year 2100 in ms — well within uint128 after the encoder's ms→s conversion.
-// Used as the one-sided default for `validUntil` when only `validAfter` is set.
-// Exported so the cross-chain permit expansion (smart-sessions.ts) applies the
-// same always-passing upper bound instead of defaulting to 0 (already expired).
-export const FAR_FUTURE_MS = 4_102_444_800_000
-
 function resolvePermission(permission: Permission): ScopedAction[] {
   const { abi, address, functions } = permission
   const actions: ScopedAction[] = []
@@ -269,18 +267,16 @@ function resolvePermission(permission: Permission): ScopedAction[] {
     }
 
     if (config.validUntil !== undefined || config.validAfter !== undefined) {
-      const validUntil =
-        config.validUntil !== undefined
-          ? config.validUntil.getTime()
-          : FAR_FUTURE_MS
-      const validAfter =
-        config.validAfter !== undefined ? config.validAfter.getTime() : 0
-      if (validUntil < validAfter) {
+      const window = timeFrame(
+        config.validAfter?.getTime(),
+        config.validUntil?.getTime(),
+      )
+      if (isEmptyTimeFrame(window)) {
         throw new Error(
-          `Function "${fnName}": validUntil (${validUntil}) is before validAfter (${validAfter}).`,
+          `Function "${fnName}": validAfter must be earlier than validUntil`,
         )
       }
-      policies.push({ type: 'time-frame', validUntil, validAfter })
+      policies.push(window)
     }
 
     if (config.valueLimit !== undefined) {

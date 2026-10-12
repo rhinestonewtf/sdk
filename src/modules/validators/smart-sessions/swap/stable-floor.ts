@@ -1,18 +1,20 @@
 import type { Address } from 'viem'
 import type { ServedStablecoin, SwapScopeInput } from '../types'
+import { floorFor } from './rules'
 
 /**
- * Opt-in stable-swap floor (RHI-7883).
+ * Opt-in stable-swap floor.
  *
  * The Swapper takes its output bound from the caller and its `calls[]` route
  * may call anything, so a capped input alone lets a session key set the bound
- * to zero and route the input away (RHI-7870). Pinning the output bound to a
+ * to zero and route the input away. Pinning the output bound to a
  * floor derived from the cap bounds the rate: worst case floor/cap.
  */
 
 const DEFAULT_MAX_SLIPPAGE_BPS = 100
 const BPS = 10_000n
-const STABLE_DECIMALS = new Set([6, 18])
+/** The decimals a served USD stablecoin may have; any other is a bad entry. */
+export const STABLE_DECIMALS = new Set([6, 18])
 
 export interface StableFloorParams {
   readonly maxSlippageBps: number
@@ -115,12 +117,16 @@ export function stableFloorAmount(
   const bps = BigInt(params.maxSlippageBps)
   const [rateNumerator, rateDenominator] =
     direction === 'exactIn' ? [BPS - bps, BPS] : [BPS, BPS + bps]
-  const numerator = cap * rateNumerator * 10n ** BigInt(params.buyDecimals)
-  const denominator = rateDenominator * 10n ** BigInt(params.sellDecimals)
-  return (numerator + denominator - 1n) / denominator
+  return floorFor(
+    cap,
+    rateNumerator,
+    rateDenominator,
+    params.sellDecimals,
+    params.buyDecimals,
+  )
 }
 
-const PERMIT2: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+export const PERMIT2: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 
 /**
  * Refuse a stableFloor session that grants a way to move the sell token around

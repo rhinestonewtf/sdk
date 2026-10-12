@@ -11,7 +11,7 @@ import {
   zeroHash,
 } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
 import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
@@ -48,6 +48,14 @@ import type {
   SessionPolicy,
   SmartSessionMockShape,
 } from './smart-sessions/types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./smart-sessions/policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('./smart-sessions/policies/addresses')
+  >()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 const getPolicyData = (policy: SessionPolicy, useDevContracts?: boolean) =>
   encodeSessionPolicy(policy, useDevContracts ? 'development' : 'production')
@@ -693,9 +701,10 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['ACROSS'],
         },
       ],
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
@@ -720,6 +729,11 @@ describe('crossChainPermits expansion', () => {
           to: [{ chain: base, token: USDC_ARB }],
         },
       ],
+      oneTimeUse: { id: 1n },
+      policyAddresses: {
+        oneTimeUseId: '0x00000000000000000000000000000000000000aa',
+      },
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     const fallback = data.actions.find(
@@ -732,27 +746,31 @@ describe('crossChainPermits expansion', () => {
     ).toBe(true)
   })
 
-  test('permit with validUntil adds a TimeFramePolicy to the fallback', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-          validUntil: new Date(2_000_000_000 * 1000),
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    const fallback = data.actions.find(
-      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )!
+  test('permit with validUntil puts a time frame on each of its actions, without oneTimeUse', () => {
+    const data = getSessionData(
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
+            validUntil: new Date(2_000_000_000 * 1000),
+          },
+        ],
+      }),
+    )
+    expect(data.actions.length).toBeGreaterThan(0)
+    for (const action of data.actions) {
+      expect(action.actionPolicies.map((p) => p.policy)).toContain(
+        TIME_FRAME_POLICY_ADDRESS,
+      )
+    }
+    // Permit2 refuses an expired permit, so the 1271 list needs no window.
     expect(
-      fallback.actionPolicies.some(
-        (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
-      ),
-    ).toBe(true)
+      data.erc7739Policies.erc1271Policies.map((p) => p.policy),
+    ).not.toContain(TIME_FRAME_POLICY_ADDRESS)
   })
 
   test('refuses user claimPolicies combined with crossChainPermits', () => {
@@ -766,10 +784,11 @@ describe('crossChainPermits expansion', () => {
           {
             from: [{ chain: base, token: USDC }],
             to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
           },
         ],
       }),
-    ).toThrow(/twice; the second config would overwrite/)
+    ).toThrow(/cannot hold claimPolicies/)
   })
 
   test('refuses multiple permits, which would collapse to one on-chain', () => {
@@ -782,6 +801,7 @@ describe('crossChainPermits expansion', () => {
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
         crossChainPermits: [permit, permit, permit],
+        fallback: 'intentExecution',
       }),
     ).toThrow(/twice; the second config would overwrite/)
   })
@@ -794,7 +814,8 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['SAME_CHAIN'] }],
+      fallback: 'intentExecution',
     })
     const data = getSessionData(session)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
@@ -810,7 +831,8 @@ describe('crossChainPermits expansion', () => {
     const session = toSession({
       chain: base,
       owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [{ settlementLayers: ['ECO'] }],
+      crossChainPermits: [{ settlementLayers: ['SAME_CHAIN'] }],
+      fallback: 'intentExecution',
     })
     const withTokens = toSession({
       chain: base,
@@ -819,9 +841,10 @@ describe('crossChainPermits expansion', () => {
         {
           from: [{ chain: base, token: USDC }],
           to: [{ chain: base, token: USDC_ARB }],
-          settlementLayers: ['ECO'],
+          settlementLayers: ['SAME_CHAIN'],
         },
       ],
+      fallback: 'intentExecution',
     })
     const bare =
       getSessionData(session).erc7739Policies.erc1271Policies[0].initData
@@ -833,40 +856,24 @@ describe('crossChainPermits expansion', () => {
     expect(bare.length).toBeLessThan(tokened.length)
   })
 
-  test('one-sided validAfter → TimeFramePolicy gets an always-passing far-future validUntil (not 0)', () => {
-    // Regression: a permit with only `validAfter` must NOT produce a
-    // TimeFramePolicy with validUntil=0 (expired the instant validAfter is
-    // reached). It should default to the year-2100 sentinel, mirroring the
-    // permission resolver.
-    const validAfterSeconds = 1_700_000_000 // unix seconds
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      crossChainPermits: [
-        {
-          from: [{ chain: base, token: USDC }],
-          to: [{ chain: base, token: USDC_ARB }],
-          validAfter: new Date(validAfterSeconds * 1000),
-        },
-      ],
-    })
-    const data = getSessionData(session)
-    const fallback = data.actions.find(
-      (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-    )!
-    const timeFrame = fallback.actionPolicies.find(
-      (p) => p.policy === TIME_FRAME_POLICY_ADDRESS,
+  test('permit with validAfter also puts a time frame on the 1271 list', () => {
+    const data = getSessionData(
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        crossChainPermits: [
+          {
+            from: [{ chain: base, token: USDC }],
+            to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
+            validAfter: new Date(1_700_000_000 * 1000),
+          },
+        ],
+      }),
     )
-    expect(timeFrame).toBeDefined()
-    // initData is encodePacked(['uint48','uint48'], [validUntil_s, validAfter_s]):
-    // 6 bytes (12 hex chars) each, validUntil first.
-    const hex = timeFrame!.initData.slice(2)
-    const validUntilSec = Number.parseInt(hex.slice(0, 12), 16)
-    const validAfterSec = Number.parseInt(hex.slice(12, 24), 16)
-    expect(validAfterSec).toBe(validAfterSeconds)
-    // Far-future sentinel (year 2100) in seconds — must be well in the future.
-    expect(validUntilSec).toBe(4_102_444_800)
-    expect(validUntilSec).toBeGreaterThan(validAfterSec)
+    expect(data.erc7739Policies.erc1271Policies.map((p) => p.policy)).toContain(
+      TIME_FRAME_POLICY_ADDRESS,
+    )
   })
 })
 

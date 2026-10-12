@@ -86,6 +86,7 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
+  DroppedSettlementLayer,
   FromLeg,
   GuardiansSignerSet,
   HyperCoreOptions,
@@ -108,9 +109,11 @@ export type {
   Recovery,
   RhinestoneAccountConfig,
   Session,
+  SessionAccess,
   SessionDefinition,
   SessionSigning,
   SessionSigningContent,
+  SettlementCoverage,
   SignerSet,
   SourceCallInput,
   SourceCallProvidedFunds,
@@ -122,6 +125,13 @@ export type {
   UniversalActionPolicyParamCondition,
   WebauthnValidatorConfig,
 } from './config/account'
+export type {
+  SessionRefusal,
+  SessionRefusalCode,
+  SessionValidation,
+  SessionWarning,
+  SessionWarningCode,
+} from './modules/validators/smart-sessions/refusals'
 export type {
   OwnerPasskeySignature,
   OwnerSignature,

@@ -6,6 +6,7 @@ import {
   zeroAddress,
 } from 'viem'
 import { namedParamOffsets } from '../../permissions'
+import { refusal } from '../refusals'
 import { swapperAbi } from '../swap/rhinestone'
 import {
   cumulativeCap,
@@ -30,7 +31,7 @@ import type {
  */
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
-const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+export const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
 /**
  * The Swapper's output bound, at the same head word in both entrypoints:
@@ -87,9 +88,6 @@ export interface SameChainContext {
     readonly minAmount?: bigint
   }[]
   readonly cap?: bigint
-  readonly timeFrame: readonly SessionPolicy[]
-  readonly validAfter?: bigint
-  readonly validUntil?: bigint
 }
 
 export interface SameChainScope {
@@ -121,7 +119,8 @@ function recipientsOnly(
 
 export function scopeSameChain(ctx: SameChainContext): SameChainScope {
   if (ctx.sourceTokens.length !== 1) {
-    throw new Error(
+    throw refusal(
+      'ONE_SOURCE_TOKEN',
       'crossChainPermits: SAME_CHAIN_IE spends one token; give exactly one `from` token on this chain',
     )
   }
@@ -132,28 +131,28 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
     isAddressEqual(token, zeroAddress) ||
     isAddressEqual(token, NATIVE_SENTINEL)
   ) {
-    throw new Error(
+    throw refusal(
+      'NATIVE_SOURCE_UNSUPPORTED',
       'crossChainPermits: SAME_CHAIN_IE spends an ERC-20; a native `from` token is not supported',
     )
   }
   const elsewhere = ctx.destinations.find((leg) => leg.chainId !== ctx.chainId)
   if (elsewhere) {
-    throw new Error(
+    throw refusal(
+      'SAME_CHAIN_IE_OTHER_CHAIN_LEG',
       `crossChainPermits: SAME_CHAIN_IE settles on chain ${ctx.chainId}; a \`to\` leg names chain ${elsewhere.chainId}`,
+      { chainId: elsewhere.chainId, leg: 'to' },
     )
   }
-  const withTimeFrame = (action: ScopedAction): ScopedAction => ({
-    ...action,
-    policies: [...(action.policies ?? []), ...ctx.timeFrame],
-  })
 
   const sameToken = ctx.destinations.map((leg) =>
     isAddressEqual(leg.token, token),
   )
   if (sameToken.every(Boolean)) {
     if (ctx.destinations.some((leg) => leg.minAmount !== undefined)) {
-      throw new Error(
-        'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
+      throw refusal(
+        'SAME_CHAIN_IE_TRANSFER_MIN_AMOUNT',
+        'crossChainPermits: a SAME_CHAIN_IE transfer cannot enforce `to.minAmount`; it applies to a swap',
       )
     }
     const rules: UniversalActionPolicyParamRule[] =
@@ -165,7 +164,8 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       account &&
       recipients.every((r) => r !== undefined && isAddressEqual(r, account))
     ) {
-      throw new Error(
+      throw refusal(
+        'SAME_CHAIN_IE_TRANSFER_TO_SELF',
         'crossChainPermits: a SAME_CHAIN_IE transfer to the account itself never settles; name another recipient',
       )
     }
@@ -175,7 +175,8 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
       ? (recipients as Address[])
       : []
     if (pinned.length === 0 && rules.length === 0) {
-      throw new Error(
+      throw refusal(
+        'SAME_CHAIN_IE_ANY_RECIPIENT_NEEDS_MAX_AMOUNT',
         "crossChainPermits: a SAME_CHAIN_IE transfer to 'any' recipient needs maxAmount; otherwise it authorises every transfer of the token",
       )
     }
@@ -193,30 +194,34 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
               pinned.map((recipient) => [pin(0n, recipient)]),
             )
           : recipientsOnly(token, pinned)
-    return { actions: [withTimeFrame(action)], permissions: [] }
+    return { actions: [action], permissions: [] }
   }
   if (sameToken.some(Boolean) || ctx.destinations.length !== 1) {
-    throw new Error(
+    throw refusal(
+      'SAME_CHAIN_IE_TRANSFER_OR_SINGLE_SWAP',
       'crossChainPermits: SAME_CHAIN_IE either transfers the `from` token or swaps it into exactly one `to` token',
     )
   }
   const [leg] = ctx.destinations
   if (leg.recipient === undefined) {
-    throw new Error(
+    throw refusal(
+      'RECIPIENT_ANY_UNPINNABLE',
       "crossChainPermits: a SAME_CHAIN_IE swap needs a concrete recipient; 'any' cannot pin the swap output",
     )
   }
   // The key passes the Swapper's output bound and its route, so without a
   // floor it could route the pulled input anywhere and accept nothing back.
   if (leg.minAmount === undefined || leg.minAmount <= 0n) {
-    throw new Error(
+    throw refusal(
+      'SAME_CHAIN_IE_SWAP_NEEDS_MIN_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap needs a positive `to.minAmount` to bound what the swap must deliver',
     )
   }
   // The floor is a fixed amount, not a price: only against a capped input does
-  // maxAmount : minAmount bound the rate, and the cap brings oneTimeUse.
+  // maxAmount : minAmount bound the rate, over one swap or a lifetime of them.
   if (ctx.cap === undefined) {
-    throw new Error(
+    throw refusal(
+      'SAME_CHAIN_IE_SWAP_NEEDS_MAX_AMOUNT',
       'crossChainPermits: a SAME_CHAIN_IE swap needs maxAmount; the floor bounds the rate only against a capped input',
     )
   }
@@ -237,15 +242,6 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
     calldataOffset: SWAPPER_OUTPUT_BOUND_OFFSET,
     referenceValue: leg.minAmount,
   }
-  const date = (seconds: bigint) => new Date(Number(seconds) * 1000)
-  const window = {
-    ...(ctx.validAfter === undefined
-      ? {}
-      : { validAfter: date(ctx.validAfter) }),
-    ...(ctx.validUntil === undefined
-      ? {}
-      : { validUntil: date(ctx.validUntil) }),
-  }
   return {
     // The bare venue emits only Swapper entrypoints; the floor goes on every
     // action so none can run without it.
@@ -259,22 +255,14 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
         )
       ) {
         throw new Error(
-          'crossChainPermits: a SAME_CHAIN_IE swap action has no params policy to carry its floor',
+          'crossChainPermits (internal): a SAME_CHAIN_IE swap action has no params policy to carry its floor',
         )
       }
-      return withTimeFrame({
+      return {
         ...action,
         policies: policies.map((policy) => withRule(policy, floor)),
-      })
+      }
     }),
-    permissions: swap.permissions.map((permission) => ({
-      ...permission,
-      functions: Object.fromEntries(
-        Object.entries(permission.functions).map(([name, fn]) => [
-          name,
-          fn && { ...fn, ...window },
-        ]),
-      ),
-    })),
+    permissions: swap.permissions,
   }
 }

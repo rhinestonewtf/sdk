@@ -154,6 +154,10 @@ export interface SwapScopeInput {
   readonly via?: readonly SwapVenue[]
   /** Opt-in rate floor for a stable-to-stable swap. See `SwapScope.stableFloor`. */
   readonly stableFloor?: StableSwapFloor
+  /** Exclusive end of the swap window. See `SwapScope.validUntil`. */
+  readonly validUntil?: Date
+  /** Start of the swap window, rounded up to a whole second. */
+  readonly validAfter?: Date
 }
 
 /** `true` for the default 100 bps slippage, or an explicit tolerance. */
@@ -204,13 +208,14 @@ export interface Permission {
 export interface SessionPolicyAddresses {
   readonly sudo?: Address
   readonly universalAction?: Address
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy?: Address
   readonly spendingLimits?: Address
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
-  // Required when a session sets `oneTimeUse`; no default until the policy has a
-  // canonical deployment.
+  // Used by `oneTimeUse` sessions. Defaults to the deployed OneTimeUseIdPolicy on
+  // chains that have one; required elsewhere.
   readonly oneTimeUseId?: Address
 }
 
@@ -233,6 +238,33 @@ export type CrossChainSettlementLayer =
   | Permit2SettlementLayer
   | IntentExecutorSettlementLayer
 
+/** A layer `settlementLayers: 'all'` left out of the session, and why. */
+export interface DroppedSettlementLayer {
+  /** `'all'` never includes `SAME_CHAIN_IE`, so it never drops it either. */
+  readonly layer: 'ACROSS' | 'CCTP' | 'OFT' | 'ECO_IE' | 'LZ'
+  /** The refusal an explicit list naming the layer throws, without its `crossChainPermits: ` prefix. */
+  readonly reason: string
+}
+
+/** The layers a settlement-scoped permit left out; its session's `settlementLayers` lists the kept ones. */
+export interface SettlementCoverage {
+  /** Layers `'all'` left out. Always empty for an explicit list, which throws instead. */
+  readonly dropped: readonly DroppedSettlementLayer[]
+}
+
+/**
+ * Whether a session's key is held to the session's own actions. `'open'` keeps
+ * the wildcard fallback action: with intent-execution, the key may also call
+ * any target the global intent-execution whitelist allows; a session with no
+ * actions, permissions or permits, or with `fallback: 'sudo'`, has a sudo
+ * fallback instead.
+ */
+export interface SessionAccess {
+  readonly kind: 'scoped' | 'open'
+  /** What made it so, for people to read. Its wording is not a stable contract: branch on `kind`. */
+  readonly reason: string
+}
+
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   to?: {
@@ -248,6 +280,7 @@ export interface CrossChainPermit {
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
+  preClaimOps?: 'none'
 }
 
 export interface FromLeg {
@@ -273,6 +306,7 @@ export interface CrossChainPermissionInput {
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   maxFeeBps?: number
   allowFees?: boolean
+  preClaimOps?: 'none'
 }
 
 export interface Permit2ClaimPolicy {
@@ -284,6 +318,7 @@ export interface Permit2ClaimPolicy {
   recipientIsAccount?: boolean
   permitDeadline?: { min?: bigint; max?: bigint }
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  originOps?: { chain: Chain; required: boolean }[]
 }
 
 export interface SessionSigningContent {
@@ -310,6 +345,13 @@ export interface SessionDefinition {
   chain: Chain
   owners: OwnerSet
   permissions?: Permission[]
+  /**
+   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
+   * adds a `maxAmount` spending limit (with `oneTimeUse`), takes `Date`s, defaults to
+   * bridge-to-self, and picks the enforcement surface per settlement layer — a
+   * claim policy does not bind an IntentExecutor route. Still the only way to
+   * pin `spenders` to an arbiter outside the SDK's bundled allow-set.
+   */
   claimPolicies?: Permit2ClaimPolicy[]
   crossChainPermits?: CrossChainPermissionInput[]
   signing?: SessionSigning
@@ -320,6 +362,12 @@ export interface SessionDefinition {
   // Required to make a session provably restricted, e.g. to a specific swap
   // aggregator (RHI-6286). Requires at least one permission or action.
   restrictToActions?: boolean
+  /**
+   * A wildcard action for a session holding a Permit2-layer permit, which is
+   * otherwise scoped to its own actions. See `SessionDefinition` in
+   * config/account.ts.
+   */
+  fallback?: 'intentExecution' | 'sudo'
   /**
    * How a restricted session's salt is derived, which decides its permissionId.
    *
@@ -342,6 +390,8 @@ export interface SessionDefinition {
    *
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it.
+   * A settlement-scoped session (a `crossChainPermits` entry naming an
+   * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
@@ -354,8 +404,7 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
-  // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
-  // config/account.ts for the full contract.
+  // See `SessionDefinition.oneTimeUse` in config/account.ts.
   oneTimeUse?: OneTimeUseSessionConfig
   // The account the session is for. Required when an IntentExecutor-layer
   // `crossChainPermits` entry pins its recipient to the account (the default).
@@ -405,12 +454,42 @@ export interface Session {
    *  a caller can derive the matching quoter pin at transact time. Metadata
    *  only — it is not part of the permission id. */
   swap?: SwapScopeInput
-  /** The IntentExecutor layers the session's permit was scoped to, so a caller
-   *  can restrict an intent to them. Metadata only, like `swap`. */
-  settlementLayers?: readonly IntentExecutorSettlementLayer[]
-  // A one-time-use session (RHI-5798): its id and policy, so every intent can
+  /** The layers the session's permits name (IntentExecutor or Permit2), so a
+   *  caller can restrict an intent to them. Metadata only, like `swap`. */
+  settlementLayers?: readonly CrossChainSettlementLayer[]
+  /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
+   *  like `swap`; absent on sessions stored before it existed. */
+  settlementCoverage?: SettlementCoverage
+  /** A scoped Permit2-route session's `from` tokens per chain, each with its
+   *  cap, so intents are funded only from them. Metadata only. */
+  permit2Sources?: readonly {
+    readonly chain: Chain
+    readonly token: Address
+    readonly maxAmount?: bigint
+  }[]
+  /** Whether the session keeps the intent-execution fallback, and why. Metadata
+   *  only; absent on sessions stored before it existed. */
+  access?: SessionAccess
+  /** Set on a session without `oneTimeUse` whose permit sets `maxAmount`: its
+   *  budget lives in counters an enable re-initialises, so getSessionDetails
+   *  refuses one already enabled unless told to reset it. Metadata only. */
+  lifetimeBudget?: true
+  // A one-time-use session's id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
-  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
+  oneTimeUse?: {
+    readonly id: bigint
+    readonly policy: Address
+    /** Set when the SDK filled in the deployed address, so intents check it is on their chains. */
+    readonly defaultPolicy?: true
+  }
+}
+
+export interface SessionDetailsOptions {
+  /**
+   * Sign a session whose lifetime `maxAmount` is already enabled; its enable
+   * then resets that budget.
+   */
+  readonly allowBudgetReset?: boolean
 }
 
 export interface SessionData {

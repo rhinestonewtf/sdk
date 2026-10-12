@@ -7,7 +7,7 @@ const limits = [
   {
     name: '@rhinestone/sdk',
     path: `${packageRoot}/index.js`,
-    limit: '67 kB',
+    limit: '77 kB',
     import: '*',
     ignore: viem,
   },
@@ -91,7 +91,7 @@ const limits = [
   {
     name: '@rhinestone/sdk/smart-sessions',
     path: `${packageRoot}/smart-sessions/index.js`,
-    limit: '25 kB',
+    limit: '33 kB',
     import: '*',
     ignore: viem,
   },

@@ -20,6 +20,7 @@ import {
   FIELD_ARBITER,
   FIELD_EXPIRY,
   FIELD_FILL_EXPIRY,
+  FIELD_ORIGIN_OPS,
   FIELD_RECIPIENT,
   FIELD_RECIPIENT_IS_SPONSOR,
   FIELD_TOKEN_IN,
@@ -271,6 +272,42 @@ describe('buildPermit2ClaimPolicyCalldata', () => {
       expect((result.length - 2) / 2).toBe(148)
       const mandateHashInResult = `0x${result.slice(2 + (84 + 32) * 2)}`
       expect(mandateHashInResult).toBe(expectedMandateHash)
+    })
+  })
+
+  describe('mandate — origin ops check without target checks', () => {
+    test('expands the mandate around a pre-computed target hash', () => {
+      const policy: Permit2ClaimPolicy = {
+        type: 'permit2-claim',
+        originOps: [{ chainId: 8453, required: false }],
+      }
+      const result = buildPermit2ClaimPolicyCalldata(policy, baseMessage)
+      const m = baseMessage.mandate
+      const targetHash = hashTarget(
+        m.target.recipient,
+        hashArray(
+          m.target.tokenOut.map(({ token, amount }) =>
+            hashToken(token, amount, TYPEHASH_TOKENOUT),
+          ),
+        ),
+        m.target.targetChain,
+        m.target.fillExpiry,
+      )
+      // [targetHash:32][targetChain:32][minGas:16][originOps:32][destOps:32][q:32]
+      expect(`0x${result.slice(2 + (84 + 32) * 2)}`).toBe(
+        concat([
+          targetHash,
+          toHex(m.target.targetChain, { size: 32 }),
+          toHex(m.minGas, { size: 16 }),
+          hashOp(m.originOps),
+          hashOp(m.destOps),
+          m.q,
+        ]),
+      )
+      // An empty Op hashes to the claim policy's "no ops" constant.
+      expect(hashOp(EMPTY_OP)).toBe(
+        '0x0c7bea50822ae8a3846eccbda4961a80e1e08aa92f2bf046be0011514ad2ddf1',
+      )
     })
   })
 
@@ -755,5 +792,23 @@ describe('encodePermit2ClaimPolicyInitData', () => {
       modeConfigBit(FIELD_TOKEN_IN) |
       modeConfigBit(FIELD_TOKEN_OUT)
     expect(readModeConfig(result)).toBe(expectedMode)
+  })
+})
+
+describe('encodePermit2ClaimPolicyInitData — origin ops', () => {
+  test('stores whether a claim may carry pre-claim calls, per chain', () => {
+    expect(
+      encodePermit2ClaimPolicyInitData({
+        type: 'permit2-claim',
+        originOps: [{ chainId: 8453, required: false }],
+      }),
+    ).toBe(
+      concat([
+        toHex(MODE_CHECK_STORAGE << (FIELD_ORIGIN_OPS * 2), { size: 4 }),
+        '0x01',
+        toHex(8453n, { size: 32 }),
+        '0x00',
+      ]),
+    )
   })
 })
