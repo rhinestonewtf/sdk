@@ -151,39 +151,46 @@ describe('settlement layer pin', () => {
     })
   })
 
-  test("an 'all' session limits the intent to the layers it kept", () => {
-    const all = toSession(
-      {
-        chain: base,
-        owners: { type: 'ecdsa', accounts: [accountA] },
-        account: ACCOUNT,
-        oneTimeUse: { id: 7n },
-        policyAddresses: {
-          oneTimeUseId: '0x3333333333333333333333333333333333333333',
-        },
-        crossChainPermits: [
-          {
-            from: { chain: base, token: USDC },
-            to: { chain: arbitrum, token: USDC_ARB },
-            settlementLayers: 'all',
+  test.each<[string, object]>([
+    ["'all'", { settlementLayers: 'all' }],
+    ['omitted', {}],
+    ['[]', { settlementLayers: [] }],
+  ])(
+    'a session with settlementLayers %s limits the intent to the layers it kept',
+    (_, layers) => {
+      const all = toSession(
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          account: ACCOUNT,
+          oneTimeUse: { id: 7n },
+          policyAddresses: {
+            oneTimeUseId: '0x3333333333333333333333333333333333333333',
           },
-        ],
-      } as never,
-      { settlement: SETTLEMENT_CATALOG },
-    )
-    const intent = adaptTransaction(
-      { account: {} } as never,
-      {
-        targetChain: arbitrum,
-        sourceChains: [base],
-        calls: [],
-        signers: { type: 'session', session: all },
-      } as never,
-    ) as { options?: { settlementLayers?: unknown } }
-    expect(intent.options?.settlementLayers).toEqual({
-      include: ['CCTP', 'LZ'],
-    })
-  })
+          crossChainPermits: [
+            {
+              from: { chain: base, token: USDC },
+              to: { chain: arbitrum, token: USDC_ARB },
+              ...layers,
+            },
+          ],
+        } as never,
+        { settlement: SETTLEMENT_CATALOG },
+      )
+      const intent = adaptTransaction(
+        { account: {} } as never,
+        {
+          targetChain: arbitrum,
+          sourceChains: [base],
+          calls: [],
+          signers: { type: 'session', session: all },
+        } as never,
+      ) as { options?: { settlementLayers?: unknown } }
+      expect(intent.options?.settlementLayers).toEqual({
+        include: ['CCTP', 'LZ'],
+      })
+    },
+  )
 
   test('an explicit filter can only narrow the session', () => {
     expect(layersFor(['CCTP'], { include: ['CCTP', 'RELAY'] })).toEqual({
@@ -232,22 +239,20 @@ describe('settlement layer pin', () => {
   })
 
   test('a scoped Permit2 session limits the intent to ACROSS', () => {
-    for (const layers of [['ACROSS'], undefined, []]) {
-      expect(layersFor(layers)).toEqual({ include: ['ACROSS'] })
-    }
+    expect(layersFor(['ACROSS'])).toEqual({ include: ['ACROSS'] })
   })
 
   test('an explicit filter can only narrow a scoped Permit2 session', () => {
     expect(layersFor(['ACROSS'], { include: ['ACROSS', 'RELAY'] })).toEqual({
       include: ['ACROSS'],
     })
-    expect(layersFor(undefined, { exclude: ['RELAY'] })).toEqual({
+    expect(layersFor(['ACROSS'], { exclude: ['RELAY'] })).toEqual({
       include: ['ACROSS'],
     })
     expect(() => layersFor(['ACROSS'], { include: ['RELAY'] })).toThrow(
       'no settlement layer is left to settle the intent',
     )
-    expect(() => layersFor(undefined, { exclude: ['ACROSS'] })).toThrow(
+    expect(() => layersFor(['ACROSS'], { exclude: ['ACROSS'] })).toThrow(
       'no settlement layer is left to settle the intent',
     )
   })
@@ -306,7 +311,7 @@ describe('settlement layer pin', () => {
   })
 
   test('the Permit2 layers do not change the session encoding', () => {
-    const layerSets = [['ACROSS'], undefined]
+    const layerSets = [['ACROSS']]
     expect(
       Object.fromEntries(
         layerSets.map((layers) => [
@@ -320,9 +325,6 @@ describe('settlement layer pin', () => {
 
 const PERMIT2_FINGERPRINTS: Record<string, string> = {
   ACROSS: '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
-  // Omitted layers admit ACROSS alone, as naming it does.
-  undefined:
-    '0xe6fa95b4cd4438b8eb63f08e7667f3cb033e81feda1ce62546d7d8c19ca6af86',
 }
 
 describe('source asset pin', () => {
@@ -479,6 +481,49 @@ describe('source asset pin', () => {
       expect(
         intent({ type: 'session', session: plain }, { sourceAssets: [USDC] }),
       ).toEqual({ chainIds: [base.id], tokens: [USDC] })
+    })
+
+    test("naming no layer signs a same-chain intent as 'all' does", () => {
+      const sent = (layers: object) =>
+        adaptTransaction(
+          { account: {} } as never,
+          {
+            chain: base,
+            calls: [],
+            signers: {
+              type: 'session',
+              session: toSession(
+                {
+                  chain: base,
+                  owners: { type: 'ecdsa', accounts: [accountA] },
+                  account: ACCOUNT,
+                  swap: {
+                    sell: { token: SELL },
+                    buy: { token: BUY },
+                    to: ACCOUNT,
+                  },
+                  crossChainPermits: [
+                    {
+                      from: { chain: base, token: USDC },
+                      to: { chain: arbitrum, token: USDC_ARB },
+                      ...layers,
+                    },
+                  ],
+                } as never,
+                { settlement: SETTLEMENT_CATALOG },
+              ),
+            },
+          } as never,
+        ) as { accountAccessList?: unknown; options?: unknown }
+      const all = sent({ settlementLayers: 'all' })
+      expect(all.options).toMatchObject({
+        settlementLayers: { include: ['CCTP'] },
+      })
+      for (const layers of [{}, { settlementLayers: [] }]) {
+        const omitted = sent(layers)
+        expect(omitted.accountAccessList).toEqual(all.accountAccessList)
+        expect(omitted.options).toEqual(all.options)
+      }
     })
 
     test('a swap scope on another chain funds nothing here', () => {

@@ -755,6 +755,7 @@ describe('crossChainPermits expansion', () => {
           {
             from: [{ chain: base, token: USDC }],
             to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
             validUntil: new Date(2_000_000_000 * 1000),
           },
         ],
@@ -783,6 +784,7 @@ describe('crossChainPermits expansion', () => {
           {
             from: [{ chain: base, token: USDC }],
             to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
           },
         ],
       }),
@@ -863,6 +865,7 @@ describe('crossChainPermits expansion', () => {
           {
             from: [{ chain: base, token: USDC }],
             to: [{ chain: base, token: USDC_ARB }],
+            settlementLayers: ['ACROSS'],
             validAfter: new Date(1_700_000_000 * 1000),
           },
         ],

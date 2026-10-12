@@ -298,7 +298,7 @@ interface Permit2ClaimPolicy {
  *
  * - `SAME_CHAIN` and `ACROSS` settle through Permit2 arbiters from the SDK's
  *   bundled allow-set. A smart account settles cross-chain through `ACROSS`,
- *   so a permit without `fallback` must name only `ACROSS` (or no layer).
+ *   so a Permit2-layer permit without `fallback` must name only `ACROSS`.
  *   `ECO` is the retired Standard Eco arbiter and is refused: use `ECO_IE`.
  * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (the USD stablecoins the
  *   orchestrator serves for Eco), `SAME_CHAIN_IE` (a transfer, or a Rhinestone
@@ -325,7 +325,8 @@ interface Permit2ClaimPolicy {
  *   never includes `SAME_CHAIN_IE`, is refused when no layer qualifies, and
  *   refuses a dropped `ECO_IE` when `maxFeeBps` is set. It resolves against
  *   `GET /chains` and the clock at creation, so store the created session
- *   rather than rebuilding it from `'all'`.
+ *   rather than rebuilding it from `'all'`. A permit without `fallback` that
+ *   names no layer gets `'all'`.
  *
  *   A settlement-scoped permit cannot be combined with the Permit2 layers.
  *   `maxAmount` requires `oneTimeUse`, as do `OFT` and `LZ`, and only
@@ -392,7 +393,8 @@ interface CrossChainPermit {
   recipientIsAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for `ACROSS`. See {@link CrossChainPermissionInput.settlementLayers}.
+   * `[]`) for `'all'`, or for `ACROSS` with `fallback`. See
+   * {@link CrossChainPermissionInput.settlementLayers}.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
   /** `ECO_IE` only. See {@link CrossChainPermissionInput.maxFeeBps}. */
@@ -408,7 +410,7 @@ interface FromLeg {
   token: Address
   /**
    * Cap on the amount the session may move from this leg. On a Permit2-route
-   * permit (`SAME_CHAIN`, `ACROSS`, or `settlementLayers` omitted) it
+   * permit (`SAME_CHAIN` or `ACROSS`, or no layer named with `fallback`) it
    * requires `oneTimeUse`, and caps what the session approves to Permit2: an
    * allowance the account already holds is not bounded by it.
    */
@@ -533,7 +535,10 @@ interface CrossChainPermissionInput {
   allowRecipientNotAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for `ACROSS`. A permit without `fallback` may name only `ACROSS`.
+   * `[]`) for `'all'`, which resolves against `GET /chains`, so create the
+   * session with `sdk.createSession`. With `fallback`, which `'all'` cannot
+   * share a session with, omitting it means `ACROSS`. Without `fallback`, the
+   * only Permit2 layer a permit may name is `ACROSS`.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
    * layers: naming them scopes the session to those layers' calls instead, and
