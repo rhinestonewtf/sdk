@@ -224,11 +224,9 @@ describe('shouldSponsor', () => {
   })
 })
 
-// Current clients send `sdk-3.0.0-caucasus`.
 describe('shouldSponsor (singular format)', () => {
-  const contractVersion = 'sdk-3.0.0-caucasus'
   const evmIntentInput = {
-    contractVersion,
+    contractVersion: 'sdk-3.0.0-caucasus',
     account: {
       evm: {
         type: 'erc7579',
