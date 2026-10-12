@@ -410,7 +410,7 @@ describe('the lifetime budget across intents', () => {
       definition(capped({ settlementLayers: ['CCTP'] })),
     )
     const limited = [...approveAction.configs.values()].flatMap((config) =>
-      config.kind === 'other' ? [] : config.rules.filter((r) => r.isLimited),
+      'rules' in config ? config.rules.filter((r) => r.isLimited) : [],
     )
     expect(limited.map(({ limit }) => limit)).toEqual([100n])
   })
@@ -1019,5 +1019,51 @@ describe('signing the enable of a session with a lifetime budget', () => {
         readNonce: async () => 3n,
       }),
     ).rejects.toThrow('needs readNonceAndEnabled')
+  })
+})
+
+describe('a wrapped native `from` leg on a reusable session', () => {
+  const WRAP: ResolveSessionOptions = { ...OPTIONS, wrappedNativeToken: WETH }
+  const DEPOSIT = '0xd0e30db0'
+  const def = definition({
+    from: { chain: base, token: WETH, maxAmount: 100n },
+    to: { chain: arbitrum, token: WETH_ARB },
+    settlementLayers: ['ACROSS'],
+  })
+  const installed = (selector: Hex) => {
+    const [action] = resolveSessionData(def, WRAP).actions.filter(
+      (a) =>
+        isAddressEqual(a.actionTarget, WETH) &&
+        a.actionTargetSelector === selector,
+    )
+    expect(action).toBeDefined()
+    return install(action.actionPolicies, {
+      ...KINDS,
+      valueLimit: DEFAULT_POLICY_ADDRESSES.valueLimit,
+    })
+  }
+
+  test('builds, with the wrap capped at maxAmount', () => {
+    expect(codes(def, WRAP)).toEqual([])
+    expect(toSession(def, WRAP).lifetimeBudget).toBe(true)
+  })
+
+  test('wraps at most maxAmount over the session, across intents', () => {
+    const deposit = installed(DEPOSIT)
+    expect(admits(deposit, DEPOSIT, 60n)).toBe(true)
+    expect(admits(deposit, DEPOSIT, 60n)).toBe(false)
+    expect(admits(deposit, DEPOSIT, 40n)).toBe(true)
+    expect(admits(deposit, DEPOSIT, 1n)).toBe(false)
+    expect(admits(deposit, DEPOSIT, 0n)).toBe(true)
+  })
+
+  test('keeps the wrap and the approve on separate budgets of maxAmount each', () => {
+    const deposit = installed(DEPOSIT)
+    const approval = installed(APPROVE)
+    expect(admits(deposit, DEPOSIT, 100n)).toBe(true)
+    // Wrapping keeps the value in the account; only the approve lets it out.
+    expect(admits(approval, approve(PERMIT2, 100n))).toBe(true)
+    expect(admits(approval, approve(PERMIT2, 1n))).toBe(false)
+    expect(admits(deposit, DEPOSIT, 1n)).toBe(false)
   })
 })

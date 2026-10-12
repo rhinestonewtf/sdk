@@ -452,7 +452,9 @@ interface FromLeg {
    * the session's routes can still spend: one the owner gave Permit2 or a
    * bridge, or one another session left. For the cap to be the most the
    * session can move, revoke those allowances for the token first. It does
-   * not count the `allowFees` calls either, which have caps of their own.
+   * not count the `allowFees` calls either, which have caps of their own. On
+   * the wrapped native token, the native wrap is capped at `maxAmount` over
+   * the session's life as well, on a budget of its own.
    * With `fallback` it requires `oneTimeUse`, and `preClaimOps: 'none'`
    * refuses it.
    */
