@@ -152,13 +152,6 @@ describe('session access', () => {
   })
 
   test('pins the encoded session of each shape', () => {
-    // Captured from origin/main (ade12708), before sessions carried access.
-    // `across` moved when Permit2-route sessions became scoped (RHI-8045)
-    // and again when it took preClaimOps: 'none'. `acrossReusable` was refused
-    // until Permit2SenderPolicy bounded it. The fallback rows moved when they
-    // stopped carrying the Permit2 approve, which the wildcard admits;
-    // They moved again when a fallback session started signing in
-    // verify-execution mode (hasExplicitPermissions); permissionId and data are unchanged.
     expect(
       Object.fromEntries(
         Object.keys(DEFINITIONS).map((name) => [

@@ -297,8 +297,7 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
-      // allowFees now scopes the fee calls, which base's catalog does not serve;
-      // restrictToActions beside a Permit2 permit is no longer refused.
+      // base's catalog does not serve the fee calls allowFees scopes.
       ['FEES_NOT_SERVED', 1],
       ['MAX_FEE_BPS_ONLY_ECO_IE', 0],
       ['MIN_AMOUNT_ON_PERMIT2_LAYER', 2],

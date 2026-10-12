@@ -615,10 +615,8 @@ describe('intent workflow', () => {
       ...input,
       signers: { kind: 'smart-session', byChain: { 1: { session } } },
     })
-    // A permission-less session enabled on-chain would normally drop to
-    // signatureMode 1 (see the multi-factor/passkey enabled cases → 0x00). A
-    // one-time-use session must stay in mode 5 so checkAction keeps running on
-    // the executor route — otherwise the contract's action-surface guard is inert.
+    // An enabled permission-less session would drop to mode 1; a one-time-use one
+    // stays in mode 5 so checkAction keeps running on the executor route.
     expect(prepared.request.options.signatureMode).toBe(5)
     // source: cast calldata "consumeFor(uint256,uint256)" 42 0
     expect(prepared.request.preClaimExecutions?.[1]?.[0]).toMatchObject({
@@ -1142,8 +1140,8 @@ describe('intent workflow', () => {
       },
     )
 
-    // Captured before oneTimeUse dropped the dummy: a changed digest would be a
-    // HashMismatch for every session without oneTimeUse already signed.
+    // A changed digest would be a HashMismatch for every session without
+    // oneTimeUse already signed.
     test('sessions without oneTimeUse keep their actions', () => {
       const digests = Object.fromEntries(
         Object.entries(definitions(false)).map(([name, definition]) => [

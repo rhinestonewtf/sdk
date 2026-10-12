@@ -65,11 +65,8 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       if (enabled?.kind !== 'session-enabled') {
         throw new Error(`Session state for chain ${chain.id} is missing`)
       }
-      // A one-time-use session must never drop to plain ERC-1271 (mode 1): the
-      // policy burns the id when checkAction validates the burn, which only runs in
-      // verify-execution mode (mode 5), and it refuses ERC-1271 validation from the
-      // executor. An already-enabled, permission-less session would otherwise take
-      // mode 1 and could not settle — so force it.
+      // A one-time-use session always takes verify-execution mode (5): the policy
+      // burns the id only in checkAction and refuses ERC-1271 from the executor.
       const verifyExecutions =
         !enabled.enabled ||
         selected.session.hasExplicitPermissions ||

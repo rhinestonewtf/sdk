@@ -110,7 +110,7 @@ describe('on a chain without the TimeFramePolicy', () => {
     expect(policies).not.toContain(TIME_FRAME_POLICY_ADDRESS)
   })
 
-  // As on main: the previous deployment holds a window on ERC-1271 checks.
+  // The previous deployment holds a window on ERC-1271 checks.
   test('a signing window keeps the previous TimeFramePolicy', () => {
     const definition: SessionDefinition = {
       chain: base,

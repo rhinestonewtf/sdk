@@ -828,7 +828,6 @@ describe('the fee cap by chain', () => {
     ])
   })
 
-  // Re-pinned when the permit's validUntil became a time frame on each action.
   test('sessions off Ethereum keep the fingerprints taken before the change', () => {
     expect(
       Object.fromEntries(

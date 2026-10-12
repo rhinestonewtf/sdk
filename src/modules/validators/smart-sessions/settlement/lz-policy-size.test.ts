@@ -96,7 +96,7 @@ function admitted(chainId: number, to: Address): Batch[] {
   return out
 }
 
-/** The Stargate TAXI batch into a chain CCTP reaches, which it now refuses. */
+/** The Stargate TAXI batch into a chain CCTP reaches, which it refuses. */
 const taxiIntoCctp = (chainId: number, to: Address): Batch[] =>
   lz(chainId).stargateUsdc && cctpReaches(chainId) ? [taxi(chainId, to)] : []
 

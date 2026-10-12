@@ -737,17 +737,8 @@ function resolveSession(
           {
             target: DUMMY_PRECLAIMOP_TARGET,
             selector: DUMMY_PRECLAIMOP_SELECTOR,
-            // The real pre-claim op carries no value, so cap it for a
-            // restricted session rather than granting sudo, which would let
-            // this injected action send native value to the dummy target.
-            //
-            // 1 wei, NOT 0: `ValueLimitPolicy.initializeWithMultiplexer`
-            // does `require(valueLimit != 0)`, so a zero limit reverts while
-            // the policy is being installed. That made every restricted
-            // session impossible to enable — the revert surfaces as
-            // `InvalidSignature()` from the emissary, which reads as a
-            // signature problem rather than a policy-init one. 1 wei is the
-            // smallest limit that installs, and the op carries no value.
+            // 1 wei rather than sudo, which would let this injected action send
+            // native value; not 0, which ValueLimitPolicy refuses at install.
             policies: restricted
               ? [{ type: 'value-limit', limit: 1n }]
               : [{ type: 'sudo' }],
@@ -871,14 +862,9 @@ function resolveSession(
   // A restricted session must not leave an open ERC-1271 signing surface: with
   // signing defaulting to unrestricted, a session key limited to swap/approve
   // could still sign e.g. a Permit2 approval off-chain and move funds. Default it
-  // to `disabled` when restricting, unless it holds claim policies: they are
-  // reached through the unrestricted content gate and then become its whole
-  // 1271 list, which bounds every signature (a Permit2-route session is scoped
-  // only when that list also bounds pre-claim calls; see boundsPreClaimCalls).
-  // The caller can still opt into a signing policy.
-  // Without claim policies a one-time-use session settles through its actions
-  // alone, and any 1271 signing surface would let its key settle through Permit2
-  // unbounded by the id.
+  // to `disabled` when restricting, unless it holds claim policies, which then
+  // become its whole 1271 list (see boundsPreClaimCalls). Without them, a 1271
+  // surface would let a one-time-use key settle through Permit2 unbounded by the id.
   const executorOnlyOneTimeUse =
     Boolean(definition.oneTimeUse) && claimPolicies.length === 0
   if (
@@ -957,12 +943,8 @@ function resolveSession(
       id: definition.oneTimeUse.id,
       deadline: onceDeadline,
     })
-    // Install the once-policy on EVERY action: on the executor route the contract's
-    // on-chain guard (a `consume` may only name the session's own id) runs via
-    // checkAction, once per execution, so a settler can't dodge it by composing the
-    // batch out of some other permitted action. checkAction only fires in
-    // verify-execution mode, which prepareIntentSessions forces for one-time-use
-    // sessions (see there).
+    // The once-policy goes on EVERY action: checkAction runs its guard once per
+    // execution, so no other permitted action can carry the batch.
     actions = [
       ...actions.map((action) => ({
         ...action,
@@ -980,24 +962,15 @@ function resolveSession(
     ]
     onceErc1271Policy = once
   }
-  // Permit2 verifies a contract owner through `isValidSignature`, so claim
-  // policies only bind from the 1271 list; the on-chain `claimPolicies` field
-  // feeds the Compact claim path, which the manager skips entirely under
-  // NO_LOCKTAG. For a one-time-use session they must additionally sit on the
-  // SAME surface as the once-policy (the 1271 list is an AND: it bounds WHAT may
-  // settle, the once-policy bounds HOW MANY TIMES). A session declaring none
-  // keeps the signing list it asked for: a lone once-policy there would approve a
-  // Permit2 transfer nominated by an executor-route consumeFor, with no claim
-  // policy bounding the spender.
+  // Permit2 checks a contract owner via `isValidSignature`, so claim policies
+  // bind only from the 1271 list, where they AND with the once-policy. A session
+  // declaring none keeps its own signing list: a lone once-policy there would
+  // approve a Permit2 transfer with no claim policy bounding the spender.
   const claimPoliciesMoved = claimPolicies.length > 0
   if (claimPoliciesMoved) {
     const signing = definition.signing
-    // `scoped` and `disabled` rewrite `allowedERC7739Content`, the gate the claim
-    // policy is reached through, so the policy would never be consulted. A
-    // validity window instead lowers to a TimeFramePolicy, which ANDs with the
-    // claim policies and leaves the gate alone, so it is carried; a windowless
-    // signing policy is sudo and is dropped rather than advertising a capability
-    // the session no longer has.
+    // A window lowers to a TimeFramePolicy that ANDs with the claim policies, so
+    // it is carried; a windowless signing policy is sudo and is dropped.
     if (signing !== undefined && signing.mode !== 'unrestricted') {
       throw refusal(
         'CLAIM_POLICIES_SIGNING_MODE',
@@ -1006,10 +979,6 @@ function resolveSession(
     }
     const hasWindow =
       signing?.validAfter !== undefined || signing?.validUntil !== undefined
-    // The 1271 list is the only authorization surface a claim-policy session
-    // has, so an expired window is not a narrow session but a dead one: it
-    // enables and then fails every signature. Refuse it the way oneTimeUse does
-    // rather than hand back something that can never settle.
     if (
       signing?.validUntil !== undefined &&
       !(
@@ -1065,10 +1034,8 @@ function resolveSession(
     ]
     claimPolicies = []
   }
-  // Same hazard on the ERC-1271 list: it is an AddressSet keyed by policy, and
-  // the config is keyed per (policy, configId), so a repeat address stores once
-  // and keeps only the last config. Every Permit2 claim policy resolves to the
-  // same contract, so several declared permits land here.
+  // The ERC-1271 list is an AddressSet keyed by policy, so a repeated address keeps
+  // only its last config, and every Permit2 claim policy is one contract.
   {
     const seen = new Set<string>()
     for (const { policy } of erc1271Policies) {
@@ -1100,15 +1067,9 @@ function resolveSession(
   const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use, stable-floor, settlement-scoped or claim-policy session
-    // must never share a permissionId with another session: enabling it would
-    // union with that session's policies, and for a floor or a settlement scope
-    // that means the unscoped actions.
-    // A claim-policy session is never `restricted`, so without this it would
-    // salt to zeroHash and collide with any plain session for the same signer,
-    // leaving that session's signing policy beside the claim policy.
-    // A swap window too: an enable that finds the id taken would never install
-    // it. A 'v1' salt already hashes the windowed actions.
+    // These sessions must never share a permissionId: an enable would union with
+    // the other session's policies. A claim-policy session is never `restricted`,
+    // and an enable that finds a swap window's id taken would never install it.
     salt: sessionSalt(
       definition.oneTimeUse ||
         stableFloor ||
@@ -1514,11 +1475,8 @@ export function toSession(
     salt: data.salt,
     erc7739Policies: data.erc7739Policies,
     actions: data.actions,
-    // Keep the raw claim policies on the high-level session for both routes: the
-    // permit2 settlement signature builds their calldata from here (see
-    // claimPolicyData in session-signing). They are enforced via the erc1271
-    // surface (already in data.erc7739Policies); getSessionData leaves the
-    // on-chain claim (lockTag) field empty, which the manager skips anyway.
+    // Kept for both routes: the Permit2 settlement signature builds their calldata
+    // from here (see claimPolicyData); they are enforced from the 1271 list.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(intentLayers.length ? { settlementLayers: intentLayers } : {}),

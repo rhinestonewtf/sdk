@@ -404,8 +404,7 @@ export interface SessionDefinition {
   // its raw selector with no ABI (RHI-6286). ScopedAction only (never a fallback
   // action) so a raw entry can't map back to the wildcard fallback target.
   actions?: ScopedAction[]
-  // Pins a one-time-use id on the session (RHI-5798); see `SessionDefinition` in
-  // config/account.ts for the full contract.
+  // See `SessionDefinition.oneTimeUse` in config/account.ts.
   oneTimeUse?: OneTimeUseSessionConfig
   // The account the session is for. Required when an IntentExecutor-layer
   // `crossChainPermits` entry pins its recipient to the account (the default).
@@ -471,7 +470,7 @@ export interface Session {
   /** Whether the session keeps the intent-execution fallback, and why. Metadata
    *  only; absent on sessions stored before it existed. */
   access?: SessionAccess
-  // A one-time-use session (RHI-5798): its id and policy, so every intent can
+  // A one-time-use session's id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: {
     readonly id: bigint
