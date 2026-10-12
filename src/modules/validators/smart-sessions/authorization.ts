@@ -103,11 +103,14 @@ function signedSession(
 }
 
 /**
- * The word pattern of `cumulativeCap(32, cap)`, the rule a crossChainPermits
- * `maxAmount` compiles to on an approve: lessThanOrEqual, the amount word,
- * limited, and the cap as both reference and limit, nothing used yet.
+ * Whether a policy's rules hold a crossChainPermits `maxAmount` cap: a
+ * `cumulativeCap` (lessThanOrEqual, limited, the cap as reference and limit,
+ * nothing used) on the amount word of an approve or a transfer, or, on a
+ * SAME_CHAIN_IE swap, on the sell amount with its `to.minAmount` floor
+ * (greaterThanOrEqual on the Swapper's output bound, word 96) after it. A plain
+ * `swap` scope puts any floor before its cap. Rules are six-word tuples.
  */
-function hasCapRule(initData: Hex): boolean {
+function hasCapRule(initData: Hex, amountWord: boolean): boolean {
   const words = Array.from(
     { length: Math.floor(size(initData) / 32) },
     (_, i) => BigInt(sliceHex(initData, i * 32, i * 32 + 32)),
@@ -115,17 +118,27 @@ function hasCapRule(initData: Hex): boolean {
   return words.some(
     (word, i) =>
       word === 4n &&
-      words[i + 1] === 32n &&
       words[i + 2] === 1n &&
       words[i + 3] !== undefined &&
       words[i + 3] === words[i + 4] &&
-      words[i + 5] === 0n,
+      words[i + 5] === 0n &&
+      (amountWord
+        ? words[i + 1] === 32n
+        : words.some(
+            (floor, j) =>
+              j > i &&
+              (j - i) % 6 === 0 &&
+              floor === 3n &&
+              words[j + 1] === 96n &&
+              words[j + 2] === 0n,
+          )),
   )
 }
 
 /**
  * Whether the session's maxAmount is a lifetime budget, from its actions as
  * well as its metadata, so a stored session missing the flag is still caught.
+ * A hand-written rule of the same shape is guarded too, which fails closed.
  */
 export function hasLifetimeBudget(session: Session): boolean {
   if (session.lifetimeBudget) return true
@@ -135,12 +148,15 @@ export function hasLifetimeBudget(session: Session): boolean {
   ) {
     return false
   }
-  return session.actions.some(
-    (action) =>
-      // approve(address,uint256)
-      action.actionTargetSelector === '0x095ea7b3' &&
-      action.actionPolicies.some(({ initData }) => hasCapRule(initData)),
-  )
+  return session.actions.some(({ actionTargetSelector, actionPolicies }) => {
+    // approve(address,uint256), transfer(address,uint256)
+    const amountWord =
+      actionTargetSelector === '0x095ea7b3' ||
+      actionTargetSelector === '0xa9059cbb'
+    return actionPolicies.some(({ initData }) =>
+      hasCapRule(initData, amountWord),
+    )
+  })
 }
 
 export async function getSessionDetails(input: {

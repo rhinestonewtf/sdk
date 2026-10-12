@@ -816,12 +816,32 @@ describe('signing the enable of a session with a lifetime budget', () => {
       ),
     ],
     ["'all'", definition(capped({ settlementLayers: 'all' }))],
+    [
+      'a SAME_CHAIN_IE transfer',
+      definition(
+        capped({
+          to: { chain: base, token: USDC, recipient: OTHER },
+          allowRecipientNotAccount: true,
+          settlementLayers: ['SAME_CHAIN_IE'],
+        }),
+      ),
+    ],
+    [
+      'a SAME_CHAIN_IE swap',
+      definition(
+        capped({
+          to: { chain: base, token: WETH, recipient: OTHER, minAmount: 1n },
+          allowRecipientNotAccount: true,
+          settlementLayers: ['SAME_CHAIN_IE'],
+        }),
+      ),
+    ],
   ])('finds the budget in the actions of %s without the flag', (_, def) => {
     const options = def.crossChainPermits?.[0].allowFees ? FEE_OPTIONS : OPTIONS
     expect(hasLifetimeBudget(unflagged(toSession(def, options)))).toBe(true)
   })
 
-  test('finds no budget in the actions of one-shot, uncapped or fee-only sessions', () => {
+  test('finds no budget in the actions of one-shot, uncapped, fee-only or plain swap sessions', () => {
     for (const [def, options] of [
       [definition(capped({ settlementLayers: ['ACROSS'] }), once), OPTIONS],
       [
@@ -832,6 +852,29 @@ describe('signing the enable of a session with a lifetime budget', () => {
       [
         definition({ settlementLayers: ['CCTP'], allowFees: true }),
         FEE_OPTIONS,
+      ],
+      [
+        definition(
+          capped({
+            to: { chain: base, token: WETH, recipient: OTHER, minAmount: 1n },
+            allowRecipientNotAccount: true,
+            settlementLayers: ['SAME_CHAIN_IE'],
+          }),
+          once,
+        ),
+        OPTIONS,
+      ],
+      [
+        {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+          swap: {
+            sell: { token: USDC, maxTotal: 100n },
+            buy: { token: WETH },
+            to: ACCOUNT,
+          },
+        } as SessionDefinition,
+        OPTIONS,
       ],
     ] as const) {
       const session = toSession(def, options)

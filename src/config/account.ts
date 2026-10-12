@@ -1320,7 +1320,8 @@ interface Session {
    *  the session again resets that budget, so `getSessionDetails` refuses one
    *  that is already enabled unless you pass `allowBudgetReset`; it finds the
    *  budget in the session's actions too, so a stored session without this
-   *  field is still checked. Metadata only — it does not change the
+   *  field is still checked, as is a hand-written rule of the same cap shape.
+   *  Metadata only — it does not change the
    *  permission id. */
   lifetimeBudget?: true
   /** A one-time-use session's id and policy; each intent burns the id. */
