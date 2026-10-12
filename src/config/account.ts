@@ -453,8 +453,8 @@ interface FromLeg {
    * bridge, or one another session left. For the cap to be the most the
    * session can move, revoke those allowances for the token first. It does
    * not count the `allowFees` calls either, which have caps of their own.
-   * With `fallback` it requires `oneTimeUse`, and `preClaimOps: 'none'`
-   * refuses it.
+   * With `fallback`, or on the wrapped native token (whose wrap is capped
+   * per call), it requires `oneTimeUse`, and `preClaimOps: 'none'` refuses it.
    */
   maxAmount?: bigint
 }

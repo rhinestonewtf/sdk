@@ -596,6 +596,28 @@ function resolveSession(
       ),
     )
   }
+  // The wrap's ValueLimitPolicy bounds each call, not the session's life, so a
+  // reusable session could wrap the cap again on every intent.
+  const reusableWrap =
+    !definition.oneTimeUse &&
+    wrapped !== undefined &&
+    resolvedPermits.some(({ from }) =>
+      from?.some(
+        ({ chain, token, maxAmount }) =>
+          chain.id === chainId &&
+          maxAmount !== undefined &&
+          isAddressEqual(token, wrapped),
+      ),
+    )
+  if (reusableWrap) {
+    refuse(
+      refusal(
+        'WRAPPED_NATIVE_LIFETIME_CAP_REQUIRES_ONE_TIME_USE',
+        'crossChainPermits: a wrapped native `from` leg with maxAmount requires oneTimeUse, since its native wrap is capped per call, not over the session',
+        { chainId },
+      ),
+    )
+  }
   const permissions = [
     ...windowed.permissions,
     ...(swapScope?.permissions ?? []).map((permission) =>

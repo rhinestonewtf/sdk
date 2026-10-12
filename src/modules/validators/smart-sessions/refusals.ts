@@ -113,6 +113,8 @@ export const SESSION_REFUSAL_CODES = {
   NATIVE_DESTINATION_UNSUPPORTED:
     'a native `to` token on a Permit2-layer permit, without `fallback`',
   WRAPPED_NATIVE_ZERO_CAP: 'a wrapped native `from` leg with maxAmount 0',
+  WRAPPED_NATIVE_LIFETIME_CAP_REQUIRES_ONE_TIME_USE:
+    'a wrapped native `from` leg with maxAmount on a session without oneTimeUse',
   WRAPPED_NATIVE_TOKEN_UNSERVED:
     "the orchestrator's /chains serves no wrapped-native token for the chain",
   CLAIM_POLICIES_SIGNING_MODE:
