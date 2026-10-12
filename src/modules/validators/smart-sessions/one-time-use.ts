@@ -6,11 +6,8 @@ import {
   toFunctionSelector,
 } from 'viem'
 
-// OneTimeUseIdPolicy (RHI-5798): a session pins an id it invents, and each
-// settlement burns that id through an injected pre-claim execution, so a session
-// settles at most once per chain regardless of route. This module produces the
-// two SDK-side artifacts: the session's erc1271 policy entry, and the burn op the
-// caller places in the intent's `preClaimExecutions`.
+// OneTimeUseIdPolicy: a session pins an id it invents and each settlement burns
+// it through a pre-claim execution, so a session settles at most once per chain.
 export const oneTimeUseIdPolicyAbi = [
   {
     type: 'function',
@@ -76,13 +73,9 @@ export function oneTimeUseIdErc1271Policy(params: {
   }
 }
 
-// The burn op to inject into the intent's `preClaimExecutions`.
-//   - executor route: `consume(id)` — no witness.
-//   - permit2 route:  `consumeFor(id, 0)` — a PLACEHOLDER witness. The witness
-//     must equal the settlement's Permit2 order nonce, which only the orchestrator
-//     knows, so it stamps the real nonce into this op before the mandate is signed.
-// Intent flows (`prepareIntentSessions`) always inject the permit2 form; the
-// orchestrator rewrites it to `consume(id)` off the Permit2 route.
+// The burn op for the intent's `preClaimExecutions`: `consume(id)` on the executor
+// route, or `consumeFor(id, 0)` on Permit2, whose placeholder witness the
+// orchestrator replaces with the order nonce before the mandate is signed.
 export function buildOneTimeUseBurnOp(params: {
   policy: Address
   id: bigint

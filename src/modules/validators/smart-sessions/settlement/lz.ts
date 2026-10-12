@@ -26,27 +26,15 @@ import { SettlementLayerRefusal, served } from './served'
 import type { SettlementContext } from './types'
 
 /**
- * LZ — USDC over the LayerZero Value Transfer API. The orchestrator forwards the
- * API's two steps: `approve(TransferDelegate)` and `LZMultiCall.execute(calls,
- * quoteId)`, whose nested calls pull the tokens, bridge them and sweep the rest
- * back. LZMultiCall runs any call it is handed, so every nested call is pinned:
- * the array length, each element offset, target, data pointer and
- * length-plus-selector, and each argument the key could redirect, except what
- * LZMultiCall or the target already refuses (see `batch` and `pull`). The policy
- * accepts two of the API's routes, in three layouts:
+ * LZ — USDC over the LayerZero Value Transfer API: `approve(TransferDelegate)`
+ * then `LZMultiCall.execute(calls, quoteId)`. LZMultiCall runs any call it is
+ * handed, so every nested call's shape and redirectable argument is pinned,
+ * except what LZMultiCall or the target already refuses (see `batch` and
+ * `pull`). Two routes are accepted: CCTP, and Stargate TAXI only into a leg no
+ * CCTP route reaches (CCTP is cheaper there); BUS is refused.
  *
- * - CCTP: delegateTransferFrom, transfer(fee), approve(TokenMessengerV2),
- *   depositForBurn, sweep; to Plasma without the fee transfer.
- * - Stargate TAXI: delegateTransferFrom, approve(pool), pool.send, sweep; only
- *   into a leg no CCTP route reaches. Where both exist CCTP is cheaper and
- *   faster, and the orchestrator must not plan Stargate. BUS, which the
- *   orchestrator does not plan, is refused.
- *
- * A Stargate send names its own `minAmountLD`, the least the pool may deliver
- * after its fee before it reverts. The session pins it only against a floor the
- * owner gives as `to.minAmount`: the batch sends a variable amount, and a policy
- * compares a word with a constant, so no floor relative to `amountLD` fits.
- * Without one, a send accepts whatever fee the pool charges.
+ * A Stargate send's `minAmountLD` is pinned only against an owner-given
+ * `to.minAmount`: the amount sent varies, and a rule compares with a constant.
  */
 
 /**
@@ -58,8 +46,8 @@ const LZ_CCTP_TOKEN_MESSENGER: Address =
   '0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d'
 
 /**
- * The most relay fee the key may send LayerZero's receiver, in USDC units: ~10x
- * the live fee into Ethereum (0.098 USDC), the dearest destination.
+ * The most relay fee the key may send LayerZero's receiver, in USDC units:
+ * ~10x the live fee into Ethereum, the dearest destination.
  */
 export const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
 
@@ -122,8 +110,7 @@ function batch(calls: readonly NestedCall[]): {
     const data = start + 128n
     const at: At = (offset) => data + 4n + offset
     // No call's value is pinned: the send's is the messaging fee, and every
-    // other target reverts on value (a non-payable solc function, checked on
-    // every LZ source chain), which LZMultiCall bubbles.
+    // other target is non-payable, a revert LZMultiCall bubbles.
     rules.push(
       pinValue(0x60n + BigInt(i) * 32n, relative),
       pin(start, call.target),
@@ -465,11 +452,8 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         valueLimitPerUse: maxUint256,
         expression: {
           type: 'and',
-          // The calls pointer every route shares counts its own value against a
-          // limit of that value: one execute per session, whatever the route.
-          // The burning transaction admits every later op, so without it a
-          // stale TransferDelegate allowance could fund a second route, and a
-          // second Stargate send would pay another native fee.
+          // A usage limit on the shared calls pointer: one execute per session,
+          // so a stale TransferDelegate allowance cannot fund a second route.
           left: allOf([{ ...pinValue(0n, 0x40n), usageLimit: 0x40n }]),
           right: anyOf(groups),
         },

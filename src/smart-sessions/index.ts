@@ -241,7 +241,7 @@ export {
   // Venue-scoped swap sessions (RHI-6286)
   ZEROX_CHAIN_IDS,
   zeroEx,
-  // One-time-use sessions (RHI-5798)
+  // One-time-use sessions
   buildOneTimeUseBurnOp,
   encodeOneTimeUseIdInitData,
   oneTimeUseIdErc1271Policy,

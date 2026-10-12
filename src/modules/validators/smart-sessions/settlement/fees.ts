@@ -26,7 +26,7 @@ import { withRule } from './same-chain'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
 /**
- * `allowFees` (RHI-7884): the app-fee transfer and the unsponsored-gas paymaster
+ * `allowFees`: the app-fee transfer and the unsponsored-gas paymaster
  * calls the orchestrator adds before the layer calls. Each call has its own
  * USD cap ({@link settlementFeeCap}): per `from` token for the transfer and
  * approve, one shared across tokens for the callback.
@@ -138,7 +138,7 @@ export function servedFees(
       { chainId },
     )
   }
-  // No `from` token leaves only the callback, at main's 6-decimal scale.
+  // No `from` token leaves only the callback, at the 6-decimal scale.
   return { ...chain.fees, cap: settlementFeeCap(chainId, decimals[0] ?? 6) }
 }
 

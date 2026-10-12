@@ -29,7 +29,7 @@ export function expandCrossChainPermit(
       "crossChainPermits (internal): settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
     )
   }
-  // The orchestrator no longer routes a smart account through the Permit2 ECO
+  // The orchestrator does not route a smart account through the Permit2 ECO
   // arbiter, so the claim never admits it.
   if (permit.settlementLayers?.includes('ECO')) {
     throw refusal(

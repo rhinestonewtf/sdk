@@ -23,39 +23,20 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * ECO — Eco Routes, `Portal.publishAndFund` with Eco's quoted route bytes
  * forwarded verbatim by the orchestrator.
  *
- * The recipient lives inside the vendor route, and the reward's offsets move
- * with the route's length, so the session pins the one shape the orchestrator
- * accepts end to end: an ERC-20 reward and a single `transfer` delivery.
- * Every calldata pointer, the reward's tokens pointer and every other count is
- * pinned so no field can alias another. The route's own pointers and byte length are
- * not: the destination Portal
- * (0xEC000769A73b70e16f361a442292500b3BCf4A85, verified source on Base
- * Blockscout) checks every fill and cancel in `_validateRoute`, which hashes
- * `abi.encode(route)` and reverts `InvalidHash`, so only canonical bytes are
- * fillable, and canonical bytes with these counts have exactly the layout the
- * offsets assume. Any other layout is never filled and refunds to the pinned
- * creator after the reward deadline, which only a deadline on the session
- * bounds. This assumes EVM destinations and a Portal that keeps re-encoding.
+ * The session pins the one shape the orchestrator accepts: an ERC-20 reward and
+ * a single `transfer` delivery, with every calldata pointer and count pinned so
+ * no field can alias another. The route's own pointers and byte length are
+ * not: the destination Portal fills only a route whose `abi.encode` hash
+ * matches, so any other layout never fills and refunds to the pinned creator
+ * after the reward deadline. This assumes EVM destinations. An unpinned route
+ * token count or call value reverts at fill: the only other canonical count
+ * names address 1, which has no code, and served stablecoins' `transfer` is
+ * non-payable.
  *
- * The route's token count is not pinned either: the pinned route token, call
- * count and transfer head leave 3 as the only other canonical count, whose
- * second token is the call count pin, address 1. `_fulfill` pulls it with OZ
- * 5.0 `safeTransferFrom`, which reverts on a code-less target. The call's
- * value is not pinned: `Executor` bubbles the revert of every served
- * stablecoin's non-payable `transfer`. Both were checked on every ECO chain.
- *
- * Neither native amount nor `allowPartial` is pinned. `valueLimitPerUse: 0`
- * holds `msg.value` at 0, so `_fundNative` fills reward native only from a
- * vault a third party pre-funded; partial funding pulls at most the capped
- * reward and `Vault.withdraw` pays at most what the vault holds; route native
- * comes from the solver. The account never pays more than the capped reward.
- *
- * Fills are permissionless and the filler names the claimant, so a key can fill
- * its own intent: the delivery floor is the whole price bound. With `maxFeeBps`
- * it is the cap less the most the solver may keep, rescaled between two served
- * USD stablecoins' decimals. With `to.minAmount` it is the owner's own amount
- * of the `to` token, for any two served stablecoins; given both, the higher
- * floor applies.
+ * `valueLimitPerUse: 0` holds `msg.value` at 0, so the account never pays more
+ * than the capped reward. A key can fill its own intent and name itself
+ * claimant, so the delivery floor (`maxFeeBps` or `to.minAmount`, the higher
+ * when both) is the whole price bound.
  */
 
 export const ecoPortalAbi = parseAbi([
