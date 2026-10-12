@@ -973,7 +973,7 @@ describe('settlement-scoped crossChainPermits', () => {
       // ECO_IE cannot pin an open recipient, so no layer can enforce the floor.
       test('is refused when ECO_IE cannot settle it either', () => {
         expect(() => resolveSessionData(all(99n, 'any'))).toThrow(
-          /no IntentExecutor layer can settle this permit.*CCTP: CCTP cannot enforce `to.minAmount`.*ECO_IE: ECO_IE needs a concrete recipient/,
+          /no layer can settle this permit.*ACROSS: `to.minAmount` does not apply to Permit2 layers.*CCTP: CCTP cannot enforce `to.minAmount`.*ECO_IE: ECO_IE needs a concrete recipient/,
         )
       })
     })
@@ -1074,7 +1074,7 @@ describe('settlement-scoped crossChainPermits', () => {
         expect(() =>
           resolveSessionData(floored(new Date(Date.now() + 86_400_000))),
         ).toThrow(
-          /no IntentExecutor layer can settle this permit.*ECO_IE: ECO_IE needs validUntil at least 7 days ahead/,
+          /no layer can settle this permit.*ACROSS: `to.minAmount` does not apply to Permit2 layers.*ECO_IE: ECO_IE needs validUntil at least 7 days ahead/,
         )
       })
     })
@@ -1212,9 +1212,9 @@ describe('settlement-scoped crossChainPermits', () => {
   describe('refuses', () => {
     test.each([
       [
-        'a permit mixing CCTP with a Permit2 layer',
-        definition({ settlementLayers: ['CCTP', 'ACROSS'] }),
-        'ACROSS cannot share a permit with IntentExecutor layers',
+        'a permit mixing CCTP with a Permit2 layer other than ACROSS',
+        definition({ settlementLayers: ['CCTP', 'SAME_CHAIN'] }),
+        'SAME_CHAIN cannot share a permit with IntentExecutor layers',
       ],
       [
         'maxAmount without oneTimeUse',

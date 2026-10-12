@@ -151,6 +151,48 @@ describe('settlement layer pin', () => {
     })
   })
 
+  test('ACROSS beside IntentExecutor layers offers both, funded within maxAmount', () => {
+    const mixed = toSession(
+      {
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+        account: ACCOUNT,
+        oneTimeUse: { id: 7n },
+        policyAddresses: {
+          oneTimeUseId: '0x3333333333333333333333333333333333333333',
+        },
+        crossChainPermits: [
+          {
+            from: { chain: base, token: USDC, maxAmount: 100n },
+            to: { chain: arbitrum, token: USDC_ARB },
+            settlementLayers: ['ACROSS', 'CCTP'],
+          },
+        ],
+      } as never,
+      { settlement: SETTLEMENT_CATALOG },
+    )
+    const intent = adaptTransaction(
+      { account: {} } as never,
+      {
+        targetChain: arbitrum,
+        sourceChains: [base],
+        calls: [],
+        signers: { type: 'session', session: mixed },
+        settlementLayers: { exclude: ['CCTP'] },
+      } as never,
+    ) as {
+      accountAccessList?: unknown
+      options?: { settlementLayers?: unknown }
+    }
+    expect(intent.options?.settlementLayers).toEqual({ include: ['ACROSS'] })
+    expect(intent.accountAccessList).toEqual({
+      chainTokenAmounts: { [base.id]: { [USDC]: 100n } },
+    })
+    expect(layersFor(['ACROSS', 'CCTP'])).toEqual({
+      include: ['ACROSS', 'CCTP'],
+    })
+  })
+
   test.each<[string, object]>([
     ["'all'", { settlementLayers: 'all' }],
     ['omitted', {}],
@@ -187,7 +229,7 @@ describe('settlement layer pin', () => {
         } as never,
       ) as { options?: { settlementLayers?: unknown } }
       expect(intent.options?.settlementLayers).toEqual({
-        include: ['CCTP', 'LZ'],
+        include: ['ACROSS', 'CCTP', 'LZ'],
       })
     },
   )
@@ -517,7 +559,7 @@ describe('source asset pin', () => {
         ) as { accountAccessList?: unknown; options?: unknown }
       const all = sent({ settlementLayers: 'all' })
       expect(all.options).toMatchObject({
-        settlementLayers: { include: ['CCTP'] },
+        settlementLayers: { include: ['ACROSS', 'CCTP'] },
       })
       for (const layers of [{}, { settlementLayers: [] }]) {
         const omitted = sent(layers)

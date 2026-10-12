@@ -48,7 +48,8 @@ export function permit2SourceTokens(
  * `approve(Permit2, amount)` capped cumulatively at its largest `maxAmount`;
  * the wrapped-native `deposit()`, its value capped, when `wrap` is given;
  * and the fee calls when `fees` is. A declared approve on a `from` token is
- * refused: the permit adds its own.
+ * refused: the permit adds its own, or with `approve` false the settlement
+ * scope it shares a permit with does.
  */
 export function permit2RouteScope(
   sourceTokens: ReadonlyMap<Address, bigint | undefined>,
@@ -56,6 +57,7 @@ export function permit2RouteScope(
   declaredActions: readonly ScopedAction[],
   fees: ServedFees | undefined,
   wrap?: { readonly token: Address; readonly cap: bigint },
+  approve = true,
 ): ScopedAction[] {
   refuseDeclaredApproves(
     sourceTokens.keys(),
@@ -64,7 +66,7 @@ export function permit2RouteScope(
     'the permit adds its own',
   )
   const actions: ScopedAction[] = []
-  for (const [token, cap] of sourceTokens) {
+  for (const [token, cap] of approve ? sourceTokens : []) {
     actions.push(
       swapAction(token, APPROVE_SELECTOR, [
         pin(0n, PERMIT2),
