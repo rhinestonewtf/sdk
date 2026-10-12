@@ -293,25 +293,26 @@ function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
 }
 
 /**
- * `'all'` keeps ACROSS, whose claim checks no amount, so without `maxAmount`
- * nothing bounds what that route moves.
+ * A settlement-scoped permit keeps ACROSS, whose claim checks no amount, so a
+ * `from` token without its own `maxAmount` has nothing bounding that route.
  */
 function uncappedAcrossWarnings(
   definition: SessionDefinition,
 ): SessionWarning[] {
+  // A permit naming only ACROSS keeps the warnings it had.
   return sessionPermits(definition).flatMap((permit, permitIndex) =>
-    permit.settlementLayers === 'all' &&
-    ![permit.from ?? []]
+    isSettlementScopedPermit(permit) &&
+    [permit.from ?? []]
       .flat()
       .some(
         ({ chain, maxAmount }) =>
-          chain.id === definition.chain.id && maxAmount !== undefined,
+          chain.id === definition.chain.id && maxAmount === undefined,
       )
       ? [
           {
-            code: 'ALL_INCLUDES_UNCAPPED_ACROSS',
+            code: 'UNCAPPED_ACROSS_ROUTE',
             message:
-              "crossChainPermits: settlementLayers 'all' includes ACROSS, whose route has no amount cap without maxAmount; set oneTimeUse and maxAmount to bound it, or name the layers to leave it out",
+              'crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount; set oneTimeUse and maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers',
             permitIndex,
           },
         ]

@@ -339,10 +339,11 @@ interface Permit2ClaimPolicy {
  *   e.g. for a `to.minAmount`, `maxFeeBps`, a native token, or a reusable
  *   session on a chain without Permit2SenderPolicy; with a `fillDeadline`, the
  *   other layers are dropped instead. A `from` token no other layer serves
- *   builds an ACROSS-only session. Kept, ACROSS has the bounds above, so
- *   without `maxAmount` nothing caps what it moves (`validateSession` warns
- *   with `ALL_INCLUDES_UNCAPPED_ACROSS`): set `oneTimeUse` and `maxAmount`, or
- *   name the layers to leave it out. It never includes `SAME_CHAIN_IE`, is refused
+ *   builds an ACROSS-only session. Kept or named beside the layers, ACROSS
+ *   has the bounds above, so for a `from` leg without its own `maxAmount`
+ *   nothing caps what it moves (`validateSession` warns with
+ *   `UNCAPPED_ACROSS_ROUTE`): set `oneTimeUse` and `maxAmount` on each `from`
+ *   leg, or name the other layers to leave it out. It never includes `SAME_CHAIN_IE`, is refused
  *   when no layer qualifies, and refuses a dropped `ECO_IE` when `maxFeeBps`
  *   is set. It resolves against `GET /chains` and the clock at creation, so
  *   store the created session rather than rebuilding it from `'all'`. A

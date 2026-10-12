@@ -139,8 +139,8 @@ export type SessionRefusalCode = keyof typeof SESSION_REFUSAL_CODES
 export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
     'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
-  ALL_INCLUDES_UNCAPPED_ACROSS:
-    "settlementLayers 'all' keeping ACROSS on a permit without maxAmount, so nothing caps what that route moves",
+  UNCAPPED_ACROSS_ROUTE:
+    'ACROSS beside IntentExecutor layers, or kept by `all`, with a `from` leg on the chain that has no maxAmount, so nothing caps what that route moves for it',
   ACTION_WINDOW_SHARED_PERMISSION_ID:
     'an action window on a session whose permissionId any other zero-salt session of the same owners shares',
 } as const

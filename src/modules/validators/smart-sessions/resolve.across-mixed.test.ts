@@ -864,32 +864,55 @@ describe('the compiled approve', () => {
   })
 })
 
-describe("the 'all' ACROSS warning", () => {
+describe('the uncapped ACROSS route warning', () => {
   const warned = (def: SessionDefinition) =>
     (validateSessionDefinition(def, OPTIONS).warnings ?? []).map(
       ({ code }) => code,
     )
 
-  test('warns when ACROSS is kept without maxAmount', () => {
-    const def = definition({})
+  test.each<[string, SessionDefinition]>([
+    ['omitted layers without maxAmount', definition({})],
+    ["'all' without maxAmount", definition({ settlementLayers: 'all' })],
+    [
+      'ACROSS named beside a layer without maxAmount',
+      definition({ settlementLayers: ['ACROSS', 'CCTP'] }),
+    ],
+    [
+      "'all' where another leg's cap leaves one token uncapped",
+      definition(
+        {
+          from: [
+            { chain: base, token: USDC },
+            { chain: base, token: WETH, maxAmount: 10n ** 18n },
+          ],
+          settlementLayers: 'all',
+        },
+        once,
+      ),
+    ],
+  ])('warns for %s', (_, def) => {
     expect(toSession(def, OPTIONS).settlementLayers).toContain('ACROSS')
-    expect(warned(def)).toEqual(['ALL_INCLUDES_UNCAPPED_ACROSS'])
-    expect(warned(definition({ settlementLayers: 'all' }))).toEqual([
-      'ALL_INCLUDES_UNCAPPED_ACROSS',
+    expect(validateSessionDefinition(def, OPTIONS).warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNCAPPED_ACROSS_ROUTE',
+        permitIndex: 0,
+      }),
     ])
   })
 
   test.each<[string, SessionDefinition]>([
-    ['with maxAmount', definition(capped({}), once)],
+    ['a maxAmount on every leg', definition(capped({}), once)],
     [
-      'when ACROSS is named',
-      definition({ settlementLayers: ['ACROSS', 'CCTP'] }),
+      'ACROSS named beside a layer with maxAmount',
+      definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }), once),
     ],
     [
-      "when 'all' drops ACROSS",
+      "'all' dropping ACROSS",
       definition({ settlementLayers: 'all' }, {}, avalanche),
     ],
-  ])('does not warn %s', (_, def) => {
+    // As on main: a permit naming only ACROSS keeps the warnings it had.
+    ['ACROSS named alone', definition({ settlementLayers: ['ACROSS'] })],
+  ])('does not warn for %s', (_, def) => {
     expect(warned(def)).toEqual([])
   })
 })
