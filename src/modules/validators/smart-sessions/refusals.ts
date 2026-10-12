@@ -23,9 +23,8 @@ export const SESSION_REFUSAL_CODES = {
   MULTIPLE_INTENT_EXECUTOR_PERMITS:
     'more than one IntentExecutor-layer permit in one session',
   PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER:
-    'a Permit2 layer named beside IntentExecutor layers in one permit',
-  SAME_CHAIN_IE_WITH_OTHER_LAYERS:
-    'SAME_CHAIN_IE named beside another IntentExecutor layer',
+    'a Permit2 layer other than ACROSS, or ACROSS with `fallback`, named beside IntentExecutor layers in one permit',
+  SAME_CHAIN_IE_WITH_OTHER_LAYERS: 'SAME_CHAIN_IE named beside another layer',
   NO_FROM_ON_CHAIN: "no `from` leg on the session's chain",
   INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
     'maxAmount on an IntentExecutor-layer permit without oneTimeUse',
@@ -36,7 +35,8 @@ export const SESSION_REFUSAL_CODES = {
   RECIPIENT_NOT_ACCOUNT:
     'a recipient other than the account without allowRecipientNotAccount',
   MISSING_TO: 'an IntentExecutor-layer permit names no `to` chains',
-  FILL_DEADLINE_ONLY_PERMIT2: 'fillDeadline on an IntentExecutor-layer permit',
+  FILL_DEADLINE_ONLY_PERMIT2:
+    "fillDeadline on a permit naming IntentExecutor layers, or under 'all' where ACROSS cannot settle",
   MAX_FEE_BPS_ONLY_ECO_IE: 'maxFeeBps without ECO_IE',
   MIN_AMOUNT_ON_PERMIT2_LAYER: '`to.minAmount` on a Permit2-layer permit',
   SAME_CHAIN_IE_TRANSFER_MIN_AMOUNT:
@@ -61,8 +61,7 @@ export const SESSION_REFUSAL_CODES = {
   LAYER_NOT_SERVED: 'the layer does not route on a named chain',
   MAX_FEE_BPS_ECO_IE_UNAVAILABLE:
     "maxFeeBps with settlementLayers 'all' where ECO_IE cannot settle",
-  NO_LAYER_CAN_SETTLE:
-    "settlementLayers 'all' where no IntentExecutor layer can settle",
+  NO_LAYER_CAN_SETTLE: "settlementLayers 'all' where no layer can settle",
   MULTIPLE_FEE_PAYING_LAYERS: 'both OFT and LZ, which each pay a native fee',
   ONE_SOURCE_TOKEN: 'the layer takes exactly one `from` token per chain',
   TOKEN_NOT_ROUTED: 'a `from` or `to` token the layer does not move',
@@ -112,7 +111,7 @@ export const SESSION_REFUSAL_CODES = {
   PERMIT2_ROUTE_ACROSS_ONLY:
     'a Permit2-layer permit naming a layer other than ACROSS, without `fallback`',
   PRE_CLAIM_OPS_NOT_APPLICABLE:
-    "preClaimOps: 'none' with oneTimeUse or allowFees, or on an IntentExecutor-layer permit",
+    "preClaimOps: 'none' with oneTimeUse or allowFees, or on a permit that does not settle through ACROSS",
   NATIVE_DESTINATION_UNSUPPORTED:
     'a native `to` token on a Permit2-layer permit, without `fallback`',
   WRAPPED_NATIVE_ZERO_CAP: 'a wrapped native `from` leg with maxAmount 0',

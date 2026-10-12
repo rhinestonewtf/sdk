@@ -258,14 +258,14 @@ test('every session encodes and digests as pinned', async () => {
   expect(table).toMatchInlineSnapshot(`
     {
       "all": {
-        "digest": "0x40ce081c0833bf52da95878f51e598906f8156e1c69653ec3b1db1db101f984a",
-        "permissionId": "0xf755d70bdb248ecc46bd6b153441e406412ad7b04fc9db11c7cc6ba27b823a87",
-        "policies": "0xa3d014dbe7809ef1087503f73f390f171b62abb50daee64f5e6c9243d1216fec",
+        "digest": "0x2f3012e9aca8559fa300f0c5c6bd1644c55aede12208652b2e1a53a0afea8881",
+        "permissionId": "0x6884075b54728446ee8f8980a39f785aa7fbbe4df16b4c02275c4d24c28f1b83",
+        "policies": "0xfd34a229a59f1e1407d5c62222725f91f23b8ac2886dffb09ebb71482b2627a2",
       },
       "all, fees": {
-        "digest": "0xe704174fda7e394c5aaab413b8ff42e3d992214e30d031153fa650ff0b9ac8e8",
-        "permissionId": "0xf701f9ef9d3294a1bb7c91fccd62efaad1585412e694f22204b6748af0a18bd3",
-        "policies": "0x1f307bf68e6639c7aac787b0521030e4c597b9b151da16b2027c460fab8c29a8",
+        "digest": "0xb70f48043bca0c2f631570c922c700ac3b30af641b99ad25340e144c59df172f",
+        "permissionId": "0x346785b41ffaa4ad8ed8c82d02f7a3586aef55f41d07ffa37e544dd749906697",
+        "policies": "0xf10a455adf500ae14e597bc62ca89813bb15b3b2dec03bf373b0f2502e5bd47d",
       },
       "cctp": {
         "digest": "0x40de9deff6afa61ec431283548d189569465e8e41c6a73034425fed971d118d7",

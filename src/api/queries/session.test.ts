@@ -80,7 +80,7 @@ describe('settlementLayers omitted', () => {
       wrappedNativeToken: WETH,
     })
     expect(offline).toEqual(online)
-    expect(offline.settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(offline.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
     expect(online).toEqual(
       await created(definition({ settlementLayers: 'all' })),
     )

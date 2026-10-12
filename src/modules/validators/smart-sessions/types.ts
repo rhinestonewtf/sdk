@@ -241,7 +241,7 @@ export type CrossChainSettlementLayer =
 /** A layer `settlementLayers: 'all'` left out of the session, and why. */
 export interface DroppedSettlementLayer {
   /** `'all'` never includes `SAME_CHAIN_IE`, so it never drops it either. */
-  readonly layer: 'CCTP' | 'OFT' | 'ECO_IE' | 'LZ'
+  readonly layer: 'ACROSS' | 'CCTP' | 'OFT' | 'ECO_IE' | 'LZ'
   /** The refusal an explicit list naming the layer throws, without its `crossChainPermits: ` prefix. */
   readonly reason: string
 }

@@ -1175,7 +1175,7 @@ function settlementLayerPin(
   const excluded = new Set<Layer>()
   for (const session of sessions) {
     const named: readonly string[] = session.settlementLayers ?? []
-    // A Permit2 permit never shares a session with IntentExecutor layers.
+    // An open session's Permit2 permit never names IntentExecutor layers.
     if (
       named.some((layer) => PERMIT2_LAYERS.has(layer)) &&
       session.access?.kind !== 'scoped'
@@ -1185,8 +1185,8 @@ function settlementLayerPin(
       }
       continue
     }
-    // A scoped Permit2-route session names its live arbiters; Permit2's
-    // SAME_CHAIN, like SAME_CHAIN_IE, narrows nothing.
+    // A scoped session names its live arbiters beside any IntentExecutor
+    // layers; Permit2's SAME_CHAIN, like SAME_CHAIN_IE, narrows nothing.
     const layers = named.flatMap((layer): Layer[] =>
       layer === 'SAME_CHAIN_IE' || layer === 'SAME_CHAIN'
         ? []

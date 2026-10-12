@@ -368,7 +368,7 @@ describe('multi-layer settlement permits', () => {
     const session = toSession(definition({ settlementLayers: 'all' }), {
       settlement: SETTLEMENT_CATALOG,
     })
-    expect(session.settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(session.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
   })
 
   test("'all' without oneTimeUse or maxAmount keeps CCTP, uncapped", () => {
@@ -491,7 +491,7 @@ describe('settlement coverage', () => {
     const { settlementLayers, settlementCoverage } = session({
       settlementLayers: 'all',
     })
-    expect(settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
     expect(settlementCoverage).toEqual({
       dropped: [
         { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
@@ -543,6 +543,10 @@ describe('settlement coverage', () => {
     expect(settlementLayers).toEqual(['ECO_IE'])
     expect(expectExplicitRefusals(base, permit)).toEqual({
       dropped: [
+        {
+          layer: 'ACROSS',
+          reason: '`to.minAmount` does not apply to Permit2 layers',
+        },
         { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
         { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
         {
@@ -567,8 +571,11 @@ describe('settlement coverage', () => {
   })
 
   test.each([
-    [{}, ['CCTP', 'LZ']],
-    [{ maxFeeBps: 50, validUntil: VALID_UNTIL }, ['CCTP', 'ECO_IE', 'LZ']],
+    [{}, ['ACROSS', 'CCTP', 'LZ']],
+    [
+      { maxFeeBps: 50, validUntil: VALID_UNTIL },
+      ['ACROSS', 'CCTP', 'ECO_IE', 'LZ'],
+    ],
   ] as const)(
     "'all' encodes the same session as the layers it kept (%o)",
     (permit, kept) => {

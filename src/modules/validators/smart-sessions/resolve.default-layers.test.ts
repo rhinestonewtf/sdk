@@ -79,10 +79,10 @@ describe.each(omitted)('settlementLayers %s without fallback', (_, layers) => {
   test("builds the session 'all' builds", () => {
     const built = outcome(definition(layers))
     expect(built).toEqual(outcome(definition({ settlementLayers: 'all' })))
-    expect(built.settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(built.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
     expect(built.access).toEqual({
       kind: 'scoped',
-      reason: 'settlement-scoped permit (CCTP, LZ)',
+      reason: 'settlement-scoped permit (ACROSS, CCTP, LZ)',
     })
   })
 
@@ -94,10 +94,14 @@ describe.each(omitted)('settlementLayers %s without fallback', (_, layers) => {
   })
 
   test("refuses a permit no layer can settle, as 'all' does", () => {
-    const unsettled = { from: { chain: base, token: OTHER, maxAmount: 100n } }
+    // A `to.minAmount` leaves ACROSS out, and OTHER every IntentExecutor layer.
+    const unsettled = {
+      from: { chain: base, token: OTHER, maxAmount: 100n },
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+    }
     expect(() =>
       toSession(definition({ ...unsettled, ...layers }), OPTIONS),
-    ).toThrow('no IntentExecutor layer can settle this permit')
+    ).toThrow('no layer can settle this permit')
     expect(codes(definition({ ...unsettled, ...layers }))).toEqual(
       codes(definition({ ...unsettled, settlementLayers: 'all' })),
     )
@@ -127,7 +131,7 @@ describe.each(omitted)('settlementLayers %s without fallback', (_, layers) => {
     expect(built).toEqual(
       outcome(definition({ settlementLayers: 'all' }, swap)),
     )
-    expect(built.settlementLayers).toEqual(['CCTP', 'LZ'])
+    expect(built.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
   })
 })
 

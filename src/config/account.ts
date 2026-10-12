@@ -319,17 +319,28 @@ interface Permit2ClaimPolicy {
  *   below Eco's floor may route through another layer, or fail if Eco is
  *   picked.
  *
- *   `settlementLayers: 'all'` names every one of `CCTP`, `OFT`, `ECO_IE` and
- *   `LZ` that can settle the permit on the session's chain, fields included,
- *   and drops the rest into `settlementCoverage.dropped` with the reason. It
- *   never includes `SAME_CHAIN_IE`, is refused when no layer qualifies, and
- *   refuses a dropped `ECO_IE` when `maxFeeBps` is set. It resolves against
- *   `GET /chains` and the clock at creation, so store the created session
- *   rather than rebuilding it from `'all'`. A permit without `fallback` that
- *   names no layer gets `'all'`.
+ *   Without `fallback`, such a permit may also name `ACROSS`. The session
+ *   then holds both surfaces: the layers' calls, and the ACROSS claim policy
+ *   bound as for an `ACROSS`-only permit. The recipient is pinned on every
+ *   route, and `approve(Permit2)` joins the layers' approve, so `maxAmount`
+ *   stays one budget across all of them. `ACROSS` cannot enforce
+ *   `to.minAmount`, and the layers cannot enforce `fillDeadline`, so either
+ *   field is refused in such a permit.
  *
- *   A settlement-scoped permit cannot be combined with the Permit2 layers.
- *   `maxAmount` requires `oneTimeUse`, as do `OFT` and `LZ`, and only
+ *   `settlementLayers: 'all'` names `ACROSS` and every one of `CCTP`, `OFT`,
+ *   `ECO_IE` and `LZ` that can settle the permit on the session's chain,
+ *   fields included, and drops the rest into `settlementCoverage.dropped`
+ *   with the reason. `ACROSS` is dropped where a permit naming it is refused,
+ *   e.g. for a `to.minAmount`, a native token, or a reusable session on a
+ *   chain without Permit2SenderPolicy; with a `fillDeadline`, the other
+ *   layers are dropped instead. It never includes `SAME_CHAIN_IE`, is refused
+ *   when no layer qualifies, and refuses a dropped `ECO_IE` when `maxFeeBps`
+ *   is set. It resolves against `GET /chains` and the clock at creation, so
+ *   store the created session rather than rebuilding it from `'all'`. A
+ *   permit without `fallback` that names no layer gets `'all'`.
+ *
+ *   A settlement-scoped permit cannot be combined with `SAME_CHAIN`, nor
+ *   share a session with another permit. `maxAmount` requires `oneTimeUse`, as do `OFT` and `LZ`, and only
  *   sponsored intents without an app fee settle through it unless it sets
  *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
  *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
@@ -401,7 +412,7 @@ interface CrossChainPermit {
   maxFeeBps?: number
   /** See {@link CrossChainPermissionInput.allowFees}. */
   allowFees?: boolean
-  /** Permit2 layers only. See {@link CrossChainPermissionInput.preClaimOps}. */
+  /** `ACROSS` only. See {@link CrossChainPermissionInput.preClaimOps}. */
   preClaimOps?: 'none'
 }
 
@@ -539,17 +550,17 @@ interface CrossChainPermissionInput {
    * session with `sdk.createSession`, or pass `settlement` to `toSession`.
    * With `fallback`, which `'all'` cannot share a session with, omitting it
    * means `ACROSS`. Without `fallback`, the only Permit2 layer a permit may
-   * name is `ACROSS`.
+   * name is `ACROSS`, alone or beside IntentExecutor layers.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
-   * layers: naming them scopes the session to those layers' calls instead, and
-   * `'all'` to every bridging one that can settle the permit (see
-   * {@link CrossChainSettlementLayer}). `ECO`, the retired Permit2 Eco arbiter,
+   * layers: naming them scopes the session to those layers' calls (and the
+   * ACROSS claim, when named too), and `'all'` to `ACROSS` and every bridging
+   * one that can settle the permit (see {@link CrossChainSettlementLayer}). `ECO`, the retired Permit2 Eco arbiter,
    * is refused: use `ECO_IE`.
    *
    * Intents signed with the session offer the orchestrator only routes it
-   * admits: the IntentExecutor layers kept, or `ACROSS` for a Permit2-layer
-   * permit. With `fallback`, they instead exclude only the Permit2 arbiters
+   * admits: the layers kept, or `ACROSS` for a Permit2-layer permit. With
+   * `fallback`, they instead exclude only the Permit2 arbiters
    * the permit does not name. An intent's own `settlementLayers` can only
    * narrow this, and one that leaves no layer throws.
    */
@@ -593,7 +604,8 @@ interface CrossChainPermissionInput {
    */
   allowFees?: boolean
   /**
-   * Permit2 layers only: the claim may not carry pre-claim calls. A reusable
+   * `ACROSS` only, alone or beside IntentExecutor layers: its claim may not
+   * carry pre-claim calls. A reusable
    * scoped session does not need it on a chain with Permit2SenderPolicy (see
    * `fallback`); elsewhere it is what bounds one. The session then settles
    * only intents that need no pre-claim call: the account already holds
@@ -1234,7 +1246,7 @@ interface Session {
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
   /** The layers the session's cross-chain permit settles through. For a
-   *  settlement-scoped permit, the IntentExecutor layers kept
+   *  settlement-scoped permit, the layers kept, `ACROSS` included
    *  (`SAME_CHAIN_IE` adds no bridge filter); for a scoped Permit2 permit,
    *  `['ACROSS']`, which intents are limited to. With `fallback`, the Permit2 layers the permit lists
    *  (absent when it lists none), and intents exclude only the Permit2
