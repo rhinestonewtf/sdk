@@ -15,7 +15,7 @@ export const SESSION_REFUSAL_CODES = {
   TIME_FRAME_POLICY_UNAVAILABLE:
     'an action window on a chain without the TimeFramePolicy',
   PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
-    'maxAmount on a Permit2-layer permit without oneTimeUse',
+    'maxAmount on a Permit2-layer permit with `fallback` and without oneTimeUse',
   SETTLEMENT_SCOPED_SALT_V1:
     "an IntentExecutor-layer permit with saltMode 'v1'",
   MIXED_PERMIT_KINDS:
@@ -26,8 +26,6 @@ export const SESSION_REFUSAL_CODES = {
     'a Permit2 layer other than ACROSS, or ACROSS with `fallback`, named beside IntentExecutor layers in one permit',
   SAME_CHAIN_IE_WITH_OTHER_LAYERS: 'SAME_CHAIN_IE named beside another layer',
   NO_FROM_ON_CHAIN: "no `from` leg on the session's chain",
-  INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
-    'maxAmount on an IntentExecutor-layer permit without oneTimeUse',
   MULTIPLE_MAX_AMOUNTS: 'maxAmount on more than one `from` token per chain',
   RECIPIENT_ANY_NOT_ALLOWED: "recipient 'any' without allowRecipientNotAccount",
   RECIPIENT_NEEDS_ACCOUNT:
@@ -111,7 +109,7 @@ export const SESSION_REFUSAL_CODES = {
   PERMIT2_ROUTE_ACROSS_ONLY:
     'a Permit2-layer permit naming a layer other than ACROSS, without `fallback`',
   PRE_CLAIM_OPS_NOT_APPLICABLE:
-    "preClaimOps: 'none' with oneTimeUse or allowFees, or on a permit that does not settle through ACROSS",
+    "preClaimOps: 'none' with oneTimeUse, allowFees or a maxAmount on the session's chain, or on a permit that does not settle through ACROSS",
   NATIVE_DESTINATION_UNSUPPORTED:
     'a native `to` token on a Permit2-layer permit, without `fallback`',
   WRAPPED_NATIVE_ZERO_CAP: 'a wrapped native `from` leg with maxAmount 0',
@@ -140,7 +138,7 @@ export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
     'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
   UNCAPPED_ACROSS_ROUTE:
-    'ACROSS beside IntentExecutor layers, or kept by `all`, with a `from` leg on the chain that has no maxAmount, so nothing caps what that route moves for it',
+    "ACROSS beside IntentExecutor layers, or kept by `all`, with a `from` leg on the chain that has no maxAmount, or a permit naming only ACROSS with such a leg beside a capped one: nothing, or only the chain's maxAmount read in that token's raw units, caps what that route moves for it",
   ACTION_WINDOW_SHARED_PERMISSION_ID:
     'an action window on a session whose permissionId any other zero-salt session of the same owners shares',
 } as const

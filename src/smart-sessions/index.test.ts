@@ -12,6 +12,7 @@ import {
 } from './index'
 
 const reads = vi.hoisted(() => vi.fn())
+const multicalls = vi.hoisted(() => vi.fn())
 
 vi.mock('../clients/rpc/compatibility', () => ({
   materializeRpcReader: () => ({
@@ -20,7 +21,7 @@ vi.mock('../clients/rpc/compatibility', () => ({
       getCode: vi.fn(),
       getTransactionCount: vi.fn(),
       readContract: reads,
-      multicall: vi.fn(),
+      multicall: multicalls,
     },
   }),
 }))
@@ -119,5 +120,79 @@ describe('validateSession', () => {
     expect(validateSession(definition, { settlement: {} }).refusals).toEqual([
       expect.objectContaining({ code: 'LAYER_NOT_SERVED', layer: 'CCTP' }),
     ])
+  })
+})
+
+describe('getSessionDetails with a lifetime budget', () => {
+  beforeEach(() => {
+    reads.mockReset()
+    multicalls.mockReset()
+  })
+
+  const session = toSession({
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    account,
+    crossChainPermits: [
+      {
+        from: {
+          chain: base,
+          token: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+          maxAmount: 100n,
+        },
+        to: { chain: base, token: account },
+        settlementLayers: ['ACROSS'],
+      },
+    ],
+  })
+  // The pinned read says enabled; a lagging node behind the plain reads does not.
+  const chainState = (enabled: boolean) => {
+    multicalls.mockResolvedValue([{ result: 7n }, { result: enabled }])
+    reads.mockImplementation(async (...args: unknown[]) =>
+      args.some(
+        (arg) =>
+          (arg as { functionName?: string } | undefined)?.functionName ===
+          'isPermissionEnabled',
+      )
+        ? false
+        : 6n,
+    )
+  }
+
+  test('refuses an enabled one from one read at one block, unless the caller opts in', async () => {
+    chainState(true)
+    await expect(
+      getSessionDetails(account, [session], undefined, false),
+    ).rejects.toThrow('allowBudgetReset')
+    expect(multicalls).toHaveBeenCalledWith(expect.anything(), [
+      expect.objectContaining({
+        functionName: 'getNonce',
+        args: [account, '0x000000000000000000000000'],
+      }),
+      expect.objectContaining({
+        functionName: 'isPermissionEnabled',
+        args: [account, session.permissionId],
+      }),
+    ])
+    expect(reads).not.toHaveBeenCalled()
+    await expect(
+      getSessionDetails(account, [session], undefined, false, {
+        allowBudgetReset: true,
+      }),
+    ).resolves.toMatchObject({ nonces: [6n] })
+  })
+
+  test('signs one not yet enabled at the nonce of that read', async () => {
+    chainState(false)
+    await expect(
+      getSessionDetails(account, [session], undefined, false),
+    ).resolves.toMatchObject({ nonces: [7n] })
+  })
+
+  test('fails closed when the read fails', async () => {
+    multicalls.mockResolvedValue([{ result: 7n }, { error: new Error('x') }])
+    await expect(
+      getSessionDetails(account, [session], undefined, false),
+    ).rejects.toThrow('Could not read the session nonce and enabled state')
   })
 })

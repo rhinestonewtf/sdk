@@ -591,6 +591,63 @@ describe('internal core composition', () => {
     )
   })
 
+  test('refuses the details of an enabled lifetime-budget session unless told to reset it', async () => {
+    const base = fixture()
+    // A plain read from a lagging node says not enabled; the pinned one decides.
+    const readContract = vi.fn(
+      async (_context: unknown, request: { functionName: string }) =>
+        request.functionName === 'isPermissionEnabled' ? false : 0n,
+    )
+    const multicall = vi.fn(async () => [{ result: 5n }, { result: true }])
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          ...base.dependencies.rpc.forChain(),
+          readContract: readContract as RpcReadPort['readContract'],
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+    const session = toSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      account: target,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 100n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['ACROSS'],
+        },
+      ],
+    })
+
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('allowBudgetReset')
+    // One address for the nonce, the enabled state and the digest.
+    const [[, [nonceRead, enabledRead]]] = multicall.mock.calls as unknown as [
+      [unknown, [{ args: unknown[] }, { args: unknown[] }]],
+    ]
+    expect(enabledRead.args[0]).toBe(nonceRead.args[0])
+    await expect(
+      workflows.getSessionDetails(base.context, [session], {
+        allowBudgetReset: true,
+      }),
+    ).resolves.toMatchObject({ nonces: [0n] })
+  })
+
   test('rejects multi-chain Startale K1 enablement before signing', async () => {
     const base = fixture()
     const invoke = vi.fn()
@@ -942,7 +999,6 @@ describe('internal core composition', () => {
       expect(refusals.map(({ code }) => code)).toEqual([
         ...first,
         'WRAPPED_NATIVE_TOKEN_UNSERVED',
-        'INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
       ])
       expect(refusals[0].message).toBe(thrown)
     },

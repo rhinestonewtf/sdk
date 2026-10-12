@@ -230,10 +230,10 @@ describe('a permit naming ACROSS beside IntentExecutor layers', () => {
     expect(approves).toEqual([[USDC, APPROVE]])
   })
 
-  test('maxAmount without oneTimeUse is refused once', () => {
+  test('maxAmount without oneTimeUse builds, as a lifetime cap', () => {
     expect(
       codes(definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }))),
-    ).toEqual(['INTENT_EXECUTOR_MAX_AMOUNT_REQUIRES_ONE_TIME_USE'])
+    ).toEqual([])
   })
 
   test('oneTimeUse burns the same id on either route', () => {

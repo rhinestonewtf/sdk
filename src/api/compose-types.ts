@@ -23,6 +23,7 @@ import type {
   Session,
   SessionDefinition,
   SessionDetails,
+  SessionDetailsOptions,
 } from '../modules/validators/smart-sessions/types'
 import type { IndependentOwnerSignature } from '../signing/intent-plans/independent'
 import type {
@@ -273,6 +274,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown> {
   readonly getSessionDetails: (
     context: AccountInvocationContext<CompatibilityConfig>,
     sessions: readonly Session[],
+    options?: SessionDetailsOptions,
   ) => Promise<SessionDetails>
   readonly isSessionEnabled: (
     context: AccountInvocationContext<CompatibilityConfig>,

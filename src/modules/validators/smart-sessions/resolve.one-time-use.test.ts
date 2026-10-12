@@ -512,6 +512,7 @@ describe('resolveSessionData — Permit2-route permit maxAmount', () => {
     oneTimeUse: { id: 7n },
     policyAddresses: { oneTimeUseId: POLICY },
   } as const
+  const open = { fallback: 'intentExecution' } as const
 
   function resolve(
     permit: Partial<CrossChainPermissionInput>,
@@ -535,34 +536,52 @@ describe('resolveSessionData — Permit2-route permit maxAmount', () => {
     )
   }
 
-  test('refuses ACROSS with maxAmount and no oneTimeUse', () => {
+  test('refuses ACROSS with maxAmount, fallback and no oneTimeUse', () => {
     expect(() =>
-      resolve({
-        settlementLayers: ['ACROSS'],
-        from: { chain: base, token: USDC, maxAmount: 1_000n },
-      }),
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 1_000n },
+        },
+        open,
+      ),
     ).toThrow(REFUSAL)
   })
 
   test('refuses a zero maxAmount too', () => {
     expect(() =>
-      resolve({
-        settlementLayers: ['ACROSS'],
-        from: { chain: base, token: USDC, maxAmount: 0n },
-      }),
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 0n },
+        },
+        open,
+      ),
     ).toThrow(REFUSAL)
   })
 
   test('refuses a maxAmount on a leg of another chain', () => {
     expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: [
+            { chain: base, token: USDC },
+            { chain: arbitrum, token: USDC_ARB, maxAmount: 1_000n },
+          ],
+        },
+        open,
+      ),
+    ).toThrow(REFUSAL)
+  })
+
+  test('accepts a scoped ACROSS with maxAmount and no oneTimeUse', () => {
+    expect(() =>
       resolve({
         settlementLayers: ['ACROSS'],
-        from: [
-          { chain: base, token: USDC },
-          { chain: arbitrum, token: USDC_ARB, maxAmount: 1_000n },
-        ],
+        from: { chain: base, token: USDC, maxAmount: 1_000n },
       }),
-    ).toThrow(REFUSAL)
+    ).not.toThrow()
   })
 
   test('accepts ACROSS with maxAmount and oneTimeUse', () => {
@@ -583,14 +602,12 @@ describe('resolveSessionData — Permit2-route permit maxAmount', () => {
     ).not.toThrow()
   })
 
-  test('leaves an IntentExecutor-layer permit to its own maxAmount rule', () => {
+  test('accepts an IntentExecutor-layer maxAmount with or without oneTimeUse', () => {
     const cctp: Partial<CrossChainPermissionInput> = {
       settlementLayers: ['CCTP'],
       from: { chain: base, token: USDC, maxAmount: 1_000n },
     }
-    expect(() => resolve(cctp)).toThrow(
-      'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-    )
+    expect(() => resolve(cctp)).not.toThrow()
     expect(() => resolve(cctp, withOnce)).not.toThrow()
   })
 })

@@ -839,12 +839,10 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, approve(OTHER))).toBe(false)
     })
 
-    test('requires oneTimeUse, through its maxAmount', () => {
+    test('builds without oneTimeUse, its maxAmount then a lifetime cap', () => {
       expect(() =>
         resolveSessionData({ ...eco(), oneTimeUse: undefined }),
-      ).toThrow(
-        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
-      )
+      ).not.toThrow()
     })
 
     test.each([
@@ -1215,11 +1213,6 @@ describe('settlement-scoped crossChainPermits', () => {
         'a permit mixing CCTP with a Permit2 layer other than ACROSS',
         definition({ settlementLayers: ['CCTP', 'SAME_CHAIN'] }),
         'SAME_CHAIN cannot share a permit with IntentExecutor layers',
-      ],
-      [
-        'maxAmount without oneTimeUse',
-        definition({ from: { chain: base, token: USDC, maxAmount: 100n } }),
-        'maxAmount on an IntentExecutor-layer permit requires oneTimeUse',
       ],
       [
         'the account recipient without `account`',

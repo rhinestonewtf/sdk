@@ -61,6 +61,7 @@ import type {
 import {
   readSessionEnabled,
   readSessionNonce,
+  readSessionNonceAndEnabled,
 } from '../modules/validators/smart-sessions/state'
 import type { FyndChainId } from '../modules/validators/smart-sessions/swap/fynd'
 import {
@@ -85,6 +86,7 @@ import type {
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
+  SessionDetailsOptions,
   SwapVenue,
   ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
@@ -159,12 +161,25 @@ async function getSessionDetails(
   sessions: Session[],
   provider: ProviderConfig | undefined,
   useDevContracts?: boolean,
+  options: SessionDetailsOptions = {},
 ): Promise<SessionDetails> {
   const runtimeEnvironment = environment(useDevContracts)
   return buildSessionDetails({
     account,
     sessions: sessions as DomainSession[],
     environment: runtimeEnvironment,
+    ...(options.allowBudgetReset && { allowBudgetReset: true }),
+    readNonceAndEnabled: (session) => {
+      const reader = materializeRpcReader({ chain: session.chain, provider })
+      return readSessionNonceAndEnabled({
+        rpc: reader.rpc,
+        chain: reader.chain,
+        account,
+        lockTag: SESSION_LOCK_TAG,
+        session: session as DomainSession,
+        environment: runtimeEnvironment,
+      })
+    },
     readNonce: async (session) => {
       const reader = materializeRpcReader({ chain: session.chain, provider })
       return readSessionNonce({
@@ -206,6 +221,7 @@ export type {
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
+  SessionDetailsOptions,
   SettlementAddresses,
   SettlementCatalog,
   SwapVenue,

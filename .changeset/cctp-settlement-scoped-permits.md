@@ -7,7 +7,7 @@ Add settlement-scoped cross-chain permits, starting with CCTP (RHI-7826). A `cro
 - CCTP moves only native USDC, so the `from` token and every `to` token must be USDC on its chain, or the permit throws. Each chain's USDC, CCTP domain and TokenMessengerV2 come from the orchestrator's `GET /chains` `settlement` block.
 - The session is restricted to `USDC.approve(TokenMessengerV2)` and `TokenMessengerV2.depositForBurnWithHook`, with the `from` token, each `to` chain's CCTP domain paired with its recipient, a zero `destinationCaller` and `maxAmount` (cumulative) pinned in the calldata.
 - The recipient defaults to the account, so the session definition needs `account`. Another recipient, or `'any'`, requires `allowRecipientNotAccount`.
-- It must name its `to` chains (an unpinned domain lets a burn go where the recipient cannot mint). `maxAmount` requires `oneTimeUse`, so the cap is a true total. It cannot be combined with `SAME_CHAIN`, `ECO` or `ACROSS`, with another permit, with `claimPolicies`, with `fillDeadline`, or with a `signing` mode other than `disabled`.
+- It must name its `to` chains (an unpinned domain lets a burn go where the recipient cannot mint). `maxAmount` is a true total per `from` token on the session's chain: of the one settlement with `oneTimeUse`, of the session's lifetime without it. It cannot be combined with `SAME_CHAIN`, `ECO` or `ACROSS`, with another permit, with `claimPolicies`, with `fillDeadline`, or with a `signing` mode other than `disabled`.
 - Only sponsored intents without an app fee can settle through it: the paymaster and fee-carve calls are not authorised.
 - Intents signed with the session are limited to its layers (`settlementLayers: { include: ['CCTP'] }`); an explicit filter can only narrow it.
 
