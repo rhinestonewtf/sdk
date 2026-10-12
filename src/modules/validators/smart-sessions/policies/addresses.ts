@@ -14,8 +14,6 @@ export const TIME_FRAME_POLICY_ADDRESS: Address =
 /** The previous TimeFramePolicy, which holds its window on ERC-1271 checks only. */
 export const PREVIOUS_TIME_FRAME_POLICY_ADDRESS: Address =
   '0x0000000000D30f611fA3bf652ac6879428586930'
-// Chains where TIME_FRAME_POLICY_ADDRESS has code, checked with eth_getCode.
-// The one list to extend as it is deployed.
 const TIME_FRAME_POLICY_CHAINS: readonly number[] = [
   1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
   8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155420,
@@ -45,8 +43,8 @@ export const ONE_TIME_USE_ID_POLICY_ADDRESS: Address =
 export const ONE_TIME_USE_ID_POLICY_ADDRESS_DEV: Address =
   '0x86F7cB4E25626d6a07cfED305c38816F30d07224'
 
-// Chains where the address has code, checked with eth_getCode. A chain absent
-// here gets no default, so a session never points at an empty address.
+// A chain absent here gets no default, so a session never points at an empty
+// address.
 const ONE_TIME_USE_ID_POLICY_CHAINS_DEV: readonly number[] = [
   1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
   8453, 9745, 42161, 43114, 57073, 84532, 421614, 747474,
@@ -62,7 +60,6 @@ const ONE_TIME_USE_ID_POLICY_CHAINS: readonly number[] = [
 // takes only Permit2, so both environments share one address.
 export const PERMIT2_SENDER_POLICY_ADDRESS: Address =
   '0xb590a7409de9e9f2A42B56CB62C1f7bA5ea0f959'
-// Chains where the address has code, checked with eth_getCode.
 const PERMIT2_SENDER_POLICY_CHAINS: readonly number[] = [
   1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
   8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
