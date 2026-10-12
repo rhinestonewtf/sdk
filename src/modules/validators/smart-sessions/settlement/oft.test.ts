@@ -68,9 +68,8 @@ const base = {
 } as const
 
 describe('OFT send offsets', () => {
-  // The offsets are hand-derived for the canonical encoding; this pins them to
-  // what viem actually emits, so an ABI change fails here rather than silently
-  // moving a pin onto another word.
+  // The offsets are hand-derived, so an ABI change must fail here rather than
+  // silently move a pin onto another word.
   test('each offset reads the field it names', () => {
     const calldata = send({
       eid: 30383,

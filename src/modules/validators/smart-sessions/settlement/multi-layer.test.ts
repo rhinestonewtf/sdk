@@ -209,8 +209,7 @@ const SINGLE: Record<string, SessionDefinition> = {
 describe('multi-layer settlement permits', () => {
   // A changed digest is a HashMismatch for every single-layer session already
   // signed. Opted out of the default UniversalActionPolicy copies, which
-  // re-encode some of them. Update a digest only for a deliberate, unreleased
-  // change, and say so in its changeset.
+  // re-encode some of them.
   test('single-layer digests are pinned', () => {
     const digests = Object.fromEntries(
       Object.entries(SINGLE).map(([name, def]) => [
