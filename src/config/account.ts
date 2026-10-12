@@ -535,10 +535,11 @@ interface CrossChainPermissionInput {
   allowRecipientNotAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for `'all'`, which resolves against `GET /chains`, so create the
-   * session with `sdk.createSession`. With `fallback`, which `'all'` cannot
-   * share a session with, omitting it means `ACROSS`. Without `fallback`, the
-   * only Permit2 layer a permit may name is `ACROSS`.
+   * `[]`) for `'all'`, which resolves against `GET /chains`: create the
+   * session with `sdk.createSession`, or pass `settlement` to `toSession`.
+   * With `fallback`, which `'all'` cannot share a session with, omitting it
+   * means `ACROSS`. Without `fallback`, the only Permit2 layer a permit may
+   * name is `ACROSS`.
    *
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
    * layers: naming them scopes the session to those layers' calls instead, and

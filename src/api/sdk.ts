@@ -125,7 +125,7 @@ class RhinestoneSDK {
    * permitted automatically. Project-scoped — needs the API key but no account.
    * Required for IntentExecutor-layer permits (`CCTP`, `OFT`, `ECO_IE`, `LZ`),
    * whose pinned addresses also come from `/chains`. For any other fully
-   * offline build, use the standalone `toSession` and pass
+   * offline build, use the standalone `toSession` and pass `settlement` and
    * `wrappedNativeToken` yourself.
    * @param definition The session definition
    * @returns The resolved session

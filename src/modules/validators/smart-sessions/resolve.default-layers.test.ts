@@ -112,9 +112,7 @@ describe.each(omitted)('settlementLayers %s without fallback', (_, layers) => {
       outcome(definition({ settlementLayers: 'all' }), {}),
     )
     expect(offline).toEqual({
-      error: expect.stringContaining(
-        'create the session with sdk.createSession, or name its settlementLayers',
-      ),
+      error: expect.stringContaining('pass it or name settlementLayers'),
     })
     expect(codes(definition(layers), {})).toEqual([
       'SETTLEMENT_CATALOG_MISSING',
