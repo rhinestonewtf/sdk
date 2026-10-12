@@ -17,6 +17,8 @@ import { getTokenAddress } from '../framework/tokens'
 // A Permit2 claim policy is enforced through ERC-1271, so it only binds on a
 // cross-chain intent, where the session signs a PermitBatchWitnessTransferFrom.
 // A same-chain intent never produces one and would pass whatever is configured.
+// The session signs that claim on the source chain, so it is built for the source
+// chain; recipients stay on the target chain, where the claim pays out.
 
 const UNRELATED: Address = '0x4444444444444444444444444444444444444444'
 
@@ -29,7 +31,7 @@ function permitSession(
   recipients: { chain: typeof targetChain; address: Address }[],
 ): Session {
   return toSession({
-    chain: targetChain,
+    chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     claimPolicies: [{ type: 'permit2', recipients }],
   })
@@ -37,7 +39,7 @@ function permitSession(
 
 function accountRecipientSession(): Session {
   return toSession({
-    chain: targetChain,
+    chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
     claimPolicies: [{ type: 'permit2', recipientIsAccount: true }],
   })
@@ -45,7 +47,7 @@ function accountRecipientSession(): Session {
 
 function unrestrictedSession(): Session {
   return toSession({
-    chain: targetChain,
+    chain: sourceChain,
     owners: { type: 'ecdsa', accounts: [createOwner()] },
   })
 }
