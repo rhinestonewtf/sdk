@@ -2,6 +2,7 @@ import {
   type Address,
   type Hex,
   hashStruct,
+  isAddressEqual,
   maxUint256,
   size,
   sliceHex,
@@ -10,6 +11,7 @@ import {
 import { getSessionData } from './digest'
 import { getSmartSessionEmissaryAddress } from './module'
 import { CONSUME_SELECTOR } from './one-time-use'
+import { defaultOneTimeUseIdPolicy } from './policies/addresses'
 import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
@@ -136,18 +138,43 @@ function hasCapRule(initData: Hex, amountWord: boolean): boolean {
 }
 
 /**
+ * Whether the session is one-time-use as compiled: a `consume` burn on its
+ * OneTimeUseIdPolicy (the environment's default, or the one its metadata
+ * names) and that policy on every action. A `consume` on any other target,
+ * or the metadata alone, proves nothing.
+ */
+function isOneTimeUse(
+  session: Session,
+  environment: 'production' | 'development',
+): boolean {
+  const policies = [
+    session.oneTimeUse?.policy,
+    defaultOneTimeUseIdPolicy(session.chain.id, environment),
+  ].filter((policy): policy is Address => policy !== undefined)
+  return policies.some(
+    (once) =>
+      session.actions.some(
+        (a) =>
+          a.actionTargetSelector === CONSUME_SELECTOR &&
+          isAddressEqual(a.actionTarget, once),
+      ) &&
+      session.actions.every((a) =>
+        a.actionPolicies.some(({ policy }) => isAddressEqual(policy, once)),
+      ),
+  )
+}
+
+/**
  * Whether the session's maxAmount is a lifetime budget, from its actions as
  * well as its metadata, so a stored session missing the flag is still caught.
  * A hand-written rule of the same shape is guarded too, which fails closed.
  */
-export function hasLifetimeBudget(session: Session): boolean {
+export function hasLifetimeBudget(
+  session: Session,
+  environment: 'production' | 'development',
+): boolean {
   if (session.lifetimeBudget) return true
-  if (
-    session.oneTimeUse ||
-    session.actions.some((a) => a.actionTargetSelector === CONSUME_SELECTOR)
-  ) {
-    return false
-  }
+  if (isOneTimeUse(session, environment)) return false
   return session.actions.some(({ actionTargetSelector, actionPolicies }) => {
     // approve(address,uint256), transfer(address,uint256)
     const amountWord =
@@ -177,7 +204,7 @@ export async function getSessionDetails(input: {
   // enabled session hands whoever submits it a fresh lifetime budget. The
   // nonce is read with the state: an enable after that block spends it.
   const guarded = (session: Session) =>
-    !input.allowBudgetReset && hasLifetimeBudget(session)
+    !input.allowBudgetReset && hasLifetimeBudget(session, input.environment)
   const nonces = await Promise.all(
     input.sessions.map(async (session) => {
       if (!guarded(session)) return input.readNonce(session)

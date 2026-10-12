@@ -16,8 +16,10 @@ import { sessionFingerprint } from '../../../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionDetails, hasLifetimeBudget } from './authorization'
+import { CONSUME_SELECTOR } from './one-time-use'
 import {
   DEFAULT_POLICY_ADDRESSES,
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
   PERMIT2_SENDER_POLICY_ADDRESS,
   UNIVERSAL_ACTION_POLICY_COPIES,
 } from './policies/addresses'
@@ -794,7 +796,7 @@ describe('signing the enable of a session with a lifetime budget', () => {
   test('marks only reusable capped sessions', () => {
     expect(reusable.lifetimeBudget).toBe(true)
     expect(fresh.lifetimeBudget).toBe(true)
-    expect(hasLifetimeBudget(reusable)).toBe(true)
+    expect(hasLifetimeBudget(reusable, 'production')).toBe(true)
     for (const def of [
       definition(capped({ settlementLayers: ['ACROSS'] }), once),
       definition({ settlementLayers: ['ACROSS'] }),
@@ -802,7 +804,7 @@ describe('signing the enable of a session with a lifetime budget', () => {
     ]) {
       const session = toSession(def, OPTIONS)
       expect(session.lifetimeBudget).toBeUndefined()
-      expect(hasLifetimeBudget(session)).toBe(false)
+      expect(hasLifetimeBudget(session, 'production')).toBe(false)
     }
   })
 
@@ -838,7 +840,9 @@ describe('signing the enable of a session with a lifetime budget', () => {
     ],
   ])('finds the budget in the actions of %s without the flag', (_, def) => {
     const options = def.crossChainPermits?.[0].allowFees ? FEE_OPTIONS : OPTIONS
-    expect(hasLifetimeBudget(unflagged(toSession(def, options)))).toBe(true)
+    expect(
+      hasLifetimeBudget(unflagged(toSession(def, options)), 'production'),
+    ).toBe(true)
   })
 
   test('finds no budget in the actions of one-shot, uncapped, fee-only or plain swap sessions', () => {
@@ -877,11 +881,69 @@ describe('signing the enable of a session with a lifetime budget', () => {
         OPTIONS,
       ],
     ] as const) {
-      const session = toSession(def, options)
-      const { oneTimeUse: _, ...stripped } = unflagged(session)
-      expect(hasLifetimeBudget(stripped)).toBe(false)
+      expect(
+        hasLifetimeBudget(unflagged(toSession(def, options)), 'production'),
+      ).toBe(false)
     }
   })
+
+  test('exempts a one-shot session by its burn on its own once-policy', () => {
+    const onDefault = toSession(
+      definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }), {
+        oneTimeUse: { id: 7n },
+      }),
+      OPTIONS,
+    )
+    expect(onDefault.oneTimeUse?.policy).toBe(ONE_TIME_USE_ID_POLICY_ADDRESS)
+    const { oneTimeUse: _, ...bare } = unflagged(onDefault)
+    // The deployed policy needs no metadata to be recognised.
+    expect(hasLifetimeBudget(bare, 'production')).toBe(false)
+    const onOverride = unflagged(
+      toSession(
+        definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }), once),
+        OPTIONS,
+      ),
+    )
+    expect(hasLifetimeBudget(onOverride, 'production')).toBe(false)
+    // An overridden policy is known only from the metadata; without it the
+    // session is guarded, which fails closed.
+    const { oneTimeUse: __, ...overrideBare } = onOverride
+    expect(hasLifetimeBudget(overrideBare, 'production')).toBe(true)
+  })
+
+  test.each<[string, Address]>([
+    ['another contract', OTHER],
+    [
+      'the deployed once-policy, without it on every action',
+      ONE_TIME_USE_ID_POLICY_ADDRESS,
+    ],
+  ])(
+    'still guards a reusable capped session that scopes consume on %s',
+    async (_, target) => {
+      const session = unflagged(
+        toSession(
+          definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }), {
+            actions: [
+              {
+                target,
+                selector: CONSUME_SELECTOR,
+                policies: [{ type: 'value-limit', limit: 1n }],
+              },
+            ],
+          }),
+          OPTIONS,
+        ),
+      )
+      expect(
+        session.actions.some(
+          (a) => a.actionTargetSelector === CONSUME_SELECTOR,
+        ),
+      ).toBe(true)
+      expect(hasLifetimeBudget(session, 'production')).toBe(true)
+      const { result } = details([session], () => true)
+      await expect(result).rejects.toThrow('allowBudgetReset')
+    },
+  )
 
   test('refuses one already enabled, as its enable would reset the budget', async () => {
     const { result } = details([reusable], () => true)
