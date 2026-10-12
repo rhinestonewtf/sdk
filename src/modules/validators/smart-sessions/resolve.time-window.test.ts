@@ -367,8 +367,8 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
   },
   "'all' permit with oneTimeUse and validUntil": {
     permissionId:
-      '0xf32d17833ee9f3d011e4f983b666e11ced4e4d5ac6488f2b8a7dc9b44dd64a39',
-    data: '0x8c3288bbd85dab4055fd8ae49e8cd73668ad40e7463396b3a001ad7df1f52a44',
+      '0xa7500b0535852597fff78a1558eec6bd78fe9c19a1b573b127794d43b1177b1d',
+    data: '0xe26311b80e065e4e68a57b7bbf2ace4ff3771ff065db782eb79adbc11d97a574',
   },
   'permissions validUntil, oneTimeUse': {
     permissionId:

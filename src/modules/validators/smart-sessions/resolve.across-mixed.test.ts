@@ -8,9 +8,10 @@ import {
   toFunctionSelector,
   zeroAddress,
 } from 'viem'
-import { arbitrum, avalanche, base } from 'viem/chains'
+import { arbitrum, avalanche, base, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
+import { admits, install } from '../../../../test/utils/installed-policies'
 import {
   type RuleUsage,
   satisfiesRules,
@@ -22,7 +23,11 @@ import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionDetails } from './authorization'
 import { resolveCrossChainPermission } from './cross-chain-permits'
 import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
-import { PERMIT2_SENDER_POLICY_ADDRESS } from './policies/addresses'
+import {
+  DEFAULT_POLICY_ADDRESSES,
+  PERMIT2_SENDER_POLICY_ADDRESS,
+  UNIVERSAL_ACTION_POLICY_COPIES,
+} from './policies/addresses'
 import {
   type ResolveSessionOptions,
   resolveSessionData,
@@ -53,10 +58,26 @@ const BASE = SETTLEMENT_CATALOG[base.id]
 const USDC = BASE.cctp!.usdc
 const USDC_ARB = SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc
 const USDC_AVAX = SETTLEMENT_CATALOG[avalanche.id].cctp!.usdc
+const USDC_OP = SETTLEMENT_CATALOG[optimism.id].cctp!.usdc
 const MESSENGER = BASE.cctp!.tokenMessenger
 const DELEGATE = BASE.lz!.transferDelegate
 const VALID_UNTIL = new Date(2_000_000_000_000)
 const OPTIONS: ResolveSessionOptions = { settlement: SETTLEMENT_CATALOG }
+const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
+const FEE_OPTIONS: ResolveSessionOptions = {
+  settlement: {
+    ...SETTLEMENT_CATALOG,
+    [base.id]: {
+      ...BASE,
+      fees: {
+        appFeeCollector: '0x5555555555555555555555555555555555555555',
+        paymaster: PAYMASTER,
+      },
+    },
+  },
+}
+const WETH = '0x4200000000000000000000000000000000000006' as Address
+const WETH_ARB = '0x82af49447d8a07e3bd95bd0d56f35241523fbab1' as Address
 
 const once = {
   oneTimeUse: { id: 7n },
@@ -269,20 +290,51 @@ describe('a permit naming ACROSS beside IntentExecutor layers', () => {
     ])
   })
 
-  test('maxFeeBps beside ECO_IE prices ECO_IE only', () => {
-    expect(
-      codes(
-        definition(
-          capped({
-            settlementLayers: ['ACROSS', 'ECO_IE'],
-            maxFeeBps: 50,
-            validUntil: VALID_UNTIL,
-          }),
-          once,
-        ),
-      ),
-    ).toEqual([])
-  })
+  test.each<[string, Partial<CrossChainPermissionInput>]>([
+    ['one leg without a recipient', {}],
+    [
+      'a pinned leg and one without a recipient',
+      {
+        to: [
+          { chain: arbitrum, token: USDC_ARB, recipient: OTHER },
+          { chain: optimism, token: USDC_OP },
+        ],
+      },
+    ],
+  ])(
+    'the ACROSS claim pins the account as the layers do, with %s',
+    (_, permit) => {
+      const def = definition(
+        capped({ allowRecipientNotAccount: true, ...permit }),
+        once,
+      )
+      const session = toSession(def, OPTIONS)
+      expect(session.settlementLayers).toContain('ACROSS')
+      const legs = [def.crossChainPermits?.[0].to ?? []].flat()
+      const expected = legs.map(({ chain, recipient }) => ({
+        chain,
+        address: recipient ?? ACCOUNT,
+      }))
+      expect(session.claimPolicies[0].recipients).toEqual(expected)
+      // The installed claim and the CCTP call both carry every pinned recipient.
+      const data = resolveSessionData(def, OPTIONS)
+      const claim = data.erc7739Policies.erc1271Policies.find(({ policy }) =>
+        isAddressEqual(policy, PERMIT2_CLAIM_POLICY_ADDRESS),
+      )
+      const cctpCall = data.actions.find((a) =>
+        isAddressEqual(a.actionTarget, MESSENGER),
+      )
+      for (const { address } of expected) {
+        const word = address.slice(2).toLowerCase()
+        expect(claim?.initData.toLowerCase()).toContain(word)
+        expect(
+          cctpCall?.actionPolicies.some(({ initData }) =>
+            initData.toLowerCase().includes(word),
+          ),
+        ).toBe(true)
+      }
+    },
+  )
 
   test.each<[string, SessionDefinition, string]>([
     [
@@ -322,6 +374,18 @@ describe('a permit naming ACROSS beside IntentExecutor layers', () => {
     [
       'maxFeeBps without ECO_IE',
       definition({ settlementLayers: ['ACROSS', 'CCTP'], maxFeeBps: 50 }),
+      'MAX_FEE_BPS_ONLY_ECO_IE',
+    ],
+    [
+      'maxFeeBps, which ACROSS cannot enforce, beside ECO_IE',
+      definition(
+        capped({
+          settlementLayers: ['ACROSS', 'ECO_IE'],
+          maxFeeBps: 50,
+          validUntil: VALID_UNTIL,
+        }),
+        once,
+      ),
       'MAX_FEE_BPS_ONLY_ECO_IE',
     ],
     [
@@ -434,6 +498,19 @@ describe("settlementLayers 'all'", () => {
       'MIN_AMOUNT_ON_PERMIT2_LAYER',
       '`to.minAmount` does not apply to Permit2 layers',
     ],
+    [
+      'with maxFeeBps',
+      definition(
+        capped({
+          settlementLayers: 'all',
+          maxFeeBps: 50,
+          validUntil: VALID_UNTIL,
+        }),
+        once,
+      ),
+      'MAX_FEE_BPS_ONLY_ECO_IE',
+      'maxFeeBps applies only to ECO_IE',
+    ],
   ])(
     'drops ACROSS %s, with the refusal naming it throws',
     (_, def, code, reason) => {
@@ -508,8 +585,8 @@ describe("settlementLayers 'all'", () => {
 })
 
 /** Everything a session commits to, and the digest its owner signs. */
-async function pin(def: SessionDefinition) {
-  const session = toSession(def, OPTIONS)
+async function pin(def: SessionDefinition, options = OPTIONS) {
+  const session = toSession(def, options)
   const details = await getSessionDetails({
     account: ACCOUNT,
     sessions: [session],
@@ -609,4 +686,210 @@ test('explicit ACROSS-only and IntentExecutor-only sessions are unchanged', asyn
       },
     }
   `)
+})
+
+test('explicit sessions with fees, a wrap, or several legs are unchanged', async () => {
+  const twoLegs = [
+    { chain: arbitrum, token: USDC_ARB },
+    { chain: optimism, token: USDC_OP },
+  ]
+  const sessions: Record<string, [SessionDefinition, ResolveSessionOptions]> = {
+    'ACROSS fees one-shot': [
+      definition(
+        capped({ settlementLayers: ['ACROSS'], allowFees: true }),
+        once,
+      ),
+      FEE_OPTIONS,
+    ],
+    'ACROSS wrapped native one-shot': [
+      definition(
+        {
+          from: { chain: base, token: WETH, maxAmount: 100n },
+          to: { chain: arbitrum, token: WETH_ARB },
+          settlementLayers: ['ACROSS'],
+        },
+        once,
+      ),
+      { ...OPTIONS, wrappedNativeToken: WETH },
+    ],
+    'ACROSS two to legs': [
+      definition({ settlementLayers: ['ACROSS'], to: twoLegs }),
+      OPTIONS,
+    ],
+    'ACROSS two from tokens one-shot': [
+      definition(
+        {
+          from: [
+            { chain: base, token: USDC, maxAmount: 100n },
+            { chain: base, token: OTHER },
+          ],
+          settlementLayers: ['ACROSS'],
+        },
+        once,
+      ),
+      OPTIONS,
+    ],
+    'CCTP fees': [
+      definition({ settlementLayers: ['CCTP'], allowFees: true }),
+      FEE_OPTIONS,
+    ],
+    'CCTP two to legs': [
+      definition({ settlementLayers: ['CCTP'], to: twoLegs }),
+      OPTIONS,
+    ],
+    'CCTP window': [
+      definition({
+        settlementLayers: ['CCTP'],
+        validAfter: new Date(1_000_000_000_000),
+        validUntil: VALID_UNTIL,
+      }),
+      OPTIONS,
+    ],
+  }
+  const table: Record<string, unknown> = {}
+  for (const [name, [def, options]] of Object.entries(sessions)) {
+    table[name] = await pin(def, options)
+  }
+  expect(table).toMatchInlineSnapshot(`
+    {
+      "ACROSS fees one-shot": {
+        "digest": "0x94eea744aa805f4a1fd252dbf0f972295e26d2f00f0ad035ccbe4038393adef8",
+        "fingerprint": "0x63e6fd73b045ea36ea0ef154973e4138ddfefe76ffd4886685e74649e1ef0818",
+        "permissionId": "0x6c20c1f7aad04b45340f900712e86431da58acad101fed458f10b6ce308a96e2",
+      },
+      "ACROSS two from tokens one-shot": {
+        "digest": "0x943fd06df6d475ba525cb917bdb4b8d3705b351b018e341245465bbbdf55c4fb",
+        "fingerprint": "0xad5d46a0cdb0bdaf1f280fcc8c509e52e594db311aeae6de991f29f416aacc82",
+        "permissionId": "0xf952d3afaf09799558beb3d04a6df0a874e10374c74ea5f1cedb1e4dce67c90c",
+      },
+      "ACROSS two to legs": {
+        "digest": "0x386a7e67e8c9c1a37af7761d2f235e823095549b2786eafae31c696cc50fe572",
+        "fingerprint": "0xe8c1c66c4d6d32eacdc2ee6687ae779aaac4aa29b0f7db9f425c0ac594f2124d",
+        "permissionId": "0x8b33ec8648bdef187bd0b64d94aa881250121bbdbb1f1441b170583f84176dfa",
+      },
+      "ACROSS wrapped native one-shot": {
+        "digest": "0x1f87f09e0f53bd35422ff011800d952d1407635ce7d69ff2fe644d5b4b599933",
+        "fingerprint": "0xd6a130649d0f400c083b0209af48b38ab320baf03ad63c1c5ebe2a2a79bce097",
+        "permissionId": "0xcb410215b9c9f4593dbaf0a1b225c7d7ee15db4b25a05421ef75cc1e6552e213",
+      },
+      "CCTP fees": {
+        "digest": "0x4edba52cc5983830bda1e8d1a639b843a909407cea4b036acbe1c76aed604532",
+        "fingerprint": "0x2e8647bfa2c8ca4d3fc90a0f786988ca7fcd82add590422e2a46afa57f4c9225",
+        "permissionId": "0xf4276880c8c9c670ecf8f57ab4b53c7404fe42bfd31049cc4f1efab99f6bf513",
+      },
+      "CCTP two to legs": {
+        "digest": "0xc479afe868bd50b7e07fec151fdb7fde3ae94d86fe0c5ae06e373271c75bc401",
+        "fingerprint": "0x08b517d75d1ae41300590bbcc8e7a0cc564bb65d98e55bd4e221a7cdfd7fe597",
+        "permissionId": "0x1333f1961151abf259e2295db5c5fcea4637b71e903f60153a4f5bec8062aac7",
+      },
+      "CCTP window": {
+        "digest": "0x4fd2ab39eb30ff8395d63e57d6a3f345f6294052cf2d5b172f7ac1d5438efed8",
+        "fingerprint": "0x62634c5a204fe74c51b74f6159803dd846631f036c394a77430147fec924dbf8",
+        "permissionId": "0x61dc14f39292eff238c51a6dde8b20e58ef8a19830513a1d9313d7dbaea93e87",
+      },
+    }
+  `)
+})
+
+describe('the compiled approve', () => {
+  const KINDS = {
+    universalAction: [
+      DEFAULT_POLICY_ADDRESSES.universalAction,
+      ...UNIVERSAL_ACTION_POLICY_COPIES,
+    ],
+    argPolicy: DEFAULT_POLICY_ADDRESSES.argPolicy,
+  }
+  const installedApprove = (
+    def: SessionDefinition,
+    token: Address,
+    options = OPTIONS,
+  ) => {
+    const approves = resolveSessionData(def, options).actions.filter(
+      (a) =>
+        isAddressEqual(a.actionTarget, token) &&
+        a.actionTargetSelector === APPROVE,
+    )
+    expect(approves).toHaveLength(1)
+    return install(approves[0].actionPolicies, KINDS)
+  }
+
+  test('holds one maxAmount across approve(Permit2) and the layers', () => {
+    const installed = installedApprove(
+      definition(capped({ settlementLayers: ['ACROSS', 'CCTP', 'LZ'] }), once),
+      USDC,
+    )
+    expect(admits(installed, approve(PERMIT2, 60n))).toBe(true)
+    expect(admits(installed, approve(MESSENGER, 41n))).toBe(false)
+    expect(admits(installed, approve(DELEGATE, 40n))).toBe(true)
+    expect(admits(installed, approve(PERMIT2, 1n))).toBe(false)
+  })
+
+  test('keeps the fee budget apart from maxAmount with allowFees', () => {
+    const installed = installedApprove(
+      definition(
+        capped({ settlementLayers: ['ACROSS', 'CCTP'], allowFees: true }),
+        once,
+      ),
+      USDC,
+      FEE_OPTIONS,
+    )
+    expect(admits(installed, approve(PAYMASTER, 1_000_000n))).toBe(true)
+    expect(admits(installed, approve(PERMIT2, 60n))).toBe(true)
+    expect(admits(installed, approve(MESSENGER, 41n))).toBe(false)
+    expect(admits(installed, approve(MESSENGER, 40n))).toBe(true)
+    expect(admits(installed, approve(PERMIT2, 1n))).toBe(false)
+  })
+
+  test("caps each `from` token of an ACROSS-only 'all' session as the intent pin does", () => {
+    const def = definition(
+      {
+        from: [
+          { chain: base, token: USDC, maxAmount: 100n },
+          { chain: base, token: OTHER },
+        ],
+        settlementLayers: 'all',
+        fillDeadline: [{ chain: arbitrum, max: VALID_UNTIL }],
+      },
+      once,
+    )
+    expect(toSession(def, OPTIONS).permit2Sources).toEqual([
+      { chain: base, token: USDC, maxAmount: 100n },
+      { chain: base, token: OTHER, maxAmount: 100n },
+    ])
+    for (const token of [USDC, OTHER]) {
+      const installed = installedApprove(def, token)
+      expect(admits(installed, approve(PERMIT2, 101n))).toBe(false)
+      expect(admits(installed, approve(PERMIT2, 100n))).toBe(true)
+    }
+  })
+})
+
+describe("the 'all' ACROSS warning", () => {
+  const warned = (def: SessionDefinition) =>
+    (validateSessionDefinition(def, OPTIONS).warnings ?? []).map(
+      ({ code }) => code,
+    )
+
+  test('warns when ACROSS is kept without maxAmount', () => {
+    const def = definition({})
+    expect(toSession(def, OPTIONS).settlementLayers).toContain('ACROSS')
+    expect(warned(def)).toEqual(['ALL_INCLUDES_UNCAPPED_ACROSS'])
+    expect(warned(definition({ settlementLayers: 'all' }))).toEqual([
+      'ALL_INCLUDES_UNCAPPED_ACROSS',
+    ])
+  })
+
+  test.each<[string, SessionDefinition]>([
+    ['with maxAmount', definition(capped({}), once)],
+    [
+      'when ACROSS is named',
+      definition({ settlementLayers: ['ACROSS', 'CCTP'] }),
+    ],
+    [
+      "when 'all' drops ACROSS",
+      definition({ settlementLayers: 'all' }, {}, avalanche),
+    ],
+  ])('does not warn %s', (_, def) => {
+    expect(warned(def)).toEqual([])
+  })
 })

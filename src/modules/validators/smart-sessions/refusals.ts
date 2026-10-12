@@ -37,7 +37,7 @@ export const SESSION_REFUSAL_CODES = {
   MISSING_TO: 'an IntentExecutor-layer permit names no `to` chains',
   FILL_DEADLINE_ONLY_PERMIT2:
     "fillDeadline on a permit naming IntentExecutor layers, or under 'all' where ACROSS cannot settle",
-  MAX_FEE_BPS_ONLY_ECO_IE: 'maxFeeBps without ECO_IE',
+  MAX_FEE_BPS_ONLY_ECO_IE: 'maxFeeBps without ECO_IE, or beside ACROSS',
   MIN_AMOUNT_ON_PERMIT2_LAYER: '`to.minAmount` on a Permit2-layer permit',
   SAME_CHAIN_IE_TRANSFER_MIN_AMOUNT:
     '`to.minAmount` on a SAME_CHAIN_IE transfer',
@@ -139,6 +139,8 @@ export type SessionRefusalCode = keyof typeof SESSION_REFUSAL_CODES
 export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
     'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
+  ALL_INCLUDES_UNCAPPED_ACROSS:
+    "settlementLayers 'all' keeping ACROSS on a permit without maxAmount, so nothing caps what that route moves",
   ACTION_WINDOW_SHARED_PERMISSION_ID:
     'an action window on a session whose permissionId any other zero-salt session of the same owners shares',
 } as const

@@ -572,10 +572,8 @@ describe('settlement coverage', () => {
 
   test.each([
     [{}, ['ACROSS', 'CCTP', 'LZ']],
-    [
-      { maxFeeBps: 50, validUntil: VALID_UNTIL },
-      ['ACROSS', 'CCTP', 'ECO_IE', 'LZ'],
-    ],
+    // ACROSS cannot enforce maxFeeBps, so 'all' leaves it out.
+    [{ maxFeeBps: 50, validUntil: VALID_UNTIL }, ['CCTP', 'ECO_IE', 'LZ']],
   ] as const)(
     "'all' encodes the same session as the layers it kept (%o)",
     (permit, kept) => {

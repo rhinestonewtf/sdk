@@ -322,18 +322,27 @@ interface Permit2ClaimPolicy {
  *   Without `fallback`, such a permit may also name `ACROSS`. The session
  *   then holds both surfaces: the layers' calls, and the ACROSS claim policy
  *   bound as for an `ACROSS`-only permit. The recipient is pinned on every
- *   route, and `approve(Permit2)` joins the layers' approve, so `maxAmount`
- *   stays one budget across all of them. `ACROSS` cannot enforce
- *   `to.minAmount`, and the layers cannot enforce `fillDeadline`, so either
- *   field is refused in such a permit.
+ *   route (a leg without one, to the account), and `approve(Permit2)` joins
+ *   the layers' approve, so what the session approves stays within one
+ *   `maxAmount` across all of them. Unlike the layers, the ACROSS route has
+ *   no per-call amount cap and no output floor: it is bounded by that
+ *   approve cap (which needs `oneTimeUse`) and by the claim policy's token,
+ *   chain and recipient, and an allowance the account already gave Permit2
+ *   is not counted against `maxAmount`. `ACROSS` cannot enforce
+ *   `to.minAmount` or `maxFeeBps`, and the layers cannot enforce
+ *   `fillDeadline`, so any of them is refused in such a permit.
  *
  *   `settlementLayers: 'all'` names `ACROSS` and every one of `CCTP`, `OFT`,
  *   `ECO_IE` and `LZ` that can settle the permit on the session's chain,
  *   fields included, and drops the rest into `settlementCoverage.dropped`
  *   with the reason. `ACROSS` is dropped where a permit naming it is refused,
- *   e.g. for a `to.minAmount`, a native token, or a reusable session on a
- *   chain without Permit2SenderPolicy; with a `fillDeadline`, the other
- *   layers are dropped instead. It never includes `SAME_CHAIN_IE`, is refused
+ *   e.g. for a `to.minAmount`, `maxFeeBps`, a native token, or a reusable
+ *   session on a chain without Permit2SenderPolicy; with a `fillDeadline`, the
+ *   other layers are dropped instead. A `from` token no other layer serves
+ *   builds an ACROSS-only session. Kept, ACROSS has the bounds above, so
+ *   without `maxAmount` nothing caps what it moves (`validateSession` warns
+ *   with `ALL_INCLUDES_UNCAPPED_ACROSS`): set `oneTimeUse` and `maxAmount`, or
+ *   name the layers to leave it out. It never includes `SAME_CHAIN_IE`, is refused
  *   when no layer qualifies, and refuses a dropped `ECO_IE` when `maxFeeBps`
  *   is set. It resolves against `GET /chains` and the clock at creation, so
  *   store the created session rather than rebuilding it from `'all'`. A
@@ -408,7 +417,7 @@ interface CrossChainPermit {
    * {@link CrossChainPermissionInput.settlementLayers}.
    */
   settlementLayers?: CrossChainSettlementLayer[] | 'all'
-  /** `ECO_IE` only. See {@link CrossChainPermissionInput.maxFeeBps}. */
+  /** `ECO_IE` only, and refused beside `ACROSS`. See {@link CrossChainPermissionInput.maxFeeBps}. */
   maxFeeBps?: number
   /** See {@link CrossChainPermissionInput.allowFees}. */
   allowFees?: boolean
@@ -555,8 +564,12 @@ interface CrossChainPermissionInput {
    * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
    * layers: naming them scopes the session to those layers' calls (and the
    * ACROSS claim, when named too), and `'all'` to `ACROSS` and every bridging
-   * one that can settle the permit (see {@link CrossChainSettlementLayer}). `ECO`, the retired Permit2 Eco arbiter,
-   * is refused: use `ECO_IE`.
+   * one that can settle the permit (see {@link CrossChainSettlementLayer}).
+   * Under `'all'` the ACROSS route has no per-call amount cap and no output
+   * floor, only the session's approve cap (`maxAmount`, which needs
+   * `oneTimeUse`) and the claim's token, chain and recipient; name the layers
+   * to leave it out. `ECO`, the retired Permit2 Eco arbiter, is refused: use
+   * `ECO_IE`.
    *
    * Intents signed with the session offer the orchestrator only routes it
    * admits: the layers kept, or `ACROSS` for a Permit2-layer permit. With
@@ -569,7 +582,8 @@ interface CrossChainPermissionInput {
    * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
    * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
    * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
-   * reward actually sent.
+   * reward actually sent. `ACROSS` cannot enforce it, so a permit naming
+   * `ACROSS` refuses it and `'all'` leaves `ACROSS` out.
    */
   maxFeeBps?: number
   /**

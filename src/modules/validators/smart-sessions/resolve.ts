@@ -244,6 +244,9 @@ export function validateSessionDefinition(
   )
   const warnings = [
     ...sessionWarnings(definition),
+    ...(result?.settlementLayers.includes('ACROSS')
+      ? uncappedAcrossWarnings(definition)
+      : []),
     ...(result?.sharedActionWindow
       ? [
           {
@@ -282,6 +285,33 @@ function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
             code: 'FALLBACK_RECIPIENT_PIN_ACROSS_ONLY',
             message:
               'crossChainPermits: with `fallback`, the recipient pin holds only for intents settled by ACROSS; use a settlement-scoped permit without `fallback` to pin it on IntentExecutor layers',
+            permitIndex,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * `'all'` keeps ACROSS, whose claim checks no amount, so without `maxAmount`
+ * nothing bounds what that route moves.
+ */
+function uncappedAcrossWarnings(
+  definition: SessionDefinition,
+): SessionWarning[] {
+  return sessionPermits(definition).flatMap((permit, permitIndex) =>
+    permit.settlementLayers === 'all' &&
+    ![permit.from ?? []]
+      .flat()
+      .some(
+        ({ chain, maxAmount }) =>
+          chain.id === definition.chain.id && maxAmount !== undefined,
+      )
+      ? [
+          {
+            code: 'ALL_INCLUDES_UNCAPPED_ACROSS',
+            message:
+              "crossChainPermits: settlementLayers 'all' includes ACROSS, whose route has no amount cap without maxAmount; set oneTimeUse and maxAmount to bound it, or name the layers to leave it out",
             permitIndex,
           },
         ]
@@ -422,7 +452,7 @@ function resolveSession(
   // part of the same permit; the settlement scope already granted its approve.
   const acrossPermit =
     scopedPermit && settlementScope?.settlementLayers.includes('ACROSS')
-      ? acrossPart(scopedPermit)
+      ? acrossPart(scopedPermit, definition.account, chainId)
       : undefined
   const permitIndexOf = (permit: CrossChainPermit) =>
     resolvedPermits.indexOf(
@@ -1447,6 +1477,10 @@ function acrossDropReason(
   if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
     return '`to.minAmount` does not apply to Permit2 layers'
   }
+  // ACROSS output is what the claim signs, so no floor binds it.
+  if (permit.maxFeeBps !== undefined) {
+    return 'maxFeeBps applies only to ECO_IE'
+  }
   if (permit.from?.some(({ token }) => isNativeToken(token))) {
     return 'a Permit2-layer `from` must be an ERC-20, e.g. the wrapped native token'
   }
@@ -1468,10 +1502,38 @@ function acrossDropReason(
   return undefined
 }
 
-/** The ACROSS route of a permit naming IntentExecutor layers too; maxFeeBps prices ECO_IE only. */
-function acrossPart(permit: CrossChainPermit): CrossChainPermit {
-  const { maxFeeBps: _, ...rest } = permit
-  return { ...rest, settlementLayers: ['ACROSS'] }
+/**
+ * The ACROSS route of a permit naming IntentExecutor layers too, pinned as the
+ * layers pin it: a leg without a recipient delivers to the account, and the
+ * chain's one cap bounds each of its `from` tokens, as the shared approve does.
+ */
+function acrossPart(
+  permit: CrossChainPermit,
+  account: Address | undefined,
+  chainId: number,
+): CrossChainPermit {
+  const cap = permit.from?.find(
+    (leg) => leg.chain.id === chainId && leg.maxAmount !== undefined,
+  )?.maxAmount
+  return {
+    ...permit,
+    settlementLayers: ['ACROSS'],
+    ...(permit.from &&
+      cap !== undefined && {
+        from: permit.from.map((leg) =>
+          leg.chain.id === chainId && leg.maxAmount === undefined
+            ? { ...leg, maxAmount: cap }
+            : leg,
+        ),
+      }),
+    ...(permit.to &&
+      account &&
+      permit.recipientIsAccount === false && {
+        to: permit.to.map((leg) =>
+          leg.recipient === undefined ? { ...leg, recipient: account } : leg,
+        ),
+      }),
+  }
 }
 
 /**
