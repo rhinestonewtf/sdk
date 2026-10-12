@@ -132,13 +132,14 @@ jobs:
       - name: Install the npm dependencies
         run: bun install --frozen-lockfile
 
-      # Snapshot publish (main → @dev)
+      # Snapshot publish (main → @dev). Without changesets the snapshot version
+      # is the real one, so publishing would take it under @dev before release.
       - name: Version snapshot
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && needs.release-mode.outputs.has-changesets == 'true'
         run: bunx changeset version --snapshot dev && bun run scripts/sync-version.ts
 
       - name: Build and publish snapshot
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && needs.release-mode.outputs.has-changesets == 'true'
         run: bun run build && bunx changeset publish --tag dev
 
       - name: Detect unreleased changesets
