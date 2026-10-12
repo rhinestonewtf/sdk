@@ -244,8 +244,8 @@ export function validateSessionDefinition(
   )
   const warnings = [
     ...sessionWarnings(definition),
-    ...(result?.settlementLayers.includes('ACROSS')
-      ? uncappedAcrossWarnings(definition)
+    ...(result
+      ? uncappedAcrossWarnings(definition, result.settlementLayers)
       : []),
     ...(result?.sharedActionWindow
       ? [
@@ -293,31 +293,37 @@ function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
 }
 
 /**
- * A settlement-scoped permit keeps ACROSS, whose claim checks no amount, so a
- * `from` token without its own `maxAmount` has nothing bounding that route.
+ * The ACROSS claim checks no amount, so a `from` token without its own
+ * `maxAmount` has nothing bounding that route: under a settlement-scoped
+ * permit the chain's one cap is in another token's units. A permit naming
+ * only ACROSS warns only beside a capped leg, which suggests a bound it lacks.
  */
 function uncappedAcrossWarnings(
   definition: SessionDefinition,
+  settlementLayers: readonly CrossChainSettlementLayer[],
 ): SessionWarning[] {
-  // A permit naming only ACROSS keeps the warnings it had.
-  return sessionPermits(definition).flatMap((permit, permitIndex) =>
-    isSettlementScopedPermit(permit) &&
-    [permit.from ?? []]
+  return sessionPermits(definition).flatMap((permit, permitIndex) => {
+    const legs = [permit.from ?? []]
       .flat()
-      .some(
-        ({ chain, maxAmount }) =>
-          chain.id === definition.chain.id && maxAmount === undefined,
-      )
+      .filter(({ chain }) => chain.id === definition.chain.id)
+    const uncapped = legs.some(({ maxAmount }) => maxAmount === undefined)
+    const warns = isSettlementScopedPermit(permit)
+      ? settlementLayers.includes('ACROSS') && uncapped
+      : uncapped &&
+        legs.some(({ maxAmount }) => maxAmount !== undefined) &&
+        (!permit.settlementLayers?.length ||
+          permit.settlementLayers.includes('ACROSS'))
+    return warns
       ? [
           {
             code: 'UNCAPPED_ACROSS_ROUTE',
             message:
-              'crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount; set maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers',
+              "crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount (another leg's cap does not bound it); set maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers",
             permitIndex,
           },
         ]
-      : [],
-  )
+      : []
+  })
 }
 
 /**
@@ -1659,6 +1665,13 @@ export function toSession(
       ),
     }),
     access,
+    ...(!definition.oneTimeUse &&
+      resolvedPermits.some(({ from }) =>
+        from?.some(
+          ({ chain, maxAmount }) =>
+            chain.id === definition.chain.id && maxAmount !== undefined,
+        ),
+      ) && { lifetimeBudget: true as const }),
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,

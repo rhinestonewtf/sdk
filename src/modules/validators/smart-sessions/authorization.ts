@@ -103,7 +103,30 @@ export async function getSessionDetails(input: {
   readonly sessions: readonly Session[]
   readonly environment: 'production' | 'development'
   readonly readNonce: (session: Session) => Promise<bigint>
+  /** Read only for sessions with a lifetime budget. */
+  readonly readEnabled?: (session: Session) => Promise<boolean>
+  readonly allowBudgetReset?: boolean
 }): Promise<SessionDetails> {
+  // An enable re-initialises the session's policies, so signing one for an
+  // enabled session hands whoever submits it a fresh lifetime budget.
+  if (!input.allowBudgetReset) {
+    const budgeted = input.sessions.filter((session) => session.lifetimeBudget)
+    const readEnabled = input.readEnabled
+    if (budgeted.length && !readEnabled) {
+      throw new Error(
+        'getSessionDetails (internal): a lifetime-budget session needs readEnabled',
+      )
+    }
+    const enabled = readEnabled
+      ? await Promise.all(budgeted.map(readEnabled))
+      : []
+    const session = budgeted.find((_, index) => enabled[index])
+    if (session) {
+      throw new Error(
+        `The session ${session.permissionId} is already enabled on chain ${session.chain.id}, and its maxAmount is a lifetime budget: signing its enable again would reset that budget. Leave it out of getSessionDetails, or pass { allowBudgetReset: true } to reset it.`,
+      )
+    }
+  }
   const nonces = await Promise.all(input.sessions.map(input.readNonce))
   const signed = input.sessions.map((session, index) =>
     signedSession(

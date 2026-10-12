@@ -85,6 +85,7 @@ import type {
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
+  SessionDetailsOptions,
   SwapVenue,
   ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
@@ -159,12 +160,16 @@ async function getSessionDetails(
   sessions: Session[],
   provider: ProviderConfig | undefined,
   useDevContracts?: boolean,
+  options: SessionDetailsOptions = {},
 ): Promise<SessionDetails> {
   const runtimeEnvironment = environment(useDevContracts)
   return buildSessionDetails({
     account,
     sessions: sessions as DomainSession[],
     environment: runtimeEnvironment,
+    ...(options.allowBudgetReset && { allowBudgetReset: true }),
+    readEnabled: (session) =>
+      isSessionEnabled(account, provider, session, useDevContracts),
     readNonce: async (session) => {
       const reader = materializeRpcReader({ chain: session.chain, provider })
       return readSessionNonce({
@@ -206,6 +211,7 @@ export type {
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
+  SessionDetailsOptions,
   SettlementAddresses,
   SettlementCatalog,
   SwapVenue,

@@ -53,7 +53,10 @@ import {
   ecdsaSignerId,
   webauthnSignerId,
 } from '../modules/validators/signer-id'
-import type { SessionDetails } from '../modules/validators/smart-sessions/types'
+import type {
+  SessionDetails,
+  SessionDetailsOptions,
+} from '../modules/validators/smart-sessions/types'
 import type {
   OwnerSignature,
   OwnerSignerSelection,
@@ -342,10 +345,17 @@ export interface RhinestoneAccount {
   getPortfolio(onTestnets?: boolean): Promise<Portfolio>
   /**
    * Resolve the smart-session details for a set of sessions.
+   *
+   * Throws for a session with a lifetime `maxAmount` (`session.lifetimeBudget`)
+   * that is already enabled: signing its enable again would reset that budget.
    * @param sessions Sessions to resolve
+   * @param options `allowBudgetReset: true` signs such a session anyway, resetting its budget once enabled
    * @returns The resolved session details
    */
-  getSessionDetails(sessions: Session[]): Promise<SessionDetails>
+  getSessionDetails(
+    sessions: Session[],
+    options?: SessionDetailsOptions,
+  ): Promise<SessionDetails>
   /**
    * Check whether a smart session is enabled on the account.
    * @param session Session to check
@@ -843,9 +853,9 @@ export function createAccountFacade(
         .getPortfolio(ctx, onTestnets)
         .then((portfolio) => portfolio.tokens as unknown as Portfolio)
     },
-    getSessionDetails(sessions) {
+    getSessionDetails(sessions, options) {
       const ctx = context('get-session-details')
-      return workflowsFor(ctx).getSessionDetails(ctx, sessions)
+      return workflowsFor(ctx).getSessionDetails(ctx, sessions, options)
     },
     isSessionEnabled(session) {
       const ctx = context('is-session-enabled')

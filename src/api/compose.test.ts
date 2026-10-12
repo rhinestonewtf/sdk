@@ -591,6 +591,55 @@ describe('internal core composition', () => {
     )
   })
 
+  test('refuses the details of an enabled lifetime-budget session unless told to reset it', async () => {
+    const base = fixture()
+    const readContract = vi.fn(
+      async (_context: unknown, request: { functionName: string }) =>
+        request.functionName === 'isPermissionEnabled' ? true : 0n,
+    )
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          ...base.dependencies.rpc.forChain(),
+          readContract: readContract as RpcReadPort['readContract'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+    const session = toSession({
+      chain: baseChain,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      account: target,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 100n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['ACROSS'],
+        },
+      ],
+    })
+
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('allowBudgetReset')
+    await expect(
+      workflows.getSessionDetails(base.context, [session], {
+        allowBudgetReset: true,
+      }),
+    ).resolves.toMatchObject({ nonces: [0n] })
+  })
+
   test('rejects multi-chain Startale K1 enablement before signing', async () => {
     const base = fixture()
     const invoke = vi.fn()

@@ -41,6 +41,7 @@ import type {
   ResolvedSessionSignerSet,
   Session,
   SessionDetails,
+  SessionDetailsOptions,
 } from '../modules/validators/smart-sessions/types'
 import type { ResolvedValidatorDefinition } from '../modules/validators/types'
 import {
@@ -399,8 +400,8 @@ function createAccountComposition<CompatibilityConfig>(
           .identity.address,
         kind: 'executor',
       }),
-    getSessionDetails: (context, sessions) =>
-      accountSessionDetails(context.account, sessions, dependencies),
+    getSessionDetails: (context, sessions, options) =>
+      accountSessionDetails(context.account, sessions, dependencies, options),
     isSessionEnabled: (context, session) =>
       accountSessionEnabled(context.account, session, dependencies),
     signEnableSession: (context, details) =>
@@ -682,6 +683,7 @@ function accountSessionDetails(
   account: ResolvedAccountConfig,
   sessions: readonly Session[],
   dependencies: CoreDependencies,
+  options: SessionDetailsOptions = {},
 ): Promise<SessionDetails> {
   const address = createStaticAccountRuntime(account, referenceChain(), false)
     .identity.address
@@ -690,6 +692,9 @@ function accountSessionDetails(
     account: address,
     sessions,
     environment,
+    ...(options.allowBudgetReset && { allowBudgetReset: true }),
+    readEnabled: (session) =>
+      accountSessionEnabled(account, session, dependencies),
     readNonce: (session) => {
       const chain = toEvmChainReference(session.chain.id)
       return readSessionNonce({

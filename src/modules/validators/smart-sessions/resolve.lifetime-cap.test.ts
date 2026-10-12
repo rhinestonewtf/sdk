@@ -28,7 +28,11 @@ import {
   validateSessionDefinition,
 } from './resolve'
 import { PERMIT2 } from './swap/stable-floor'
-import type { CrossChainPermissionInput, SessionDefinition } from './types'
+import type {
+  CrossChainPermissionInput,
+  Session,
+  SessionDefinition,
+} from './types'
 
 // These tests assume the TimeFramePolicy is deployed on their chains.
 vi.mock('./policies/addresses', async (importOriginal) => ({
@@ -378,6 +382,15 @@ describe('the lifetime budget across intents', () => {
     const usdc = installedApprove(def, USDC)
     expect(admits(usdc, approve(PERMIT2, 100n))).toBe(true)
     expect(admits(usdc, approve(PERMIT2, 1n))).toBe(false)
+    // A leg without its own maxAmount is not capped, and the session says so.
+    const other = installedApprove(def, OTHER)
+    expect(admits(other, approve(PERMIT2, 10n ** 30n))).toBe(true)
+    expect(validateSessionDefinition(def, OPTIONS).warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNCAPPED_ACROSS_ROUTE',
+        permitIndex: 0,
+      }),
+    ])
   })
 
   test('a per-call bound alone would admit the cap again on every intent', () => {
@@ -448,8 +461,56 @@ describe('the uncapped ACROSS route warning', () => {
       definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] })),
     ],
     ["'all'", definition(capped({ settlementLayers: 'all' }))],
+    ["['ACROSS'] alone", definition(capped({ settlementLayers: ['ACROSS'] }))],
+    [
+      "['ACROSS'] alone with every leg capped",
+      definition({
+        from: [
+          { chain: base, token: USDC, maxAmount: 100n },
+          { chain: base, token: OTHER, maxAmount: 5n },
+        ],
+        settlementLayers: ['ACROSS'],
+      }),
+    ],
   ])('does not warn for a reusable capped %s', (_, def) => {
     expect(warnings(def)).toEqual([])
+  })
+
+  test.each<[string, SessionDefinition]>([
+    [
+      "['ACROSS'] alone, one-shot",
+      definition(
+        {
+          from: [
+            { chain: base, token: USDC, maxAmount: 100n },
+            { chain: base, token: OTHER },
+          ],
+          settlementLayers: ['ACROSS'],
+        },
+        once,
+      ),
+    ],
+    [
+      "'all', the other token under the first one's cap",
+      definition({
+        from: [
+          { chain: base, token: USDC, maxAmount: 100n },
+          { chain: base, token: WETH },
+        ],
+        settlementLayers: 'all',
+      }),
+    ],
+  ])('warns for an uncapped leg beside a capped one: %s', (_, def) => {
+    expect(validateSessionDefinition(def, OPTIONS).warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNCAPPED_ACROSS_ROUTE',
+        permitIndex: 0,
+      }),
+    ])
+  })
+
+  test('keeps an ACROSS-only permit with no maxAmount silent, as before', () => {
+    expect(warnings(definition({ settlementLayers: ['ACROSS'] }))).toEqual([])
   })
 
   test('asks for maxAmount alone', () => {
@@ -680,4 +741,108 @@ test('one-shot capped and reusable uncapped sessions are unchanged', async () =>
       },
     }
   `)
+})
+
+describe('signing the enable of a session with a lifetime budget', () => {
+  const reusable = toSession(
+    definition(capped({ settlementLayers: ['ACROSS'] })),
+    OPTIONS,
+  )
+  const fresh = toSession(
+    definition(
+      {
+        from: { chain: optimism, token: USDC_OP, maxAmount: 100n },
+        settlementLayers: ['CCTP'],
+      },
+      {},
+      optimism,
+    ),
+    OPTIONS,
+  )
+  const details = (
+    sessions: Session[],
+    enabled: (session: Session) => boolean,
+    allowBudgetReset?: boolean,
+  ) => {
+    const readEnabled = vi.fn(async (session: Session) => enabled(session))
+    return {
+      readEnabled,
+      result: getSessionDetails({
+        account: ACCOUNT,
+        sessions,
+        environment: 'production',
+        readNonce: async () => 3n,
+        readEnabled,
+        ...(allowBudgetReset === undefined ? {} : { allowBudgetReset }),
+      }),
+    }
+  }
+
+  test('marks only reusable capped sessions', () => {
+    expect(reusable.lifetimeBudget).toBe(true)
+    expect(fresh.lifetimeBudget).toBe(true)
+    for (const def of [
+      definition(capped({ settlementLayers: ['ACROSS'] }), once),
+      definition({ settlementLayers: ['ACROSS'] }),
+      definition({ settlementLayers: ['CCTP'] }),
+    ]) {
+      expect(toSession(def, OPTIONS).lifetimeBudget).toBeUndefined()
+    }
+  })
+
+  test('refuses one already enabled, as its enable would reset the budget', async () => {
+    const { result } = details([reusable], () => true)
+    await expect(result).rejects.toThrow(
+      `already enabled on chain ${base.id}, and its maxAmount is a lifetime budget`,
+    )
+  })
+
+  test('refuses a bundle that adds a chain beside one already enabled', async () => {
+    const { result } = details(
+      [reusable, fresh],
+      (session) => session === reusable,
+    )
+    await expect(result).rejects.toThrow('allowBudgetReset')
+  })
+
+  test('signs it when the caller opts in to the reset', async () => {
+    const { result, readEnabled } = details([reusable], () => true, true)
+    await expect(result).resolves.toMatchObject({ nonces: [3n] })
+    expect(readEnabled).not.toHaveBeenCalled()
+  })
+
+  test('signs a session not yet enabled, alone or beside another chain', async () => {
+    const { result } = details([reusable, fresh], () => false)
+    await expect(result).resolves.toMatchObject({ nonces: [3n, 3n] })
+  })
+
+  test('reads nothing for sessions without a lifetime budget, and signs them as before', async () => {
+    const plain = [
+      toSession(definition({ settlementLayers: ['ACROSS'] }), OPTIONS),
+      toSession(
+        definition(capped({ settlementLayers: ['ACROSS'] }), once),
+        OPTIONS,
+      ),
+    ]
+    const { result, readEnabled } = details(plain, () => true)
+    const without = await getSessionDetails({
+      account: ACCOUNT,
+      sessions: plain,
+      environment: 'production',
+      readNonce: async () => 3n,
+    })
+    expect(await result).toEqual(without)
+    expect(readEnabled).not.toHaveBeenCalled()
+  })
+
+  test('fails closed when no enabled read is wired', async () => {
+    await expect(
+      getSessionDetails({
+        account: ACCOUNT,
+        sessions: [reusable],
+        environment: 'production',
+        readNonce: async () => 3n,
+      }),
+    ).rejects.toThrow('needs readEnabled')
+  })
 })

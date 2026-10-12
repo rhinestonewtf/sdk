@@ -121,3 +121,60 @@ describe('validateSession', () => {
     ])
   })
 })
+
+describe('getSessionDetails with a lifetime budget', () => {
+  beforeEach(() => reads.mockReset())
+
+  const session = toSession({
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    account,
+    crossChainPermits: [
+      {
+        from: {
+          chain: base,
+          token: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+          maxAmount: 100n,
+        },
+        to: { chain: base, token: account },
+        settlementLayers: ['ACROSS'],
+      },
+    ],
+  })
+  const enabled = (value: boolean) =>
+    reads.mockImplementation(async (...args: unknown[]) =>
+      args.some(
+        (arg) =>
+          (arg as { functionName?: string } | undefined)?.functionName ===
+          'isPermissionEnabled',
+      )
+        ? value
+        : 7n,
+    )
+
+  test('refuses an enabled one unless the caller opts in to the reset', async () => {
+    enabled(true)
+    await expect(
+      getSessionDetails(account, [session], undefined, false),
+    ).rejects.toThrow('allowBudgetReset')
+    expect(reads).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        functionName: 'isPermissionEnabled',
+        args: [account, session.permissionId],
+      }),
+    )
+    await expect(
+      getSessionDetails(account, [session], undefined, false, {
+        allowBudgetReset: true,
+      }),
+    ).resolves.toMatchObject({ nonces: [7n] })
+  })
+
+  test('signs one not yet enabled', async () => {
+    enabled(false)
+    await expect(
+      getSessionDetails(account, [session], undefined, false),
+    ).resolves.toMatchObject({ nonces: [7n] })
+  })
+})

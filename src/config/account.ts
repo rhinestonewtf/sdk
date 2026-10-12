@@ -437,14 +437,23 @@ interface FromLeg {
    * across every route the permit settles through: it caps the sum of the
    * session's approves of that token. With `oneTimeUse` that is one
    * settlement; without it, a lifetime total shared by every intent the
-   * session signs, not a per-intent cap. Only the owner enabling the same
-   * session again resets it; a changed definition is a new session with a
-   * budget of its own, beside what the old one has left.
+   * session signs, not a per-intent cap.
    *
-   * It does not count an allowance the account already holds (given by the
-   * owner or left by another session), nor the `allowFees` calls, which
-   * have caps of their own. With `fallback` it requires `oneTimeUse`, and
-   * `preClaimOps: 'none'` refuses it.
+   * Enabling the session again resets the budget, so `getSessionDetails`
+   * refuses to sign for such a session that is already enabled unless you
+   * pass `allowBudgetReset`. Build the session once and store it: a
+   * definition using `'all'` or naming no layers resolves against
+   * `GET /chains` and the clock, so rebuilding it can give another
+   * permissionId, whose enable starts a new budget beside what the old
+   * session has left.
+   *
+   * It does not count the allowances the account already holds, which
+   * the session's routes can still spend: one the owner gave Permit2 or a
+   * bridge, or one another session left. For the cap to be the most the
+   * session can move, revoke those allowances for the token first. It does
+   * not count the `allowFees` calls either, which have caps of their own.
+   * With `fallback` it requires `oneTimeUse`, and `preClaimOps: 'none'`
+   * refuses it.
    */
   maxAmount?: bigint
 }
@@ -1305,6 +1314,12 @@ interface Session {
    *  is not a stable contract. Metadata only — it does not change the
    *  permission id. Absent on sessions stored before this field existed. */
   access?: SessionAccess
+  /** Set on a session without `oneTimeUse` whose `crossChainPermits` entry
+   *  sets `maxAmount` on its chain, making it a lifetime budget. Enabling
+   *  the session again resets that budget, so `getSessionDetails` refuses one
+   *  that is already enabled unless you pass `allowBudgetReset`. Metadata
+   *  only — it does not change the permission id. */
+  lifetimeBudget?: true
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
