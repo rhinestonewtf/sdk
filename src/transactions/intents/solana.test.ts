@@ -825,19 +825,19 @@ describe('sponsored Solana intents', () => {
     ).toThrow(/canonical intent input|persisted request/)
   })
 
-  test('rejects a restored transaction prepared under the interim singular contract', async () => {
+  test('rejects a restored transaction whose approval input names another contract', async () => {
     const fixture = context()
     const input = transfer({ sponsorSettings })
     const prepared = await prepareSolanaIntent(fixture.workflow, input)
-    const interim = JSON.parse(JSON.stringify(prepared.intentInput))
-    interim.contractVersion = 'sdk-caucasus-singular-2026-09-v1'
+    const foreign = JSON.parse(JSON.stringify(prepared.intentInput))
+    foreign.contractVersion = 'sdk-0.0.0-retired'
 
     expect(() =>
       reconstructSolanaIntent({
         traceId: prepared.traceId,
         request: prepared.request,
         transfer: input,
-        intentInput: interim,
+        intentInput: foreign,
         quote: prepared.quote,
         quotes: prepared.quotes,
       }),

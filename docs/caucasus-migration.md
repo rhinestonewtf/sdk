@@ -105,19 +105,16 @@ UserOperations are unchanged.
 chain-native strings ([sponsorship approval](sponsorship-approval.md)). A
 sponsorship policy that reads `destinationChainId`, `destinationExecutions`,
 `tokenRequests` or numeric chain ids must be reviewed. `/jwt-server`'s
-`shouldSponsor` reads the new input, the interim
-`sdk-caucasus-singular-2026-09-v1` input of earlier v3 snapshots, and the one
-older pinned SDKs send.
+`shouldSponsor` reads the new input and the one older pinned SDKs send.
 
 Deploy the backend first: update `/jwt-server` (or your own signer) to accept
 `sdk-3.0.0-caucasus` before any client sends it. Older helpers refuse an
 unknown `contractVersion`, so the prepare fails.
 
-If you adopted an earlier v3 snapshot, which sends
-`sdk-caucasus-singular-2026-09-v1`, only the identifier (and so the digest)
-changes. A Solana transaction prepared under the
-interim identifier fails restore with `InvalidSolanaTransactionArtifactError`;
-prepare it again. Persisted EVM transactions are unaffected.
+If you adopted an earlier v3 snapshot, upgrade: the approval input it sends is
+no longer accepted by the orchestrator or `/jwt-server`. Prepare again any
+sponsored transaction it prepared; a Solana one fails restore with
+`InvalidSolanaTransactionArtifactError`.
 
 ### Exports
 

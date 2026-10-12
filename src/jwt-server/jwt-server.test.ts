@@ -224,157 +224,150 @@ describe('shouldSponsor', () => {
   })
 })
 
-// Current clients send `sdk-3.0.0-caucasus`; earlier v3 snapshots send the
-// identical `sdk-caucasus-singular-2026-09-v1` input. `shouldSponsor` reads the
-// same policy-relevant values out of both.
-describe.each(['sdk-3.0.0-caucasus', 'sdk-caucasus-singular-2026-09-v1'])(
-  'shouldSponsor (singular format, %s)',
-  (contractVersion) => {
-    const evmIntentInput = {
-      contractVersion,
+describe('shouldSponsor (singular format)', () => {
+  const evmIntentInput = {
+    contractVersion: 'sdk-3.0.0-caucasus',
+    account: {
+      evm: {
+        type: 'erc7579',
+        address: '0x1234000000000000000000000000000000000000',
+      },
+    },
+    destination: {
+      vm: 'evm',
+      chainId: 'eip155:8453',
+      execution: {
+        calls: [
+          {
+            to: '0xaaaa000000000000000000000000000000000000',
+            value: '1000000',
+            data: '0x',
+          },
+        ],
+      },
+    },
+    options: {},
+  }
+
+  it('resolves the numeric chain id from destination.chainId CAIP-2', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      chain: (chain) => chain.id === 8453,
+    })
+    expect(result).toBe(true)
+
+    const rejected = await shouldSponsor(evmIntentInput, {
+      chain: (chain) => chain.id === 1,
+    })
+    expect(rejected).toBe(false)
+  })
+
+  it('resolves a Solana devnet chain id from its CAIP-2 id', async () => {
+    const solanaIntentInput = {
+      ...evmIntentInput,
       account: {
-        evm: {
-          type: 'erc7579',
-          address: '0x1234000000000000000000000000000000000000',
+        svm: {
+          type: 'swig',
+          address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
         },
       },
       destination: {
-        vm: 'evm',
-        chainId: 'eip155:8453',
-        execution: {
-          calls: [
-            {
-              to: '0xaaaa000000000000000000000000000000000000',
-              value: '1000000',
-              data: '0x',
-            },
-          ],
+        vm: 'svm',
+        chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      },
+    }
+    const result = await shouldSponsor(solanaIntentInput, {
+      chain: (chain) => chain.id === 792703810,
+    })
+    expect(result).toBe(true)
+  })
+
+  it('reads the account address from account.evm', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      account: (address) =>
+        address === '0x1234000000000000000000000000000000000000',
+    })
+    expect(result).toBe(true)
+  })
+
+  it('falls back to account.svm when the request has no evm entry', async () => {
+    const svmIntentInput = {
+      ...evmIntentInput,
+      account: {
+        svm: {
+          type: 'swig',
+          address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
         },
       },
-      options: {},
     }
-
-    it('resolves the numeric chain id from destination.chainId CAIP-2', async () => {
-      const result = await shouldSponsor(evmIntentInput, {
-        chain: (chain) => chain.id === 8453,
-      })
-      expect(result).toBe(true)
-
-      const rejected = await shouldSponsor(evmIntentInput, {
-        chain: (chain) => chain.id === 1,
-      })
-      expect(rejected).toBe(false)
+    const result = await shouldSponsor(svmIntentInput, {
+      account: (address) =>
+        (address as string) === 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
     })
+    expect(result).toBe(true)
+  })
 
-    it('resolves a Solana devnet chain id from its CAIP-2 id', async () => {
-      const solanaIntentInput = {
-        ...evmIntentInput,
-        account: {
-          svm: {
-            type: 'swig',
-            address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+  it('passes EVM destination.execution.calls with value as bigint', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      calls: (calls) => {
+        expect(calls).toHaveLength(1)
+        expect(calls[0].to).toBe('0xaaaa000000000000000000000000000000000000')
+        expect(calls[0].value).toBe(1000000n)
+        expect(calls[0].data).toBe('0x')
+        return true
+      },
+    })
+    expect(result).toBe(true)
+  })
+
+  it('passes HyperCore destination.execution.settlement.calls', async () => {
+    const hyperCoreIntentInput = {
+      ...evmIntentInput,
+      destination: {
+        vm: 'hypercore',
+        chainId: 'hypercore:perp',
+        execution: {
+          actions: [{ type: 'order', orders: [] }],
+          settlement: {
+            calls: [
+              {
+                to: '0xaaaa000000000000000000000000000000000000',
+                value: '7',
+                data: '0x',
+              },
+            ],
           },
         },
-        destination: {
-          vm: 'svm',
-          chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-        },
-      }
-      const result = await shouldSponsor(solanaIntentInput, {
-        chain: (chain) => chain.id === 792703810,
-      })
-      expect(result).toBe(true)
-    })
-
-    it('reads the account address from account.evm', async () => {
-      const result = await shouldSponsor(evmIntentInput, {
-        account: (address) =>
-          address === '0x1234000000000000000000000000000000000000',
-      })
-      expect(result).toBe(true)
-    })
-
-    it('falls back to account.svm when the request has no evm entry', async () => {
-      const svmIntentInput = {
-        ...evmIntentInput,
-        account: {
-          svm: {
-            type: 'swig',
-            address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+      },
+    }
+    const result = await shouldSponsor(hyperCoreIntentInput, {
+      calls: (calls) => {
+        expect(calls).toEqual([
+          {
+            to: '0xaaaa000000000000000000000000000000000000',
+            value: 7n,
+            data: '0x',
           },
-        },
-      }
-      const result = await shouldSponsor(svmIntentInput, {
-        account: (address) =>
-          (address as string) ===
-          'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
-      })
-      expect(result).toBe(true)
+        ])
+        return true
+      },
     })
+    expect(result).toBe(true)
+  })
 
-    it('passes EVM destination.execution.calls with value as bigint', async () => {
-      const result = await shouldSponsor(evmIntentInput, {
-        calls: (calls) => {
-          expect(calls).toHaveLength(1)
-          expect(calls[0].to).toBe('0xaaaa000000000000000000000000000000000000')
-          expect(calls[0].value).toBe(1000000n)
-          expect(calls[0].data).toBe('0x')
-          return true
-        },
-      })
-      expect(result).toBe(true)
+  it('passes an empty calls array when the destination has no execution', async () => {
+    const noExecution = {
+      ...evmIntentInput,
+      destination: { vm: 'evm', chainId: 'eip155:8453' },
+    }
+    const result = await shouldSponsor(noExecution, {
+      calls: (calls) => {
+        expect(calls).toEqual([])
+        return true
+      },
     })
-
-    it('passes HyperCore destination.execution.settlement.calls', async () => {
-      const hyperCoreIntentInput = {
-        ...evmIntentInput,
-        destination: {
-          vm: 'hypercore',
-          chainId: 'hypercore:perp',
-          execution: {
-            actions: [{ type: 'order', orders: [] }],
-            settlement: {
-              calls: [
-                {
-                  to: '0xaaaa000000000000000000000000000000000000',
-                  value: '7',
-                  data: '0x',
-                },
-              ],
-            },
-          },
-        },
-      }
-      const result = await shouldSponsor(hyperCoreIntentInput, {
-        calls: (calls) => {
-          expect(calls).toEqual([
-            {
-              to: '0xaaaa000000000000000000000000000000000000',
-              value: 7n,
-              data: '0x',
-            },
-          ])
-          return true
-        },
-      })
-      expect(result).toBe(true)
-    })
-
-    it('passes an empty calls array when the destination has no execution', async () => {
-      const noExecution = {
-        ...evmIntentInput,
-        destination: { vm: 'evm', chainId: 'eip155:8453' },
-      }
-      const result = await shouldSponsor(noExecution, {
-        calls: (calls) => {
-          expect(calls).toEqual([])
-          return true
-        },
-      })
-      expect(result).toBe(true)
-    })
-  },
-)
+    expect(result).toBe(true)
+  })
+})
 
 it.each([
   'caucasus-1',

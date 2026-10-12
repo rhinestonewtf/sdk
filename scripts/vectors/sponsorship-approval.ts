@@ -3,8 +3,7 @@
 // this script runs in. The provenance block is carried over from the existing
 // file: update it when the orchestrator cross-check is re-run.
 //
-// The legacy (test/vectors/sponsorship-approval) and interim singular
-// (test/vectors/sponsorship-approval-singular) vectors are frozen and never
+// The legacy vectors (test/vectors/sponsorship-approval) are frozen and never
 // regenerated; nothing here writes them.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
