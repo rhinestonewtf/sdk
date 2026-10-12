@@ -294,9 +294,10 @@ function sessionWarnings(definition: SessionDefinition): SessionWarning[] {
 
 /**
  * The ACROSS claim checks no amount, so a `from` token without its own
- * `maxAmount` has nothing bounding that route: under a settlement-scoped
- * permit the chain's one cap is in another token's units. A permit naming
- * only ACROSS warns only beside a capped leg, which suggests a bound it lacks.
+ * `maxAmount` is bounded only by the approve cap: under a settlement-scoped
+ * permit the chain's one cap, read in that token's raw units, and under a
+ * permit naming only ACROSS nothing. That permit warns only beside a capped
+ * leg, which suggests a bound it lacks.
  */
 function uncappedAcrossWarnings(
   definition: SessionDefinition,
@@ -307,18 +308,23 @@ function uncappedAcrossWarnings(
       .flat()
       .filter(({ chain }) => chain.id === definition.chain.id)
     const uncapped = legs.some(({ maxAmount }) => maxAmount === undefined)
-    const warns = isSettlementScopedPermit(permit)
+    const capped = legs.some(({ maxAmount }) => maxAmount !== undefined)
+    const scoped = isSettlementScopedPermit(permit)
+    const warns = scoped
       ? settlementLayers.includes('ACROSS') && uncapped
       : uncapped &&
-        legs.some(({ maxAmount }) => maxAmount !== undefined) &&
+        capped &&
         (!permit.settlementLayers?.length ||
           permit.settlementLayers.includes('ACROSS'))
     return warns
       ? [
           {
             code: 'UNCAPPED_ACROSS_ROUTE',
-            message:
-              "crossChainPermits: the session settles through ACROSS, whose route has no amount cap for a `from` token without its own maxAmount (another leg's cap does not bound it); set maxAmount on each `from` leg to bound it, or leave ACROSS out by naming the other layers",
+            message: `crossChainPermits: the session settles through ACROSS, whose route ${
+              scoped && capped
+                ? "bounds a `from` token without its own maxAmount only by the chain's maxAmount, read in that token's raw units"
+                : `has no amount cap for a \`from\` token without its own maxAmount${capped ? " (another leg's cap does not bound it)" : ''}`
+            }; set maxAmount on each \`from\` leg to bound it, or leave ACROSS out by naming the other layers`,
             permitIndex,
           },
         ]

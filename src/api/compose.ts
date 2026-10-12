@@ -36,6 +36,7 @@ import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sess
 import {
   readSessionEnabled,
   readSessionNonce,
+  readSessionNonceAndEnabled,
 } from '../modules/validators/smart-sessions/state'
 import type {
   ResolvedSessionSignerSet,
@@ -693,8 +694,17 @@ function accountSessionDetails(
     sessions,
     environment,
     ...(options.allowBudgetReset && { allowBudgetReset: true }),
-    readEnabled: (session) =>
-      accountSessionEnabled(account, session, dependencies),
+    readNonceAndEnabled: (session) => {
+      const chain = toEvmChainReference(session.chain.id)
+      return readSessionNonceAndEnabled({
+        rpc: dependencies.rpc.forChain(chain),
+        chain,
+        account: address,
+        lockTag: SESSION_LOCK_TAG,
+        session,
+        environment,
+      })
+    },
     readNonce: (session) => {
       const chain = toEvmChainReference(session.chain.id)
       return readSessionNonce({

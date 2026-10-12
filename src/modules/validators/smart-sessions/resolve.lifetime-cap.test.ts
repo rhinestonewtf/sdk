@@ -15,7 +15,7 @@ import { admits, install } from '../../../../test/utils/installed-policies'
 import { sessionFingerprint } from '../../../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
-import { getSessionDetails } from './authorization'
+import { getSessionDetails, hasLifetimeBudget } from './authorization'
 import {
   DEFAULT_POLICY_ADDRESSES,
   PERMIT2_SENDER_POLICY_ADDRESS,
@@ -476,7 +476,7 @@ describe('the uncapped ACROSS route warning', () => {
     expect(warnings(def)).toEqual([])
   })
 
-  test.each<[string, SessionDefinition]>([
+  test.each<[string, SessionDefinition, string]>([
     [
       "['ACROSS'] alone, one-shot",
       definition(
@@ -489,6 +489,7 @@ describe('the uncapped ACROSS route warning', () => {
         },
         once,
       ),
+      "has no amount cap for a `from` token without its own maxAmount (another leg's cap does not bound it)",
     ],
     [
       "'all', the other token under the first one's cap",
@@ -499,11 +500,13 @@ describe('the uncapped ACROSS route warning', () => {
         ],
         settlementLayers: 'all',
       }),
+      "bounds a `from` token without its own maxAmount only by the chain's maxAmount, read in that token's raw units",
     ],
-  ])('warns for an uncapped leg beside a capped one: %s', (_, def) => {
+  ])('warns for an uncapped leg beside a capped one: %s', (_, def, says) => {
     expect(validateSessionDefinition(def, OPTIONS).warnings).toEqual([
       expect.objectContaining({
         code: 'UNCAPPED_ACROSS_ROUTE',
+        message: expect.stringContaining(says),
         permitIndex: 0,
       }),
     ])
@@ -759,20 +762,30 @@ describe('signing the enable of a session with a lifetime budget', () => {
     ),
     OPTIONS,
   )
+  const unflagged = (session: Session): Session => {
+    const { lifetimeBudget: _, ...rest } = session
+    return rest
+  }
+  /** A chain where `enabled` decides each session's state at the read's block. */
   const details = (
     sessions: Session[],
     enabled: (session: Session) => boolean,
     allowBudgetReset?: boolean,
   ) => {
-    const readEnabled = vi.fn(async (session: Session) => enabled(session))
+    const readNonce = vi.fn(async () => 3n)
+    const readNonceAndEnabled = vi.fn(async (session: Session) => ({
+      nonce: 4n,
+      enabled: enabled(session),
+    }))
     return {
-      readEnabled,
+      readNonce,
+      readNonceAndEnabled,
       result: getSessionDetails({
         account: ACCOUNT,
         sessions,
         environment: 'production',
-        readNonce: async () => 3n,
-        readEnabled,
+        readNonce,
+        readNonceAndEnabled,
         ...(allowBudgetReset === undefined ? {} : { allowBudgetReset }),
       }),
     }
@@ -781,12 +794,49 @@ describe('signing the enable of a session with a lifetime budget', () => {
   test('marks only reusable capped sessions', () => {
     expect(reusable.lifetimeBudget).toBe(true)
     expect(fresh.lifetimeBudget).toBe(true)
+    expect(hasLifetimeBudget(reusable)).toBe(true)
     for (const def of [
       definition(capped({ settlementLayers: ['ACROSS'] }), once),
       definition({ settlementLayers: ['ACROSS'] }),
       definition({ settlementLayers: ['CCTP'] }),
     ]) {
-      expect(toSession(def, OPTIONS).lifetimeBudget).toBeUndefined()
+      const session = toSession(def, OPTIONS)
+      expect(session.lifetimeBudget).toBeUndefined()
+      expect(hasLifetimeBudget(session)).toBe(false)
+    }
+  })
+
+  test.each<[string, SessionDefinition]>([
+    ["['ACROSS']", definition(capped({ settlementLayers: ['ACROSS'] }))],
+    ["['CCTP']", definition(capped({ settlementLayers: ['CCTP'] }))],
+    [
+      "['ACROSS', 'CCTP'] with allowFees",
+      definition(
+        capped({ settlementLayers: ['ACROSS', 'CCTP'], allowFees: true }),
+      ),
+    ],
+    ["'all'", definition(capped({ settlementLayers: 'all' }))],
+  ])('finds the budget in the actions of %s without the flag', (_, def) => {
+    const options = def.crossChainPermits?.[0].allowFees ? FEE_OPTIONS : OPTIONS
+    expect(hasLifetimeBudget(unflagged(toSession(def, options)))).toBe(true)
+  })
+
+  test('finds no budget in the actions of one-shot, uncapped or fee-only sessions', () => {
+    for (const [def, options] of [
+      [definition(capped({ settlementLayers: ['ACROSS'] }), once), OPTIONS],
+      [
+        definition(capped({ settlementLayers: ['ACROSS', 'CCTP'] }), once),
+        OPTIONS,
+      ],
+      [definition({ settlementLayers: ['ACROSS', 'CCTP'] }), OPTIONS],
+      [
+        definition({ settlementLayers: ['CCTP'], allowFees: true }),
+        FEE_OPTIONS,
+      ],
+    ] as const) {
+      const session = toSession(def, options)
+      const { oneTimeUse: _, ...stripped } = unflagged(session)
+      expect(hasLifetimeBudget(stripped)).toBe(false)
     }
   })
 
@@ -797,7 +847,18 @@ describe('signing the enable of a session with a lifetime budget', () => {
     )
   })
 
-  test('refuses a bundle that adds a chain beside one already enabled', async () => {
+  test('refuses a stored session whose flag was dropped', async () => {
+    const { result } = details([unflagged(reusable)], () => true)
+    await expect(result).rejects.toThrow('allowBudgetReset')
+  })
+
+  test('takes the nonce from the same read as the enabled state', async () => {
+    const { result, readNonce } = details([reusable], () => false)
+    await expect(result).resolves.toMatchObject({ nonces: [4n] })
+    expect(readNonce).not.toHaveBeenCalled()
+  })
+
+  test('refuses a bundle with one session enabled and one not', async () => {
     const { result } = details(
       [reusable, fresh],
       (session) => session === reusable,
@@ -805,18 +866,27 @@ describe('signing the enable of a session with a lifetime budget', () => {
     await expect(result).rejects.toThrow('allowBudgetReset')
   })
 
-  test('signs it when the caller opts in to the reset', async () => {
-    const { result, readEnabled } = details([reusable], () => true, true)
+  test('signs the one not enabled when it comes alone', async () => {
+    const { result } = details([fresh], (session) => session === reusable)
+    await expect(result).resolves.toMatchObject({ nonces: [4n] })
+  })
+
+  test('signs it when the caller opts in to the reset, with no state read', async () => {
+    const { result, readNonceAndEnabled } = details(
+      [reusable],
+      () => true,
+      true,
+    )
     await expect(result).resolves.toMatchObject({ nonces: [3n] })
-    expect(readEnabled).not.toHaveBeenCalled()
+    expect(readNonceAndEnabled).not.toHaveBeenCalled()
   })
 
-  test('signs a session not yet enabled, alone or beside another chain', async () => {
+  test('signs sessions not yet enabled, alone or beside another chain', async () => {
     const { result } = details([reusable, fresh], () => false)
-    await expect(result).resolves.toMatchObject({ nonces: [3n, 3n] })
+    await expect(result).resolves.toMatchObject({ nonces: [4n, 4n] })
   })
 
-  test('reads nothing for sessions without a lifetime budget, and signs them as before', async () => {
+  test('reads nothing more for sessions without a lifetime budget, and signs them as before', async () => {
     const plain = [
       toSession(definition({ settlementLayers: ['ACROSS'] }), OPTIONS),
       toSession(
@@ -824,7 +894,7 @@ describe('signing the enable of a session with a lifetime budget', () => {
         OPTIONS,
       ),
     ]
-    const { result, readEnabled } = details(plain, () => true)
+    const { result, readNonceAndEnabled } = details(plain, () => true)
     const without = await getSessionDetails({
       account: ACCOUNT,
       sessions: plain,
@@ -832,10 +902,10 @@ describe('signing the enable of a session with a lifetime budget', () => {
       readNonce: async () => 3n,
     })
     expect(await result).toEqual(without)
-    expect(readEnabled).not.toHaveBeenCalled()
+    expect(readNonceAndEnabled).not.toHaveBeenCalled()
   })
 
-  test('fails closed when no enabled read is wired', async () => {
+  test('fails closed when no state read is wired', async () => {
     await expect(
       getSessionDetails({
         account: ACCOUNT,
@@ -843,6 +913,6 @@ describe('signing the enable of a session with a lifetime budget', () => {
         environment: 'production',
         readNonce: async () => 3n,
       }),
-    ).rejects.toThrow('needs readEnabled')
+    ).rejects.toThrow('needs readNonceAndEnabled')
   })
 })

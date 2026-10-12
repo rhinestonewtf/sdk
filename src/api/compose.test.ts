@@ -593,16 +593,19 @@ describe('internal core composition', () => {
 
   test('refuses the details of an enabled lifetime-budget session unless told to reset it', async () => {
     const base = fixture()
+    // A plain read from a lagging node says not enabled; the pinned one decides.
     const readContract = vi.fn(
       async (_context: unknown, request: { functionName: string }) =>
-        request.functionName === 'isPermissionEnabled' ? true : 0n,
+        request.functionName === 'isPermissionEnabled' ? false : 0n,
     )
+    const multicall = vi.fn(async () => [{ result: 5n }, { result: true }])
     const dependencies = {
       ...base.dependencies,
       rpc: {
         forChain: () => ({
           ...base.dependencies.rpc.forChain(),
           readContract: readContract as RpcReadPort['readContract'],
+          multicall: multicall as RpcReadPort['multicall'],
         }),
       },
     } satisfies CoreDependencies
@@ -633,6 +636,11 @@ describe('internal core composition', () => {
     await expect(
       workflows.getSessionDetails(base.context, [session]),
     ).rejects.toThrow('allowBudgetReset')
+    // One address for the nonce, the enabled state and the digest.
+    const [[, [nonceRead, enabledRead]]] = multicall.mock.calls as unknown as [
+      [unknown, [{ args: unknown[] }, { args: unknown[] }]],
+    ]
+    expect(enabledRead.args[0]).toBe(nonceRead.args[0])
     await expect(
       workflows.getSessionDetails(base.context, [session], {
         allowBudgetReset: true,

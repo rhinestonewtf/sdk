@@ -1,11 +1,15 @@
 import {
   type Address,
+  type Hex,
   hashStruct,
   maxUint256,
+  size,
+  sliceHex,
   type TypedDataDefinition,
 } from 'viem'
 import { getSessionData } from './digest'
 import { getSmartSessionEmissaryAddress } from './module'
+import { CONSUME_SELECTOR } from './one-time-use'
 import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
@@ -98,36 +102,83 @@ function signedSession(
   }
 }
 
+/**
+ * The word pattern of `cumulativeCap(32, cap)`, the rule a crossChainPermits
+ * `maxAmount` compiles to on an approve: lessThanOrEqual, the amount word,
+ * limited, and the cap as both reference and limit, nothing used yet.
+ */
+function hasCapRule(initData: Hex): boolean {
+  const words = Array.from(
+    { length: Math.floor(size(initData) / 32) },
+    (_, i) => BigInt(sliceHex(initData, i * 32, i * 32 + 32)),
+  )
+  return words.some(
+    (word, i) =>
+      word === 4n &&
+      words[i + 1] === 32n &&
+      words[i + 2] === 1n &&
+      words[i + 3] !== undefined &&
+      words[i + 3] === words[i + 4] &&
+      words[i + 5] === 0n,
+  )
+}
+
+/**
+ * Whether the session's maxAmount is a lifetime budget, from its actions as
+ * well as its metadata, so a stored session missing the flag is still caught.
+ */
+export function hasLifetimeBudget(session: Session): boolean {
+  if (session.lifetimeBudget) return true
+  if (
+    session.oneTimeUse ||
+    session.actions.some((a) => a.actionTargetSelector === CONSUME_SELECTOR)
+  ) {
+    return false
+  }
+  return session.actions.some(
+    (action) =>
+      // approve(address,uint256)
+      action.actionTargetSelector === '0x095ea7b3' &&
+      action.actionPolicies.some(({ initData }) => hasCapRule(initData)),
+  )
+}
+
 export async function getSessionDetails(input: {
   readonly account: Address
   readonly sessions: readonly Session[]
   readonly environment: 'production' | 'development'
   readonly readNonce: (session: Session) => Promise<bigint>
-  /** Read only for sessions with a lifetime budget. */
-  readonly readEnabled?: (session: Session) => Promise<boolean>
+  /**
+   * The nonce and enabled state read together at one block, for sessions with
+   * a lifetime budget only.
+   */
+  readonly readNonceAndEnabled?: (
+    session: Session,
+  ) => Promise<{ readonly nonce: bigint; readonly enabled: boolean }>
   readonly allowBudgetReset?: boolean
 }): Promise<SessionDetails> {
   // An enable re-initialises the session's policies, so signing one for an
-  // enabled session hands whoever submits it a fresh lifetime budget.
-  if (!input.allowBudgetReset) {
-    const budgeted = input.sessions.filter((session) => session.lifetimeBudget)
-    const readEnabled = input.readEnabled
-    if (budgeted.length && !readEnabled) {
-      throw new Error(
-        'getSessionDetails (internal): a lifetime-budget session needs readEnabled',
-      )
-    }
-    const enabled = readEnabled
-      ? await Promise.all(budgeted.map(readEnabled))
-      : []
-    const session = budgeted.find((_, index) => enabled[index])
-    if (session) {
-      throw new Error(
-        `The session ${session.permissionId} is already enabled on chain ${session.chain.id}, and its maxAmount is a lifetime budget: signing its enable again would reset that budget. Leave it out of getSessionDetails, or pass { allowBudgetReset: true } to reset it.`,
-      )
-    }
-  }
-  const nonces = await Promise.all(input.sessions.map(input.readNonce))
+  // enabled session hands whoever submits it a fresh lifetime budget. The
+  // nonce is read with the state: an enable after that block spends it.
+  const guarded = (session: Session) =>
+    !input.allowBudgetReset && hasLifetimeBudget(session)
+  const nonces = await Promise.all(
+    input.sessions.map(async (session) => {
+      if (!guarded(session)) return input.readNonce(session)
+      if (!input.readNonceAndEnabled) {
+        throw new Error(
+          'getSessionDetails (internal): a lifetime-budget session needs readNonceAndEnabled',
+        )
+      }
+      const { nonce, enabled } = await input.readNonceAndEnabled(session)
+      if (enabled) {
+        throw new Error(
+          `The session ${session.permissionId} is already enabled on chain ${session.chain.id}, and its maxAmount is a lifetime budget: signing its enable again would reset that budget. Leave it out of getSessionDetails, or pass { allowBudgetReset: true } to reset it.`,
+        )
+      }
+      return nonce
+    }),
+  )
   const signed = input.sessions.map((session, index) =>
     signedSession(
       input.account,

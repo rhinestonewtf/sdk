@@ -61,6 +61,7 @@ import type {
 import {
   readSessionEnabled,
   readSessionNonce,
+  readSessionNonceAndEnabled,
 } from '../modules/validators/smart-sessions/state'
 import type { FyndChainId } from '../modules/validators/smart-sessions/swap/fynd'
 import {
@@ -168,8 +169,17 @@ async function getSessionDetails(
     sessions: sessions as DomainSession[],
     environment: runtimeEnvironment,
     ...(options.allowBudgetReset && { allowBudgetReset: true }),
-    readEnabled: (session) =>
-      isSessionEnabled(account, provider, session, useDevContracts),
+    readNonceAndEnabled: (session) => {
+      const reader = materializeRpcReader({ chain: session.chain, provider })
+      return readSessionNonceAndEnabled({
+        rpc: reader.rpc,
+        chain: reader.chain,
+        account,
+        lockTag: SESSION_LOCK_TAG,
+        session: session as DomainSession,
+        environment: runtimeEnvironment,
+      })
+    },
     readNonce: async (session) => {
       const reader = materializeRpcReader({ chain: session.chain, provider })
       return readSessionNonce({

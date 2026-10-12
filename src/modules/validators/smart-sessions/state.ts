@@ -66,3 +66,40 @@ export async function readSessionNonce(input: {
     },
   )
 }
+
+/** The nonce and enabled state from one call, so both read the same block. */
+export async function readSessionNonceAndEnabled(input: {
+  readonly rpc: RpcReadPort
+  readonly chain: EvmChainReference
+  readonly account: Address
+  readonly lockTag: Hex
+  readonly session: Session
+  readonly environment: 'production' | 'development'
+}): Promise<{ readonly nonce: bigint; readonly enabled: boolean }> {
+  const emissary = getSmartSessionEmissaryAddress(input.environment)
+  const [nonce, enabled] = await input.rpc.multicall<
+    readonly [
+      { readonly result?: bigint; readonly error?: unknown },
+      { readonly result?: boolean; readonly error?: unknown },
+    ]
+  >({ chain: input.chain }, [
+    {
+      address: emissary,
+      abi: nonceAbi,
+      functionName: 'getNonce',
+      args: [input.account, input.lockTag],
+    },
+    {
+      address: emissary,
+      abi: permissionEnabledAbi,
+      functionName: 'isPermissionEnabled',
+      args: [input.account, getPermissionId(input.session)],
+    },
+  ])
+  if (nonce?.result === undefined || enabled?.result === undefined) {
+    throw new Error(
+      `Could not read the session nonce and enabled state on chain ${input.chain.id}`,
+    )
+  }
+  return { nonce: nonce.result, enabled: enabled.result }
+}

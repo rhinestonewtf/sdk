@@ -138,7 +138,7 @@ export const SESSION_WARNING_CODES = {
   FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
     'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
   UNCAPPED_ACROSS_ROUTE:
-    'ACROSS beside IntentExecutor layers, or kept by `all`, with a `from` leg on the chain that has no maxAmount, or a permit naming only ACROSS with such a leg beside a capped one, so nothing caps what that route moves for it',
+    "ACROSS beside IntentExecutor layers, or kept by `all`, with a `from` leg on the chain that has no maxAmount, or a permit naming only ACROSS with such a leg beside a capped one: nothing, or only the chain's maxAmount read in that token's raw units, caps what that route moves for it",
   ACTION_WINDOW_SHARED_PERMISSION_ID:
     'an action window on a session whose permissionId any other zero-salt session of the same owners shares',
 } as const

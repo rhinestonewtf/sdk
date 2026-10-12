@@ -441,7 +441,8 @@ interface FromLeg {
    *
    * Enabling the session again resets the budget, so `getSessionDetails`
    * refuses to sign for such a session that is already enabled unless you
-   * pass `allowBudgetReset`. Build the session once and store it: a
+   * pass `allowBudgetReset`. Disabling it and enabling it again also starts
+   * a fresh budget, by the owner's choice. Build the session once and store it: a
    * definition using `'all'` or naming no layers resolves against
    * `GET /chains` and the clock, so rebuilding it can give another
    * permissionId, whose enable starts a new budget beside what the old
@@ -1317,8 +1318,10 @@ interface Session {
   /** Set on a session without `oneTimeUse` whose `crossChainPermits` entry
    *  sets `maxAmount` on its chain, making it a lifetime budget. Enabling
    *  the session again resets that budget, so `getSessionDetails` refuses one
-   *  that is already enabled unless you pass `allowBudgetReset`. Metadata
-   *  only — it does not change the permission id. */
+   *  that is already enabled unless you pass `allowBudgetReset`; it finds the
+   *  budget in the session's actions too, so a stored session without this
+   *  field is still checked. Metadata only — it does not change the
+   *  permission id. */
   lifetimeBudget?: true
   /** A one-time-use session's id and policy; each intent burns the id. */
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
