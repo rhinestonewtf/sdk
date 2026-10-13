@@ -7,7 +7,6 @@ import type {
 } from '../../src/clients/orchestrator/wire'
 import type { operations } from '../../src/clients/orchestrator/wire.gen'
 
-type AssertNotNever<Value> = [Value] extends [never] ? never : Value
 type Property<Member, Key extends PropertyKey> = Member extends {
   [PropertyName in Key]?: infer Value
 }
@@ -34,17 +33,14 @@ type IntentErrorStatus = Exclude<
   201
 >
 
-const routePurposes: AssertNotNever<WireQuote['purpose']>[] = [
-  'execution',
-  'deployment',
-]
+const routePurposes: WireQuote['purpose'][] = ['execution', 'deployment']
 
 const evmRouteAccount = {
   address: '0x0000000000000000000000000000000000000001',
   type: 'erc7579',
   deployed: false,
   implementation: { name: 'Nexus', version: 'v1.0.0' },
-} satisfies AssertNotNever<RouteAccount>
+} satisfies RouteAccount
 const svmRouteAccount = {
   wallet: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
   swigAccount: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
@@ -52,7 +48,7 @@ const svmRouteAccount = {
     kind: 'secp256r1',
     publicKey: `0x02${'11'.repeat(32)}`,
   },
-} satisfies AssertNotNever<RouteAccount>
+} satisfies RouteAccount
 function routeAccountAddress(account: RouteAccount): string {
   return 'wallet' in account ? account.swigAccount : account.address
 }
