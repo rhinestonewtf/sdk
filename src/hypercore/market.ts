@@ -168,10 +168,11 @@ async function getPerpMarket(
 /**
  * List an account's open Hyperliquid perpetual positions.
  *
- * @param account the account holding the positions — the smart account itself,
- *   since that is what the intent delivers collateral to
+ * @param account the EVM address holding collateral and positions, not the SDK account handle
  * @param options where to reach Hyperliquid's info endpoint
  * @returns one entry per open position; empty when the account holds none
+ * @example
+ * const positions = await getPerpPositions(account.getAddress('evm'))
  * @see {@link getPerpPosition}
  */
 async function getPerpPositions(
@@ -203,7 +204,7 @@ async function getPerpPositions(
  * rejected when there is nothing to close, so this is the check to make before
  * offering a close at all.
  *
- * @param account the account holding the position
+ * @param account the EVM address holding the position, not the SDK account handle
  * @param asset ticker as Hyperliquid names it, e.g. `BTC`
  * @param options where to reach Hyperliquid's info endpoint
  * @returns the position, or `null` when the account has none open on that asset

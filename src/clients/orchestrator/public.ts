@@ -1159,14 +1159,17 @@ interface IntentRefund {
 /**
  * What became of the HyperCore action an intent carried.
  *
- * A refused action leaves the intent `FAILED` with every operation
- * `COMPLETED`: the onchain half succeeded and Hyperliquid's answer is what
- * failed, so the operations cannot say whether sending it again is safe.
+ * Read this from an `EXECUTION` item's `result` in `operations[].items[]`,
+ * including the operations on `IntentFailedError.context`. It is offchain
+ * evidence, not a transaction hash; settlement has separate onchain items.
+ * An intent can be `FAILED` despite completed onchain settlement. Optional
+ * refund evidence describes returned funds, not trade success or retry safety.
+ * Inspect settlement, balances and positions before replaying any funding.
  *
  * - `pending`  – no result yet
  * - `accepted` – Hyperliquid accepted the action
- * - `refused`  – Hyperliquid refused the action, so it was not placed; with
- *                several actions, `reason` says which were accepted before it
+ * - `refused`  – Hyperliquid refused an action; with several actions, earlier
+ *                ones may have been accepted. Inspect `reason` and account state.
  * - `partial`  – some orders were placed; check the account before retrying,
  *                or the placed orders are sent twice
  * - `error`    – no definite answer; check the account before retrying

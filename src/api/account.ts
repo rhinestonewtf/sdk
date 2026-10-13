@@ -200,8 +200,23 @@ export interface RhinestoneAccountBase<
   config: Readonly<C>
   /**
    * Get the native address for a configured VM.
+   *
+   * `'evm'` selects an EVM hex address; `'solana'` selects a native Solana
+   * address. Address-only receivers support this read, not managed signing.
+   * With a concrete config the configured VM's address is guaranteed; widened
+   * configuration types can include `undefined` in the return type.
    * @param vm Configured VM to read
    * @returns The account or receiver address in that VM's native format
+   * @example
+   * ```ts
+   * // An account with a configured EVM entry.
+   * const address = account.getAddress('evm')
+   * ```
+   * @example
+   * ```ts
+   * // An account with a configured Solana entry.
+   * const address = account.getAddress('solana')
+   * ```
    * @throws AccountVmNotConfiguredError when a widened input names an absent VM
    */
   getAddress<const Vm extends ConfiguredVm<C>>(
@@ -221,9 +236,36 @@ export interface ManagedTransactionAccount<
    * On an account with a managed Solana entry, `{ destination: { chain, authority } }` adds or
    * removes a passkey or ECDSA key on its Swig (see `addPasskey` and
    * `addEcdsaKey`). That change is always gas-sponsored and billed to the
-   * integrator's sponsorship.
+   * integrator's sponsorship; do not add a `sponsored` flag to authority inputs.
+   *
+   * The execution example requires a managed EVM account, a viem `base` chain,
+   * destination `calls`, and sponsorship enabled for your integrator. The
+   * delivery example requires sufficient USDC in the account on `base` to
+   * cover delivery and fees; `usdcOnBase` and `usdcOnOptimism` are token addresses,
+   * `optimism` is the viem destination chain, and `recipient` is the destination
+   * EVM address. Amounts use the token's smallest units: `1_000_000n` is
+   * 1 USDC for a six-decimal token.
    * @param transaction Transaction to prepare
-   * @returns The prepared transaction data
+   * @returns The prepared transaction data, including available quotes
+   * @example
+   * ```ts
+   * const prepared = await account.prepareTransaction({
+   *   destination: { chain: base, calls },
+   *   sponsored: true,
+   * })
+   * ```
+   * @example
+   * ```ts
+   * const delivery = await account.prepareTransaction({
+   *   source: { chain: base, token: usdcOnBase },
+   *   destination: {
+   *     chain: optimism,
+   *     token: usdcOnOptimism,
+   *     amount: 1_000_000n,
+   *     recipient,
+   *   },
+   * })
+   * ```
    * @see {@link signTransaction} to sign the prepared transaction
    * @see {@link submitTransaction} to submit the signed transaction
    */
@@ -234,7 +276,7 @@ export interface ManagedTransactionAccount<
    * Get the authorisations a prepared transaction needs, in order.
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to inspect a specific quote from `preparedTransaction.quotes.all`
-   * @returns The quote's ordered signing requests; proofs are submitted in the same order
+   * @returns The quote's ordered signing requests; each position identifies a proof slot. Keep this whole ordered set and the selected quote unchanged through signing and assembly.
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
   getTransactionMessages(
@@ -244,6 +286,14 @@ export interface ManagedTransactionAccount<
   /**
    * Sign a prepared transaction as one configured owner. The returned signature
    * can be serialized and shared with the party coordinating submission.
+   *
+   * `prepared` is the shared prepared transaction and `owner` is one locally
+   * configured viem owner account. All contributors must use the same quote.
+   * Independent signing is not supported for smart sessions or Solana origins.
+   * @example
+   * ```ts
+   * const contribution = await account.signTransaction(prepared, { owner })
+   * ```
    * @param preparedTransaction Prepared transaction data
    * @param options Owner account, optional quote, and multi-factor validator ID
    * @returns This owner's signature contribution
@@ -256,6 +306,14 @@ export interface ManagedTransactionAccount<
   ): Promise<OwnerSignature>
   /**
    * Sign a prepared transaction with the transaction's configured signers.
+   *
+   * `prepared` comes from `prepareTransaction`. Ordinary signing collects all
+   * required proofs, including requested EIP-7702 delegations. A quote override
+   * must be used consistently when inspecting requests and signing.
+   * @example
+   * ```ts
+   * const signed = await account.signTransaction(prepared)
+   * ```
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to sign a specific quote from `preparedTransaction.quotes.all`
    * @returns The signed transaction data
@@ -268,13 +326,30 @@ export interface ManagedTransactionAccount<
   ): Promise<SignedTransactionData>
   /**
    * Assemble independently collected owner signatures into a signed transaction.
-   * Signatures are deduplicated and ordered according to the configured owner set.
-   * Account thresholds are read from the local configuration; an explicit
-   * transaction signer set determines active MFA IDs and contributing owners.
-   * Callers must keep these synchronized with onchain owner and threshold changes.
+   * Contributions are ordered according to the configured owner set. A duplicate
+   * owner within the same factor is rejected, not deduplicated. Account thresholds
+   * are read from local configuration; an explicit transaction signer set determines
+   * active MFA IDs and contributing owners. Keep these synchronized with onchain state.
+   *
+   * External `options.proofs` must match the intent, the whole ordered signing
+   * request set, and the contributed request slot. Wrong, duplicate or colliding
+   * contributions reject. Missing slots throw `IncompleteIntentProofsError`;
+   * assembly never returns a sparse signed artifact. Independent assembly is
+   * not supported for smart sessions or Solana-origin transactions.
+   *
+   * `prepared` is the shared prepared transaction, `contributions` are opaque
+   * results of owner signing, and `delegationProofs` come from `signAuthorizations`
+   * for the same quote (an empty array when no delegation is requested).
+   * @example
+   * ```ts
+   * const signed = await account.assembleTransaction(prepared, contributions, {
+   *   proofs: delegationProofs,
+   * })
+   * ```
    * @param preparedTransaction The prepared transaction every owner signed
    * @param signatures Owner signatures returned by `signTransaction` with an `owner` option
-   * @returns Signed transaction data ready for submission
+   * @param options Additional indexed proofs covering non-owner signing requests
+   * @returns Complete signed transaction data ready for submission
    * @see {@link signTransaction} to create each owner signature
    * @see {@link submitTransaction} to submit the result
    */
@@ -286,9 +361,20 @@ export interface ManagedTransactionAccount<
   /**
    * Sign the EIP-7702 delegations a prepared transaction's quote asks for.
    *
-   * Advanced: `signTransaction` already collects these, so a normal caller
-   * never needs this. Use it when the delegation signer is a different party
-   * from the account owners, and pass the result to `assembleTransaction`.
+   * Advanced: ordinary `signTransaction` already collects these. This method
+   * uses the account's configured EOA, not an arbitrary delegation signer. It
+   * acquires current nonce state and signs the requested delegation slots;
+   * it returns `[]` when none are requested. Solana origins are unsupported.
+   *
+   * `prepared` and `contributions` must refer to the same selected quote. Pass
+   * the returned proofs to assembly without changing their request indices.
+   * @example
+   * ```ts
+   * const delegationProofs = await account.signAuthorizations(prepared)
+   * const signed = await account.assembleTransaction(prepared, contributions, {
+   *   proofs: delegationProofs,
+   * })
+   * ```
    * @param preparedTransaction Prepared transaction data
    * @param options Optional override; pass `{ intentId }` to target a specific quote
    * @returns Delegation proofs bound to the quote and their request slots
@@ -300,6 +386,9 @@ export interface ManagedTransactionAccount<
   ): Promise<IndexedProofContribution[]>
   /**
    * Submit a signed transaction.
+   *
+   * Submission sends the assembled artifact; it does not sign or acquire fresh
+   * delegation nonces. Reprepare and resign if the quoted authorization is stale.
    * @param signedTransaction Signed transaction data
    * @param options Optional submission options
    * @returns The transaction result (an intent ID)
@@ -584,15 +673,23 @@ export interface ManagedEvmAccount<
    * An account deployed through an intent pays for it on the same chain: a
    * sponsored deployment spends nothing, and an unsponsored one spends
    * `source.token`, which it then requires. A deployment that runs as a
-   * UserOperation takes neither.
+   * UserOperation takes neither. The example requires a viem `base` chain,
+   * integrator sponsorship for the first call, and an account funded with
+   * `usdcOnBase` (the chain's USDC address) to cover fees for the unsponsored
+   * alternative. Choose one deployment mode, not both sequentially.
+   * Awaiting a UserOperation receipt does not guarantee successful execution;
+   * verify onchain deployment if that path is used.
    * @param vm `'evm'`
    * @param chain Chain to deploy the account on
    * @param params Optional sponsorship, and the token an unsponsored deployment pays in
-   * @returns `true` once the deployment is submitted, `false` when the account is already deployed
+   * @returns `true` after awaiting deployment execution, `false` when already deployed
    * @throws UnsupportedAccountCapabilityError when an unsponsored intent deployment names no `source.token`
    * @example
    * ```ts
    * await account.deploy('evm', base, { sponsored: true })
+   * ```
+   * @example
+   * ```ts
    * await account.deploy('evm', base, { source: { token: usdcOnBase } })
    * ```
    */
@@ -608,10 +705,14 @@ export interface ManagedEvmAccount<
    *
    * Setup that runs as an intent pays for itself in `source.token` on the same
    * chain, and requires it. Setup that installs the intent executor runs as a
-   * UserOperation and takes no source.
+   * UserOperation and takes no source. There is no sponsorship option on this
+   * API. For the intent path, fund the account with enough `usdcOnBase` to pay
+   * fees before running the example; `base` is the viem chain and `usdcOnBase`
+   * is its USDC token address. Awaiting a UserOperation receipt does not guarantee
+   * successful execution; verify the installed modules if that path is used.
    * @param chain Chain to set the account up on
    * @param options The token an intent-path setup pays in
-   * @returns `true` once setup is submitted, `false` when nothing is missing
+   * @returns `true` after awaiting setup execution, `false` when nothing is missing
    * @throws UnsupportedAccountCapabilityError when an intent-path setup names no `source.token`
    * @example
    * ```ts
@@ -631,10 +732,17 @@ export interface ManagedEvmAccount<
   signEip7702InitData(): Promise<Hex>
   /**
    * Sign a message (EIP-191).
+   *
+   * The example uses the viem `base` chain and configured account signers;
+   * the required third argument must be explicit `undefined` for defaults.
    * @param message Message to sign
    * @param chain Chain to sign the message for
    * @param signers Signers to use, or `undefined` for the account default
    * @returns The signature
+   * @example
+   * ```ts
+   * const signature = await account.signMessage('Hello', base, undefined)
+   * ```
    * @see {@link signTypedData} to sign EIP-712 typed data
    */
   signMessage(
@@ -644,10 +752,22 @@ export interface ManagedEvmAccount<
   ): Promise<Hex>
   /**
    * Sign typed data (EIP-712).
+   *
+   * The example uses the viem `base` chain and configured account signers;
+   * the required third argument must be explicit `undefined` for defaults.
    * @param parameters Typed-data parameters
    * @param chain Chain to sign the typed data for
    * @param signers Signers to use, or `undefined` for the account default
    * @returns The signature
+   * @example
+   * ```ts
+   * const signature = await account.signTypedData({
+   *   domain: { name: 'Example', version: '1', chainId: base.id },
+   *   types: { Greeting: [{ name: 'message', type: 'string' }] },
+   *   primaryType: 'Greeting',
+   *   message: { message: 'Hello' },
+   * }, base, undefined)
+   * ```
    * @see {@link signMessage} to sign an EIP-191 message
    */
   signTypedData<
@@ -662,6 +782,11 @@ export interface ManagedEvmAccount<
    * Sign an orchestrator intent operation. Used by headless flows that prepare
    * the intent outside the SDK but still need the SDK-owned smart-session
    * signature packing and authorisation routing.
+   *
+   * Headless requests must include an EIP-712 `originAuthorization` request;
+   * delegation-only or destination-only request sets are insufficient. Keep
+   * the quote's entire ordered request set intact, including its typed-data
+   * payloads. `targetChain` must match the quoted destination.
    * @param signingRequests The quote's ordered signing requests
    * @param targetChain Chain where the destination execution runs
    * @param signers Signers to use, or `undefined` for the account default
@@ -714,21 +839,60 @@ export interface ManagedEvmAccount<
     transaction: UserOperationTransaction,
   ): Promise<UserOperationResult>
   /**
-   * Wait for a submitted transaction or user operation to execute onchain.
-   * Polls the orchestrator until the intent reaches a terminal state; on failure
-   * an `IntentFailedError` is thrown, whose `context` carries `operations` and,
-   * where a settlement layer returned the funds, `refunds` — a refunded intent
-   * is still a failed one, so that error is where the refund surfaces. An
-   * intent that carried a HyperCore action also carries `hyperCore` there,
-   * which tells a refused trade (safe to retry) from a partial one (check the
-   * account first).
-   * @param result The result returned by a submit/send call
-   * @returns The per-chain operation status (for intents) or a UserOp receipt
+   * Wait for a submitted intent to reach a terminal state.
+   *
+   * On failure, `IntentFailedError.context` carries grouped `operations` and
+   * optional `refunds`. HyperCore evidence is an `EXECUTION` item inside
+   * `operations[].items[]`; inspect its `result`, not a `context.hyperCore`
+   * field. Completed settlement does not imply trade success. A refusal may
+   * follow accepted actions, and a partial outcome may have placed orders.
+   * Inspect settlement, balances, positions and refunds before any retry;
+   * never assume replaying the whole intent is safe.
+   *
+   * `intentResult` comes from `submitTransaction`. The example logs offchain
+   * evidence separately from onchain transaction references, also on failure.
+   * @param result The submitted intent result
+   * @returns The intent status with grouped per-chain operations
+   * @example
+   * ```ts
+   * import { IntentFailedError } from '@rhinestone/sdk/errors'
+   *
+   * try {
+   *   const status = await account.waitForExecution(intentResult)
+   *   for (const group of status.operations) {
+   *     for (const item of group.items) {
+   *       if (item.type === 'EXECUTION') console.log(item.result)
+   *     }
+   *   }
+   * } catch (error) {
+   *   if (!(error instanceof IntentFailedError)) throw error
+   *   console.log(error.context.operations, error.context.refunds)
+   * }
+   * ```
    */
   waitForExecution(result: TransactionResult): Promise<TransactionStatus>
+  /**
+   * Wait for a submitted UserOperation receipt.
+   *
+   * `userOperationResult` comes from `submitUserOperation` or `sendUserOperation`.
+   * An unsuccessful execution can still return a receipt; inspect `success`
+   * rather than expecting every execution failure to reject.
+   * @param result The submitted UserOperation result
+   * @returns The bundler's UserOperation receipt, including its success flag
+   * @example
+   * ```ts
+   * const receipt = await account.waitForExecution(userOperationResult)
+   * console.log(receipt.success)
+   * ```
+   */
   waitForExecution(result: UserOperationResult): Promise<UserOperationReceipt>
   /**
    * Get the native address for a configured VM.
+   *
+   * `'evm'` selects an EVM hex address; `'solana'` selects a native Solana
+   * address. Address-only receivers support this read, not managed signing.
+   * With a concrete config the configured VM's address is guaranteed; widened
+   * configuration types can include `undefined` in the return type.
    * @param vm Configured VM to read
    * @returns The account or receiver address in that VM's native format
    * @throws AccountVmNotConfiguredError when a widened input names an absent VM
@@ -739,7 +903,10 @@ export interface ManagedEvmAccount<
     ? NativeAddress<Vm>
     : NativeAddress<Vm> | undefined
   /**
-   * Get the account portfolio (token balances across chains).
+   * Get the account's EVM token balances across chains.
+   *
+   * This read uses the managed EVM address; it does not include Solana balances,
+   * address-only receivers, or HyperCore positions.
    * @param onTestnets Whether to query testnet balances (default is `false`)
    * @returns The account balances
    */

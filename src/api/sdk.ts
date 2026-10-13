@@ -28,6 +28,9 @@ import {
  * Stateful entry point that holds shared configuration (auth, provider,
  * bundler, paymaster) and creates accounts from it, delegating all work to the
  * SDK-core composition.
+ *
+ * The constructor example requires `apiKey`, your integrator's API key loaded
+ * securely from your environment. Prefer the explicit `auth` configuration.
  */
 class RhinestoneSDK {
   readonly #sdk: SdkComposition
@@ -44,8 +47,18 @@ class RhinestoneSDK {
   private hyperliquid
 
   /**
-   * Create a Rhinestone SDK instance.
+   * Create an authenticated Rhinestone SDK instance.
+   *
+   * `apiKey` is your integrator's API key, loaded securely from your environment.
    * @param options Shared configuration applied to every account created by this instance
+   * @example
+   * ```ts
+   * import { RhinestoneSDK } from '@rhinestone/sdk'
+   *
+   * const sdk = new RhinestoneSDK({
+   *   auth: { mode: 'apiKey', apiKey },
+   * })
+   * ```
    */
   constructor(options: RhinestoneSDKConfig) {
     const input = options as unknown as SdkConstructionInput
@@ -62,17 +75,17 @@ class RhinestoneSDK {
 
   /**
    * Create an account using this instance's shared configuration.
+   *
+   * `owner` is a configured viem signing account; `apiKey` is your integrator's
+   * API key. Account creation derives a handle; it does not deploy it onchain.
    * @param config Per-account configuration (owners, account type, modules, sessions)
    * @returns The account instance
    * @example
    * ```ts
    * import { RhinestoneSDK } from '@rhinestone/sdk'
-   * import { privateKeyToAccount } from 'viem/accounts'
-   *
-   * const owner = privateKeyToAccount('0x...')
    *
    * const sdk = new RhinestoneSDK({
-   *   auth: { mode: 'apiKey', apiKey: process.env.RHINESTONE_API_KEY! },
+   *   auth: { mode: 'apiKey', apiKey },
    * })
    *
    * const account = await sdk.createAccount({

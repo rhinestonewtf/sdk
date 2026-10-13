@@ -52,6 +52,38 @@ generator preserves non-generated destinations and existing page ownership.
 New pages inherit ownership from an unambiguous generated subtree, then fall
 back to `SDK_REF_DEFAULT_OWNER`. Existing per-page metadata always wins.
 
+### Reference example gate
+
+`bun run test:reference` builds the SDK, extracts fresh TypeDoc, renders into an
+isolated `.scratch/reference-examples-*` directory, packs `src/`, and compiles
+every rendered TypeScript Usage block against the packed public package. It
+currently covers 73 pages and 78 blocks. The inventory comes from the manifest,
+so additions, missing Usage blocks, stale context registrations, malformed
+fences, non-public imports, casts, and suppressions fail closed.
+
+The gate keeps overload Usage blocks separate and checks their inferred return
+types, including both signing and polling contracts. It also runs negative
+compiler probes for missing auth, legacy transaction fields, missing exports,
+and unsupported account capabilities. CI runs this command; do not replace it
+with source-alias typechecking or execute snippets that can submit transactions.
+
+For a manual preview, put every generated path under one scratch root so the
+sibling docs checkout is never touched:
+
+```bash
+scratch=.scratch/reference-preview
+rm -rf "$scratch"
+mkdir -p "$scratch"
+bunx typedoc --options scripts/reference/typedoc.json --json "$scratch/typedoc.json"
+SDK_REF_TYPEDOC_JSON="$scratch/typedoc.json" \
+SDK_REF_OUT="$scratch/pages" \
+SDK_REF_DOCS_JSON="$scratch/docs.json" \
+SDK_REF_OWNERSHIP_JSON="$scratch/ownership.json" \
+SDK_REF_PATHS_FIXTURE="$scratch/paths.json" \
+SDK_REF_CHECK=1 \
+bun run scripts/reference/generate.ts
+```
+
 ### Scope and content
 
 Hot path only: entry points, the account instance, actions, and the
@@ -63,8 +95,11 @@ export in an already-documented module is missing from `manifest.ts`; add new
 symbols there.
 
 - Prose, params, returns come from JSDoc on the exported symbol. For
-  account-instance methods the canonical JSDoc lives on the `RhinestoneAccount`
-  interface members (what TypeDoc reads), not the implementations.
+  account-instance methods, put the comment on the capability interface member
+  that exposes it (`RhinestoneAccountBase`, `ManagedTransactionAccount`,
+  `ManagedEvmAccount`, `SolanaStandaloneAccount`, or
+  `ManagedSolanaDeployment`), not the composed `RhinestoneAccount` alias or an
+  implementation.
 - Code samples come from `@example` blocks; without one a minimal snippet is
   synthesized from the signature.
 - `@remarks` renders as a `<Note>`; experimental entries get a `<Warning>`.

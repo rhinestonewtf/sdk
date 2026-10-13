@@ -15,6 +15,11 @@ function resolveModule(module: ModuleInput): ResolvedModule {
   }
 }
 
+/**
+ * Build a call to install an EVM account module.
+ * @param module Module kind, address and initialization data supported by the account
+ * @returns A lazy call resolved for the executing account
+ */
 export function installModule(module: ModuleInput): LazyCallInput {
   const resolved = resolveModule(module)
   return {
@@ -22,6 +27,11 @@ export function installModule(module: ModuleInput): LazyCallInput {
   }
 }
 
+/**
+ * Build a call to uninstall an EVM account module.
+ * @param module Installed module kind, address and deinitialization data
+ * @returns A lazy call resolved for the executing account
+ */
 export function uninstallModule(module: ModuleInput): LazyCallInput {
   const resolved = resolveModule(module)
   return {

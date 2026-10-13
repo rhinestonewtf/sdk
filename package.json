@@ -6,6 +6,7 @@
     "test": "bun run test:unit",
     "test:unit": "vitest --config vitest.config.unit.ts",
     "test:contract": "bun run scripts/contract/run.ts",
+    "test:reference": "bun run scripts/reference/check-examples.ts",
     "test:coverage:core": "vitest --config vitest.config.core.ts --coverage --run",
     "test:coverage:pure": "vitest --config vitest.config.core.ts --coverage --run",
     "test:integration": "vitest --config vitest.config.integration.ts",
