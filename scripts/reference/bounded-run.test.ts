@@ -4,12 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  acquireHostLock,
-  DEFAULT_MEMORY_BUDGET_MIB,
-  parseMemoryBudget,
-  runBounded,
-} from './bounded-run'
+import { acquireHostLock, parseMemoryBudget, runBounded } from './bounded-run'
 
 // Unique per run so concurrent test processes never see each other's hogs.
 const hog = `const a=[];setInterval(()=>a.push(Buffer.alloc(32*2**20,1)),20)//${randomUUID()}`
@@ -27,8 +22,7 @@ async function deadPid(): Promise<number> {
 
 describe('parseMemoryBudget', () => {
   it('defaults and accepts positive integers', () => {
-    expect(parseMemoryBudget(undefined)).toBe(DEFAULT_MEMORY_BUDGET_MIB)
-    expect(DEFAULT_MEMORY_BUDGET_MIB).toBe(2048)
+    expect(parseMemoryBudget(undefined)).toBe(2048)
     expect(parseMemoryBudget('512')).toBe(512)
   })
 
@@ -38,15 +32,13 @@ describe('parseMemoryBudget', () => {
 })
 
 describe('runBounded', () => {
-  const options = { cwd: process.cwd(), quiet: true, maxRssMiB: 1024 }
+  const options = { cwd: process.cwd(), maxRssMiB: 1024 }
 
-  it('returns stdout and telemetry on success', async () => {
-    const result = await runBounded(
-      process.execPath,
-      ['-e', "console.log('ok')"],
-      { ...options, label: 'ok' },
-    )
-    expect(result.stdout).toBe('ok')
+  it('returns telemetry on success', async () => {
+    const result = await runBounded(process.execPath, ['-e', ''], {
+      ...options,
+      label: 'ok',
+    })
     expect(result.peakRssMiB).toBeGreaterThanOrEqual(0)
     expect(result.durationMs).toBeGreaterThanOrEqual(0)
   })

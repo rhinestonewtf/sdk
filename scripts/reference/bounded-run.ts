@@ -3,10 +3,8 @@ import { linkSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-export const DEFAULT_MEMORY_BUDGET_MIB = 2048
-
 export function parseMemoryBudget(value: string | undefined): number {
-  if (value === undefined || value === '') return DEFAULT_MEMORY_BUDGET_MIB
+  if (value === undefined || value === '') return 2048
   if (!/^[1-9]\d*$/.test(value))
     throw new Error(
       `SDK_REF_MAX_RSS_MIB must be a positive integer, got: ${value}`,
@@ -19,12 +17,10 @@ export interface BoundedOptions {
   env?: NodeJS.ProcessEnv
   label: string
   maxRssMiB: number
-  quiet?: boolean
   sampleMs?: number
 }
 
 export interface BoundedResult {
-  stdout: string
   peakRssMiB: number
   durationMs: number
 }
@@ -46,7 +42,7 @@ export function killActiveGroups(): void {
 
 // Summed RSS of every process in the group, so grandchildren (e.g. tsc under
 // `bun run`) count against the budget too.
-export function groupRssKiB(pgid: number): number {
+function groupRssKiB(pgid: number): number {
   const result = spawnSync('ps', ['-A', '-o', 'pgid=,rss='], {
     encoding: 'utf8',
   })
@@ -77,18 +73,12 @@ export function runBounded(
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       detached: true,
-      stdio: ['ignore', 'pipe', 'inherit'],
+      stdio: ['ignore', 'inherit', 'inherit'],
     })
     const pgid = child.pid
-    let stdout = ''
     let peakKiB = 0
     let failure: Error | undefined
     let timer: ReturnType<typeof setInterval> | undefined
-    child.stdout?.setEncoding('utf8')
-    child.stdout?.on('data', (chunk: string) => {
-      stdout += chunk
-      if (!options.quiet) process.stdout.write(chunk)
-    })
     if (pgid !== undefined) {
       activeGroups.add(pgid)
       timer = setInterval(() => {
@@ -125,7 +115,6 @@ export function runBounded(
           ),
         )
       resolvePromise({
-        stdout: stdout.trim(),
         peakRssMiB: toMiB(peakKiB),
         durationMs: Date.now() - started,
       })
@@ -146,10 +135,7 @@ interface LockOwner {
   startedAt: string
 }
 
-export const DEFAULT_LOCK_PATH = join(
-  tmpdir(),
-  'rhinestone-sdk-test-reference.lock',
-)
+const DEFAULT_LOCK_PATH = join(tmpdir(), 'rhinestone-sdk-test-reference.lock')
 
 function isAlive(pid: number): boolean {
   try {

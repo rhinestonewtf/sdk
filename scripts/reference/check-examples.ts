@@ -443,7 +443,6 @@ export async function main(): Promise<void> {
         peakRssMiB: result.peakRssMiB,
         durationMs: result.durationMs,
       })
-      return result
     }
 
     await step('build', 'bun', ['run', 'build'])
