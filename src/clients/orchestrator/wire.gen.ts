@@ -963,10 +963,40 @@ export interface operations {
                  */
                 timestamp?: number
                 /**
-                 * @description Why the operation failed (present only when FAILED)
+                 * @description Why the operation failed (present only when FAILED). `NOT_EXECUTED` means the source transaction did not land and can no longer land: the account’s funds never left, and the caller can safely re-quote and sign again. `failureEvidence` on the source operation carries the chain evidence.
                  * @example BRIDGE_TIMEOUT
                  */
                 failureReason?: string
+                /** @description Finalized chain evidence that the source transaction did not land and can no longer land: the cluster is past the payload’s last valid slot and the role never consumed its counter. The account’s funds never left; re-quote and sign again. */
+                failureEvidence?: {
+                  /** @enum {string} */
+                  vm: 'svm'
+                  /**
+                   * @description The role's on-chain counter never reached the one the payload signed
+                   * @enum {string}
+                   */
+                  reason: 'COUNTER_UNCONSUMED'
+                  /** @description The Swig state account, base58 */
+                  swig: string
+                  /** @description The Swig role the payload was signed under */
+                  roleId: number
+                  /** @description The replay counter the payload consumes */
+                  signedCounter: number
+                  /** @description The role's stored counter at `observedSlot` */
+                  observedCounter: number
+                  /**
+                   * @description The last slot the payload could have executed in
+                   * @example 312000060
+                   */
+                  lastValidSlot: string
+                  /**
+                   * @description The finalized slot the role was read at
+                   * @example 312000081
+                   */
+                  observedSlot: string
+                  /** @enum {string} */
+                  commitment: 'finalized'
+                }
                 /**
                  * @description This operation's transaction spends the account's own tokens. Absent means it moves none of them (a destination fill, or a tokenless intent). Read it together with the operation status: a FAILED intent none of whose debiting operations reached COMPLETED never took the account's funds. Per-operation rather than per-intent because a multi-origin intent has several claims and they can differ.
                  * @example true
