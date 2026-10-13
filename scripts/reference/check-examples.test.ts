@@ -3,7 +3,11 @@ import {
   assertExampleFunding,
   assertPublicFixture,
   extractExamples,
+  type FixtureLocation,
+  formatDiagnostic,
   pageImports,
+  partitionDiagnostics,
+  type SerializedDiagnostic,
   validateRegistry,
 } from './check-examples'
 
@@ -136,5 +140,99 @@ describe('exhaustive public-package Usage gate', () => {
     "declare const input: import('../../src/index').Transaction",
   ])('rejects permissive or source-only positive fixture: %s', (text) => {
     expect(() => assertPublicFixture(text)).toThrow()
+  })
+
+  describe('single compiler pass', () => {
+    const negatives = new Map([
+      ['/c/negative-auth.ts', 2345],
+      ['/c/negative-import.ts', 2305],
+    ])
+    const diagnostic = (
+      file: string | undefined,
+      code: number,
+    ): SerializedDiagnostic => ({ file, line: 1, code, message: 'm' })
+
+    it('counts fixture, global, and declaration diagnostics as positive', () => {
+      const fixture = diagnostic('/c/page--1.ts', 2322)
+      const global = diagnostic(undefined, 2318)
+      const declaration = diagnostic(
+        '/c/node_modules/@rhinestone/sdk/dist/index.d.ts',
+        2304,
+      )
+      const { positive } = partitionDiagnostics(
+        [
+          fixture,
+          global,
+          declaration,
+          diagnostic('/c/negative-auth.ts', 2345),
+          diagnostic('/c/negative-import.ts', 2305),
+        ],
+        negatives,
+      )
+      expect(positive).toEqual([fixture, global, declaration])
+    })
+
+    it('excludes only expected probe codes and requires each one', () => {
+      expect(
+        partitionDiagnostics(
+          [
+            diagnostic('/c/negative-auth.ts', 2345),
+            diagnostic('/c/negative-import.ts', 2305),
+          ],
+          negatives,
+        ),
+      ).toEqual({ positive: [], missingNegatives: [] })
+      // An unrelated error cannot hide behind the probe's intended one.
+      const unrelated = diagnostic('/c/negative-auth.ts', 2554)
+      expect(
+        partitionDiagnostics(
+          [
+            diagnostic('/c/negative-auth.ts', 2345),
+            unrelated,
+            diagnostic('/c/negative-import.ts', 2305),
+          ],
+          negatives,
+        ),
+      ).toEqual({ positive: [unrelated], missingNegatives: [] })
+      expect(
+        partitionDiagnostics(
+          [diagnostic('/c/negative-auth.ts', 2322)],
+          negatives,
+        ).missingNegatives,
+      ).toEqual(['/c/negative-auth.ts', '/c/negative-import.ts'])
+      // A matching code in another file does not satisfy the probe.
+      expect(
+        partitionDiagnostics(
+          [
+            diagnostic('/c/page--1.ts', 2345),
+            diagnostic('/c/negative-import.ts', 2305),
+          ],
+          negatives,
+        ).missingNegatives,
+      ).toEqual(['/c/negative-auth.ts'])
+    })
+
+    it('maps diagnostics to rendered MDX lines', () => {
+      const locations = new Map<string, FixtureLocation>([
+        [
+          '/c/page--2.ts',
+          { page: 'actions/enable', block: 2, start: 4, line: 20, length: 3 },
+        ],
+      ])
+      const at = (line: number, file = '/c/page--2.ts') =>
+        formatDiagnostic({ file, line, code: 2322, message: 'bad' }, locations)
+      expect(at(4)).toBe('actions/enable.mdx block 2 line 20: TS2322 bad')
+      expect(at(6)).toBe('actions/enable.mdx block 2 line 22: TS2322 bad')
+      expect(at(7)).toBe(
+        'actions/enable.mdx block 2 context/assertion line 7: TS2322 bad',
+      )
+      expect(at(2)).toBe(
+        'actions/enable.mdx block 2 context/assertion line 2: TS2322 bad',
+      )
+      expect(at(1, '/c/other.d.ts')).toBe('/c/other.d.ts: TS2322 bad')
+      expect(
+        formatDiagnostic({ line: 0, code: 2318, message: 'x' }, locations),
+      ).toBe('compiler: TS2318 x')
+    })
   })
 })

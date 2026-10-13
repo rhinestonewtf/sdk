@@ -64,8 +64,13 @@ fences, non-public imports, casts, and suppressions fail closed.
 The gate keeps overload Usage blocks separate and checks their inferred return
 types, including both signing and polling contracts. It also runs negative
 compiler probes for missing auth, legacy transaction fields, missing exports,
-and unsupported account capabilities. CI runs this command; do not replace it
-with source-alias typechecking or execute snippets that can submit transactions.
+and unsupported account capabilities. Every fixture and probe shares a single
+compiler program; a probe passes only when its own file reports the expected TS
+code, and any other diagnostic fails the gate. Each heavy step runs under a
+per-step RSS budget with a host-wide lock; see
+[Testing](testing.md#reference-examples) for the budget, lock, and pass
+criteria. CI runs this command; do not replace it with source-alias
+typechecking or execute snippets that can submit transactions.
 
 For a manual preview, put every generated path under one scratch root so the
 sibling docs checkout is never touched:
