@@ -1447,7 +1447,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
           ...(options.validatorId === undefined
             ? {}
             : { validatorId: options.validatorId }),
-        }) as unknown as Promise<OwnerSignature>
+        })
       }
       const internal = await resolvePrepared(
         ctx,
@@ -1476,7 +1476,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       const signed = await workflows.assembleIntent(
         ctx,
         internal,
-        signatures as unknown as Parameters<typeof workflows.assembleIntent>[2],
+        signatures,
         options?.proofs ? { proofs: options.proofs } : undefined,
       )
       return toSignedTransactionData(preparedTransaction, signed, signedIntents)

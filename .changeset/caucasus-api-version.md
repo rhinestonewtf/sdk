@@ -15,7 +15,7 @@ Position is the identity of an authorization. Two requests can carry byte-identi
 - `getTransactionMessages(prepared)` now returns `SigningRequest[]` instead of `{ origin, destination?, targetExecution? }`.
 - `SignedTransactionData.originSignatures` / `destinationSignature` / `targetExecutionSignature` are replaced by `proofs: SigningProof[]`.
 - `signIntent(signingRequests, targetChain, signers?)` takes the ordered requests and returns `{ proofs }`.
-- Independent owner signatures carry `slots` instead of `origin`.
+- Independent owner signatures (`OwnerSignature`, `OwnerSignatureData`) carry `slots` instead of `origin`.
 - A smart-session origin still yields **one** proof containing both `preClaim` and `notarizedClaim`; it is never split across two slots.
 - Removed: `SignData`, `OriginSignData`, `Eip712OriginSignData`, `PersonalSignOriginSignData`, `OriginSignature`. New: `SigningRequest`, `SigningProof` and the types they are built from.
 

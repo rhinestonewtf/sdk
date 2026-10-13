@@ -12,7 +12,11 @@ import type {
   ValidatorContributionInput,
 } from '../../modules/validators/types'
 import type { SigningContext } from '../context'
-import type { ArtifactAssemblyPlan } from '../types'
+import type {
+  ArtifactAssemblyPlan,
+  OwnerSignature,
+  OwnerSignatureData,
+} from '../types'
 import { assembleIntentValidatorArtifact } from './assemble'
 
 export interface IndependentOwnerDescriptor {
@@ -23,35 +27,9 @@ export interface IndependentOwnerDescriptor {
   readonly factorPublicId?: number | Hex
 }
 
-export type IndependentOwnerSignatureData =
-  | {
-      readonly kind: 'ecdsa'
-      readonly signer: Address
-      readonly slots: readonly Hex[]
-    }
-  | {
-      readonly kind: 'passkey'
-      readonly publicKey: Hex
-      readonly slots: readonly {
-        readonly webauthn: {
-          readonly authenticatorData: Hex
-          readonly challengeIndex?: number
-          readonly clientDataJSON: string
-          readonly typeIndex?: number
-          readonly userVerificationRequired?: boolean
-        }
-        readonly signature: Hex
-      }[]
-    }
+export type IndependentOwnerSignatureData = OwnerSignatureData
 
-export type IndependentOwnerSignature =
-  | ({ readonly intentId: string } & IndependentOwnerSignatureData)
-  | {
-      readonly intentId: string
-      readonly kind: 'multi-factor'
-      readonly validatorId: number | Hex
-      readonly signature: IndependentOwnerSignatureData
-    }
+export type IndependentOwnerSignature = OwnerSignature
 
 export function assembleIndependentIntentArtifact(input: {
   readonly intentId: string
