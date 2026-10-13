@@ -5,6 +5,7 @@
       "**",
       "!src/dist",
       "!.artifacts",
+      "!.scratch",
       "!coverage",
       "!integration-test",
       "!.changeset",

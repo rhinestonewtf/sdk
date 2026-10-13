@@ -12,6 +12,7 @@ integration setup.
 | Architecture       | Production imports                    | Dependency, cycle, and host-independence rules | `bun run check:architecture` |
 | Typecheck           | Source, unit tests, and test harnesses | TypeScript                         | `bun run typecheck`          |
 | Public types        | `test/types/**`                       | Consumer-facing compile fixtures   | `bun run test:types`         |
+| Reference examples | Generated SDK Reference Usage blocks   | Packed public package               | `bun run test:reference`     |
 | Package contract   | `test/contract/**/*.ctest.ts`         | Packed release and current packages | `bun run test:contract`      |
 | Integration        | `test/integration/**/*.itest.ts`      | Live orchestrator and testnets     | `bun run test:integration`   |
 
@@ -64,6 +65,15 @@ The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects
 forbidden layer edges, concrete-client imports, published-barrel imports, and
 cycles.
+
+## Reference examples
+
+`bun run test:reference` builds the SDK, regenerates the reference into an
+isolated scratch directory, packs `src/`, and type-checks every rendered
+TypeScript Usage block against that package. It covers 73 pages and 78 blocks.
+The manifest and context registry must match exactly; malformed fences,
+non-public imports, casts, suppressions, missing auth, legacy fields, missing
+exports, and unavailable account capabilities fail the gate.
 
 ## Address derivation vectors
 

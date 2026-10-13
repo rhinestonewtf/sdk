@@ -192,6 +192,11 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
  * key from another curve cannot be told apart, and would install a role no one
  * can sign for. An EVM address is refused, never read as a key.
  *
+ * The example assumes an authenticated `sdk`, an existing passkey-root
+ * `account` with authority-management permission, its saved `swig` address,
+ * a viem `recoverySigner` and its matching secp256k1 `recoveryPublicKey`, and
+ * a viem WebAuthn `newPasskey`. Authority changes are intrinsically sponsored;
+ * integrator sponsorship must be enabled. Do not add a `sponsored` flag.
  * @param key The key to add: a viem local account, or its secp256k1 public key
  * as 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex.
  * @param options `permission`, what the new role may do (required, no default):
@@ -203,7 +208,6 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
  * @see {@link removeEcdsaKey}
  * @example
  * ```ts
- * import { toAccount } from 'viem/accounts'
  * import { addEcdsaKey, addPasskey, solanaDevnet } from '@rhinestone/sdk/solana'
  *
  * // The passkey-root account enrolls a recovery key that can only manage authorities.
@@ -222,7 +226,7 @@ function ecdsaKey(key: LocalAccount | Hex): SolanaAuthorityKey {
  *   solana: {
  *     owner: {
  *       type: 'ecdsa',
- *       account: toAccount({ address: recoveryAddress, signMessage: recoverySigner.signMessage }),
+ *       account: recoverySigner,
  *     },
  *     swig,
  *   },
