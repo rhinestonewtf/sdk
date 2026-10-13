@@ -172,17 +172,28 @@ describe('exhaustive public-package Usage gate', () => {
       expect(positive).toEqual([fixture, global, declaration])
     })
 
-    it('excludes probe diagnostics and requires each expected code', () => {
+    it('excludes only expected probe codes and requires each one', () => {
       expect(
         partitionDiagnostics(
           [
             diagnostic('/c/negative-auth.ts', 2345),
-            diagnostic('/c/negative-auth.ts', 2554),
             diagnostic('/c/negative-import.ts', 2305),
           ],
           negatives,
         ),
       ).toEqual({ positive: [], missingNegatives: [] })
+      // An unrelated error cannot hide behind the probe's intended one.
+      const unrelated = diagnostic('/c/negative-auth.ts', 2554)
+      expect(
+        partitionDiagnostics(
+          [
+            diagnostic('/c/negative-auth.ts', 2345),
+            unrelated,
+            diagnostic('/c/negative-import.ts', 2305),
+          ],
+          negatives,
+        ),
+      ).toEqual({ positive: [unrelated], missingNegatives: [] })
       expect(
         partitionDiagnostics(
           [diagnostic('/c/negative-auth.ts', 2322)],

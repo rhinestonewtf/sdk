@@ -341,15 +341,16 @@ export interface SerializedDiagnostic {
   message: string
 }
 
-// Probe diagnostics prove rejection; everything else, including global and
-// declaration-file diagnostics, is a positive failure.
+// Only a probe's expected code proves rejection; anything else, including other
+// probe-file, global, and declaration-file diagnostics, is a positive failure.
 export function partitionDiagnostics(
   diagnostics: SerializedDiagnostic[],
   negatives: Map<string, number>,
 ): { positive: SerializedDiagnostic[]; missingNegatives: string[] } {
   return {
     positive: diagnostics.filter(
-      (diagnostic) => !diagnostic.file || !negatives.has(diagnostic.file),
+      (diagnostic) =>
+        !diagnostic.file || negatives.get(diagnostic.file) !== diagnostic.code,
     ),
     missingNegatives: [...negatives]
       .filter(
