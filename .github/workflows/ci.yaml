@@ -22,6 +22,7 @@ jobs:
           git diff --exit-code src/clients/orchestrator/wire.gen.ts
 
       - name: Build and verify every public-package reference Usage example
+        timeout-minutes: 10
         run: bun run test:reference
 
       - name: Check

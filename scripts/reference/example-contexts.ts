@@ -256,9 +256,25 @@ declare const intentResult: import('@rhinestone/sdk').TransactionResult
 const intentStatus = await account.waitForExecution(intentResult)
 type Intent = Assert<Equal<typeof intentStatus, Pick<import('@rhinestone/sdk').IntentOpStatus, 'traceId' | 'purpose' | 'status' | 'accounts' | 'operations' | 'refunds' | 'details'>>>
 `
-export const negativeExamples: Record<string, string> = {
-  auth: `import { RhinestoneSDK } from '@rhinestone/sdk'\nnew RhinestoneSDK({})\n`,
-  legacy: `${evm}await account.prepareTransaction({ chain, calls: [] })\n`,
-  import: `import { missingPublicExport } from '@rhinestone/sdk'\n`,
-  capability: `${sdk}const receiver = await sdk.createAccount({ evm: { address: '0x0000000000000000000000000000000000000001' } })\nawait receiver.prepareTransaction({ destination: { chain, calls: [] }, sponsored: true })\n`,
+// Each probe must be rejected in its own file with its expected TS error code.
+export const negativeExamples: Record<
+  string,
+  { source: string; code: number }
+> = {
+  auth: {
+    source: `import { RhinestoneSDK } from '@rhinestone/sdk'\nnew RhinestoneSDK({})\n`,
+    code: 2345,
+  },
+  legacy: {
+    source: `${evm}await account.prepareTransaction({ chain, calls: [] })\n`,
+    code: 2322,
+  },
+  import: {
+    source: `import { missingPublicExport } from '@rhinestone/sdk'\n`,
+    code: 2305,
+  },
+  capability: {
+    source: `${sdk}const receiver = await sdk.createAccount({ evm: { address: '0x0000000000000000000000000000000000000001' } })\nawait receiver.prepareTransaction({ destination: { chain, calls: [] }, sponsored: true })\n`,
+    code: 2339,
+  },
 }

@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -9,6 +10,12 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { createConsumerLayout, runCommand, writeJson } from '../contract/shared'
+import {
+  acquireHostLock,
+  killActiveGroups,
+  parseMemoryBudget,
+  runBounded,
+} from './bounded-run'
 import {
   type ExampleContext,
   exampleContexts,
@@ -289,6 +296,9 @@ export function compile(
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
     skipLibCheck: false,
+    // TypeScript's bundled lib.*.d.ts are not SDK-owned; SDK and dependency
+    // declarations stay fully checked.
+    skipDefaultLibCheck: true,
     types: [],
     lib: ['lib.es2022.d.ts', 'lib.dom.d.ts'],
   }
@@ -324,142 +334,290 @@ export function compile(
   return ts.getPreEmitDiagnostics(program)
 }
 
-export function main(): void {
+export interface SerializedDiagnostic {
+  file?: string
+  line: number
+  code: number
+  message: string
+}
+
+// Probe diagnostics prove rejection; everything else, including global and
+// declaration-file diagnostics, is a positive failure.
+export function partitionDiagnostics(
+  diagnostics: SerializedDiagnostic[],
+  negatives: Map<string, number>,
+): { positive: SerializedDiagnostic[]; missingNegatives: string[] } {
+  return {
+    positive: diagnostics.filter(
+      (diagnostic) => !diagnostic.file || !negatives.has(diagnostic.file),
+    ),
+    missingNegatives: [...negatives]
+      .filter(
+        ([file, code]) =>
+          !diagnostics.some(
+            (diagnostic) =>
+              diagnostic.file === file && diagnostic.code === code,
+          ),
+      )
+      .map(([file]) => file),
+  }
+}
+
+export interface FixtureLocation {
+  page: string
+  block: number
+  start: number
+  line: number
+  length: number
+}
+
+export function formatDiagnostic(
+  diagnostic: SerializedDiagnostic,
+  locations: Map<string, FixtureLocation>,
+): string {
+  const location = diagnostic.file ? locations.get(diagnostic.file) : undefined
+  const line = diagnostic.line
+  const inSnippet =
+    location &&
+    line >= location.start &&
+    line < location.start + location.length
+  const label = location
+    ? `${location.page}.mdx block ${location.block} ${inSnippet ? `line ${location.line + line - location.start}` : `context/assertion line ${line}`}`
+    : (diagnostic.file ?? 'compiler')
+  return `${label}: TS${diagnostic.code} ${diagnostic.message}`
+}
+
+interface StepReport {
+  label: string
+  peakRssMiB: number
+  durationMs: number
+}
+
+export async function main(): Promise<void> {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-  const scratch = join(root, '.scratch')
-  mkdirSync(scratch, { recursive: true })
-  const run = mkdtempSync(join(scratch, 'reference-examples-'))
-  runCommand('bun', ['run', 'build'], { cwd: root })
-  const model = join(run, 'typedoc.json')
-  runCommand(
-    'bunx',
-    ['typedoc', '--options', 'scripts/reference/typedoc.json', '--json', model],
-    { cwd: root },
-  )
-  const output = join(run, 'pages')
-  runCommand('bun', ['run', 'scripts/reference/generate.ts'], {
-    cwd: root,
-    env: {
+  let reportPath: string | undefined
+  let report: Record<string, unknown> = {}
+  let release: (() => void) | undefined
+  const steps: StepReport[] = []
+  const signals = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 } as const
+  const onSignal = (signal: keyof typeof signals) => {
+    killActiveGroups()
+    release?.()
+    process.exit(signals[signal])
+  }
+  const onExit = () => {
+    killActiveGroups()
+    release?.()
+  }
+  for (const signal of Object.keys(signals) as (keyof typeof signals)[])
+    process.on(signal, onSignal)
+  process.on('exit', onExit)
+  try {
+    const budget = parseMemoryBudget(process.env.SDK_REF_MAX_RSS_MIB)
+    release = await acquireHostLock()
+    const scratch = join(root, '.scratch')
+    mkdirSync(scratch, { recursive: true })
+    const run = mkdtempSync(join(scratch, 'reference-examples-'))
+    reportPath = join(run, 'report.json')
+    report = {
+      status: 'incomplete',
+      startedAt: new Date().toISOString(),
+      memoryBudgetMiB: budget,
+    }
+    writeJson(reportPath, report)
+    console.info(`Reference examples: run directory ${run}`)
+    const step = async (
+      label: string,
+      command: string,
+      args: string[],
+      env?: NodeJS.ProcessEnv,
+    ) => {
+      const result = await runBounded(command, args, {
+        cwd: root,
+        env,
+        label,
+        maxRssMiB: budget,
+      })
+      steps.push({
+        label,
+        peakRssMiB: result.peakRssMiB,
+        durationMs: result.durationMs,
+      })
+      return result
+    }
+
+    await step('build', 'bun', ['run', 'build'])
+    const model = join(run, 'typedoc.json')
+    await step('typedoc', 'bunx', [
+      'typedoc',
+      '--options',
+      'scripts/reference/typedoc.json',
+      '--json',
+      model,
+    ])
+    const output = join(run, 'pages')
+    await step('render', 'bun', ['run', 'scripts/reference/generate.ts'], {
       SDK_REF_TYPEDOC_JSON: model,
       SDK_REF_OUT: output,
       SDK_REF_CHECK: '1',
       SDK_REF_DOCS_JSON: join(run, 'docs.json'),
       SDK_REF_OWNERSHIP_JSON: join(run, 'ownership.json'),
       SDK_REF_PATHS_FIXTURE: join(run, 'paths.json'),
-    },
-  })
-  const expected = manifestPages().sort()
-  const actual = mdxFiles(output).sort()
-  if (JSON.stringify(expected) !== JSON.stringify(actual))
-    throw new Error('Rendered page inventory differs from manifest')
-  const pages = new Map(
-    expected.map((page) => [
-      page,
-      extractExamples(readFileSync(join(output, `${page}.mdx`), 'utf8')),
-    ]),
-  )
-  validateRegistry(pages, exampleContexts)
-  const packed = JSON.parse(
-    runCommand('npm', ['pack', '--json', '--pack-destination', run], {
-      cwd: join(root, 'src'),
-      quiet: true,
-    }),
-  )
-  runCommand('tar', ['-xzf', join(run, packed[0].filename), '-C', run], {
-    cwd: root,
-  })
-  const consumer = join(run, 'consumer')
-  mkdirSync(consumer)
-  const probe = join(run, 'probe.mjs')
-  writeFileSync(probe, '')
-  createConsumerLayout({
-    packageDirectory: join(run, 'package'),
-    consumerDirectory: consumer,
-    dependencyRoot: join(root, 'node_modules'),
-    runtimeProbePath: probe,
-    includeOptionalPeers: true,
-  })
-  const files: string[] = []
-  const locations = new Map<
-    string,
-    { page: string; block: number; start: number; line: number; length: number }
-  >()
-  for (const [page, examples] of pages) {
-    for (const [index, block] of examples.usage.entries()) {
-      const fixture = exampleContexts[page][index]
-      const prefix = `export {}\n${pageImports(examples.imports, block.text)}${fixture.setup}`
-      const file = join(
-        consumer,
-        `${page.replaceAll('/', '--')}--${index + 1}.ts`,
-      )
-      const text = `${prefix}${block.text}${fixture.assertions ?? ''}\n`
-      assertPublicFixture(text)
-      assertExampleFunding(block.text)
-      writeFileSync(file, text)
-      locations.set(file, {
+    })
+    const expected = manifestPages().sort()
+    const actual = mdxFiles(output).sort()
+    if (JSON.stringify(expected) !== JSON.stringify(actual))
+      throw new Error('Rendered page inventory differs from manifest')
+    const pages = new Map(
+      expected.map((page) => [
         page,
-        block: index + 1,
-        start: prefix.split('\n').length,
-        line: block.line,
-        length: block.text.split('\n').length - 1,
-      })
+        extractExamples(readFileSync(join(output, `${page}.mdx`), 'utf8')),
+      ]),
+    )
+    validateRegistry(pages, exampleContexts)
+    const packed = JSON.parse(
+      runCommand('npm', ['pack', '--json', '--pack-destination', run], {
+        cwd: join(root, 'src'),
+        quiet: true,
+      }),
+    )
+    runCommand('tar', ['-xzf', join(run, packed[0].filename), '-C', run], {
+      cwd: root,
+    })
+    const consumer = join(run, 'consumer')
+    mkdirSync(consumer)
+    const probe = join(run, 'probe.mjs')
+    writeFileSync(probe, '')
+    createConsumerLayout({
+      packageDirectory: join(run, 'package'),
+      consumerDirectory: consumer,
+      dependencyRoot: join(root, 'node_modules'),
+      runtimeProbePath: probe,
+      includeOptionalPeers: true,
+    })
+    const files: string[] = []
+    const locations = new Map<string, FixtureLocation>()
+    for (const [page, examples] of pages) {
+      for (const [index, block] of examples.usage.entries()) {
+        const fixture = exampleContexts[page][index]
+        const prefix = `export {}\n${pageImports(examples.imports, block.text)}${fixture.setup}`
+        const file = join(
+          consumer,
+          `${page.replaceAll('/', '--')}--${index + 1}.ts`,
+        )
+        const text = `${prefix}${block.text}${fixture.assertions ?? ''}\n`
+        assertPublicFixture(text)
+        assertExampleFunding(block.text)
+        writeFileSync(file, text)
+        locations.set(file, {
+          page,
+          block: index + 1,
+          start: prefix.split('\n').length,
+          line: block.line,
+          length: block.text.split('\n').length - 1,
+        })
+        files.push(file)
+      }
+    }
+    const blocks = files.length
+    const inferred = join(consumer, 'inferred-contracts.ts')
+    assertPublicFixture(inferredContracts)
+    writeFileSync(inferred, inferredContracts)
+    files.push(inferred)
+    const negatives = new Map<string, number>()
+    const probeNames = new Map<string, string>()
+    for (const [name, { source, code }] of Object.entries(negativeExamples)) {
+      const file = join(consumer, `negative-${name}.ts`)
+      writeFileSync(file, source)
+      negatives.set(file, code)
+      probeNames.set(file, name)
       files.push(file)
     }
-  }
-  const inferred = join(consumer, 'inferred-contracts.ts')
-  assertPublicFixture(inferredContracts)
-  writeFileSync(inferred, inferredContracts)
-  files.push(inferred)
-  const diagnostics = compile(files, consumer)
-  const messages = diagnostics.map((diagnostic) => {
-    const position = diagnostic.file?.getLineAndCharacterOfPosition(
-      diagnostic.start ?? 0,
-    )
-    const location = diagnostic.file && locations.get(diagnostic.file.fileName)
-    const line = (position?.line ?? 0) + 1
-    const inSnippet =
-      location &&
-      line >= location.start &&
-      line < location.start + location.length
-    const label = location
-      ? `${location.page}.mdx block ${location.block} ${inSnippet ? `line ${location.line + line - location.start}` : `context/assertion line ${line}`}`
-      : (diagnostic.file?.fileName ?? 'compiler')
-    return `${label}: TS${diagnostic.code} ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`
-  })
-  writeJson(join(run, 'report.json'), {
-    pages: pages.size,
-    blocks: files.length - 1,
-    diagnostics: messages,
-  })
-  for (const [name, text] of Object.entries(negativeExamples)) {
-    const file = join(consumer, `negative-${name}.ts`)
-    writeFileSync(file, text)
-    const failures = compile([file], consumer)
-    const expectedCodes: Record<string, number> = {
-      auth: 2345,
-      legacy: 2322,
-      import: 2305,
-      capability: 2339,
+    report = { ...report, pages: pages.size, blocks }
+
+    const workerInput = join(run, 'compile-input.json')
+    const workerOutput = join(run, 'compile-output.json')
+    writeJson(workerInput, { consumer, files })
+    await step('compile', 'bun', [
+      '--smol',
+      join(root, 'scripts/reference/compile-worker.ts'),
+      workerInput,
+      workerOutput,
+    ])
+    if (!existsSync(workerOutput))
+      throw new Error('Compile worker produced no output')
+    const compiled = JSON.parse(readFileSync(workerOutput, 'utf8')) as {
+      diagnostics: SerializedDiagnostic[]
+      maxRssMiB: number
     }
-    if (
-      !failures.some(
-        (failure) =>
-          failure.file?.fileName === file &&
-          failure.code === expectedCodes[name],
-      )
+    if (!Array.isArray(compiled.diagnostics))
+      throw new Error('Compile worker output is malformed')
+    const { positive, missingNegatives } = partitionDiagnostics(
+      compiled.diagnostics,
+      negatives,
     )
+    const messages = positive.map((diagnostic) =>
+      formatDiagnostic(diagnostic, locations),
+    )
+    const failed = missingNegatives.map((file) => probeNames.get(file))
+    report = {
+      ...report,
+      negativeProbes: Object.fromEntries(
+        [...negatives].map(([file, code]) => [
+          probeNames.get(file),
+          { expectedCode: code, rejected: !missingNegatives.includes(file) },
+        ]),
+      ),
+      diagnostics: messages,
+      compileMaxRssMiB: compiled.maxRssMiB,
+    }
+    if (failed.length)
       throw new Error(
-        `Negative compiler probe did not reject the intended defect: ${name}`,
+        `Negative compiler probe did not reject the intended defect: ${failed.join(', ')}`,
       )
+    if (messages.length)
+      throw new Error(
+        `${messages.length} compiler diagnostics\n${messages.join('\n')}`,
+      )
+    writeJson(reportPath, {
+      ...report,
+      status: 'passed',
+      finishedAt: new Date().toISOString(),
+      steps,
+    })
+    const peaks = steps
+      .map((entry) => `${entry.label} ${entry.peakRssMiB} MiB`)
+      .join(', ')
+    console.info(
+      `Reference examples passed: ${pages.size} pages, ${blocks} blocks, ${negatives.size} negative probes in one compiler pass; peak RSS ${peaks} (budget ${budget} MiB). Report: ${reportPath}`,
+    )
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    if (reportPath)
+      writeJson(reportPath, {
+        ...report,
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        steps,
+        error: reason,
+      })
+    console.error(
+      `Reference examples failed: ${reason}. Report: ${reportPath ?? 'none'}`,
+    )
+    process.exitCode = 1
+  } finally {
+    release?.()
+    for (const signal of Object.keys(signals) as (keyof typeof signals)[])
+      process.off(signal, onSignal)
+    process.off('exit', onExit)
   }
-  console.info(
-    `Reference Usage: ${pages.size} pages, ${files.length - 1} blocks; 4 negative probes. Report: ${join(run, 'report.json')}`,
-  )
-  if (messages.length) throw new Error(messages.join('\n'))
 }
 
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  main()
+  main().catch((error) => {
+    console.error(error)
+    process.exitCode = 1
+  })

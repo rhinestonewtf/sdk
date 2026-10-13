@@ -75,6 +75,21 @@ The manifest and context registry must match exactly; malformed fences,
 non-public imports, casts, suppressions, missing auth, legacy fields, missing
 exports, and unavailable account capabilities fail the gate.
 
+All fixtures, inferred contracts, and negative probes are type-checked in one
+compiler pass, in a separate `bun --smol` worker. SDK and dependency
+declarations stay checked (`skipLibCheck: false`); only TypeScript's bundled
+`lib.*.d.ts` are skipped. Build, TypeDoc, render, and compile each run as their
+own process group under an RSS budget (default 2048 MiB, override with
+`SDK_REF_MAX_RSS_MIB`); a step over budget is killed and the gate fails with
+"exceeded the … memory budget". One run per host holds
+`$TMPDIR/rhinestone-sdk-test-reference.lock`; others wait up to 15 minutes, then
+fail as incomplete.
+
+A run counts as passed only with exit 0, a final `Reference examples passed: …`
+line, and `report.json` `status: "passed"`. The report starts as `incomplete`,
+so a killed run never looks green; missing output is a failure. The success
+line and the report's `steps` record each step's peak RSS.
+
 ## Address derivation vectors
 
 `test/vectors/accounts/` guards the promise that a configuration always derives
