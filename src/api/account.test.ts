@@ -67,7 +67,7 @@ import {
   UnsupportedSigningRequestError,
 } from '../errors/execution'
 import type { EvmAccountConfig } from '../evm/index'
-import type { RhinestoneAccountConfig } from '../index'
+import type { OwnerSignature, RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
@@ -4058,12 +4058,33 @@ describe('account boundary adapters', () => {
       accountChain: toEvmChainReference(1),
       signing: {} as never,
     }))
-    const signIntentAsOwner = vi.fn(async () => ({
+    const contribution: OwnerSignature = {
       intentId: 'alternate',
-      kind: 'ecdsa' as const,
-      signer: owner.address,
-      slots: [],
-    }))
+      kind: 'multi-factor',
+      validatorId: 7,
+      signature: {
+        kind: 'ecdsa',
+        signer: owner.address,
+        slots: [`0x${'aa'.repeat(65)}`, `0x${'bb'.repeat(65)}`],
+      },
+    }
+    const signIntentAsOwner = vi.fn(async () => contribution)
+    const assembleIntent = vi.fn(
+      async (
+        _context: unknown,
+        prepared: unknown,
+        _signatures: readonly OwnerSignature[],
+        _options?: unknown,
+      ) => ({
+        prepared,
+        proofs: [{ kind: 'eip712' as const, signature: '0x78' as const }],
+        transcript: {
+          planKind: 'intent-independent' as const,
+          payloadId: '0x' as const,
+          stages: [],
+        },
+      }),
+    )
     const prepareUserOperation = vi.fn(async (_context, input) => ({
       input,
       operation: {} as never,
@@ -4081,6 +4102,7 @@ describe('account boundary adapters', () => {
       signIntentFromRequests,
       reconstructPreparedIntent,
       signIntentAsOwner,
+      assembleIntent,
       prepareUserOperation,
       sendUserOperation,
     }
@@ -4141,11 +4163,12 @@ describe('account boundary adapters', () => {
       request: preparedRequest,
       transaction: sameChainTransaction,
     } satisfies PreparedTransactionData
-    await facade.signTransaction(prepared, {
+    const signed = await facade.signTransaction(prepared, {
       owner,
       intentId: 'alternate',
       validatorId: 7,
     })
+    expect(signed).toBe(contribution)
 
     expect(reconstructPreparedIntent.mock.calls[0]?.[1].quote.intentId).toBe(
       'alternate',
@@ -4158,6 +4181,26 @@ describe('account boundary adapters', () => {
         validatorId: 7,
       },
     )
+
+    // The coordinating party receives the contribution as JSON and hands it
+    // to assembly untouched.
+    const transported: OwnerSignature = JSON.parse(JSON.stringify(signed))
+    const proofs = [
+      {
+        intentId: 'alternate',
+        requestSetId: `0x${'cc'.repeat(32)}` as const,
+        requestIndex: 0,
+        proof: { kind: 'eip712' as const, signature: '0x9a' as const },
+      },
+    ]
+    await facade.assembleTransaction(prepared, [transported], { proofs })
+    expect(assembleIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      [contribution],
+      { proofs },
+    )
+    expect(assembleIntent.mock.calls[0]?.[2]?.[0]).toBe(transported)
 
     const userOperation = {
       chain: mainnet,

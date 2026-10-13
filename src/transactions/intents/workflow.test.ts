@@ -9,6 +9,7 @@ import {
   delegationRequest,
   eip712Request,
 } from '../../../test/utils/caucasus'
+import { signingPasskey } from '../../../test/utils/passkeys'
 import type {
   AccountAdapter,
   AccountRuntime,
@@ -24,21 +25,32 @@ import type {
   OrchestratorIntentRequest,
 } from '../../clients/orchestrator/types'
 import { UnsupportedAccountCapabilityError } from '../../errors/capability'
-import { InvalidSourceCallsError } from '../../errors/execution'
+import {
+  InsufficientOwnerSignaturesError,
+  InvalidSourceCallsError,
+  MismatchedOwnerSignaturesError,
+} from '../../errors/execution'
 import { defineValidator } from '../../modules/validators/definition'
 import {
   buildQuorumMerkleTree,
   getQuorumMerkleRootSignableHash,
   getQuorumSignableHash,
 } from '../../modules/validators/quorum'
+import {
+  ecdsaSignerId,
+  webauthnSignerId,
+} from '../../modules/validators/signer-id'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
 import type { SessionEnableData } from '../../modules/validators/smart-sessions/types'
+import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 import { createAccountSigningContext } from '../../signing/context'
+import type { IndependentOwnerSignature } from '../../signing/intent-plans/independent'
 import type {
   IntentSigningInput,
   IntentSigningRequest,
 } from '../../signing/intent-plans/types'
+import { createSignerInvocationPort } from '../../signing/signers/registry'
 import { buildIntentSigningInput, prepareIntent } from './prepare'
 import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
@@ -1294,5 +1306,255 @@ describe('intent workflow', () => {
         yParity: 0,
       },
     })
+  })
+})
+
+// A contribution leaves the signing owner as JSON and reaches the coordinating
+// party out of order; assembly must bind it to the same owner, intent, and
+// ordered request slots as ordinary all-owner signing.
+describe('detached owner contributions', () => {
+  const firstPasskey = signingPasskey({
+    privateKey: `0x${'21'.repeat(32)}`,
+  }).account
+  const secondPasskey = signingPasskey({
+    privateKey: `0x${'42'.repeat(32)}`,
+  }).account
+  const signerInvoker = createSignerInvocationPort({
+    signers: {
+      [ecdsaSignerId(account)]: { kind: 'ecdsa', account },
+      [ecdsaSignerId(secondAccount)]: { kind: 'ecdsa', account: secondAccount },
+      [webauthnSignerId(firstPasskey)]: {
+        kind: 'webauthn',
+        account: firstPasskey,
+      },
+      [webauthnSignerId(secondPasskey)]: {
+        kind: 'webauthn',
+        account: secondPasskey,
+      },
+    },
+  })
+
+  const ecdsaForm = {
+    label: 'ECDSA 2-of-2',
+    owner: defineValidator({
+      type: 'ecdsa',
+      accounts: [account, secondAccount],
+      threshold: 2,
+    }),
+    owners: [
+      { signerId: ecdsaSignerId(account), identity: account.address },
+      {
+        signerId: ecdsaSignerId(secondAccount),
+        identity: secondAccount.address,
+      },
+    ],
+  }
+  const multiFactorForm = {
+    label: 'multi-factor ECDSA + passkey',
+    owner: defineValidator({
+      type: 'multi-factor',
+      validators: [
+        { type: 'ecdsa', accounts: [account] },
+        { type: 'passkey', accounts: [firstPasskey] },
+      ],
+      threshold: 2,
+    }),
+    owners: [
+      {
+        signerId: ecdsaSignerId(account),
+        identity: account.address,
+        validatorId: 0,
+      },
+      {
+        signerId: webauthnSignerId(firstPasskey),
+        identity: firstPasskey.publicKey,
+        validatorId: 1,
+      },
+    ],
+  }
+  const forms: readonly {
+    readonly label: string
+    readonly owner: ResolvedValidatorDefinition
+    readonly owners: readonly {
+      readonly signerId: string
+      readonly identity: Hex
+      readonly validatorId?: number
+    }[]
+  }[] = [
+    ecdsaForm,
+    {
+      label: 'passkey 2-of-2',
+      owner: defineValidator({
+        type: 'passkey',
+        accounts: [firstPasskey, secondPasskey],
+        threshold: 2,
+      }),
+      owners: [
+        {
+          signerId: webauthnSignerId(firstPasskey),
+          identity: firstPasskey.publicKey,
+        },
+        {
+          signerId: webauthnSignerId(secondPasskey),
+          identity: secondPasskey.publicKey,
+        },
+      ],
+    },
+    multiFactorForm,
+  ]
+
+  function detachedWorkflow(owner: ResolvedValidatorDefinition) {
+    const baseRuntime = runtime()
+    const accountRuntime: AccountRuntime = {
+      ...baseRuntime,
+      construction: { ...baseRuntime.construction, owner },
+    }
+    return context({
+      account: { forChain: vi.fn(async () => accountRuntime) },
+      signerInvoker,
+      quoteClient: {
+        createQuote: vi.fn(async () => ({
+          traceId: 'trace-detached',
+          routes: [
+            quote({
+              signingRequests: [
+                originRequest(),
+                eip712Request({
+                  chainId: 1,
+                  purpose: 'targetExecutionAuthorization',
+                  typedData: intentTypedData(1, '2'),
+                }),
+                destinationRequest(),
+              ],
+            }),
+          ],
+        })),
+      },
+    })
+  }
+
+  async function signDetached(form: (typeof forms)[number]) {
+    const workflow = detachedWorkflow(form.owner)
+    const prepared = await prepareIntent(workflow, input)
+    const contributions: IndependentOwnerSignature[] = []
+    for (const { signerId, validatorId } of form.owners) {
+      contributions.push(
+        await signIntentAsOwner(workflow, prepared, {
+          signerId,
+          ...(validatorId === undefined ? {} : { validatorId }),
+        }),
+      )
+    }
+    const transported: IndependentOwnerSignature[] = contributions.map(
+      (contribution) => JSON.parse(JSON.stringify(contribution)),
+    )
+    return { workflow, prepared, contributions, transported }
+  }
+
+  test.each(forms)(
+    'transports and assembles $label contributions',
+    async (form) => {
+      const { workflow, prepared, contributions, transported } =
+        await signDetached(form)
+
+      expect(transported).toEqual(contributions)
+      const slotCount = prepared.signing.requests.filter(
+        (request) =>
+          request.kind === 'eip712' && request.exposedForIndependentSigning,
+      ).length
+      expect(slotCount).toBe(2)
+      transported.forEach((contribution, index) => {
+        const expected = form.owners[index]
+        expect(contribution.intentId).toBe(prepared.quote.intentId)
+        const data =
+          contribution.kind === 'multi-factor'
+            ? contribution.signature
+            : contribution
+        if (contribution.kind === 'multi-factor') {
+          expect(contribution.validatorId).toBe(expected?.validatorId)
+        } else {
+          expect(expected?.validatorId).toBeUndefined()
+        }
+        expect(
+          (data.kind === 'ecdsa' ? data.signer : data.publicKey).toLowerCase(),
+        ).toBe(expected?.identity.toLowerCase())
+        expect(data.slots).toHaveLength(slotCount)
+      })
+
+      const assembled = await assembleIntent(
+        workflow,
+        prepared,
+        [...transported].reverse(),
+      )
+      // Origin, target, and the destination reusing the origin's bytes.
+      expect(assembled.proofs).toHaveLength(3)
+      expect(assembled.proofs[2]).toEqual(assembled.proofs[0])
+      // ECDSA and the in-process passkey both sign deterministically, so the
+      // detached path must reproduce ordinary all-owner signing exactly.
+      const full = await signIntent(workflow, prepared)
+      expect(assembled.proofs).toEqual(full.proofs)
+    },
+  )
+
+  test('refuses contributions bound to another intent', async () => {
+    const { workflow, prepared, transported } = await signDetached(ecdsaForm)
+    const [first, second] = transported
+    if (!first || !second) throw new Error('Expected two contributions')
+
+    await expect(
+      assembleIntent(workflow, prepared, [
+        first,
+        { ...second, intentId: 'other-intent' },
+      ]),
+    ).rejects.toBeInstanceOf(MismatchedOwnerSignaturesError)
+  })
+
+  test('refuses contributions missing a request slot', async () => {
+    const { workflow, prepared, transported } = await signDetached(ecdsaForm)
+    const [first, second] = transported
+    if (second?.kind !== 'ecdsa' || !first) {
+      throw new Error('Expected two ECDSA contributions')
+    }
+
+    await expect(
+      assembleIntent(workflow, prepared, [
+        first,
+        { ...second, slots: second.slots.slice(0, -1) },
+      ]),
+    ).rejects.toBeInstanceOf(MismatchedOwnerSignaturesError)
+  })
+
+  test('refuses the same owner twice', async () => {
+    const { workflow, prepared, transported } = await signDetached(ecdsaForm)
+    const [first] = transported
+    if (!first) throw new Error('Expected a contribution')
+
+    await expect(
+      assembleIntent(workflow, prepared, [first, first]),
+    ).rejects.toBeInstanceOf(MismatchedOwnerSignaturesError)
+  })
+
+  test('refuses fewer owners than the threshold', async () => {
+    const { workflow, prepared, transported } = await signDetached(ecdsaForm)
+
+    await expect(
+      assembleIntent(workflow, prepared, transported.slice(0, 1)),
+    ).rejects.toBeInstanceOf(InsufficientOwnerSignaturesError)
+  })
+
+  test('refuses a factor contribution under another validator ID', async () => {
+    const { workflow, prepared, transported } =
+      await signDetached(multiFactorForm)
+    const [first, second] = transported
+    if (first?.kind !== 'multi-factor' || !second) {
+      throw new Error('Expected multi-factor contributions')
+    }
+
+    await expect(
+      assembleIntent(workflow, prepared, [
+        { ...first, validatorId: 1 },
+        second,
+      ]),
+    ).rejects.toBeInstanceOf(MismatchedOwnerSignaturesError)
   })
 })

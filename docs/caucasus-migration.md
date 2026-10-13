@@ -466,7 +466,7 @@ const { proofs } = await account.signIntent(signingRequests, targetChain, signer
 ```
 
 Independent owner signatures index the request slots they cover, so
-`IndependentOwnerSignature.origin` is now `slots`. Every request the account
+`origin` on `OwnerSignature` / `OwnerSignatureData` is now `slots`. Every request the account
 itself has to authorize is a slot, not just the origins: an Across-settled
 route from a smart account also carries a target execution authorization, so
 the owner signs it and `assembleTransaction` expects it. One signing ceremony

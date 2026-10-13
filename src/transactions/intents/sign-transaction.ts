@@ -24,6 +24,7 @@ import {
   assembleIndependentIntentArtifact,
   type IndependentOwnerDescriptor,
   type IndependentOwnerSignature,
+  type IndependentOwnerSignatureData,
 } from '../../signing/intent-plans/independent'
 import {
   createIntentSigningPlan,
@@ -42,6 +43,7 @@ import {
 } from '../../signing/typed-data'
 import type {
   ArtifactAssemblyPlan,
+  OwnerPasskeySignature,
   RawSignerResult,
   SignatureUsage,
   SigningArtifact,
@@ -204,42 +206,33 @@ export async function signIntentAsOwner<CompatibilityConfig>(
         taskId.includes(owner.ownerId),
       )?.[1]
     : undefined
-  const slots = independentSlots(prepared).map((request) => {
+  const results = independentSlots(prepared).map((request) => {
     const stage = quorumRootStage
       ? undefined
       : transcript.stages.find(
           ({ stage: materialized }) =>
             materialized.stageId === request.artifactId,
         )
-    const result =
+    return (
       quorumRootResult ??
       (stage
         ? Object.entries(stage.results).find(([taskId]) =>
             taskId.includes(owner.ownerId),
           )?.[1]
         : undefined)
-    return independentSlotResult(owner, result)
+    )
   })
-  const signature =
+  const signature: IndependentOwnerSignatureData =
     owner.kind === 'ecdsa'
-      ? ({
-          kind: 'ecdsa' as const,
+      ? {
+          kind: 'ecdsa',
           signer: owner.identity,
-          slots: slots as readonly Hex[],
-        } as const)
+          slots: results.map((result) => independentEcdsaSlot(owner, result)),
+        }
       : {
-          kind: 'passkey' as const,
+          kind: 'passkey',
           publicKey: owner.identity,
-          slots: slots as readonly {
-            readonly webauthn: {
-              readonly authenticatorData: Hex
-              readonly challengeIndex: number
-              readonly clientDataJSON: string
-              readonly typeIndex: number
-              readonly userVerificationRequired: boolean
-            }
-            readonly signature: Hex
-          }[],
+          slots: results.map((result) => independentPasskeySlot(owner, result)),
         }
   return owner.factorPublicId === undefined
     ? { intentId: prepared.quote.intentId, ...signature }
@@ -456,16 +449,20 @@ function independentOwner(
   }
 }
 
-function independentSlotResult(
+function independentEcdsaSlot(
   owner: IndependentOwnerDescriptor,
   result: RawSignerResult | undefined,
-) {
-  if (owner.kind === 'ecdsa') {
-    if (result?.kind !== 'ecdsa-signature') {
-      throw new Error(`Independent owner ${owner.ownerId} did not sign`)
-    }
-    return result.signature
+): Hex {
+  if (result?.kind !== 'ecdsa-signature') {
+    throw new Error(`Independent owner ${owner.ownerId} did not sign`)
   }
+  return result.signature
+}
+
+function independentPasskeySlot(
+  owner: IndependentOwnerDescriptor,
+  result: RawSignerResult | undefined,
+): OwnerPasskeySignature {
   if (result?.kind !== 'webauthn-assertion') {
     throw new Error(`Independent owner ${owner.ownerId} did not sign`)
   }

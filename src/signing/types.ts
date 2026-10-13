@@ -405,8 +405,7 @@ export interface SigningTranscript {
   readonly stages: readonly SigningStageTranscript[]
 }
 
-// Public owner-signature types relocated verbatim from the legacy
-// `src/execution/utils.ts` so the published surface owns them.
+/** WebAuthn assertion for one signing request in a passkey owner's contribution. */
 export interface OwnerPasskeySignature {
   webauthn: {
     authenticatorData: Hex
@@ -418,18 +417,32 @@ export interface OwnerPasskeySignature {
   signature: Hex
 }
 
+/**
+ * One owner's signatures over a transaction quote.
+ *
+ * `slots` holds one entry per signing request this owner signs, in the quote's
+ * signing-request order. Positions are significant: do not reorder, filter, or
+ * deduplicate entries.
+ */
 export type OwnerSignatureData =
   | {
       kind: 'ecdsa'
       signer: Address
-      origin: Hex[]
+      slots: Hex[]
     }
   | {
       kind: 'passkey'
       publicKey: Hex
-      origin: OwnerPasskeySignature[]
+      slots: OwnerPasskeySignature[]
     }
 
+/**
+ * Detached owner contribution returned by `signTransaction(prepared, { owner })`.
+ *
+ * The value is JSON-serializable; pass it to `assembleTransaction` unchanged.
+ * A `multi-factor` contribution wraps one factor's signatures with that
+ * factor's `validatorId`.
+ */
 export type OwnerSignature =
   | ({ intentId: string } & OwnerSignatureData)
   | {
