@@ -929,6 +929,52 @@ describe('mapIntentStatusFromWire', () => {
     expect(mapped.details?.executions?.destination).toEqual(destination)
   })
 
+  test.each([
+    null,
+    {
+      vm: 'evm',
+      blockHash: null,
+      blockNumber: '1',
+      gasUsed: null,
+      effectiveGasPriceWei: null,
+      l1FeeWei: null,
+      blobFeeWei: null,
+    },
+  ])('preserves recorded nullable receipts and execution (%j)', (receipt) => {
+    const operations = [
+      {
+        chainId: BASE,
+        items: [
+          {
+            type: 'FILL',
+            status: 'COMPLETED',
+            transaction: evmTx,
+            allocation: { receipt },
+          },
+        ],
+      },
+    ]
+    const leg = { chainId: BASE, tokens: [], status: 'COMPLETED' }
+    const mapped = mapIntentStatusFromWire(
+      'intent-1',
+      status({
+        operations,
+        details: {
+          nonce: '1',
+          createdAt: 1,
+          latencyMs: 2,
+          settlementLayer: 'SAME_CHAIN',
+          source: [],
+          destination: leg,
+          executions: { source: [], destination: null },
+          cost: { sponsored: false },
+        },
+      }),
+    )
+    expect(mapped.operations).toEqual(operations)
+    expect(mapped.details?.executions?.destination).toBeNull()
+  })
+
   test('converts recorded amounts in full details to bigint', () => {
     const leg = {
       chainId: BASE,

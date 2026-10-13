@@ -101,22 +101,14 @@ describe('vendored OpenAPI provenance', () => {
     expect(callerAccount?.properties).toHaveProperty('initData')
   })
 
-  // The SDK sends only the singular branch; these are the fields it relies on.
-  test('carries the singular quote and estimate branches', () => {
+  test('advertises only singular quote and estimate bodies', () => {
     const document = JSON.parse(originalArtifact.toString('utf8'))
-    const branches = (path: string) =>
+    const schema = (path: string) =>
       document.paths[path].post.requestBody.content['application/json'].schema
-        .oneOf as {
-        properties: Record<string, Record<string, unknown>>
-      }[]
-    const singular = (path: string) =>
-      branches(path).find((branch) =>
-        (branch.properties.source?.required as string[] | undefined)?.includes(
-          'vm',
-        ),
-      )!
 
-    const quote = singular('/quotes')
+    const quote = schema('/quotes')
+    expect(quote).not.toHaveProperty('oneOf')
+    expect(quote.properties).not.toHaveProperty('tokenRequests')
     expect(quote.properties.source?.required).toEqual([
       'vm',
       'chainId',
@@ -130,7 +122,20 @@ describe('vendored OpenAPI provenance', () => {
       expect(variant.properties).not.toHaveProperty('tokenRequests')
     }
 
-    const estimate = singular('/quotes/estimate')
+    const estimate = schema('/quotes/estimate')
+    expect(estimate).not.toHaveProperty('oneOf')
+    expect(estimate.required).toEqual(['source', 'destination'])
+    expect(estimate.properties).not.toHaveProperty('tokenRequests')
+    expect(estimate.properties.source?.required).toEqual([
+      'vm',
+      'chainId',
+      'token',
+    ])
+    expect(estimate.properties.destination?.required).toEqual([
+      'vm',
+      'chainId',
+      'token',
+    ])
     expect(estimate.properties.source?.properties).toHaveProperty('amount')
     expect(estimate.properties.destination?.properties).toHaveProperty('amount')
     expect(estimate.properties.destination?.properties).not.toHaveProperty(

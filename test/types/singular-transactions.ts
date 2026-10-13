@@ -2,7 +2,10 @@
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, hyperEvm } from 'viem/chains'
-import type { WireEstimateRequest } from '../../src/clients/orchestrator/wire'
+import type {
+  WireEstimateRequest,
+  WireSingularQuoteRequest,
+} from '../../src/clients/orchestrator/wire'
 import type {
   CrossChainNonEvmTransaction,
   CrossChainSolanaTransaction,
@@ -340,15 +343,123 @@ void authorityWithSource
 void authorityWithSponsorship
 export type { TransactionDestination, CrossChainSolanaOriginTransaction }
 
-// The estimate endpoint's singular branch; the SDK has no estimate method, so
-// only this fixture pins it.
-type SingularEstimate = Extract<
-  WireEstimateRequest,
-  { source: { vm: string; amount?: string } }
->
-const estimate: SingularEstimate = {
-  account: { evm: { type: 'eoa' } },
-  source: { vm: 'evm', chainId: 'eip155:1', token: 'USDC', amount: '1000000' },
+// The generated wire bodies are singular. Pin representative EVM and Solana
+// quotes plus both directions accepted by the indicative estimator.
+const evmQuote = {
+  account: {
+    evm: {
+      type: 'eoa',
+      address: owner.address,
+      signatureMode: 0,
+    },
+  },
+  source: {
+    vm: 'evm',
+    chainId: 'eip155:1',
+    token: 'USDC',
+    maxAmount: '1000000',
+  },
   destination: { vm: 'evm', chainId: 'eip155:8453', token: 'USDC' },
+} satisfies WireSingularQuoteRequest
+
+const solanaQuote = {
+  account: {
+    svm: {
+      type: 'swig',
+      address: solanaRecipient,
+      swigAccount: solanaRecipient,
+      authorization: { kind: 'secp256r1', publicKey: passkeyKey },
+    },
+  },
+  source: {
+    vm: 'svm',
+    chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    token: mint,
+  },
+  destination: {
+    vm: 'svm',
+    chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    token: mint,
+  },
+} satisfies WireSingularQuoteRequest
+
+const exactInEstimate = {
+  account: { evm: { type: 'erc7579' } },
+  source: {
+    vm: 'evm',
+    chainId: 'eip155:1',
+    token: 'USDC',
+    amount: '1000000',
+  },
+  destination: { vm: 'evm', chainId: 'eip155:8453', token: 'USDC' },
+} satisfies WireEstimateRequest
+const exactOutEstimate = {
+  account: { svm: { type: 'swig' } },
+  source: {
+    vm: 'svm',
+    chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    token: mint,
+  },
+  destination: {
+    vm: 'svm',
+    chainId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    token: mint,
+    amount: '1000000',
+  },
+} satisfies WireEstimateRequest
+
+type EoaQuoteAccount = Extract<
+  NonNullable<WireSingularQuoteRequest['account']['evm']>,
+  { type: 'eoa' }
+>
+const numericSignatureModes: NonNullable<EoaQuoteAccount['signatureMode']>[] = [
+  0, 1, 2, 3, 4, 5, 6,
+]
+const stringSignatureMode = {
+  account: {
+    evm: {
+      type: 'eoa',
+      address: owner.address,
+      // @ts-expect-error generated wire signature modes are numeric
+      signatureMode: 'emissary',
+    },
+  },
+  source: { vm: 'evm', chainId: 'eip155:1', token: 'USDC' },
+  destination: { vm: 'evm', chainId: 'eip155:8453', token: 'USDC' },
+} satisfies WireSingularQuoteRequest
+
+const legacyQuoteBody = {
+  account: { evm: { type: 'eoa' as const, address: owner.address } },
+  source: { selection: { chains: 'all' as const, tokens: 'all' as const } },
+  destination: {
+    vm: 'evm' as const,
+    chainId: 'eip155:8453',
+    tokenRequests: [{ tokenAddress: usdcOnBase, amount: '1000000' }],
+  },
 }
-void estimate
+// @ts-expect-error the legacy source selection is not a singular source
+const legacyQuote: WireSingularQuoteRequest = legacyQuoteBody
+const legacyEstimateBody = {
+  source: {
+    vm: 'evm' as const,
+    chainId: 'eip155:1',
+    token: 'USDC',
+    amount: '1000000',
+  },
+  destination: {
+    vm: 'evm' as const,
+    chainId: 'eip155:8453',
+    tokenRequests: [{ tokenAddress: usdcOnBase }],
+  },
+}
+// @ts-expect-error a singular estimate destination requires one token
+const legacyEstimate: WireEstimateRequest = legacyEstimateBody
+
+void evmQuote
+void solanaQuote
+void exactInEstimate
+void exactOutEstimate
+void numericSignatureModes
+void stringSignatureMode
+void legacyQuote
+void legacyEstimate
