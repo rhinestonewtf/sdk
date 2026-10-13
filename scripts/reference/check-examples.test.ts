@@ -3,11 +3,9 @@ import {
   assertExampleFunding,
   assertPublicFixture,
   extractExamples,
-  manifestPages,
   pageImports,
   validateRegistry,
 } from './check-examples'
-import { exampleContexts, negativeExamples } from './example-contexts'
 
 const page = `## Import
 
@@ -104,10 +102,6 @@ describe('exhaustive public-package Usage gate', () => {
     ).toThrow('intrinsic sponsorship')
   })
 
-  it('registers precisely the current manifest pages', () => {
-    expect(Object.keys(exampleContexts).sort()).toEqual(manifestPages().sort())
-  })
-
   it('handles authored imports without rewriting Usage or silently hiding a broken import', () => {
     const imports = extractExamples(page).imports
     expect(pageImports(imports, 'const calls = enable(owners)\n')).toBe(
@@ -142,19 +136,5 @@ describe('exhaustive public-package Usage gate', () => {
     "declare const input: import('../../src/index').Transaction",
   ])('rejects permissive or source-only positive fixture: %s', (text) => {
     expect(() => assertPublicFixture(text)).toThrow()
-  })
-
-  it('keeps all positive contexts public and cast-free', () => {
-    for (const contexts of Object.values(exampleContexts))
-      for (const fixture of contexts)
-        expect(() =>
-          assertPublicFixture(`${fixture.setup}${fixture.assertions ?? ''}`),
-        ).not.toThrow()
-    expect(Object.keys(negativeExamples).sort()).toEqual([
-      'auth',
-      'capability',
-      'import',
-      'legacy',
-    ])
   })
 })

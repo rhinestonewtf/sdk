@@ -188,8 +188,7 @@ export function createRenderer(context: {
   }
 
   function importLine(entry: SymbolEntry): string {
-    const name = entry.callStyle === 'constructor' ? entry.symbol : entry.symbol
-    return `import { ${name} } from '@rhinestone/sdk${entry.source === '.' ? '' : entry.source.replace(/^\./, '')}'`
+    return `import { ${entry.symbol} } from '@rhinestone/sdk${entry.source === '.' ? '' : entry.source.replace(/^\./, '')}'`
   }
 
   function usageSnippet(entry: SymbolEntry, sig: TDNode | undefined): string {
@@ -230,11 +229,8 @@ export function createRenderer(context: {
         // Actions produce calls passed to prepareTransaction on an account.
         // Some return a single call, others a Promise of a calls array — shape
         // the snippet accordingly so it stays valid.
-        const retT = sig?.type
-        const isProm = retT?.type === 'reference' && retT.name === 'Promise'
-        const inner = isProm ? retT.typeArguments?.[0] : retT
-        const call = `${isProm ? 'await ' : ''}${entry.symbol}(${params})`
-        const calls = inner?.type === 'array' ? call : `[${call}]`
+        const call = `${awaitKw}${entry.symbol}(${params})`
+        const calls = ret?.type === 'array' ? call : `[${call}]`
         return [
           `// Requires sponsorship enabled for your project.`,
           `const transaction = await account.prepareTransaction({`,
@@ -301,9 +297,8 @@ export function createRenderer(context: {
     const docComment = isCtor
       ? (context.classComment?.(entry) ?? sigComment)
       : (sigComment ?? node.comment)
-    const comment = docComment
     const title = entry.title ?? entry.symbol
-    const { short, rest } = splitSummary(renderParts(comment?.summary))
+    const { short, rest } = splitSummary(renderParts(docComment?.summary))
 
     const out: string[] = []
     out.push('---')
@@ -326,7 +321,7 @@ export function createRenderer(context: {
       out.push('')
     }
 
-    for (const r of blockTag(comment, '@remarks')) {
+    for (const r of blockTag(docComment, '@remarks')) {
       out.push(`<Note>${oneLine(renderParts(r.content))}</Note>`)
       out.push('')
     }
