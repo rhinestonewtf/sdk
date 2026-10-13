@@ -320,6 +320,54 @@ export interface operations {
                 /** @example /tx/ */
                 txPath: string
               } | null
+              /** @description What an SDK session pins on this chain: the contracts each settlement layer calls, and the USD stablecoins a stable-swap floor treats as 1:1. A layer appears only when every address it needs is known. Absent when the chain has none of these. */
+              settlement?: {
+                cctp?: {
+                  domain: number
+                  tokenMessenger: string
+                  usdc: string
+                }
+                oft?: {
+                  adapter: string
+                  eid: number
+                  token: string
+                }
+                eco?: {
+                  portal: string
+                  provers: string[]
+                  stablecoins: string[]
+                }
+                lz?: {
+                  multiCall: string
+                  transferDelegate: string
+                  stargateUsdc?: {
+                    pool: string
+                    token: string
+                    eid: number
+                  }
+                  cctp?: {
+                    domain: number
+                    token: string
+                    feeReceiver: string
+                    /** @enum {boolean} */
+                    feeless?: true
+                  }
+                }
+                swapper?: {
+                  swapper: string
+                  proxy: string
+                }
+                fees?: {
+                  appFeeCollector: string
+                  paymaster: string
+                }
+                /** @description The USD stablecoins (6 or 18 decimals) a session stable-swap floor treats as 1:1. */
+                usdStablecoins?: {
+                  address: string
+                  symbol: string
+                  decimals: number
+                }[]
+              }
             }
           }
         }
@@ -330,22 +378,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -407,22 +567,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -431,22 +703,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -455,22 +839,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -700,10 +1196,40 @@ export interface operations {
                      */
                     timestamp?: number
                     /**
-                     * @description Why the operation failed (present only when FAILED)
+                     * @description Why the operation failed (present only when FAILED). `NOT_EXECUTED` means the source transaction did not land and can no longer land: the account’s funds never left, and the caller can safely re-quote and sign again. `failureEvidence` on the source operation carries the chain evidence.
                      * @example BRIDGE_TIMEOUT
                      */
                     failureReason?: string
+                    /** @description Finalized chain evidence that the source transaction did not land and can no longer land: the cluster is past the payload’s last valid slot and the role never consumed its counter. The account’s funds never left; re-quote and sign again. */
+                    failureEvidence?: {
+                      /** @enum {string} */
+                      vm: 'svm'
+                      /**
+                       * @description The role's on-chain counter never reached the one the payload signed
+                       * @enum {string}
+                       */
+                      reason: 'COUNTER_UNCONSUMED'
+                      /** @description The Swig state account, base58 */
+                      swig: string
+                      /** @description The Swig role the payload was signed under */
+                      roleId: number
+                      /** @description The replay counter the payload consumes */
+                      signedCounter: number
+                      /** @description The role's stored counter at `observedSlot` */
+                      observedCounter: number
+                      /**
+                       * @description The last slot the payload could have executed in
+                       * @example 312000060
+                       */
+                      lastValidSlot: string
+                      /**
+                       * @description The finalized slot the role was read at
+                       * @example 312000081
+                       */
+                      observedSlot: string
+                      /** @enum {string} */
+                      commitment: 'finalized'
+                    }
                     /**
                      * @description This operation's transaction spends the account's own tokens or runs caller-supplied Solana instructions that may do so. Absent means neither applies (a destination fill, or a tokenless intent). Read it together with the operation status: a FAILED intent none of whose debiting operations reached COMPLETED never took the account's funds.
                      * @example true
@@ -768,7 +1294,7 @@ export interface operations {
                                 slot: string
                               }
                           )
-                        | null
+                        | (never | null)
                       /** @description Treasury settlement of this allocation; null until settled. Destinations, references, and operator fields are never exposed. */
                       payment: {
                         /** @enum {string} */
@@ -911,7 +1437,7 @@ export interface operations {
                */
               createdAt: number
               /**
-               * @description Time from creation to the latest leg landing, in ms. Null until any leg lands.
+               * @description Milliseconds from recorded creation to the latest included receipt; null without receipts. Negative intervals clamp to zero, not evidence of instant execution. Receipt times use chain time (possibly second-precision) or server-observation fallbacks. This is not final completion latency or a guarantee of millisecond accuracy.
                * @example 8100
                */
               latencyMs: number | null
@@ -1183,222 +1709,220 @@ export interface operations {
                 }[]
                 /** @description What the intent runs at its destination, tagged with the destination's own execution environment. An EVM destination's calls include plumbing the route composes alongside the caller's own calls; they are what the intent runs, not a restatement of what was requested. A HyperCore destination is the exception: its `settlement` holds only the caller's own calls, exactly as the quote's `plan.destination` disclosed them. */
                 destination:
-                  | (
-                      | {
-                          /** @enum {string} */
-                          vm: 'evm'
+                  | {
+                      /** @enum {string} */
+                      vm: 'evm'
+                      /**
+                       * @description CAIP-2 chain id the calls execute on
+                       * @example eip155:8453
+                       */
+                      chainId: string
+                      /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                      executedBy?: {
+                        /**
+                         * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                         * @example account
+                         * @enum {string}
+                         */
+                        kind: 'account' | 'solver'
+                        /**
+                         * @description Address of the executing contract or account
+                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                         */
+                        address: string
+                      }
+                      /** @description The calls, in execution order */
+                      calls: {
+                        /**
+                         * @description Target contract address for execution
+                         * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                         */
+                        to: string
+                        /**
+                         * Format: uint256
+                         * @description Amount of ETH (in wei) sent in the execution
+                         * @example 0
+                         */
+                        value: string
+                        /**
+                         * @description Encoded function call data
+                         * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                         */
+                        data: string
+                      }[]
+                    }
+                  | {
+                      /** @description The executor of the disclosed calls */
+                      executedBy: {
+                        /**
+                         * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                         * @example account
+                         * @enum {string}
+                         */
+                        kind: 'account' | 'solver'
+                        /**
+                         * @description Address of the executing contract or account
+                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                         */
+                        address: string
+                      }
+                      /** @description The caller's own instructions, in execution order */
+                      instructions: {
+                        /**
+                         * @description Program to invoke, base58.
+                         * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                         */
+                        programId: string
+                        /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                        accounts: {
                           /**
-                           * @description CAIP-2 chain id the calls execute on
-                           * @example eip155:8453
+                           * @description Account address, base58.
+                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
                            */
-                          chainId: string
-                          /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
-                          executedBy?: {
-                            /**
-                             * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                             * @example account
-                             * @enum {string}
-                             */
-                            kind: 'account' | 'solver'
-                            /**
-                             * @description Address of the executing contract or account
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }
-                          /** @description The calls, in execution order */
-                          calls: {
-                            /**
-                             * @description Target contract address for execution
-                             * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                             */
-                            to: string
-                            /**
-                             * Format: uint256
-                             * @description Amount of ETH (in wei) sent in the execution
-                             * @example 0
-                             */
-                            value: string
-                            /**
-                             * @description Encoded function call data
-                             * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                             */
-                            data: string
-                          }[]
-                        }
-                      | {
-                          /** @description The executor of the disclosed calls */
-                          executedBy: {
-                            /**
-                             * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                             * @example account
-                             * @enum {string}
-                             */
-                            kind: 'account' | 'solver'
-                            /**
-                             * @description Address of the executing contract or account
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            address: string
-                          }
-                          /** @description The caller's own instructions, in execution order */
-                          instructions: {
-                            /**
-                             * @description Program to invoke, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            programId: string
-                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                            accounts: {
+                          pubkey: string
+                          /** @description Whether the instruction requires this account to sign. */
+                          isSigner: boolean
+                          /** @description Whether the instruction writes to this account. */
+                          isWritable: boolean
+                        }[]
+                        /**
+                         * @description Instruction data, base64.
+                         * @example CQ==
+                         */
+                        data: string
+                      }[]
+                      /** @description Address lookup tables the instructions resolve against */
+                      addressLookupTables: string[]
+                      /** @enum {string} */
+                      vm: 'svm'
+                      chainId: string
+                    }
+                  | {
+                      /** @enum {string} */
+                      vm: 'svm'
+                      chainId: string
+                      /** @description A change to the Swig's own authorities */
+                      authority: {
+                        /**
+                         * @description Whether the authority is added or removed
+                         * @example add
+                         * @enum {string}
+                         */
+                        action: 'add' | 'remove'
+                        /** @description The passkey or secp256k1 key added or removed */
+                        key:
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256r1'
                               /**
-                               * @description Account address, base58.
-                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                               * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
+                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
                                */
-                              pubkey: string
-                              /** @description Whether the instruction requires this account to sign. */
-                              isSigner: boolean
-                              /** @description Whether the instruction writes to this account. */
-                              isWritable: boolean
-                            }[]
-                            /**
-                             * @description Instruction data, base64.
-                             * @example CQ==
-                             */
-                            data: string
-                          }[]
-                          /** @description Address lookup tables the instructions resolve against */
-                          addressLookupTables: string[]
-                          /** @enum {string} */
-                          vm: 'svm'
-                          chainId: string
-                        }
-                      | {
-                          /** @enum {string} */
-                          vm: 'svm'
-                          chainId: string
-                          /** @description A change to the Swig's own authorities */
-                          authority: {
-                            /**
-                             * @description Whether the authority is added or removed
-                             * @example add
-                             * @enum {string}
-                             */
-                            action: 'add' | 'remove'
-                            /** @description The passkey or secp256k1 key added or removed */
-                            key:
-                              | {
-                                  /** @enum {string} */
-                                  kind: 'secp256r1'
-                                  /**
-                                   * @description SEC1-compressed P-256 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03
-                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                   */
-                                  publicKey: string
-                                }
-                              | {
-                                  /** @enum {string} */
-                                  kind: 'secp256k1'
-                                  /**
-                                   * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
-                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-                                   */
-                                  publicKey: string
-                                }
-                            /**
-                             * @description The added authority's permission, as requested and installed. Absent on a removal.
-                             * @example allButManageAuthority
-                             * @enum {string}
-                             */
-                            permission?:
-                              | 'all'
-                              | 'allButManageAuthority'
-                              | 'manageAuthority'
-                            /**
-                             * @description The Swig role id the added authority gets, or the id of the role removed
-                             * @example 3
-                             */
-                            roleId: number
-                            rent: {
-                              /**
-                               * Format: uint256
-                               * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
-                               * @example 325120
-                               */
-                              amount: string
-                              /** @description The rent in USD */
-                              usd: number
+                              publicKey: string
                             }
-                          }
-                        }
-                      | {
-                          /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
-                          actions?: {
-                            /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                            action?: unknown
-                            /**
-                             * @description The nonce the action commits to
-                             * @example 1633493192000
-                             */
-                            nonce: number
-                            /**
-                             * @description The agent that authorises it
-                             * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                             */
-                            agent: string
-                          }[]
-                          /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
-                          settlement?: {
-                            /** @enum {string} */
-                            vm: 'evm'
-                            /**
-                             * @description CAIP-2 chain id the calls execute on
-                             * @example eip155:8453
-                             */
-                            chainId: string
-                            /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
-                            executedBy?: {
+                          | {
+                              /** @enum {string} */
+                              kind: 'secp256k1'
                               /**
-                               * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
-                               * @example account
-                               * @enum {string}
+                               * @description SEC1-compressed secp256k1 public key: 33 bytes as 0x-prefixed hex, leading byte 02 or 03. Not an EVM address.
+                               * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
                                */
-                              kind: 'account' | 'solver'
-                              /**
-                               * @description Address of the executing contract or account
-                               * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                               */
-                              address: string
+                              publicKey: string
                             }
-                            /** @description The calls, in execution order */
-                            calls: {
-                              /**
-                               * @description Target contract address for execution
-                               * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                               */
-                              to: string
-                              /**
-                               * Format: uint256
-                               * @description Amount of ETH (in wei) sent in the execution
-                               * @example 0
-                               */
-                              value: string
-                              /**
-                               * @description Encoded function call data
-                               * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                               */
-                              data: string
-                            }[]
-                          }
-                          /** @enum {string} */
-                          vm: 'hypercore'
+                        /**
+                         * @description The added authority's permission, as requested and installed. Absent on a removal.
+                         * @example allButManageAuthority
+                         * @enum {string}
+                         */
+                        permission?:
+                          | 'all'
+                          | 'allButManageAuthority'
+                          | 'manageAuthority'
+                        /**
+                         * @description The Swig role id the added authority gets, or the id of the role removed
+                         * @example 3
+                         */
+                        roleId: number
+                        rent: {
                           /**
-                           * @description The venue the actions run at
-                           * @example hypercore:perp
+                           * Format: uint256
+                           * @description Lamports of rent: locked in the Swig state account on an add, which the sponsor funds, or returned to the Swig wallet on a removal
+                           * @example 325120
                            */
-                          chainId: string
+                          amount: string
+                          /** @description The rent in USD */
+                          usd: number
                         }
-                    )
-                  | null
+                      }
+                    }
+                  | {
+                      /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
+                      actions?: {
+                        /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
+                        action?: Record<string, never>
+                        /**
+                         * @description The nonce the action commits to
+                         * @example 1633493192000
+                         */
+                        nonce: number
+                        /**
+                         * @description The agent that authorises it
+                         * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                         */
+                        agent: string
+                      }[]
+                      /** @description The caller's own HyperEVM calls, in execution order. Only calls the caller sent: the gas-refund allowance, the core deposit and the agent registrations the orchestrator composes are not disclosed here (the registrations are disclosed in the signing request's `scope.hyperCore`). Absent when the caller sent none, and on a record written before caller calls were attributed. */
+                      settlement?: {
+                        /** @enum {string} */
+                        vm: 'evm'
+                        /**
+                         * @description CAIP-2 chain id the calls execute on
+                         * @example eip155:8453
+                         */
+                        chainId: string
+                        /** @description Absent where the chain is no longer in force, so the executing contract cannot be named. */
+                        executedBy?: {
+                          /**
+                           * @description Who runs the calls: the account itself, or a solver-operated contract running them on its behalf.
+                           * @example account
+                           * @enum {string}
+                           */
+                          kind: 'account' | 'solver'
+                          /**
+                           * @description Address of the executing contract or account
+                           * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                           */
+                          address: string
+                        }
+                        /** @description The calls, in execution order */
+                        calls: {
+                          /**
+                           * @description Target contract address for execution
+                           * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                           */
+                          to: string
+                          /**
+                           * Format: uint256
+                           * @description Amount of ETH (in wei) sent in the execution
+                           * @example 0
+                           */
+                          value: string
+                          /**
+                           * @description Encoded function call data
+                           * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                           */
+                          data: string
+                        }[]
+                      }
+                      /** @enum {string} */
+                      vm: 'hypercore'
+                      /**
+                       * @description The venue the actions run at
+                       * @example hypercore:perp
+                       */
+                      chainId: string
+                    }
+                  | (never | null)
               }
               /** @description Account initializations this intent performs, one per chain. Present and empty when the record parsed and the route initialized nothing; absent when the record could not be read. */
               deployments?: {
@@ -1528,22 +2052,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -1552,22 +2188,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Intent ID not found */
@@ -1576,22 +2324,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -1600,22 +2460,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -1686,22 +2658,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -1710,22 +2794,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -1734,22 +2930,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -1964,22 +3272,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -1988,22 +3408,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -2012,22 +3544,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -2057,12 +3701,12 @@ export interface operations {
                   | {
                       /**
                        * @description Signature over the fund-pull (pre-claim) encoding
-                       * @example 0x...
+                       * @example 0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1c
                        */
                       preClaim: string
                       /**
                        * @description Signature over the notarized claim encoding
-                       * @example 0x...
+                       * @example 0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1c
                        */
                       notarizedClaim: string
                     }
@@ -2072,7 +3716,7 @@ export interface operations {
                 kind: 'personalSign'
                 /**
                  * @description Signature over the requested message
-                 * @example 0x...
+                 * @example 0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1c
                  */
                 signature: string
               }
@@ -2140,22 +3784,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -2164,22 +3920,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description The quoted intent has expired or was already submitted. Request a new route to retry. */
@@ -2188,22 +4056,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description The intent or its shared sponsorship authorization was already used. */
@@ -2212,22 +4192,270 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description Simulation found the account short of balance or allowance. */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -2236,22 +4464,270 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description Intent submission or the router contract is paused. */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -2363,22 +4839,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -2387,22 +4975,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Insufficient liquidity to fill the full amount. Partial splits returned. */
@@ -2412,20 +5112,24 @@ export interface operations {
         }
         content: {
           'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
+            /** @enum {string} */
+            code: 'INSUFFICIENT_LIQUIDITY'
             /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
+             * @description Human-readable error message
+             * @example Invalid input
              */
-            traceId: string
+            message: string
+            /** @description Fillable subset and unfillable remainder */
+            details?: {
+              /** @description Intents fillable with current liquidity */
+              availableIntents: {
+                [key: string]: string
+              }[]
+              /** @description Token amounts that cannot be filled */
+              unfillable: {
+                [key: string]: string
+              }
+            }
           }
         }
       }
@@ -2435,22 +5139,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -2467,1833 +5283,423 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json':
-          | {
-              /**
-               * @description The account this intent spends from and delivers to, per VM. A quote needs a configured `evm` entry, or for a Solana-only account a `swig` `svm` entry and no `evm` entry: a receiver cannot fund one.
-               * @example {
-               *       "evm": {
-               *         "type": "eoa",
-               *         "address": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
-               *       }
-               *     }
-               */
-              account: {
-                /** @description The EVM side of the account */
-                evm?:
-                  | {
-                      type?: unknown
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'eoa'
-                      address: string
-                      /**
-                       * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override.
-                       * @example 3
-                       * @enum {string}
-                       */
-                      signatureMode?:
-                        | 'EMISSARY'
-                        | 'ERC1271'
-                        | 'EMISSARY_ERC1271'
-                        | 'ERC1271_EMISSARY'
-                        | 'EMISSARY_EXECUTION'
-                        | 'EMISSARY_EXECUTION_ERC1271'
-                        | 'ERC1271_EMISSARY_EXECUTION'
-                        | 0
-                        | 1
-                        | 2
-                        | 3
-                        | 4
-                        | 5
-                        | 6
-                      /** @description EIP-7702 delegations for this account */
-                      delegations?: {
-                        default?: {
-                          /** @description Contract the account delegates to under EIP-7702 */
-                          contract: string
-                        }
-                        /**
-                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                         * @example {
-                         *       "eip155:8453": {
-                         *         "contract": "0x…"
-                         *       }
-                         *     }
-                         */
-                        chains?: {
-                          [key: string]: {
-                            /** @description Contract the account delegates to under EIP-7702 */
-                            contract: string
-                          }
-                        }
-                      }
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'erc7579'
-                      address: string
-                      /** @description Deployment data, used only where the account is not yet deployed */
-                      initData?: {
-                        setupOps: {
-                          /** @description Account deployment factory address */
-                          to: string
-                          /** @description Account deployment data */
-                          data: string
-                        }[]
-                      }
-                      /**
-                       * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override.
-                       * @example 3
-                       * @enum {string}
-                       */
-                      signatureMode?:
-                        | 'EMISSARY'
-                        | 'ERC1271'
-                        | 'EMISSARY_ERC1271'
-                        | 'ERC1271_EMISSARY'
-                        | 'EMISSARY_EXECUTION'
-                        | 'EMISSARY_EXECUTION_ERC1271'
-                        | 'ERC1271_EMISSARY_EXECUTION'
-                        | 0
-                        | 1
-                        | 2
-                        | 3
-                        | 4
-                        | 5
-                        | 6
-                      /** @description EIP-7702 delegations for this account */
-                      delegations?: {
-                        default?: {
-                          /** @description Contract the account delegates to under EIP-7702 */
-                          contract: string
-                        }
-                        /**
-                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                         * @example {
-                         *       "eip155:8453": {
-                         *         "contract": "0x…"
-                         *       }
-                         *     }
-                         */
-                        chains?: {
-                          [key: string]: {
-                            /** @description Contract the account delegates to under EIP-7702 */
-                            contract: string
-                          }
-                        }
-                      }
-                      /** @description Gas-estimation inputs for this account */
-                      simulation?: {
-                        /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                        mockSignature?: string
-                        /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                        mockSignaturesByChain?: {
-                          [key: string]: string
-                        }
-                      }
-                    }
-                /** @description The Solana side of the account */
-                svm?:
-                  | {
-                      type?: unknown
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'swig'
-                      /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account or, for a Solana-only account, the wallet of `swigAccount`. */
-                      address: string
-                      /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
-                      swigAccount?: string
-                      /** @description The authority that signs this request. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority` for a spend, or `All` or `ManageAuthority` for an authority change; no match, several matches or another permission is refused, so a `ManageAuthority`-only role never spends. On an account paired with an EVM entry, the root role signs. */
-                      authorization:
-                        | {
-                            /** @enum {string} */
-                            kind: 'secp256k1'
-                            /** @description EVM address the signing Swig role recovers to */
-                            address: string
-                          }
-                        | {
-                            /** @enum {string} */
-                            kind: 'secp256r1'
-                            /**
-                             * @description Passkey public key on the signing Swig role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
-                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                             */
-                            publicKey: string
-                          }
-                      /** @description Creation data, accepted only on a request with no delivery, execution or recipient: such a request creates the Swig. */
-                      initData?: {
-                        /** @description The public key installed as the Swig root, with every permission. Taken as supplied and permanent: a wrong key strands the wallet. Must agree with `authorization`. */
-                        authority:
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256k1'
-                              /** @description SEC1 secp256k1 public key as 0x-prefixed hex: compressed (33 bytes, leading 02 or 03) or uncompressed (65 bytes, leading 04) */
-                              publicKey: string
-                            }
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 passkey point, 33 bytes as 0x-prefixed hex
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
-                        /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account, whose `swigAccount` it must derive; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
-                        id?: string
-                      }
-                    }
-              }
-              /**
-               * @description Intent options
-               * @example {
-               *       "settlementLayers": {
-               *         "include": [
-               *           "ECO"
-               *         ]
-               *       },
-               *       "sponsorship": {
-               *         "gas": true,
-               *         "bridgeFees": true,
-               *         "swapFees": true
-               *       }
-               *     }
-               */
-              options?: {
-                /**
-                 * @description Which settlement layers the orchestrator may use. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the orchestrator's live layer set); a bare array means `include`. Internal modes (`SAME_CHAIN`, `INTENT_EXECUTOR`) are not selectable. Default unset = all layers eligible.
-                 * @example {
-                 *       "exclude": [
-                 *         "RELAY"
-                 *       ]
-                 *     }
-                 */
-                settlementLayers?:
-                  | (
-                      | 'ACROSS'
-                      | 'ECO'
-                      | 'RELAY'
-                      | 'OFT'
-                      | 'NEAR'
-                      | 'RHINO'
-                      | 'CCTP'
-                      | 'LZ'
-                    )[]
-                  | {
-                      include: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                /**
-                 * @description Which swap quoters the orchestrator may source swap routes from. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the full quoter set); a bare array means `include`. Use this to keep a swap on the venue a smart-session policy is scoped to. Default unset = every quoter the chain supports.
-                 * @example {
-                 *       "include": [
-                 *         "0x"
-                 *       ]
-                 *     }
-                 */
-                quoters?:
-                  | (
-                      | '1inch'
-                      | '0x'
-                      | 'velora'
-                      | 'kyberswap'
-                      | 'fynd'
-                      | 'fynd-hosted'
-                      | 'bebop'
-                      | 'relay'
-                    )[]
-                  | {
-                      include: (
-                        | '1inch'
-                        | '0x'
-                        | 'velora'
-                        | 'kyberswap'
-                        | 'fynd'
-                        | 'fynd-hosted'
-                        | 'bebop'
-                        | 'relay'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | '1inch'
-                        | '0x'
-                        | 'velora'
-                        | 'kyberswap'
-                        | 'fynd'
-                        | 'fynd-hosted'
-                        | 'bebop'
-                        | 'relay'
-                      )[]
-                    }
-                appFees?: {
-                  /**
-                   * @description App fee rate in basis points (0–10000 = 0–100%). The base is the USD value of the intent, and which value depends on the intent shape: for a fixed-output intent it is the requested destination target(s), summed across `tokenRequests`; for a max-out intent it is the spendable source balance; for a destination-swap intent it is the swap input. Note the fixed-output base is the full requested target, not the delta over any balance already held.
-                   * @example 25
-                   */
-                  feeBps: number
+        'application/json': {
+          /**
+           * @description The account this intent spends from and delivers to, per VM. A quote needs a configured `evm` entry, or for a Solana-only account a `swig` `svm` entry and no `evm` entry: a receiver cannot fund one.
+           * @example {
+           *       "evm": {
+           *         "type": "eoa",
+           *         "address": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
+           *       }
+           *     }
+           */
+          account: {
+            /** @description The EVM side of the account */
+            evm?:
+              | {
+                  address: string
                 }
-                protocolFees?: {
+              | {
+                  /** @enum {string} */
+                  type: 'eoa'
+                  address: string
                   /**
-                   * @description Rhinestone protocol fee rate in basis points (0–10000 = 0–100%), on the same base as `appFees.feeBps` — see that field. Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `sponsorSettings.protocolFees` to charge the integrator balance instead of the user.
-                   * @example 35
+                   * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override. `0` emissary, `1` ERC-1271, `2` emissary then ERC-1271, `3` ERC-1271 then emissary, `4` emissary execution, `5` emissary execution then ERC-1271, `6` ERC-1271 then emissary execution.
+                   * @example 3
+                   * @enum {integer}
                    */
-                  feeBps: number
+                  signatureMode?: 0 | 1 | 2 | 3 | 4 | 5 | 6
+                  /** @description EIP-7702 delegations for this account */
+                  delegations?: {
+                    default?: {
+                      /** @description Contract the account delegates to under EIP-7702 */
+                      contract: string
+                    }
+                    /**
+                     * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                     * @example {
+                     *       "eip155:8453": {
+                     *         "contract": "0x…"
+                     *       }
+                     *     }
+                     */
+                    chains?: {
+                      [key: string]: {
+                        /** @description Contract the account delegates to under EIP-7702 */
+                        contract: string
+                      }
+                    }
+                  }
                 }
-                /**
-                 * @description How to rank candidate plans. `cheapest` minimizes direct USD cost. `fastest` minimizes estimated fill time (with cost tiebreaker). `best` minimizes total USD given up: delivered-output forgone versus the best candidate, plus cost, plus the cost of waiting. Waiting is charged both in proportion to notional (0.8 bps per minute, modelling price risk on funds in flight) and as a flat $0.10 per minute independent of size, so small intents are ranked mostly on speed and large ones mostly on price. The two are equal at $1,250 of notional.
-                 * @example best
-                 * @enum {string}
-                 */
-                selectionStrategy?: 'cheapest' | 'fastest' | 'best'
-                /**
-                 * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only.** If the intent resolves to any other route (cross-chain or same-chain), the request is **rejected** with `INVALID_CUSTOM_DEADLINE` (422) rather than silently ignoring the override. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
-                 * @example 1893456000
-                 */
-                customDeadline?: number
-                /** @description Removed. Use `destination.execution.actions`. */
-                hyperCore?: unknown
-                /**
-                 * @description Sponsor settings for the intent
-                 * @example {
-                 *       "gas": true,
-                 *       "bridgeFees": true,
-                 *       "swapFees": true
-                 *     }
-                 */
-                sponsorship?: {
+              | {
+                  /** @enum {string} */
+                  type: 'erc7579'
+                  address: string
+                  /** @description Deployment data, used only where the account is not yet deployed */
+                  initData?: {
+                    setupOps: {
+                      /** @description Account deployment factory address */
+                      to: string
+                      /** @description Account deployment data */
+                      data: string
+                    }[]
+                  }
                   /**
-                   * @description Whether to sponsor gas for the intent
-                   * @default false
-                   * @example true
+                   * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override. `0` emissary, `1` ERC-1271, `2` emissary then ERC-1271, `3` ERC-1271 then emissary, `4` emissary execution, `5` emissary execution then ERC-1271, `6` ERC-1271 then emissary execution.
+                   * @example 3
+                   * @enum {integer}
                    */
-                  gas?: boolean
-                  /**
-                   * @description Whether to sponsor bridge fees for the intent
-                   * @default false
-                   */
-                  bridgeFees?: boolean
-                  /**
-                   * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
-                   * @default false
-                   */
-                  swapFees?: boolean
-                  /**
-                   * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
-                   * @default false
-                   */
-                  protocolFees?: boolean
+                  signatureMode?: 0 | 1 | 2 | 3 | 4 | 5 | 6
+                  /** @description EIP-7702 delegations for this account */
+                  delegations?: {
+                    default?: {
+                      /** @description Contract the account delegates to under EIP-7702 */
+                      contract: string
+                    }
+                    /**
+                     * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                     * @example {
+                     *       "eip155:8453": {
+                     *         "contract": "0x…"
+                     *       }
+                     *     }
+                     */
+                    chains?: {
+                      [key: string]: {
+                        /** @description Contract the account delegates to under EIP-7702 */
+                        contract: string
+                      }
+                    }
+                  }
+                  /** @description Gas-estimation inputs for this account */
+                  simulation?: {
+                    /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
+                    mockSignature?: string
+                    /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
+                    mockSignaturesByChain?: {
+                      [key: string]: string
+                    }
+                  }
                 }
-                signatureMode?: unknown
-                sponsorSettings?: unknown
-                executionTokensReceived?: unknown
-                /** @description Removed. Use `source.auxiliaryFunds`. */
-                auxiliaryFunds?: unknown
-              }
-              destinationChainId?: unknown
-              tokenRequests?: unknown
-              recipient?: unknown
-              destinationExecutions?: unknown
-              destinationInstructions?: unknown
-              addressLookupTableAddresses?: unknown
-              destinationGasLimit?: unknown
-              /**
-               * @description Where the intent delivers, and what it runs there. Tagged with the destination VM, which fixes the shape of the recipient, the token addresses and the execution block.
-               * @example {
-               *       "vm": "evm",
-               *       "chainId": "eip155:8453",
-               *       "tokenRequests": [
-               *         {
-               *           "tokenAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-               *           "amount": "1000000"
-               *         }
-               *       ]
-               *     }
-               */
-              destination:
-                | {
-                    /** @enum {string} */
-                    vm: 'evm'
-                    /**
-                     * @description CAIP-2 chain identifier of the destination chain. Must be classified under the VM this variant names.
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?:
-                      | {
-                          type?: unknown
-                          address: string
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'eoa'
-                          address: string
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'erc7579'
-                          address: string
-                          /** @description Deployment data, used only where the account is not yet deployed */
-                          initData?: {
-                            setupOps: {
-                              /** @description Account deployment factory address */
-                              to: string
-                              /** @description Account deployment data */
-                              data: string
-                            }[]
-                          }
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                          /** @description Gas-estimation inputs for this account */
-                          simulation?: {
-                            /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                            mockSignature?: string
-                            /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                            mockSignaturesByChain?: {
-                              [key: string]: string
-                            }
-                          }
-                        }
-                    /** @description Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
-                    tokenRequests: {
-                      /**
-                       * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
-                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                       */
-                      tokenAddress: string
-                      /**
-                       * Format: uint256
-                       * @description Amount must be a non-negative decimal integer string in smallest units
-                       * @example 1000000
-                       */
-                      amount?: string
-                      readonly balance?: unknown
-                    }[]
-                    execution?: {
-                      /** @description Execution calls to run on the destination chain, in order. */
-                      calls: {
+            /** @description The Solana side of the account */
+            svm?:
+              | {
+                  address: string
+                }
+              | {
+                  /** @enum {string} */
+                  type: 'swig'
+                  /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account or, for a Solana-only account, the wallet of `swigAccount`. */
+                  address: string
+                  /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
+                  swigAccount?: string
+                  /** @description The authority that signs this request. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority` for a spend, or `All` or `ManageAuthority` for an authority change; no match, several matches or another permission is refused, so a `ManageAuthority`-only role never spends. On an account paired with an EVM entry, the root role signs. */
+                  authorization:
+                    | {
+                        /** @enum {string} */
+                        kind: 'secp256k1'
+                        /** @description EVM address the signing Swig role recovers to */
+                        address: string
+                      }
+                    | {
+                        /** @enum {string} */
+                        kind: 'secp256r1'
                         /**
-                         * @description Target contract address for execution
-                         * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                         * @description Passkey public key on the signing Swig role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
+                         * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
                          */
-                        to: string
-                        /**
-                         * Format: uint256
-                         * @description Amount must be a non-negative decimal integer string in smallest units
-                         * @example 1000000
-                         */
-                        value: string
-                        /**
-                         * @description Encoded function call data
-                         * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                         */
-                        data: string
-                      }[]
-                      /**
-                       * Format: uint256
-                       * @description Gas limit for the destination-chain executions
-                       * @example 100000
-                       */
-                      gasLimit?: string
-                      /**
-                       * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
-                       * @example [
-                       *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                       *     ]
-                       */
-                      executionTokensReceived?: string[]
-                    }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'svm'
-                    /**
-                     * @description CAIP-2 chain identifier of the destination chain. Must be classified under the VM this variant names.
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                    /** @description Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
-                    tokenRequests: {
-                      /**
-                       * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
-                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                       */
-                      tokenAddress: string
-                      /**
-                       * Format: uint256
-                       * @description Amount must be a non-negative decimal integer string in smallest units
-                       * @example 1000000
-                       */
-                      amount?: string
-                      readonly balance?: unknown
-                    }[]
-                    /** @description What the destination runs out of the account's Swig: caller `instructions`, or an `authority` change. Never both. */
-                    execution?:
+                        publicKey: string
+                      }
+                  /** @description Creation data, accepted only on a request with no delivery, execution or recipient: such a request creates the Swig. */
+                  initData?: {
+                    /** @description The public key installed as the Swig root, with every permission. Taken as supplied and permanent: a wrong key strands the wallet. Must agree with `authorization`. */
+                    authority:
                       | {
-                          /** @description Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
-                          instructions: {
-                            /**
-                             * @description Program to invoke, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            programId: string
-                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                            accounts: {
-                              /**
-                               * @description Account address, base58.
-                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                               */
-                              pubkey: string
-                              /** @description Whether the instruction requires this account to sign. */
-                              isSigner: boolean
-                              /** @description Whether the instruction writes to this account. */
-                              isWritable: boolean
-                            }[]
-                            /**
-                             * @description Instruction data, base64.
-                             * @example CQ==
-                             */
-                            data: string
-                          }[]
-                          /** @description Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. */
-                          addressLookupTables?: string[]
-                        }
-                      | {
-                          /** @description Add a passkey or secp256k1 authority to the account's existing Swig, or remove a non-root one by its key. The added role holds exactly the requested permission, with no program permission added. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
-                          authority:
-                            | {
-                                /** @enum {string} */
-                                action: 'add'
-                                /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
-                                key:
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256r1'
-                                      /**
-                                       * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                       */
-                                      publicKey: string
-                                    }
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256k1'
-                                      /**
-                                       * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
-                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-                                       */
-                                      publicKey: string
-                                    }
-                                /**
-                                 * @description What the added authority may do, installed as exactly that one Swig action. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. `manageAuthority`: add and remove non-root authorities — including granting `all`, so effectively takeover power — but never spend or execute: the Swig program refuses every wallet-signed instruction it signs. Required; there is no default.
-                                 * @example allButManageAuthority
-                                 * @enum {string}
-                                 */
-                                permission:
-                                  | 'all'
-                                  | 'allButManageAuthority'
-                                  | 'manageAuthority'
-                              }
-                            | {
-                                /** @enum {string} */
-                                action: 'remove'
-                                /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
-                                key:
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256r1'
-                                      /**
-                                       * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                       */
-                                      publicKey: string
-                                    }
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256k1'
-                                      /**
-                                       * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
-                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-                                       */
-                                      publicKey: string
-                                    }
-                              }
-                        }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'tvm'
-                    /**
-                     * @description CAIP-2 chain identifier of the destination chain. Must be classified under the VM this variant names.
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                    /** @description Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
-                    tokenRequests: {
-                      /**
-                       * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
-                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                       */
-                      tokenAddress: string
-                      /**
-                       * Format: uint256
-                       * @description Amount must be a non-negative decimal integer string in smallest units
-                       * @example 1000000
-                       */
-                      amount?: string
-                      readonly balance?: unknown
-                    }[]
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'stellar'
-                    /**
-                     * @description CAIP-2 chain identifier of the destination chain. Must be classified under the VM this variant names.
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                    /** @description Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
-                    tokenRequests: {
-                      /**
-                       * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
-                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                       */
-                      tokenAddress: string
-                      /**
-                       * Format: uint256
-                       * @description Amount must be a non-negative decimal integer string in smallest units
-                       * @example 1000000
-                       */
-                      amount?: string
-                      readonly balance?: unknown
-                    }[]
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'hypercore'
-                    /**
-                     * @description CAIP-2 chain identifier of the destination chain. Must be classified under the VM this variant names.
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?:
-                      | {
-                          type?: unknown
-                          address: string
+                          /** @enum {string} */
+                          kind: 'secp256k1'
+                          /** @description SEC1 secp256k1 public key as 0x-prefixed hex: compressed (33 bytes, leading 02 or 03) or uncompressed (65 bytes, leading 04) */
+                          publicKey: string
                         }
                       | {
                           /** @enum {string} */
-                          type: 'eoa'
-                          address: string
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'erc7579'
-                          address: string
-                          /** @description Deployment data, used only where the account is not yet deployed */
-                          initData?: {
-                            setupOps: {
-                              /** @description Account deployment factory address */
-                              to: string
-                              /** @description Account deployment data */
-                              data: string
-                            }[]
-                          }
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                          /** @description Gas-estimation inputs for this account */
-                          simulation?: {
-                            /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                            mockSignature?: string
-                            /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                            mockSignaturesByChain?: {
-                              [key: string]: string
-                            }
-                          }
-                        }
-                    /** @description Tokens requested on the destination chain, addressed as that VM addresses them. Note `amount` may be credited against a balance already held on the destination chain — see the field for exactly when. */
-                    tokenRequests: {
-                      /**
-                       * @description The address of the requested token. Format depends on destination chain — 0x-hex for EVM, base58 SPL mint for Solana, T-address for Tron.
-                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                       */
-                      tokenAddress: string
-                      /**
-                       * Format: uint256
-                       * @description Amount must be a non-negative decimal integer string in smallest units
-                       * @example 1000000
-                       */
-                      amount?: string
-                      readonly balance?: unknown
-                    }[]
-                    execution?: {
-                      /** @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered one at a time, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest. Order is the contract: `updateLeverage` has to land before the order it applies to. Capped at three, which is how many named API-wallet slots an account has. */
-                      actions?: (
-                        | {
-                            /** @enum {string} */
-                            type: 'order'
-                            orders: {
-                              /**
-                               * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                               *
-                               *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                               * @example 64250.5
-                               */
-                              p: string
-                              /**
-                               * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                               * @example 0.0002
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                               * @example false
-                               */
-                              r: boolean
-                              /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                              t:
-                                | {
-                                    limit: {
-                                      /**
-                                       * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                       *
-                                       *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                       * @example Ioc
-                                       * @enum {string}
-                                       */
-                                      tif: 'Alo' | 'Ioc' | 'Gtc'
-                                    }
-                                  }
-                                | {
-                                    trigger: {
-                                      isMarket: boolean
-                                      triggerPx: string
-                                      /**
-                                       * @description Take-profit or stop-loss.
-                                       * @example sl
-                                       * @enum {string}
-                                       */
-                                      tpsl: 'tp' | 'sl'
-                                    }
-                                  }
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              c?: string
-                            }[]
-                            /**
-                             * @description `na` for a plain order. The TP/SL groupings attach the orders as a bracket around a position.
-                             * @example na
-                             * @enum {string}
-                             */
-                            grouping: 'na' | 'normalTpsl' | 'positionTpsl'
-                            builder?: {
-                              /** @description Address receiving the builder fee. */
-                              b: string
-                              /**
-                               * @description Builder fee in TENTHS of a basis point — `10` is 1bp of order notional.
-                               * @example 10
-                               */
-                              f: number
-                            }
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'cancel'
-                            cancels: {
-                              /** @description Asset index. */
-                              a: number
-                              /** @description Order id. */
-                              o: number
-                            }[]
-                            /** @description Fast cancel. */
-                            f?: boolean
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'cancelByCloid'
-                            cancels: {
-                              asset: number
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              cloid: string
-                            }[]
-                            f?: boolean
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'modify'
-                            oid: number | string
-                            order: {
-                              /**
-                               * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                               *
-                               *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                               * @example 64250.5
-                               */
-                              p: string
-                              /**
-                               * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                               * @example 0.0002
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                               * @example false
-                               */
-                              r: boolean
-                              /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                              t:
-                                | {
-                                    limit: {
-                                      /**
-                                       * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                       *
-                                       *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                       * @example Ioc
-                                       * @enum {string}
-                                       */
-                                      tif: 'Alo' | 'Ioc' | 'Gtc'
-                                    }
-                                  }
-                                | {
-                                    trigger: {
-                                      isMarket: boolean
-                                      triggerPx: string
-                                      /**
-                                       * @description Take-profit or stop-loss.
-                                       * @example sl
-                                       * @enum {string}
-                                       */
-                                      tpsl: 'tp' | 'sl'
-                                    }
-                                  }
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              c?: string
-                            }
-                            /**
-                             * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
-                             * @enum {boolean}
-                             */
-                            a?: true
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'batchModify'
-                            modifies: {
-                              oid: number | string
-                              order: {
-                                /**
-                                 * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                                 * @example 0
-                                 */
-                                a: number
-                                /**
-                                 * @description Buy (`true`) or sell (`false`).
-                                 * @example true
-                                 */
-                                b: boolean
-                                /**
-                                 * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                                 *
-                                 *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                                 * @example 64250.5
-                                 */
-                                p: string
-                                /**
-                                 * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                                 * @example 0.0002
-                                 */
-                                s: string
-                                /**
-                                 * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                                 * @example false
-                                 */
-                                r: boolean
-                                /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                                t:
-                                  | {
-                                      limit: {
-                                        /**
-                                         * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                         *
-                                         *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                         * @example Ioc
-                                         * @enum {string}
-                                         */
-                                        tif: 'Alo' | 'Ioc' | 'Gtc'
-                                      }
-                                    }
-                                  | {
-                                      trigger: {
-                                        isMarket: boolean
-                                        triggerPx: string
-                                        /**
-                                         * @description Take-profit or stop-loss.
-                                         * @example sl
-                                         * @enum {string}
-                                         */
-                                        tpsl: 'tp' | 'sl'
-                                      }
-                                    }
-                                /**
-                                 * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                                 * @example 0x1234567890abcdef1234567890abcdef
-                                 */
-                                c?: string
-                              }
-                            }[]
-                            /**
-                             * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
-                             * @enum {boolean}
-                             */
-                            a?: true
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'updateLeverage'
-                            asset: number
-                            /**
-                             * @description Cross margin (`true`) or isolated (`false`).
-                             * @example true
-                             */
-                            isCross: boolean
-                            /**
-                             * @description New leverage, capped by the asset's own maximum. Set it BEFORE the intent that opens the position: leverage applied afterwards does not resize an existing one.
-                             * @example 5
-                             */
-                            leverage: number
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'updateIsolatedMargin'
-                            asset: number
-                            isBuy: boolean
-                            /**
-                             * @description Margin to add (positive) or remove (negative), in USDC with 6 decimals — `1000000` is 1 USD.
-                             * @example 1000000
-                             */
-                            ntli: number
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'twapOrder'
-                            twap: {
-                              /**
-                               * @description Asset index, as for an order.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Total size to work, in units of the asset.
-                               * @example 0.01
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only.
-                               * @example false
-                               */
-                              r: boolean
-                              /**
-                               * @description Duration in MINUTES. Hyperliquid enforces its own bounds and refuses a duration outside them ("Invalid TWAP duration"), so none are imposed here.
-                               * @example 30
-                               */
-                              m: number
-                              /**
-                               * @description Randomize the timing of the sub-orders rather than spacing them evenly.
-                               * @example true
-                               */
-                              t: boolean
-                            }
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'twapCancel'
-                            /**
-                             * @description Asset index of the running TWAP.
-                             * @example 0
-                             */
-                            a: number
-                            /**
-                             * @description The TWAP id, which Hyperliquid returns when it accepts the `twapOrder` and is not echoed on the intent. Read it back from the exchange — the agent that placed the TWAP authorised only that one action, so cancelling is a second intent.
-                             * @example 12345
-                             */
-                            t: number
-                          }
-                      )[]
-                      /** @description Calls to run on HyperEVM, where the delivery settles before it reaches Core. Its `gasLimit` sizes those calls — Core actions are not EVM transactions and have no gas. */
-                      settlement?: {
-                        /** @description Execution calls to run on the destination chain, in order. */
-                        calls: {
+                          kind: 'secp256r1'
                           /**
-                           * @description Target contract address for execution
-                           * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                           * @description SEC1-compressed P-256 passkey point, 33 bytes as 0x-prefixed hex
+                           * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
                            */
-                          to: string
-                          /**
-                           * Format: uint256
-                           * @description Amount must be a non-negative decimal integer string in smallest units
-                           * @example 1000000
-                           */
-                          value: string
-                          /**
-                           * @description Encoded function call data
-                           * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                           */
-                          data: string
-                        }[]
-                        /**
-                         * Format: uint256
-                         * @description Gas limit for the destination-chain executions
-                         * @example 100000
-                         */
-                        gasLimit?: string
-                        /**
-                         * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
-                         * @example [
-                         *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                         *     ]
-                         */
-                        executionTokensReceived?: string[]
-                      }
-                    }
-                  }
-              /** @description Where the intent may source its input funds */
-              source?: {
-                /** @description Which (chain, token) pairs may fund the intent. A pair is eligible when the chain selector admits the chain, the token selector admits the token, and that chain's own narrowing admits it too — every clause always applies, in any combination. */
-                selection?: {
-                  /**
-                   * @description Chains funds may be sourced from: `all`, `{ only: [...] }` or `{ except: [...] }`, CAIP-2.
-                   * @example all
-                   */
-                  chains:
-                    | 'all'
-                    | (
-                        | {
-                            only: string[]
-                          }
-                        | {
-                            except: string[]
-                          }
-                      )
-                  /**
-                   * @description Tokens funds may be sourced in, by registry symbol or by address: `all`, `{ only: [...] }` or `{ except: [...] }`.
-                   * @example {
-                   *       "only": [
-                   *         "USDC"
-                   *       ]
-                   *     }
-                   */
-                  tokens:
-                    | 'all'
-                    | (
-                        | {
-                            only: (
-                              | string
-                              | (
-                                  | 'ETH'
-                                  | 'USDC'
-                                  | 'WETH'
-                                  | 'USDT'
-                                  | 'USDT0'
-                                  | 'BNB'
-                                  | 'WBNB'
-                                  | 'XDAI'
-                                  | 'WXDAI'
-                                  | 'POL'
-                                  | 'WPOL'
-                                  | 'MON'
-                                  | 'WMON'
-                                  | 'S'
-                                  | 'WS'
-                                  | 'OKB'
-                                  | 'WOKB'
-                                  | 'HYPE'
-                                  | 'WHYPE'
-                                  | 'RON'
-                                  | 'WRON'
-                                  | 'USDG'
-                                  | 'XPL'
-                                  | 'WXPL'
-                                  | 'AVAX'
-                                  | 'WAVAX'
-                                  | 'MockUSD'
-                                  | 'USDC_TEST'
-                                  | 'XLM'
-                                  | 'ensUSDC'
-                                  | 'ensUSDC2'
-                                  | 'ensUSDC3'
-                                  | 'TRX'
-                                  | 'WTRX'
-                                  | 'SOL'
-                                  | 'WSOL'
-                                )
-                            )[]
-                          }
-                        | {
-                            except: (
-                              | string
-                              | (
-                                  | 'ETH'
-                                  | 'USDC'
-                                  | 'WETH'
-                                  | 'USDT'
-                                  | 'USDT0'
-                                  | 'BNB'
-                                  | 'WBNB'
-                                  | 'XDAI'
-                                  | 'WXDAI'
-                                  | 'POL'
-                                  | 'WPOL'
-                                  | 'MON'
-                                  | 'WMON'
-                                  | 'S'
-                                  | 'WS'
-                                  | 'OKB'
-                                  | 'WOKB'
-                                  | 'HYPE'
-                                  | 'WHYPE'
-                                  | 'RON'
-                                  | 'WRON'
-                                  | 'USDG'
-                                  | 'XPL'
-                                  | 'WXPL'
-                                  | 'AVAX'
-                                  | 'WAVAX'
-                                  | 'MockUSD'
-                                  | 'USDC_TEST'
-                                  | 'XLM'
-                                  | 'ensUSDC'
-                                  | 'ensUSDC2'
-                                  | 'ensUSDC3'
-                                  | 'TRX'
-                                  | 'WTRX'
-                                  | 'SOL'
-                                  | 'WSOL'
-                                )
-                            )[]
-                          }
-                      )
-                  /** @description Narrows `tokens` further on the chains it names — e.g. one mint on a Solana origin. It can only narrow: a chain `chains` excludes stays excluded. */
-                  perChain?: {
-                    [key: string]: {
-                      tokens:
-                        | {
-                            only: (
-                              | string
-                              | (
-                                  | 'ETH'
-                                  | 'USDC'
-                                  | 'WETH'
-                                  | 'USDT'
-                                  | 'USDT0'
-                                  | 'BNB'
-                                  | 'WBNB'
-                                  | 'XDAI'
-                                  | 'WXDAI'
-                                  | 'POL'
-                                  | 'WPOL'
-                                  | 'MON'
-                                  | 'WMON'
-                                  | 'S'
-                                  | 'WS'
-                                  | 'OKB'
-                                  | 'WOKB'
-                                  | 'HYPE'
-                                  | 'WHYPE'
-                                  | 'RON'
-                                  | 'WRON'
-                                  | 'USDG'
-                                  | 'XPL'
-                                  | 'WXPL'
-                                  | 'AVAX'
-                                  | 'WAVAX'
-                                  | 'MockUSD'
-                                  | 'USDC_TEST'
-                                  | 'XLM'
-                                  | 'ensUSDC'
-                                  | 'ensUSDC2'
-                                  | 'ensUSDC3'
-                                  | 'TRX'
-                                  | 'WTRX'
-                                  | 'SOL'
-                                  | 'WSOL'
-                                )
-                            )[]
-                          }
-                        | {
-                            except: (
-                              | string
-                              | (
-                                  | 'ETH'
-                                  | 'USDC'
-                                  | 'WETH'
-                                  | 'USDT'
-                                  | 'USDT0'
-                                  | 'BNB'
-                                  | 'WBNB'
-                                  | 'XDAI'
-                                  | 'WXDAI'
-                                  | 'POL'
-                                  | 'WPOL'
-                                  | 'MON'
-                                  | 'WMON'
-                                  | 'S'
-                                  | 'WS'
-                                  | 'OKB'
-                                  | 'WOKB'
-                                  | 'HYPE'
-                                  | 'WHYPE'
-                                  | 'RON'
-                                  | 'WRON'
-                                  | 'USDG'
-                                  | 'XPL'
-                                  | 'WXPL'
-                                  | 'AVAX'
-                                  | 'WAVAX'
-                                  | 'MockUSD'
-                                  | 'USDC_TEST'
-                                  | 'XLM'
-                                  | 'ensUSDC'
-                                  | 'ensUSDC2'
-                                  | 'ensUSDC3'
-                                  | 'TRX'
-                                  | 'WTRX'
-                                  | 'SOL'
-                                  | 'WSOL'
-                                )
-                            )[]
-                          }
-                    }
+                          publicKey: string
+                        }
+                    /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account, whose `swigAccount` it must derive; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
+                    id?: string
                   }
                 }
-                /** @description Ceilings on the observed unlocked balance, per (chain, token). A limit outside the selection has no effect, except on a Solana origin, where any limit budgets the spend: the selection must resolve to exactly one (chain, token), exactly one limit must name it, and auxiliary funds are refused. */
-                limits?: {
-                  /**
-                   * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                   * @example eip155:8453
-                   */
-                  chainId: string
-                  /** @description Token the ceiling applies to, by registry symbol or address. */
-                  tokenAddress:
-                    | string
-                    | (
-                        | 'ETH'
-                        | 'USDC'
-                        | 'WETH'
-                        | 'USDT'
-                        | 'USDT0'
-                        | 'BNB'
-                        | 'WBNB'
-                        | 'XDAI'
-                        | 'WXDAI'
-                        | 'POL'
-                        | 'WPOL'
-                        | 'MON'
-                        | 'WMON'
-                        | 'S'
-                        | 'WS'
-                        | 'OKB'
-                        | 'WOKB'
-                        | 'HYPE'
-                        | 'WHYPE'
-                        | 'RON'
-                        | 'WRON'
-                        | 'USDG'
-                        | 'XPL'
-                        | 'WXPL'
-                        | 'AVAX'
-                        | 'WAVAX'
-                        | 'MockUSD'
-                        | 'USDC_TEST'
-                        | 'XLM'
-                        | 'ensUSDC'
-                        | 'ensUSDC2'
-                        | 'ensUSDC3'
-                        | 'TRX'
-                        | 'WTRX'
-                        | 'SOL'
-                        | 'WSOL'
-                      )
-                  /**
-                   * Format: uint256
-                   * @description Most this (chain, token) may contribute, in the token's smallest unit.
-                   * @example 1000000
-                   */
-                  maxAmount: string
-                }[]
-                /**
-                 * @description Additional balances the quote should treat as available, beyond what is currently on the account. Use this to get a preliminary quote against funds you can produce by the time you submit — e.g. liquidity in a DeFi vault you will withdraw, an in-flight CEX deposit, or a parallel transfer from another wallet. Keyed by CAIP-2 chain ID, then token address; amounts in the token's smallest unit.
-                 * @example {
-                 *       "eip155:42161": {
-                 *         "0xaf88d065e77c8cC2239327C5EDb3A432268e5831": "500000000"
-                 *       }
-                 *     }
-                 */
-                auxiliaryFunds?: {
-                  [key: string]: {
-                    [key: string]: string
-                  }
+          }
+          /**
+           * @description Intent options
+           * @example {
+           *       "settlementLayers": {
+           *         "include": [
+           *           "ECO"
+           *         ]
+           *       },
+           *       "sponsorship": {
+           *         "gas": true,
+           *         "bridgeFees": true,
+           *         "swapFees": true
+           *       }
+           *     }
+           */
+          options?: {
+            /**
+             * @description Which settlement layers the orchestrator may use. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the orchestrator's live layer set); a bare array means `include`. Internal modes (`SAME_CHAIN`, `INTENT_EXECUTOR`) are not selectable. Default unset = all layers eligible.
+             * @example {
+             *       "exclude": [
+             *         "RELAY"
+             *       ]
+             *     }
+             */
+            settlementLayers?:
+              | (
+                  | 'ACROSS'
+                  | 'ECO'
+                  | 'RELAY'
+                  | 'OFT'
+                  | 'NEAR'
+                  | 'RHINO'
+                  | 'CCTP'
+                  | 'LZ'
+                )[]
+              | {
+                  include: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  )[]
                 }
-                /** @description Calls to run before source funds are claimed, per chain. Max 10 calls per chain, max 5 chains. */
-                executions?: {
-                  /**
-                   * @description VM the calls run on. Only `evm` is served; the tag is here so another VM can be added without reshaping the field.
-                   * @enum {string}
-                   */
-                  vm: 'evm'
-                  chainId: string
-                  /** @description Calls to run on this chain before its funds are claimed. */
-                  calls: {
-                    /**
-                     * @description Target contract address for execution
-                     * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                     */
-                    to: string
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    value: string
-                    /**
-                     * @description Encoded function call data
-                     * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                     */
-                    data: string
-                  }[]
-                }[]
-              }
-              /** @description Removed. Use `source.selection` and `source.limits`. */
-              accountAccessList?: unknown
-              /** @description Removed. Use `source.executions`. */
-              preClaimExecutions?: unknown
+              | {
+                  exclude: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  )[]
+                }
+            /**
+             * @description Which swap quoters the orchestrator may source swap routes from. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the full quoter set); a bare array means `include`. Use this to keep a swap on the venue a smart-session policy is scoped to. Default unset = every quoter the chain supports.
+             * @example {
+             *       "include": [
+             *         "0x"
+             *       ]
+             *     }
+             */
+            quoters?:
+              | (
+                  | '1inch'
+                  | '0x'
+                  | 'velora'
+                  | 'kyberswap'
+                  | 'fynd'
+                  | 'fynd-hosted'
+                  | 'bebop'
+                  | 'relay'
+                )[]
+              | {
+                  include: (
+                    | '1inch'
+                    | '0x'
+                    | 'velora'
+                    | 'kyberswap'
+                    | 'fynd'
+                    | 'fynd-hosted'
+                    | 'bebop'
+                    | 'relay'
+                  )[]
+                }
+              | {
+                  exclude: (
+                    | '1inch'
+                    | '0x'
+                    | 'velora'
+                    | 'kyberswap'
+                    | 'fynd'
+                    | 'fynd-hosted'
+                    | 'bebop'
+                    | 'relay'
+                  )[]
+                }
+            appFees?: {
+              /**
+               * @description App fee rate in basis points (0–10000 = 0–100%). The base is the USD value of the intent, and which value depends on the intent shape: for a fixed-output intent it is the requested `destination.amount`; for a max-out intent it is the spendable source balance; for a destination-swap intent it is the swap input. Note the fixed-output base is the full requested amount, not the delta over any balance already held.
+               * @example 25
+               */
+              feeBps: number
             }
-          | {
+            protocolFees?: {
               /**
-               * @description The account this intent spends from and delivers to, per VM. A quote needs a configured `evm` entry, or for a Solana-only account a `swig` `svm` entry and no `evm` entry: a receiver cannot fund one.
-               * @example {
-               *       "evm": {
-               *         "type": "eoa",
-               *         "address": "0x579d5631f76126991c00fb8fe5467fa9d49e5f6a"
-               *       }
-               *     }
+               * @description Rhinestone protocol fee rate in basis points (0–10000 = 0–100%), on the same base as `appFees.feeBps` — see that field. Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `options.sponsorship.protocolFees` to charge the integrator balance instead of the user.
+               * @example 35
                */
-              account: {
-                /** @description The EVM side of the account */
-                evm?:
-                  | {
-                      type?: unknown
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'eoa'
-                      address: string
-                      /**
-                       * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override.
-                       * @example 3
-                       * @enum {string}
-                       */
-                      signatureMode?:
-                        | 'EMISSARY'
-                        | 'ERC1271'
-                        | 'EMISSARY_ERC1271'
-                        | 'ERC1271_EMISSARY'
-                        | 'EMISSARY_EXECUTION'
-                        | 'EMISSARY_EXECUTION_ERC1271'
-                        | 'ERC1271_EMISSARY_EXECUTION'
-                        | 0
-                        | 1
-                        | 2
-                        | 3
-                        | 4
-                        | 5
-                        | 6
-                      /** @description EIP-7702 delegations for this account */
-                      delegations?: {
-                        default?: {
-                          /** @description Contract the account delegates to under EIP-7702 */
-                          contract: string
-                        }
-                        /**
-                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                         * @example {
-                         *       "eip155:8453": {
-                         *         "contract": "0x…"
-                         *       }
-                         *     }
-                         */
-                        chains?: {
-                          [key: string]: {
-                            /** @description Contract the account delegates to under EIP-7702 */
-                            contract: string
-                          }
-                        }
-                      }
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'erc7579'
-                      address: string
-                      /** @description Deployment data, used only where the account is not yet deployed */
-                      initData?: {
-                        setupOps: {
-                          /** @description Account deployment factory address */
-                          to: string
-                          /** @description Account deployment data */
-                          data: string
-                        }[]
-                      }
-                      /**
-                       * @description How the user's intent signature is verified onchain. The orchestrator picks a default from the account type — set this only to override.
-                       * @example 3
-                       * @enum {string}
-                       */
-                      signatureMode?:
-                        | 'EMISSARY'
-                        | 'ERC1271'
-                        | 'EMISSARY_ERC1271'
-                        | 'ERC1271_EMISSARY'
-                        | 'EMISSARY_EXECUTION'
-                        | 'EMISSARY_EXECUTION_ERC1271'
-                        | 'ERC1271_EMISSARY_EXECUTION'
-                        | 0
-                        | 1
-                        | 2
-                        | 3
-                        | 4
-                        | 5
-                        | 6
-                      /** @description EIP-7702 delegations for this account */
-                      delegations?: {
-                        default?: {
-                          /** @description Contract the account delegates to under EIP-7702 */
-                          contract: string
-                        }
-                        /**
-                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                         * @example {
-                         *       "eip155:8453": {
-                         *         "contract": "0x…"
-                         *       }
-                         *     }
-                         */
-                        chains?: {
-                          [key: string]: {
-                            /** @description Contract the account delegates to under EIP-7702 */
-                            contract: string
-                          }
-                        }
-                      }
-                      /** @description Gas-estimation inputs for this account */
-                      simulation?: {
-                        /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                        mockSignature?: string
-                        /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                        mockSignaturesByChain?: {
-                          [key: string]: string
-                        }
-                      }
-                    }
-                /** @description The Solana side of the account */
-                svm?:
-                  | {
-                      type?: unknown
-                      address: string
-                    }
-                  | {
-                      /** @enum {string} */
-                      type: 'swig'
-                      /** @description The asset-holding Swig wallet, not the Swig state account. Must be the wallet the orchestrator derives for the EVM account or, for a Solana-only account, the wallet of `swigAccount`. */
-                      address: string
-                      /** @description The Swig state account holding the roles. Required for a Solana-only account (no `evm` entry); optional for an account paired with an EVM entry, whose Swig the orchestrator derives. */
-                      swigAccount?: string
-                      /** @description The authority that signs this request. On a Solana-only account it selects the one Swig role carrying this key, which must hold `All` or `AllButManageAuthority` for a spend, or `All` or `ManageAuthority` for an authority change; no match, several matches or another permission is refused, so a `ManageAuthority`-only role never spends. On an account paired with an EVM entry, the root role signs. */
-                      authorization:
-                        | {
-                            /** @enum {string} */
-                            kind: 'secp256k1'
-                            /** @description EVM address the signing Swig role recovers to */
-                            address: string
-                          }
-                        | {
-                            /** @enum {string} */
-                            kind: 'secp256r1'
-                            /**
-                             * @description Passkey public key on the signing Swig role: SEC1-compressed P-256, 33 bytes as 0x-prefixed hex
-                             * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                             */
-                            publicKey: string
-                          }
-                      /** @description Creation data, accepted only on a request with no delivery, execution or recipient: such a request creates the Swig. */
-                      initData?: {
-                        /** @description The public key installed as the Swig root, with every permission. Taken as supplied and permanent: a wrong key strands the wallet. Must agree with `authorization`. */
-                        authority:
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256k1'
-                              /** @description SEC1 secp256k1 public key as 0x-prefixed hex: compressed (33 bytes, leading 02 or 03) or uncompressed (65 bytes, leading 04) */
-                              publicKey: string
-                            }
-                          | {
-                              /** @enum {string} */
-                              kind: 'secp256r1'
-                              /**
-                               * @description SEC1-compressed P-256 passkey point, 33 bytes as 0x-prefixed hex
-                               * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                               */
-                              publicKey: string
-                            }
-                        /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account, whose `swigAccount` it must derive; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
-                        id?: string
-                      }
-                    }
-              }
+              feeBps: number
+            }
+            /**
+             * @description How to rank candidate plans. `cheapest` minimizes direct USD cost. `fastest` minimizes estimated fill time (with cost tiebreaker). `best` minimizes total USD given up: delivered-output forgone versus the best candidate, plus cost, plus the cost of waiting. Waiting is charged both in proportion to notional (0.8 bps per minute, modelling price risk on funds in flight) and as a flat $0.10 per minute independent of size, so small intents are ranked mostly on speed and large ones mostly on price. The two are equal at $1,250 of notional.
+             * @example best
+             * @enum {string}
+             */
+            selectionStrategy?: 'cheapest' | 'fastest' | 'best'
+            /**
+             * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only.** If the intent resolves to any other route (cross-chain or same-chain), the request is **rejected** with `INVALID_CUSTOM_DEADLINE` (422) rather than silently ignoring the override. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
+             * @example 1893456000
+             */
+            customDeadline?: number
+            /**
+             * @description Sponsor settings for the intent
+             * @example {
+             *       "gas": true,
+             *       "bridgeFees": true,
+             *       "swapFees": true
+             *     }
+             */
+            sponsorship?: {
               /**
-               * @description Intent options
-               * @example {
-               *       "settlementLayers": {
-               *         "include": [
-               *           "ECO"
-               *         ]
-               *       },
-               *       "sponsorship": {
-               *         "gas": true,
-               *         "bridgeFees": true,
-               *         "swapFees": true
-               *       }
-               *     }
+               * @description Whether to sponsor gas for the intent
+               * @default false
+               * @example true
                */
-              options?: {
+              gas?: boolean
+              /**
+               * @description Whether to sponsor bridge fees for the intent
+               * @default false
+               */
+              bridgeFees?: boolean
+              /**
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
+               * @default false
+               */
+              swapFees?: boolean
+              /**
+               * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
+               * @default false
+               */
+              protocolFees?: boolean
+            }
+          }
+          /** @description The single (chain, token) pair that funds the intent, including refunds and any destination credit. Optional only for a request that delivers no token and sets `options.sponsorship.gas` (destination execution or instructions, a Swig creation or authority change); a delivery requires it. A Solana-only account without a source must target a Solana destination. */
+          source?: {
+            /**
+             * @description VM of the source chain; must match `chainId`.
+             * @example evm
+             * @enum {string}
+             */
+            vm: 'evm' | 'svm' | 'tvm' | 'stellar'
+            /**
+             * @description CAIP-2 chain id of the source chain.
+             * @example eip155:42161
+             */
+            chainId: string
+            /**
+             * @description Source token: a registry symbol or a token address on the source chain.
+             * @example USDC
+             */
+            token:
+              | string
+              | (
+                  | 'ETH'
+                  | 'USDC'
+                  | 'WETH'
+                  | 'USDT'
+                  | 'USDT0'
+                  | 'BNB'
+                  | 'WBNB'
+                  | 'XDAI'
+                  | 'WXDAI'
+                  | 'POL'
+                  | 'WPOL'
+                  | 'MON'
+                  | 'WMON'
+                  | 'S'
+                  | 'WS'
+                  | 'OKB'
+                  | 'WOKB'
+                  | 'HYPE'
+                  | 'WHYPE'
+                  | 'RON'
+                  | 'WRON'
+                  | 'USDG'
+                  | 'XPL'
+                  | 'WXPL'
+                  | 'AVAX'
+                  | 'WAVAX'
+                  | 'MockUSD'
+                  | 'USDC_TEST'
+                  | 'XLM'
+                  | 'ensUSDC'
+                  | 'ensUSDC2'
+                  | 'ensUSDC3'
+                  | 'TRX'
+                  | 'WTRX'
+                  | 'SOL'
+                  | 'WSOL'
+                )
+            /**
+             * Format: uint256
+             * @description Caps the unlocked balance of this pair the intent may observe, in the token's smallest unit.
+             * @example 1000000
+             */
+            maxAmount?: string
+            /**
+             * Format: uint256
+             * @description Extra availability added after the `maxAmount` cap, in the token's smallest unit. Strictly positive; EVM source and a token address only.
+             * @example 1000000
+             */
+            auxiliaryFunds?: string
+            /** @description Calls run on the source chain before the claim. EVM source only. */
+            execution?: {
+              /** @description 1–10 calls run in order. */
+              calls: {
                 /**
-                 * @description Which settlement layers the orchestrator may use. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the orchestrator's live layer set); a bare array means `include`. Internal modes (`SAME_CHAIN`, `INTENT_EXECUTOR`) are not selectable. Default unset = all layers eligible.
-                 * @example {
-                 *       "exclude": [
-                 *         "RELAY"
-                 *       ]
-                 *     }
+                 * @description Target contract address for execution
+                 * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
                  */
-                settlementLayers?:
-                  | (
-                      | 'ACROSS'
-                      | 'ECO'
-                      | 'RELAY'
-                      | 'OFT'
-                      | 'NEAR'
-                      | 'RHINO'
-                      | 'CCTP'
-                      | 'LZ'
-                    )[]
-                  | {
-                      include: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
+                to: string
                 /**
-                 * @description Which swap quoters the orchestrator may source swap routes from. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list, inverted against the full quoter set); a bare array means `include`. Use this to keep a swap on the venue a smart-session policy is scoped to. Default unset = every quoter the chain supports.
-                 * @example {
-                 *       "include": [
-                 *         "0x"
-                 *       ]
-                 *     }
+                 * Format: uint256
+                 * @description Amount must be a non-negative decimal integer string in smallest units
+                 * @example 1000000
                  */
-                quoters?:
-                  | (
-                      | '1inch'
-                      | '0x'
-                      | 'velora'
-                      | 'kyberswap'
-                      | 'fynd'
-                      | 'fynd-hosted'
-                      | 'bebop'
-                      | 'relay'
-                    )[]
-                  | {
-                      include: (
-                        | '1inch'
-                        | '0x'
-                        | 'velora'
-                        | 'kyberswap'
-                        | 'fynd'
-                        | 'fynd-hosted'
-                        | 'bebop'
-                        | 'relay'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | '1inch'
-                        | '0x'
-                        | 'velora'
-                        | 'kyberswap'
-                        | 'fynd'
-                        | 'fynd-hosted'
-                        | 'bebop'
-                        | 'relay'
-                      )[]
-                    }
-                appFees?: {
-                  /**
-                   * @description App fee rate in basis points (0–10000 = 0–100%). The base is the USD value of the intent, and which value depends on the intent shape: for a fixed-output intent it is the requested destination target(s), summed across `tokenRequests`; for a max-out intent it is the spendable source balance; for a destination-swap intent it is the swap input. Note the fixed-output base is the full requested target, not the delta over any balance already held.
-                   * @example 25
-                   */
-                  feeBps: number
-                }
-                protocolFees?: {
-                  /**
-                   * @description Rhinestone protocol fee rate in basis points (0–10000 = 0–100%), on the same base as `appFees.feeBps` — see that field. Collected alongside the app fee in one batched transfer and always accrues to Rhinestone; sponsor it via `sponsorSettings.protocolFees` to charge the integrator balance instead of the user.
-                   * @example 35
-                   */
-                  feeBps: number
-                }
+                value: string
                 /**
-                 * @description How to rank candidate plans. `cheapest` minimizes direct USD cost. `fastest` minimizes estimated fill time (with cost tiebreaker). `best` minimizes total USD given up: delivered-output forgone versus the best candidate, plus cost, plus the cost of waiting. Waiting is charged both in proportion to notional (0.8 bps per minute, modelling price risk on funds in flight) and as a flat $0.10 per minute independent of size, so small intents are ranked mostly on speed and large ones mostly on price. The two are equal at $1,250 of notional.
-                 * @example best
-                 * @enum {string}
+                 * @description Encoded function call data
+                 * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
                  */
-                selectionStrategy?: 'cheapest' | 'fastest' | 'best'
-                /**
-                 * @description Absolute unix timestamp (seconds) overriding the on-chain fill deadline. **TOKENLESS intents only.** If the intent resolves to any other route (cross-chain or same-chain), the request is **rejected** with `INVALID_CUSTOM_DEADLINE` (422) rather than silently ignoring the override. Must be between `now + 120s` and `now + 86400s`. The bundle claim/nonce expiry and the response `expiresAt` track this value automatically.
-                 * @example 1893456000
-                 */
-                customDeadline?: number
-                /** @description Removed. Use `destination.execution.actions`. */
-                hyperCore?: unknown
-                /**
-                 * @description Sponsor settings for the intent
-                 * @example {
-                 *       "gas": true,
-                 *       "bridgeFees": true,
-                 *       "swapFees": true
-                 *     }
-                 */
-                sponsorship?: {
-                  /**
-                   * @description Whether to sponsor gas for the intent
-                   * @default false
-                   * @example true
-                   */
-                  gas?: boolean
-                  /**
-                   * @description Whether to sponsor bridge fees for the intent
-                   * @default false
-                   */
-                  bridgeFees?: boolean
-                  /**
-                   * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
-                   * @default false
-                   */
-                  swapFees?: boolean
-                  /**
-                   * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
-                   * @default false
-                   */
-                  protocolFees?: boolean
-                }
-                signatureMode?: unknown
-                sponsorSettings?: unknown
-                executionTokensReceived?: unknown
-                /** @description Removed. Use `source.auxiliaryFunds`. */
-                auxiliaryFunds?: unknown
-              }
-              destinationChainId?: unknown
-              tokenRequests?: unknown
-              recipient?: unknown
-              destinationExecutions?: unknown
-              destinationInstructions?: unknown
-              addressLookupTableAddresses?: unknown
-              destinationGasLimit?: unknown
-              source?: {
+                data: string
+              }[]
+            }
+          }
+          /** @description Where the intent lands, tagged by VM: the token and exact amount to deliver, and any execution there. */
+          destination:
+            | {
                 /** @enum {string} */
-                vm: 'evm' | 'svm' | 'tvm' | 'stellar'
+                vm: 'evm'
                 /**
-                 * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
+                 * @description CAIP-2 chain id of the destination chain.
                  * @example eip155:8453
                  */
                 chainId: string
-                token:
+                /**
+                 * @description Token to deliver: a registry symbol or a token address on the destination chain. Omit it for an intent that delivers nothing.
+                 * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                 */
+                token?:
                   | string
                   | (
                       | 'ETH'
@@ -4335,17 +5741,87 @@ export interface operations {
                     )
                 /**
                  * Format: uint256
-                 * @description Amount must be a non-negative decimal integer string in smallest units
+                 * @description Exact delivery, in the token's smallest unit. Requires `token`; omit it with a `token` for a max-out intent.
                  * @example 1000000
                  */
-                maxAmount?: string
-                /**
-                 * Format: uint256
-                 * @description Amount must be a non-negative decimal integer string in smallest units
-                 * @example 1000000
-                 */
-                auxiliaryFunds?: string
+                amount?: string
+                /** @description Where the delivery lands. Omit to deliver to the account. */
+                recipient?:
+                  | {
+                      address: string
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: 'eoa'
+                      address: string
+                      /** @description EIP-7702 delegations for this account */
+                      delegations?: {
+                        default?: {
+                          /** @description Contract the account delegates to under EIP-7702 */
+                          contract: string
+                        }
+                        /**
+                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                         * @example {
+                         *       "eip155:8453": {
+                         *         "contract": "0x…"
+                         *       }
+                         *     }
+                         */
+                        chains?: {
+                          [key: string]: {
+                            /** @description Contract the account delegates to under EIP-7702 */
+                            contract: string
+                          }
+                        }
+                      }
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: 'erc7579'
+                      address: string
+                      /** @description Deployment data, used only where the account is not yet deployed */
+                      initData?: {
+                        setupOps: {
+                          /** @description Account deployment factory address */
+                          to: string
+                          /** @description Account deployment data */
+                          data: string
+                        }[]
+                      }
+                      /** @description EIP-7702 delegations for this account */
+                      delegations?: {
+                        default?: {
+                          /** @description Contract the account delegates to under EIP-7702 */
+                          contract: string
+                        }
+                        /**
+                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                         * @example {
+                         *       "eip155:8453": {
+                         *         "contract": "0x…"
+                         *       }
+                         *     }
+                         */
+                        chains?: {
+                          [key: string]: {
+                            /** @description Contract the account delegates to under EIP-7702 */
+                            contract: string
+                          }
+                        }
+                      }
+                      /** @description Gas-estimation inputs for this account */
+                      simulation?: {
+                        /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
+                        mockSignature?: string
+                        /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
+                        mockSignaturesByChain?: {
+                          [key: string]: string
+                        }
+                      }
+                    }
                 execution?: {
+                  /** @description Execution calls to run on the destination chain, in order. */
                   calls: {
                     /**
                      * @description Target contract address for execution
@@ -4364,951 +5840,811 @@ export interface operations {
                      */
                     data: string
                   }[]
+                  /**
+                   * Format: uint256
+                   * @description Gas limit for the destination-chain executions
+                   * @example 100000
+                   */
+                  gasLimit?: string
+                  /**
+                   * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
+                   * @example [
+                   *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                   *     ]
+                   */
+                  executionTokensReceived?: string[]
                 }
               }
-              destination:
-                | {
-                    /** @enum {string} */
-                    vm: 'evm'
-                    /**
-                     * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    token?:
-                      | string
-                      | (
-                          | 'ETH'
-                          | 'USDC'
-                          | 'WETH'
-                          | 'USDT'
-                          | 'USDT0'
-                          | 'BNB'
-                          | 'WBNB'
-                          | 'XDAI'
-                          | 'WXDAI'
-                          | 'POL'
-                          | 'WPOL'
-                          | 'MON'
-                          | 'WMON'
-                          | 'S'
-                          | 'WS'
-                          | 'OKB'
-                          | 'WOKB'
-                          | 'HYPE'
-                          | 'WHYPE'
-                          | 'RON'
-                          | 'WRON'
-                          | 'USDG'
-                          | 'XPL'
-                          | 'WXPL'
-                          | 'AVAX'
-                          | 'WAVAX'
-                          | 'MockUSD'
-                          | 'USDC_TEST'
-                          | 'XLM'
-                          | 'ensUSDC'
-                          | 'ensUSDC2'
-                          | 'ensUSDC3'
-                          | 'TRX'
-                          | 'WTRX'
-                          | 'SOL'
-                          | 'WSOL'
-                        )
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    amount?: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?:
-                      | {
-                          type?: unknown
-                          address: string
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'eoa'
-                          address: string
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'erc7579'
-                          address: string
-                          /** @description Deployment data, used only where the account is not yet deployed */
-                          initData?: {
-                            setupOps: {
-                              /** @description Account deployment factory address */
-                              to: string
-                              /** @description Account deployment data */
-                              data: string
-                            }[]
-                          }
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                          /** @description Gas-estimation inputs for this account */
-                          simulation?: {
-                            /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                            mockSignature?: string
-                            /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                            mockSignaturesByChain?: {
-                              [key: string]: string
-                            }
-                          }
-                        }
-                    execution?: {
-                      /** @description Execution calls to run on the destination chain, in order. */
-                      calls: {
+            | {
+                /** @enum {string} */
+                vm: 'svm'
+                /**
+                 * @description CAIP-2 chain id of the destination chain.
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description Token to deliver: a registry symbol or a token address on the destination chain. Omit it for an intent that delivers nothing.
+                 * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                 */
+                token?:
+                  | string
+                  | (
+                      | 'ETH'
+                      | 'USDC'
+                      | 'WETH'
+                      | 'USDT'
+                      | 'USDT0'
+                      | 'BNB'
+                      | 'WBNB'
+                      | 'XDAI'
+                      | 'WXDAI'
+                      | 'POL'
+                      | 'WPOL'
+                      | 'MON'
+                      | 'WMON'
+                      | 'S'
+                      | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
+                      | 'HYPE'
+                      | 'WHYPE'
+                      | 'RON'
+                      | 'WRON'
+                      | 'USDG'
+                      | 'XPL'
+                      | 'WXPL'
+                      | 'AVAX'
+                      | 'WAVAX'
+                      | 'MockUSD'
+                      | 'USDC_TEST'
+                      | 'XLM'
+                      | 'ensUSDC'
+                      | 'ensUSDC2'
+                      | 'ensUSDC3'
+                      | 'TRX'
+                      | 'WTRX'
+                      | 'SOL'
+                      | 'WSOL'
+                    )
+                /**
+                 * Format: uint256
+                 * @description Exact delivery, in the token's smallest unit. Requires `token`; omit it with a `token` for a max-out intent.
+                 * @example 1000000
+                 */
+                amount?: string
+                /** @description Where the delivery lands. Omit to deliver to the account. */
+                recipient?: {
+                  /**
+                   * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
+                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                   */
+                  address: string
+                }
+                /** @description What the destination runs out of the account's Swig: caller `instructions`, or an `authority` change. Never both. */
+                execution?:
+                  | {
+                      /** @description Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
+                      instructions: {
                         /**
-                         * @description Target contract address for execution
-                         * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                         * @description Program to invoke, base58.
+                         * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
                          */
-                        to: string
+                        programId: string
+                        /** @description Accounts the instruction reads or writes, in the order the program expects. */
+                        accounts: {
+                          /**
+                           * @description Account address, base58.
+                           * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+                           */
+                          pubkey: string
+                          /** @description Whether the instruction requires this account to sign. */
+                          isSigner: boolean
+                          /** @description Whether the instruction writes to this account. */
+                          isWritable: boolean
+                        }[]
                         /**
-                         * Format: uint256
-                         * @description Amount must be a non-negative decimal integer string in smallest units
-                         * @example 1000000
-                         */
-                        value: string
-                        /**
-                         * @description Encoded function call data
-                         * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                         * @description Instruction data, base64.
+                         * @example CQ==
                          */
                         data: string
                       }[]
-                      /**
-                       * Format: uint256
-                       * @description Gas limit for the destination-chain executions
-                       * @example 100000
-                       */
-                      gasLimit?: string
-                      /**
-                       * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
-                       * @example [
-                       *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                       *     ]
-                       */
-                      executionTokensReceived?: string[]
+                      /** @description Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. */
+                      addressLookupTables?: string[]
                     }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'svm'
-                    /**
-                     * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    token?:
-                      | string
-                      | (
-                          | 'ETH'
-                          | 'USDC'
-                          | 'WETH'
-                          | 'USDT'
-                          | 'USDT0'
-                          | 'BNB'
-                          | 'WBNB'
-                          | 'XDAI'
-                          | 'WXDAI'
-                          | 'POL'
-                          | 'WPOL'
-                          | 'MON'
-                          | 'WMON'
-                          | 'S'
-                          | 'WS'
-                          | 'OKB'
-                          | 'WOKB'
-                          | 'HYPE'
-                          | 'WHYPE'
-                          | 'RON'
-                          | 'WRON'
-                          | 'USDG'
-                          | 'XPL'
-                          | 'WXPL'
-                          | 'AVAX'
-                          | 'WAVAX'
-                          | 'MockUSD'
-                          | 'USDC_TEST'
-                          | 'XLM'
-                          | 'ensUSDC'
-                          | 'ensUSDC2'
-                          | 'ensUSDC3'
-                          | 'TRX'
-                          | 'WTRX'
-                          | 'SOL'
-                          | 'WSOL'
-                        )
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    amount?: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                    /** @description What the destination runs out of the account's Swig: caller `instructions`, or an `authority` change. Never both. */
-                    execution?:
-                      | {
-                          /** @description Solana instructions to run, in order, out of the account's own wallet. The wallet executes them, so `recipient` must be omitted: a payee is encoded inside the instructions. No route serves them yet, so a request carrying them is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS`. */
-                          instructions: {
-                            /**
-                             * @description Program to invoke, base58.
-                             * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                             */
-                            programId: string
-                            /** @description Accounts the instruction reads or writes, in the order the program expects. */
-                            accounts: {
-                              /**
-                               * @description Account address, base58.
-                               * @example TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-                               */
-                              pubkey: string
-                              /** @description Whether the instruction requires this account to sign. */
-                              isSigner: boolean
-                              /** @description Whether the instruction writes to this account. */
-                              isWritable: boolean
-                            }[]
-                            /**
-                             * @description Instruction data, base64.
-                             * @example CQ==
-                             */
-                            data: string
-                          }[]
-                          /** @description Address lookup tables the instructions resolve accounts through, base58, as Jupiter `/swap-instructions` returns them. */
-                          addressLookupTables?: string[]
-                        }
-                      | {
-                          /** @description Add a passkey or secp256k1 authority to the account's existing Swig, or remove a non-root one by its key. The added role holds exactly the requested permission, with no program permission added. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
-                          authority:
-                            | {
-                                /** @enum {string} */
-                                action: 'add'
-                                /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
-                                key:
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256r1'
-                                      /**
-                                       * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                       */
-                                      publicKey: string
-                                    }
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256k1'
-                                      /**
-                                       * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
-                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-                                       */
-                                      publicKey: string
-                                    }
-                                /**
-                                 * @description What the added authority may do, installed as exactly that one Swig action. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. `manageAuthority`: add and remove non-root authorities — including granting `all`, so effectively takeover power — but never spend or execute: the Swig program refuses every wallet-signed instruction it signs. Required; there is no default.
-                                 * @example allButManageAuthority
-                                 * @enum {string}
-                                 */
-                                permission:
-                                  | 'all'
-                                  | 'allButManageAuthority'
-                                  | 'manageAuthority'
-                              }
-                            | {
-                                /** @enum {string} */
-                                action: 'remove'
-                                /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
-                                key:
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256r1'
-                                      /**
-                                       * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
-                                       * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
-                                       */
-                                      publicKey: string
-                                    }
-                                  | {
-                                      /** @enum {string} */
-                                      kind: 'secp256k1'
-                                      /**
-                                       * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
-                                       * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-                                       */
-                                      publicKey: string
-                                    }
-                              }
-                        }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'tvm'
-                    /**
-                     * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    token?:
-                      | string
-                      | (
-                          | 'ETH'
-                          | 'USDC'
-                          | 'WETH'
-                          | 'USDT'
-                          | 'USDT0'
-                          | 'BNB'
-                          | 'WBNB'
-                          | 'XDAI'
-                          | 'WXDAI'
-                          | 'POL'
-                          | 'WPOL'
-                          | 'MON'
-                          | 'WMON'
-                          | 'S'
-                          | 'WS'
-                          | 'OKB'
-                          | 'WOKB'
-                          | 'HYPE'
-                          | 'WHYPE'
-                          | 'RON'
-                          | 'WRON'
-                          | 'USDG'
-                          | 'XPL'
-                          | 'WXPL'
-                          | 'AVAX'
-                          | 'WAVAX'
-                          | 'MockUSD'
-                          | 'USDC_TEST'
-                          | 'XLM'
-                          | 'ensUSDC'
-                          | 'ensUSDC2'
-                          | 'ensUSDC3'
-                          | 'TRX'
-                          | 'WTRX'
-                          | 'SOL'
-                          | 'WSOL'
-                        )
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    amount?: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'stellar'
-                    /**
-                     * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    token?:
-                      | string
-                      | (
-                          | 'ETH'
-                          | 'USDC'
-                          | 'WETH'
-                          | 'USDT'
-                          | 'USDT0'
-                          | 'BNB'
-                          | 'WBNB'
-                          | 'XDAI'
-                          | 'WXDAI'
-                          | 'POL'
-                          | 'WPOL'
-                          | 'MON'
-                          | 'WMON'
-                          | 'S'
-                          | 'WS'
-                          | 'OKB'
-                          | 'WOKB'
-                          | 'HYPE'
-                          | 'WHYPE'
-                          | 'RON'
-                          | 'WRON'
-                          | 'USDG'
-                          | 'XPL'
-                          | 'WXPL'
-                          | 'AVAX'
-                          | 'WAVAX'
-                          | 'MockUSD'
-                          | 'USDC_TEST'
-                          | 'XLM'
-                          | 'ensUSDC'
-                          | 'ensUSDC2'
-                          | 'ensUSDC3'
-                          | 'TRX'
-                          | 'WTRX'
-                          | 'SOL'
-                          | 'WSOL'
-                        )
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    amount?: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient: {
-                      /**
-                       * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
-                       * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
-                       */
-                      address: string
-                    }
-                  }
-                | {
-                    /** @enum {string} */
-                    vm: 'hypercore'
-                    /**
-                     * @description CAIP-2 chain identifier (e.g. `eip155:8453`, `solana:…`, `tron:…`, or a HyperCore delivery venue `hypercore:spot` / `hypercore:perp`)
-                     * @example eip155:8453
-                     */
-                    chainId: string
-                    token?:
-                      | string
-                      | (
-                          | 'ETH'
-                          | 'USDC'
-                          | 'WETH'
-                          | 'USDT'
-                          | 'USDT0'
-                          | 'BNB'
-                          | 'WBNB'
-                          | 'XDAI'
-                          | 'WXDAI'
-                          | 'POL'
-                          | 'WPOL'
-                          | 'MON'
-                          | 'WMON'
-                          | 'S'
-                          | 'WS'
-                          | 'OKB'
-                          | 'WOKB'
-                          | 'HYPE'
-                          | 'WHYPE'
-                          | 'RON'
-                          | 'WRON'
-                          | 'USDG'
-                          | 'XPL'
-                          | 'WXPL'
-                          | 'AVAX'
-                          | 'WAVAX'
-                          | 'MockUSD'
-                          | 'USDC_TEST'
-                          | 'XLM'
-                          | 'ensUSDC'
-                          | 'ensUSDC2'
-                          | 'ensUSDC3'
-                          | 'TRX'
-                          | 'WTRX'
-                          | 'SOL'
-                          | 'WSOL'
-                        )
-                    /**
-                     * Format: uint256
-                     * @description Amount must be a non-negative decimal integer string in smallest units
-                     * @example 1000000
-                     */
-                    amount?: string
-                    /** @description Where the delivery lands. Omit to deliver to the account. */
-                    recipient?:
-                      | {
-                          type?: unknown
-                          address: string
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'eoa'
-                          address: string
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                        }
-                      | {
-                          /** @enum {string} */
-                          type: 'erc7579'
-                          address: string
-                          /** @description Deployment data, used only where the account is not yet deployed */
-                          initData?: {
-                            setupOps: {
-                              /** @description Account deployment factory address */
-                              to: string
-                              /** @description Account deployment data */
-                              data: string
-                            }[]
-                          }
-                          /** @description EIP-7702 delegations for this account */
-                          delegations?: {
-                            default?: {
-                              /** @description Contract the account delegates to under EIP-7702 */
-                              contract: string
-                            }
-                            /**
-                             * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
-                             * @example {
-                             *       "eip155:8453": {
-                             *         "contract": "0x…"
-                             *       }
-                             *     }
-                             */
-                            chains?: {
-                              [key: string]: {
-                                /** @description Contract the account delegates to under EIP-7702 */
-                                contract: string
-                              }
-                            }
-                          }
-                          /** @description Gas-estimation inputs for this account */
-                          simulation?: {
-                            /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
-                            mockSignature?: string
-                            /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
-                            mockSignaturesByChain?: {
-                              [key: string]: string
-                            }
-                          }
-                        }
-                    execution?: {
-                      /** @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered one at a time, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest. Order is the contract: `updateLeverage` has to land before the order it applies to. Capped at three, which is how many named API-wallet slots an account has. */
-                      actions?: (
+                  | {
+                      /** @description Add a passkey or secp256k1 authority to the account's existing Swig, or remove a non-root one by its key. The added role holds exactly the requested permission, with no program permission added. Signed by the role `account.svm.authorization` names, which must hold `All` or `ManageAuthority`. The root role (id 0) is never removed. A removal that would leave no signable role holding `All` or `ManageAuthority` is refused, and so is adding a key already on the Swig. Solana-only accounts, sponsored (`options.sponsorship.gas`) only, and one change per intent. */
+                      authority:
                         | {
                             /** @enum {string} */
-                            type: 'order'
-                            orders: {
-                              /**
-                               * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                               *
-                               *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                               * @example 64250.5
-                               */
-                              p: string
-                              /**
-                               * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                               * @example 0.0002
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                               * @example false
-                               */
-                              r: boolean
-                              /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                              t:
-                                | {
-                                    limit: {
-                                      /**
-                                       * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                       *
-                                       *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                       * @example Ioc
-                                       * @enum {string}
-                                       */
-                                      tif: 'Alo' | 'Ioc' | 'Gtc'
-                                    }
-                                  }
-                                | {
-                                    trigger: {
-                                      isMarket: boolean
-                                      triggerPx: string
-                                      /**
-                                       * @description Take-profit or stop-loss.
-                                       * @example sl
-                                       * @enum {string}
-                                       */
-                                      tpsl: 'tp' | 'sl'
-                                    }
-                                  }
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              c?: string
-                            }[]
+                            action: 'add'
+                            /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
+                            key:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
+                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                   */
+                                  publicKey: string
+                                }
                             /**
-                             * @description `na` for a plain order. The TP/SL groupings attach the orders as a bracket around a position.
-                             * @example na
+                             * @description What the added authority may do, installed as exactly that one Swig action. `all`: every action, including adding and removing the Swig's non-root authorities. `allButManageAuthority`: spend and execute, but never add or remove an authority. `manageAuthority`: add and remove non-root authorities — including granting `all`, so effectively takeover power — but never spend or execute: the Swig program refuses every wallet-signed instruction it signs. Required; there is no default.
+                             * @example allButManageAuthority
                              * @enum {string}
                              */
-                            grouping: 'na' | 'normalTpsl' | 'positionTpsl'
-                            builder?: {
-                              /** @description Address receiving the builder fee. */
-                              b: string
-                              /**
-                               * @description Builder fee in TENTHS of a basis point — `10` is 1bp of order notional.
-                               * @example 10
-                               */
-                              f: number
-                            }
+                            permission:
+                              | 'all'
+                              | 'allButManageAuthority'
+                              | 'manageAuthority'
                           }
                         | {
                             /** @enum {string} */
-                            type: 'cancel'
-                            cancels: {
-                              /** @description Asset index. */
-                              a: number
-                              /** @description Order id. */
-                              o: number
-                            }[]
-                            /** @description Fast cancel. */
-                            f?: boolean
+                            action: 'remove'
+                            /** @description The authority key: a passkey (`secp256r1`) or a secp256k1 public key. Either must be SEC1-compressed and lie on its curve. */
+                            key:
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256r1'
+                                  /**
+                                   * @description The SEC1-compressed P-256 passkey public key, as 33 bytes of 0x-prefixed hex
+                                   * @example 0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
+                                   */
+                                  publicKey: string
+                                }
+                              | {
+                                  /** @enum {string} */
+                                  kind: 'secp256k1'
+                                  /**
+                                   * @description The SEC1-compressed secp256k1 public key, as 33 bytes of 0x-prefixed hex. Uncompressed keys are refused: compress them first. Never an EVM address.
+                                   * @example 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+                                   */
+                                  publicKey: string
+                                }
                           }
-                        | {
-                            /** @enum {string} */
-                            type: 'cancelByCloid'
-                            cancels: {
-                              asset: number
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              cloid: string
-                            }[]
-                            f?: boolean
+                    }
+              }
+            | {
+                /** @enum {string} */
+                vm: 'tvm'
+                /**
+                 * @description CAIP-2 chain id of the destination chain.
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description Token to deliver: a registry symbol or a token address on the destination chain. Omit it for an intent that delivers nothing.
+                 * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                 */
+                token?:
+                  | string
+                  | (
+                      | 'ETH'
+                      | 'USDC'
+                      | 'WETH'
+                      | 'USDT'
+                      | 'USDT0'
+                      | 'BNB'
+                      | 'WBNB'
+                      | 'XDAI'
+                      | 'WXDAI'
+                      | 'POL'
+                      | 'WPOL'
+                      | 'MON'
+                      | 'WMON'
+                      | 'S'
+                      | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
+                      | 'HYPE'
+                      | 'WHYPE'
+                      | 'RON'
+                      | 'WRON'
+                      | 'USDG'
+                      | 'XPL'
+                      | 'WXPL'
+                      | 'AVAX'
+                      | 'WAVAX'
+                      | 'MockUSD'
+                      | 'USDC_TEST'
+                      | 'XLM'
+                      | 'ensUSDC'
+                      | 'ensUSDC2'
+                      | 'ensUSDC3'
+                      | 'TRX'
+                      | 'WTRX'
+                      | 'SOL'
+                      | 'WSOL'
+                    )
+                /**
+                 * Format: uint256
+                 * @description Exact delivery, in the token's smallest unit. Requires `token`; omit it with a `token` for a max-out intent.
+                 * @example 1000000
+                 */
+                amount?: string
+                /** @description Where the delivery lands. Omit to deliver to the account. */
+                recipient: {
+                  /**
+                   * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
+                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                   */
+                  address: string
+                }
+              }
+            | {
+                /** @enum {string} */
+                vm: 'stellar'
+                /**
+                 * @description CAIP-2 chain id of the destination chain.
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description Token to deliver: a registry symbol or a token address on the destination chain. Omit it for an intent that delivers nothing.
+                 * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                 */
+                token?:
+                  | string
+                  | (
+                      | 'ETH'
+                      | 'USDC'
+                      | 'WETH'
+                      | 'USDT'
+                      | 'USDT0'
+                      | 'BNB'
+                      | 'WBNB'
+                      | 'XDAI'
+                      | 'WXDAI'
+                      | 'POL'
+                      | 'WPOL'
+                      | 'MON'
+                      | 'WMON'
+                      | 'S'
+                      | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
+                      | 'HYPE'
+                      | 'WHYPE'
+                      | 'RON'
+                      | 'WRON'
+                      | 'USDG'
+                      | 'XPL'
+                      | 'WXPL'
+                      | 'AVAX'
+                      | 'WAVAX'
+                      | 'MockUSD'
+                      | 'USDC_TEST'
+                      | 'XLM'
+                      | 'ensUSDC'
+                      | 'ensUSDC2'
+                      | 'ensUSDC3'
+                      | 'TRX'
+                      | 'WTRX'
+                      | 'SOL'
+                      | 'WSOL'
+                    )
+                /**
+                 * Format: uint256
+                 * @description Exact delivery, in the token's smallest unit. Requires `token`; omit it with a `token` for a max-out intent.
+                 * @example 1000000
+                 */
+                amount?: string
+                /** @description Where the delivery lands. Omit to deliver to the account. */
+                recipient: {
+                  /**
+                   * @description Recipient address. Format depends on destination chain — 0x-hex for EVM destinations, base58 for Solana, T-address for Tron.
+                   * @example 0x579d5631f76126991c00fb8fe5467fa9d49e5f6a
+                   */
+                  address: string
+                }
+              }
+            | {
+                /** @enum {string} */
+                vm: 'hypercore'
+                /**
+                 * @description CAIP-2 chain id of the destination chain.
+                 * @example eip155:8453
+                 */
+                chainId: string
+                /**
+                 * @description Token to deliver: a registry symbol or a token address on the destination chain. Omit it for an intent that delivers nothing.
+                 * @example 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+                 */
+                token?:
+                  | string
+                  | (
+                      | 'ETH'
+                      | 'USDC'
+                      | 'WETH'
+                      | 'USDT'
+                      | 'USDT0'
+                      | 'BNB'
+                      | 'WBNB'
+                      | 'XDAI'
+                      | 'WXDAI'
+                      | 'POL'
+                      | 'WPOL'
+                      | 'MON'
+                      | 'WMON'
+                      | 'S'
+                      | 'WS'
+                      | 'OKB'
+                      | 'WOKB'
+                      | 'HYPE'
+                      | 'WHYPE'
+                      | 'RON'
+                      | 'WRON'
+                      | 'USDG'
+                      | 'XPL'
+                      | 'WXPL'
+                      | 'AVAX'
+                      | 'WAVAX'
+                      | 'MockUSD'
+                      | 'USDC_TEST'
+                      | 'XLM'
+                      | 'ensUSDC'
+                      | 'ensUSDC2'
+                      | 'ensUSDC3'
+                      | 'TRX'
+                      | 'WTRX'
+                      | 'SOL'
+                      | 'WSOL'
+                    )
+                /**
+                 * Format: uint256
+                 * @description Exact delivery, in the token's smallest unit. Requires `token`; omit it with a `token` for a max-out intent.
+                 * @example 1000000
+                 */
+                amount?: string
+                /** @description Where the delivery lands. Omit to deliver to the account. */
+                recipient?:
+                  | {
+                      address: string
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: 'eoa'
+                      address: string
+                      /** @description EIP-7702 delegations for this account */
+                      delegations?: {
+                        default?: {
+                          /** @description Contract the account delegates to under EIP-7702 */
+                          contract: string
+                        }
+                        /**
+                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                         * @example {
+                         *       "eip155:8453": {
+                         *         "contract": "0x…"
+                         *       }
+                         *     }
+                         */
+                        chains?: {
+                          [key: string]: {
+                            /** @description Contract the account delegates to under EIP-7702 */
+                            contract: string
                           }
-                        | {
-                            /** @enum {string} */
-                            type: 'modify'
-                            oid: number | string
-                            order: {
-                              /**
-                               * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                               *
-                               *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                               * @example 64250.5
-                               */
-                              p: string
-                              /**
-                               * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                               * @example 0.0002
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                               * @example false
-                               */
-                              r: boolean
-                              /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                              t:
-                                | {
-                                    limit: {
-                                      /**
-                                       * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                       *
-                                       *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                       * @example Ioc
-                                       * @enum {string}
-                                       */
-                                      tif: 'Alo' | 'Ioc' | 'Gtc'
-                                    }
-                                  }
-                                | {
-                                    trigger: {
-                                      isMarket: boolean
-                                      triggerPx: string
-                                      /**
-                                       * @description Take-profit or stop-loss.
-                                       * @example sl
-                                       * @enum {string}
-                                       */
-                                      tpsl: 'tp' | 'sl'
-                                    }
-                                  }
-                              /**
-                               * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                               * @example 0x1234567890abcdef1234567890abcdef
-                               */
-                              c?: string
-                            }
-                            /**
-                             * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
-                             * @enum {boolean}
-                             */
-                            a?: true
+                        }
+                      }
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: 'erc7579'
+                      address: string
+                      /** @description Deployment data, used only where the account is not yet deployed */
+                      initData?: {
+                        setupOps: {
+                          /** @description Account deployment factory address */
+                          to: string
+                          /** @description Account deployment data */
+                          data: string
+                        }[]
+                      }
+                      /** @description EIP-7702 delegations for this account */
+                      delegations?: {
+                        default?: {
+                          /** @description Contract the account delegates to under EIP-7702 */
+                          contract: string
+                        }
+                        /**
+                         * @description Per-chain delegate contracts, keyed by CAIP-2 chain id
+                         * @example {
+                         *       "eip155:8453": {
+                         *         "contract": "0x…"
+                         *       }
+                         *     }
+                         */
+                        chains?: {
+                          [key: string]: {
+                            /** @description Contract the account delegates to under EIP-7702 */
+                            contract: string
                           }
-                        | {
-                            /** @enum {string} */
-                            type: 'batchModify'
-                            modifies: {
-                              oid: number | string
-                              order: {
-                                /**
-                                 * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
-                                 * @example 0
-                                 */
-                                a: number
-                                /**
-                                 * @description Buy (`true`) or sell (`false`).
-                                 * @example true
-                                 */
-                                b: boolean
-                                /**
-                                 * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
-                                 *
-                                 *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
-                                 * @example 64250.5
-                                 */
-                                p: string
-                                /**
-                                 * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
-                                 * @example 0.0002
-                                 */
-                                s: string
-                                /**
-                                 * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
-                                 * @example false
-                                 */
-                                r: boolean
-                                /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
-                                t:
-                                  | {
-                                      limit: {
-                                        /**
-                                         * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
-                                         *
-                                         *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
-                                         * @example Ioc
-                                         * @enum {string}
-                                         */
-                                        tif: 'Alo' | 'Ioc' | 'Gtc'
-                                      }
-                                    }
-                                  | {
-                                      trigger: {
-                                        isMarket: boolean
-                                        triggerPx: string
-                                        /**
-                                         * @description Take-profit or stop-loss.
-                                         * @example sl
-                                         * @enum {string}
-                                         */
-                                        tpsl: 'tp' | 'sl'
-                                      }
-                                    }
-                                /**
-                                 * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
-                                 * @example 0x1234567890abcdef1234567890abcdef
-                                 */
-                                c?: string
+                        }
+                      }
+                      /** @description Gas-estimation inputs for this account */
+                      simulation?: {
+                        /** @description Cross-chain fallback stub signature, used where no per-chain entry matches */
+                        mockSignature?: string
+                        /** @description Per-chain stub signatures, keyed by CAIP-2 chain id */
+                        mockSignaturesByChain?: {
+                          [key: string]: string
+                        }
+                      }
+                    }
+                execution?: {
+                  /** @description The Hyperliquid actions to authorise, IN ORDER. Each gets its own agent in its own API-wallet slot, registered one at a time, and they are sent to the exchange in the order given once every agent is live — the first refusal stops the rest. Order is the contract: `updateLeverage` has to land before the order it applies to. Capped at three, which is how many named API-wallet slots an account has. */
+                  actions?: (
+                    | {
+                        /** @enum {string} */
+                        type: 'order'
+                        orders: {
+                          /**
+                           * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                           * @example 0
+                           */
+                          a: number
+                          /**
+                           * @description Buy (`true`) or sell (`false`).
+                           * @example true
+                           */
+                          b: boolean
+                          /**
+                           * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                           *
+                           *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                           * @example 64250.5
+                           */
+                          p: string
+                          /**
+                           * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                           * @example 0.0002
+                           */
+                          s: string
+                          /**
+                           * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                           * @example false
+                           */
+                          r: boolean
+                          /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                          t:
+                            | {
+                                limit: {
+                                  /**
+                                   * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                                   *
+                                   *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                                   * @example Ioc
+                                   * @enum {string}
+                                   */
+                                  tif: 'Alo' | 'Ioc' | 'Gtc'
+                                }
                               }
-                            }[]
+                            | {
+                                trigger: {
+                                  isMarket: boolean
+                                  triggerPx: string
+                                  /**
+                                   * @description Take-profit or stop-loss.
+                                   * @example sl
+                                   * @enum {string}
+                                   */
+                                  tpsl: 'tp' | 'sl'
+                                }
+                              }
+                          /**
+                           * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                           * @example 0x1234567890abcdef1234567890abcdef
+                           */
+                          c?: string
+                        }[]
+                        /**
+                         * @description `na` for a plain order. The TP/SL groupings attach the orders as a bracket around a position.
+                         * @example na
+                         * @enum {string}
+                         */
+                        grouping: 'na' | 'normalTpsl' | 'positionTpsl'
+                        builder?: {
+                          /** @description Address receiving the builder fee. */
+                          b: string
+                          /**
+                           * @description Builder fee in TENTHS of a basis point — `10` is 1bp of order notional.
+                           * @example 10
+                           */
+                          f: number
+                        }
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'cancel'
+                        cancels: {
+                          /** @description Asset index. */
+                          a: number
+                          /** @description Order id. */
+                          o: number
+                        }[]
+                        /** @description Fast cancel. */
+                        f?: boolean
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'cancelByCloid'
+                        cancels: {
+                          asset: number
+                          /**
+                           * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                           * @example 0x1234567890abcdef1234567890abcdef
+                           */
+                          cloid: string
+                        }[]
+                        f?: boolean
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'modify'
+                        oid: number | string
+                        order: {
+                          /**
+                           * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
+                           * @example 0
+                           */
+                          a: number
+                          /**
+                           * @description Buy (`true`) or sell (`false`).
+                           * @example true
+                           */
+                          b: boolean
+                          /**
+                           * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                           *
+                           *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                           * @example 64250.5
+                           */
+                          p: string
+                          /**
+                           * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                           * @example 0.0002
+                           */
+                          s: string
+                          /**
+                           * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                           * @example false
+                           */
+                          r: boolean
+                          /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                          t:
+                            | {
+                                limit: {
+                                  /**
+                                   * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                                   *
+                                   *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                                   * @example Ioc
+                                   * @enum {string}
+                                   */
+                                  tif: 'Alo' | 'Ioc' | 'Gtc'
+                                }
+                              }
+                            | {
+                                trigger: {
+                                  isMarket: boolean
+                                  triggerPx: string
+                                  /**
+                                   * @description Take-profit or stop-loss.
+                                   * @example sl
+                                   * @enum {string}
+                                   */
+                                  tpsl: 'tp' | 'sl'
+                                }
+                              }
+                          /**
+                           * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                           * @example 0x1234567890abcdef1234567890abcdef
+                           */
+                          c?: string
+                        }
+                        /**
+                         * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                         * @enum {boolean}
+                         */
+                        a?: true
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'batchModify'
+                        modifies: {
+                          oid: number | string
+                          order: {
                             /**
-                             * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
-                             * @enum {boolean}
-                             */
-                            a?: true
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'updateLeverage'
-                            asset: number
-                            /**
-                             * @description Cross margin (`true`) or isolated (`false`).
-                             * @example true
-                             */
-                            isCross: boolean
-                            /**
-                             * @description New leverage, capped by the asset's own maximum. Set it BEFORE the intent that opens the position: leverage applied afterwards does not resize an existing one.
-                             * @example 5
-                             */
-                            leverage: number
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'updateIsolatedMargin'
-                            asset: number
-                            isBuy: boolean
-                            /**
-                             * @description Margin to add (positive) or remove (negative), in USDC with 6 decimals — `1000000` is 1 USD.
-                             * @example 1000000
-                             */
-                            ntli: number
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'twapOrder'
-                            twap: {
-                              /**
-                               * @description Asset index, as for an order.
-                               * @example 0
-                               */
-                              a: number
-                              /**
-                               * @description Buy (`true`) or sell (`false`).
-                               * @example true
-                               */
-                              b: boolean
-                              /**
-                               * @description Total size to work, in units of the asset.
-                               * @example 0.01
-                               */
-                              s: string
-                              /**
-                               * @description Reduce-only.
-                               * @example false
-                               */
-                              r: boolean
-                              /**
-                               * @description Duration in MINUTES. Hyperliquid enforces its own bounds and refuses a duration outside them ("Invalid TWAP duration"), so none are imposed here.
-                               * @example 30
-                               */
-                              m: number
-                              /**
-                               * @description Randomize the timing of the sub-orders rather than spacing them evenly.
-                               * @example true
-                               */
-                              t: boolean
-                            }
-                          }
-                        | {
-                            /** @enum {string} */
-                            type: 'twapCancel'
-                            /**
-                             * @description Asset index of the running TWAP.
+                             * @description Asset index. Perps use the index in the `meta` universe; spot uses `10000 + index` from `spotMeta`. This is an INDEX, not a ticker — resolve it from the info endpoint, and note that an index built against the wrong universe places a valid order in the wrong market.
                              * @example 0
                              */
                             a: number
                             /**
-                             * @description The TWAP id, which Hyperliquid returns when it accepts the `twapOrder` and is not echoed on the intent. Read it back from the exchange — the agent that placed the TWAP authorised only that one action, so cancelling is a second intent.
-                             * @example 12345
+                             * @description Buy (`true`) or sell (`false`).
+                             * @example true
                              */
-                            t: number
+                            b: boolean
+                            /**
+                             * @description Limit price. Must satisfy Hyperliquid's tick rules — at most 5 significant figures and at most `6 - szDecimals` decimals for a perp — and is refused there, not here.
+                             *
+                             *     This price is fixed when you sign, and an intent that bridges to HyperCore takes ~30s to deliver. Price it to still cross after that move, or the order is refused with your funds already delivered.
+                             * @example 64250.5
+                             */
+                            p: string
+                            /**
+                             * @description Size in units of the asset, to at most the asset's `szDecimals`. Hyperliquid refuses an order worth under ~$10.
+                             * @example 0.0002
+                             */
+                            s: string
+                            /**
+                             * @description Reduce-only. `true` is how a position is CLOSED — pair it with a tokenless intent, since closing needs no delivered collateral.
+                             * @example false
+                             */
+                            r: boolean
+                            /** @description Either `{ limit: { tif } }` or `{ trigger: { isMarket, triggerPx, tpsl } }`. */
+                            t:
+                              | {
+                                  limit: {
+                                    /**
+                                     * @description Time in force. `Ioc` fills what it can and cancels the rest, which is how a market order is expressed here — there is no market order type. `Alo` is post-only. `Gtc` rests on the book.
+                                     *
+                                     *     Prefer `Ioc` for anything an intent delivers funds for: a resting order leaves the account holding USDC and no position, and the agent that could have cancelled it is already spent.
+                                     * @example Ioc
+                                     * @enum {string}
+                                     */
+                                    tif: 'Alo' | 'Ioc' | 'Gtc'
+                                  }
+                                }
+                              | {
+                                  trigger: {
+                                    isMarket: boolean
+                                    triggerPx: string
+                                    /**
+                                     * @description Take-profit or stop-loss.
+                                     * @example sl
+                                     * @enum {string}
+                                     */
+                                    tpsl: 'tp' | 'sl'
+                                  }
+                                }
+                            /**
+                             * @description Optional client order id — 128-bit hex. Your handle on the order afterwards: the exchange echoes it back, so it is the only way to correlate a fill with the intent that placed it without polling by asset.
+                             * @example 0x1234567890abcdef1234567890abcdef
+                             */
+                            c?: string
                           }
-                      )[]
-                      /** @description Calls to run on HyperEVM, where the delivery settles before it reaches Core. Its `gasLimit` sizes those calls — Core actions are not EVM transactions and have no gas. */
-                      settlement?: {
-                        /** @description Execution calls to run on the destination chain, in order. */
-                        calls: {
-                          /**
-                           * @description Target contract address for execution
-                           * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-                           */
-                          to: string
-                          /**
-                           * Format: uint256
-                           * @description Amount must be a non-negative decimal integer string in smallest units
-                           * @example 1000000
-                           */
-                          value: string
-                          /**
-                           * @description Encoded function call data
-                           * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
-                           */
-                          data: string
                         }[]
                         /**
-                         * Format: uint256
-                         * @description Gas limit for the destination-chain executions
-                         * @example 100000
+                         * @description Place the replacement even if the cancel failed. Omit it entirely for the default — Hyperliquid rejects an action hashed with `a: false`, so `false` is not a legal value.
+                         * @enum {boolean}
                          */
-                        gasLimit?: string
-                        /**
-                         * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
-                         * @example [
-                         *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                         *     ]
-                         */
-                        executionTokensReceived?: string[]
+                        a?: true
                       }
-                    }
+                    | {
+                        /** @enum {string} */
+                        type: 'updateLeverage'
+                        asset: number
+                        /**
+                         * @description Cross margin (`true`) or isolated (`false`).
+                         * @example true
+                         */
+                        isCross: boolean
+                        /**
+                         * @description New leverage, capped by the asset's own maximum. Set it BEFORE the intent that opens the position: leverage applied afterwards does not resize an existing one.
+                         * @example 5
+                         */
+                        leverage: number
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'updateIsolatedMargin'
+                        asset: number
+                        isBuy: boolean
+                        /**
+                         * @description Margin to add (positive) or remove (negative), in USDC with 6 decimals — `1000000` is 1 USD.
+                         * @example 1000000
+                         */
+                        ntli: number
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'twapOrder'
+                        twap: {
+                          /**
+                           * @description Asset index, as for an order.
+                           * @example 0
+                           */
+                          a: number
+                          /**
+                           * @description Buy (`true`) or sell (`false`).
+                           * @example true
+                           */
+                          b: boolean
+                          /**
+                           * @description Total size to work, in units of the asset.
+                           * @example 0.01
+                           */
+                          s: string
+                          /**
+                           * @description Reduce-only.
+                           * @example false
+                           */
+                          r: boolean
+                          /**
+                           * @description Duration in MINUTES. Hyperliquid enforces its own bounds and refuses a duration outside them ("Invalid TWAP duration"), so none are imposed here.
+                           * @example 30
+                           */
+                          m: number
+                          /**
+                           * @description Randomize the timing of the sub-orders rather than spacing them evenly.
+                           * @example true
+                           */
+                          t: boolean
+                        }
+                      }
+                    | {
+                        /** @enum {string} */
+                        type: 'twapCancel'
+                        /**
+                         * @description Asset index of the running TWAP.
+                         * @example 0
+                         */
+                        a: number
+                        /**
+                         * @description The TWAP id, which Hyperliquid returns when it accepts the `twapOrder` and is not echoed on the intent. Read it back from the exchange — the agent that placed the TWAP authorised only that one action, so cancelling is a second intent.
+                         * @example 12345
+                         */
+                        t: number
+                      }
+                  )[]
+                  /** @description Calls to run on HyperEVM, where the delivery settles before it reaches Core. Its `gasLimit` sizes those calls — Core actions are not EVM transactions and have no gas. */
+                  settlement?: {
+                    /** @description Execution calls to run on the destination chain, in order. */
+                    calls: {
+                      /**
+                       * @description Target contract address for execution
+                       * @example 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+                       */
+                      to: string
+                      /**
+                       * Format: uint256
+                       * @description Amount must be a non-negative decimal integer string in smallest units
+                       * @example 1000000
+                       */
+                      value: string
+                      /**
+                       * @description Encoded function call data
+                       * @example 0xa9059cbb000000000000000000000000579d5631f76126991c00fb8fe5467fa9d49e5f6a00000000000000000000000000000000000000000000000000000000000f4240
+                       */
+                      data: string
+                    }[]
+                    /**
+                     * Format: uint256
+                     * @description Gas limit for the destination-chain executions
+                     * @example 100000
+                     */
+                    gasLimit?: string
+                    /**
+                     * @description Tokens that will be received by EOA executions. These will be swept to the recipient account.
+                     * @example [
+                     *       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                     *     ]
+                     */
+                    executionTokensReceived?: string[]
                   }
-              accountAccessList?: unknown
-              preClaimExecutions?: unknown
-            }
+                }
+              }
+        }
       }
     }
     responses: {
@@ -5614,7 +6950,7 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: unknown
+                              action?: Record<string, never>
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -5918,7 +7254,7 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: unknown
+                              action?: Record<string, never>
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -6618,7 +7954,7 @@ export interface operations {
                           /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
                           hyperCore?: {
                             /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
-                            action?: unknown
+                            action?: Record<string, never>
                             /**
                              * @description The nonce the action commits to
                              * @example 1633493192000
@@ -7048,6 +8384,11 @@ export interface operations {
                         type: 'RHINO'
                         /** @description Rhino.fi commitment ID. Use against Rhino.fi's status API to track the destination-chain fill. */
                         commitmentId: string
+                        /**
+                         * @description Rhino.fi API key variant the commitment was quoted under. Rhino.fi answers a status lookup only under that key, so the fill-tracker asks for the same variant.
+                         * @enum {string}
+                         */
+                        keyVariant?: 'user_fee'
                       }
                     | {
                         /**
@@ -7379,7 +8720,7 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: unknown
+                              action?: Record<string, never>
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -7683,7 +9024,7 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: unknown
+                              action?: Record<string, never>
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -8410,7 +9751,7 @@ export interface operations {
                           /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
                           hyperCore?: {
                             /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
-                            action?: unknown
+                            action?: Record<string, never>
                             /**
                              * @description The nonce the action commits to
                              * @example 1633493192000
@@ -8738,22 +10079,270 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description The credential carries no platform token */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -8762,22 +10351,406 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description The sponsor of the requested sponsorship has no record */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description No route can serve the request. `details[0].context.code` names the reason. */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -8786,22 +10759,406 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description Quoting is paused */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description A routing provider timed out */
+      504: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -8818,430 +11175,189 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json':
-          | {
-              /** @description Removed. The calculation follows the amount: `source.amount` is exact-in, an amount on the destination token request is exact-out. */
-              direction?: unknown
-              /** @description Removed. Use `source.amount`. */
-              amountIn?: unknown
-              /** @description Removed. Use the destination token request `amount`. */
-              amountOut?: unknown
-              /** @description Removed. Use `source.selection.chains`. */
-              sourceChainId?: unknown
-              /** @description Removed. Use `source.selection.tokens`. */
-              sourceToken?: unknown
-              /** @description Removed. Use `destination.chainId`. */
-              destinationChainId?: unknown
-              /** @description Removed. Use `destination.tokenRequests`. */
-              destinationToken?: unknown
-              /** @description Removed. Use `account.<vm>.type`. */
-              accountType?: unknown
-              /** @description Removed. Use `source.assumptions.deployed`. */
-              accountDeployed?: unknown
-              /** @description Removed. The HyperCore delivery venue is the destination. */
-              balance?: unknown
+        'application/json': {
+          /**
+           * @description The account the estimate is calculated for. Optional: conservative defaults apply when it is omitted.
+           * @example {
+           *       "evm": {
+           *         "type": "erc7579"
+           *       }
+           *     }
+           */
+          account?: {
+            /** @description The EVM side of the hypothetical account */
+            evm?: {
               /**
-               * @description The account the estimate is calculated for. Optional: conservative defaults apply when it is omitted.
-               * @example {
-               *       "evm": {
-               *         "type": "erc7579"
-               *       }
-               *     }
+               * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `eoa` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
+               * @example erc7579
+               * @enum {string}
                */
-              account?: {
-                /** @description The EVM side of the hypothetical account */
-                evm?: {
-                  /**
-                   * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `eoa` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
-                   * @example erc7579
-                   * @enum {string}
-                   */
-                  type: 'eoa' | 'erc7579'
-                }
-                /** @description The Solana side of the hypothetical account */
-                svm?: {
-                  /**
-                   * @description A Solana source spends through a Swig, which is a smart account. There is no Swig address to state here: nothing is derived or verified against an indicative calculation.
-                   * @enum {string}
-                   */
-                  type: 'swig'
-                }
-              }
-              /** @description The hypothetical deposit being priced. Required, and unlike `POST /quotes` it names its pair explicitly: there is no balance to select over. */
-              source: {
-                /** @description The single (chain, token) pair the deposit is hypothesised in */
-                selection: {
-                  /**
-                   * @description The one chain the hypothetical deposit sits on, named with `only` (CAIP-2). An estimate prices a single deposit, so `all`, `except` and a list of more than one are refused.
-                   * @example {
-                   *       "only": [
-                   *         "eip155:8453"
-                   *       ]
-                   *     }
-                   */
-                  chains:
-                    | 'all'
-                    | {
-                        only: string[]
-                      }
-                    | {
-                        except: string[]
-                      }
-                  /**
-                   * @description The one token the hypothetical deposit is held in, named with `only`, by registry symbol or by address on the selected chain.
-                   * @example {
-                   *       "only": [
-                   *         "USDC"
-                   *       ]
-                   *     }
-                   */
-                  tokens:
-                    | 'all'
-                    | {
-                        only: string[]
-                      }
-                    | {
-                        except: string[]
-                      }
-                  /** @description Not accepted: the estimate names one chain, which `tokens` already narrows. */
-                  perChain?: unknown
-                }
-                vm?: unknown
-                chainId?: unknown
-                token?: unknown
-                /**
-                 * Format: uint256
-                 * @description The fixed hypothetical deposit, in the source token's smallest unit. Present for an exact-in estimate; omit it and put an amount on the destination token request for exact-out.
-                 * @example 1000000
-                 */
-                amount?: string
-                /** @description Hypothetical account facts on the source chain */
-                assumptions?: {
-                  /**
-                   * @description Whether the smart account is already deployed on the selected source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup). Ignored for an EOA.
-                   * @example true
-                   */
-                  deployed?: boolean
-                }
-                /** @description Not accepted: an estimate reads no balance, so there is nothing to cap. State the input with `source.amount`. */
-                limits?: unknown
-                /** @description Not accepted: an estimate reads no balance, so there is nothing to supplement. State the input with `source.amount`. */
-                auxiliaryFunds?: unknown
-                /** @description Not accepted: an estimate executes nothing. */
-                executions?: unknown
-              }
-              /** @description Where the estimate delivers */
-              destination: {
-                /**
-                 * @description VM the delivery lands on. Cross-checked against the chain the registry gives `chainId`; `hypercore` names a venue, which the registry classifies by the EVM chain it settles on.
-                 * @example evm
-                 * @enum {string}
-                 */
-                vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                /**
-                 * @description Destination chain id (CAIP-2), matching the destinations `POST /quotes` accepts, including a HyperCore venue (`hypercore:spot` / `hypercore:perp`) under `vm: "hypercore"`.
-                 * @example eip155:42161
-                 */
-                chainId: string
-                token?: unknown
-                amount?: unknown
-                /** @description Exactly one token request: an estimate prices one delivery. Its `amount` is what selects an exact-out calculation. */
-                tokenRequests: {
-                  /**
-                   * @description Destination token — registry symbol, EVM `0x…`, Solana base58 mint, or Tron T-address.
-                   * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
-                   */
-                  tokenAddress: string
-                  /**
-                   * Format: uint256
-                   * @description The fixed delivery, in the destination token's smallest unit. Present for an exact-out estimate; omit it and set `source.amount` for exact-in.
-                   * @example 1000000
-                   */
-                  amount?: string
-                }[]
-                /** @description Not accepted: an estimate reads no recipient balance, so who receives the delivery cannot change it. */
-                recipient?: unknown
-                /** @description Not accepted: an estimate executes nothing. */
-                execution?: unknown
-              }
-              /**
-               * @description Optional estimate tuning knobs
-               * @example {
-               *       "sponsorship": {
-               *         "gas": true
-               *       }
-               *     }
-               */
-              options?: {
-                /**
-                 * @description Which settlement layers the estimate may rank. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list). Default unset = all layers eligible.
-                 * @example {
-                 *       "exclude": [
-                 *         "RELAY"
-                 *       ]
-                 *     }
-                 */
-                settlementLayers?:
-                  | {
-                      include: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                /**
-                 * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` minimizes total USD given up — delivered-output forgone, plus cost, plus the cost of waiting (0.8 bps/min of notional for price risk plus a flat $0.10/min). Mirrors the binding `/quotes` selector, so the recommended route agrees with the one you will be quoted.
-                 * @example best
-                 * @enum {string}
-                 */
-                selectionStrategy?: 'cheapest' | 'fastest' | 'best'
-                /** @description Integrator app fee applied to the estimate */
-                appFees?: {
-                  /**
-                   * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
-                   * @example 25
-                   */
-                  feeBps: number
-                }
-                /** @description Rhinestone protocol fee applied to the estimate */
-                protocolFees?: {
-                  /**
-                   * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Carved from the user unless `sponsorSettings.protocolFees` is set.
-                   * @example 5
-                   */
-                  feeBps: number
-                }
-                /**
-                 * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
-                 * @example {
-                 *       "gas": true,
-                 *       "bridgeFees": true,
-                 *       "swapFees": false
-                 *     }
-                 */
-                sponsorship?: {
-                  /**
-                   * @description Whether to sponsor gas for the intent
-                   * @default false
-                   * @example true
-                   */
-                  gas?: boolean
-                  /**
-                   * @description Whether to sponsor bridge fees for the intent
-                   * @default false
-                   */
-                  bridgeFees?: boolean
-                  /**
-                   * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
-                   * @default false
-                   */
-                  swapFees?: boolean
-                  /**
-                   * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
-                   * @default false
-                   */
-                  protocolFees?: boolean
-                }
-                /** @description Removed. Use `options.sponsorship`. */
-                sponsorSettings?: unknown
-              }
+              type: 'eoa' | 'erc7579'
             }
-          | {
-              /** @description Removed. The calculation follows the amount: `source.amount` is exact-in, an amount on the destination token request is exact-out. */
-              direction?: unknown
-              /** @description Removed. Use `source.amount`. */
-              amountIn?: unknown
-              /** @description Removed. Use the destination token request `amount`. */
-              amountOut?: unknown
-              /** @description Removed. Use `source.selection.chains`. */
-              sourceChainId?: unknown
-              /** @description Removed. Use `source.selection.tokens`. */
-              sourceToken?: unknown
-              /** @description Removed. Use `destination.chainId`. */
-              destinationChainId?: unknown
-              /** @description Removed. Use `destination.tokenRequests`. */
-              destinationToken?: unknown
-              /** @description Removed. Use `account.<vm>.type`. */
-              accountType?: unknown
-              /** @description Removed. Use `source.assumptions.deployed`. */
-              accountDeployed?: unknown
-              /** @description Removed. The HyperCore delivery venue is the destination. */
-              balance?: unknown
+            /** @description The Solana side of the hypothetical account */
+            svm?: {
               /**
-               * @description The account the estimate is calculated for. Optional: conservative defaults apply when it is omitted.
-               * @example {
-               *       "evm": {
-               *         "type": "erc7579"
-               *       }
-               *     }
+               * @description A Solana source spends through a Swig, which is a smart account. There is no Swig address to state here: nothing is derived or verified against an indicative calculation.
+               * @enum {string}
                */
-              account?: {
-                /** @description The EVM side of the hypothetical account */
-                evm?: {
-                  /**
-                   * @description Account the route would execute against. Settlement layers filter on account type, so declaring it yields an estimate that matches what `POST /quotes` would plan. Defaults to `eoa` — the more restrictive of the two — so an undeclared caller is never shown smart-account-only routes.
-                   * @example erc7579
-                   * @enum {string}
-                   */
-                  type: 'eoa' | 'erc7579'
-                }
-                /** @description The Solana side of the hypothetical account */
-                svm?: {
-                  /**
-                   * @description A Solana source spends through a Swig, which is a smart account. There is no Swig address to state here: nothing is derived or verified against an indicative calculation.
-                   * @enum {string}
-                   */
-                  type: 'swig'
-                }
-              }
-              source: {
-                /** @enum {string} */
-                vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                chainId: string
-                token: string
-                /**
-                 * Format: uint256
-                 * @description Amount must be a non-negative decimal integer string in smallest units
-                 * @example 1000000
-                 */
-                amount?: string
-                /** @description Hypothetical account facts on the source chain */
-                assumptions?: {
-                  /**
-                   * @description Whether the smart account is already deployed on the selected source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup). Ignored for an EOA.
-                   * @example true
-                   */
-                  deployed?: boolean
-                }
-              }
-              destination: {
-                /** @enum {string} */
-                vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
-                chainId: string
-                token: string
-                /**
-                 * Format: uint256
-                 * @description Amount must be a non-negative decimal integer string in smallest units
-                 * @example 1000000
-                 */
-                amount?: string
-              }
-              /**
-               * @description Optional estimate tuning knobs
-               * @example {
-               *       "sponsorship": {
-               *         "gas": true
-               *       }
-               *     }
-               */
-              options?: {
-                /**
-                 * @description Which settlement layers the estimate may rank. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list). Default unset = all layers eligible.
-                 * @example {
-                 *       "exclude": [
-                 *         "RELAY"
-                 *       ]
-                 *     }
-                 */
-                settlementLayers?:
-                  | {
-                      include: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                  | {
-                      exclude: (
-                        | 'ACROSS'
-                        | 'ECO'
-                        | 'RELAY'
-                        | 'OFT'
-                        | 'NEAR'
-                        | 'RHINO'
-                        | 'CCTP'
-                        | 'LZ'
-                      )[]
-                    }
-                /**
-                 * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` minimizes total USD given up — delivered-output forgone, plus cost, plus the cost of waiting (0.8 bps/min of notional for price risk plus a flat $0.10/min). Mirrors the binding `/quotes` selector, so the recommended route agrees with the one you will be quoted.
-                 * @example best
-                 * @enum {string}
-                 */
-                selectionStrategy?: 'cheapest' | 'fastest' | 'best'
-                /** @description Integrator app fee applied to the estimate */
-                appFees?: {
-                  /**
-                   * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
-                   * @example 25
-                   */
-                  feeBps: number
-                }
-                /** @description Rhinestone protocol fee applied to the estimate */
-                protocolFees?: {
-                  /**
-                   * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Carved from the user unless `sponsorSettings.protocolFees` is set.
-                   * @example 5
-                   */
-                  feeBps: number
-                }
-                /**
-                 * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
-                 * @example {
-                 *       "gas": true,
-                 *       "bridgeFees": true,
-                 *       "swapFees": false
-                 *     }
-                 */
-                sponsorship?: {
-                  /**
-                   * @description Whether to sponsor gas for the intent
-                   * @default false
-                   * @example true
-                   */
-                  gas?: boolean
-                  /**
-                   * @description Whether to sponsor bridge fees for the intent
-                   * @default false
-                   */
-                  bridgeFees?: boolean
-                  /**
-                   * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
-                   * @default false
-                   */
-                  swapFees?: boolean
-                  /**
-                   * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
-                   * @default false
-                   */
-                  protocolFees?: boolean
-                }
-                /** @description Removed. Use `options.sponsorship`. */
-                sponsorSettings?: unknown
-              }
+              type: 'swig'
             }
+          }
+          /** @description The hypothetical deposit being priced: one (chain, token) pair. Required; there is no balance to select over. */
+          source: {
+            /**
+             * @description VM of the source chain; must match `chainId`.
+             * @example evm
+             * @enum {string}
+             */
+            vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+            /**
+             * @description CAIP-2 chain id of the source chain.
+             * @example eip155:8453
+             */
+            chainId: string
+            /**
+             * @description Source token: a registry symbol or a token address on the source chain.
+             * @example USDC
+             */
+            token: string
+            /**
+             * Format: uint256
+             * @description The fixed hypothetical deposit, in the source token's smallest unit. Present for an exact-in estimate; omit it and set `destination.amount` for exact-out.
+             * @example 1000000
+             */
+            amount?: string
+            /** @description Hypothetical account facts on the source chain */
+            assumptions?: {
+              /**
+               * @description Whether the smart account is already deployed on the selected source chain. An undeployed account pays one-time setup gas, so declaring it avoids over-charging repeat users. Defaults to undeployed (charges setup). Ignored for an EOA and for a Solana (Swig) source, which charges no setup.
+               * @example true
+               */
+              deployed?: boolean
+            }
+          }
+          /** @description Where the estimate delivers */
+          destination: {
+            /**
+             * @description VM the delivery lands on; must match `chainId`. `hypercore` names the venues `hypercore:spot` / `hypercore:perp`.
+             * @example evm
+             * @enum {string}
+             */
+            vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+            /**
+             * @description CAIP-2 chain id of the destination chain or venue.
+             * @example eip155:42161
+             */
+            chainId: string
+            /**
+             * @description Token to deliver: a registry symbol or a token address on the destination chain.
+             * @example 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+             */
+            token: string
+            /**
+             * Format: uint256
+             * @description The fixed delivery, in the destination token's smallest unit. Present for an exact-out estimate; omit it and set `source.amount` for exact-in.
+             * @example 1000000
+             */
+            amount?: string
+          }
+          /**
+           * @description Optional estimate tuning knobs
+           * @example {
+           *       "sponsorship": {
+           *         "gas": true
+           *       }
+           *     }
+           */
+          options?: {
+            /**
+             * @description Which settlement layers the estimate may rank. `{ include: [...] }` (allow-list) or `{ exclude: [...] }` (deny-list). Default unset = all layers eligible.
+             * @example {
+             *       "exclude": [
+             *         "RELAY"
+             *       ]
+             *     }
+             */
+            settlementLayers?:
+              | {
+                  include: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  )[]
+                }
+              | {
+                  exclude: (
+                    | 'ACROSS'
+                    | 'ECO'
+                    | 'RELAY'
+                    | 'OFT'
+                    | 'NEAR'
+                    | 'RHINO'
+                    | 'CCTP'
+                    | 'LZ'
+                  )[]
+                }
+            /**
+             * @description How to rank candidate routes. `cheapest` minimizes USD cost, `fastest` minimizes fill time, `best` minimizes total USD given up — delivered-output forgone, plus cost, plus the cost of waiting (0.8 bps/min of notional for price risk plus a flat $0.10/min). Mirrors the binding `/quotes` selector, so the recommended route agrees with the one you will be quoted.
+             * @example best
+             * @enum {string}
+             */
+            selectionStrategy?: 'cheapest' | 'fastest' | 'best'
+            /** @description Integrator app fee applied to the estimate */
+            appFees?: {
+              /**
+               * @description App fee rate in basis points of the input value (0–10000 = 0–100%).
+               * @example 25
+               */
+              feeBps: number
+            }
+            /** @description Rhinestone protocol fee applied to the estimate */
+            protocolFees?: {
+              /**
+               * @description Rhinestone protocol fee rate in basis points of the input value (0–10000 = 0–100%). Carved from the user unless `options.sponsorship.protocolFees` is set.
+               * @example 5
+               */
+              feeBps: number
+            }
+            /**
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
+             * @example {
+             *       "gas": true,
+             *       "bridgeFees": true,
+             *       "swapFees": false
+             *     }
+             */
+            sponsorship?: {
+              /**
+               * @description Whether to sponsor gas for the intent
+               * @default false
+               * @example true
+               */
+              gas?: boolean
+              /**
+               * @description Whether to sponsor bridge fees for the intent
+               * @default false
+               */
+              bridgeFees?: boolean
+              /**
+               * @description Whether to sponsor swap fees for the intent. For an integrator enabled for it, this also sponsors the VALUE of an eligible same-chain swap, so the user trades at par: the user contributes the 1:1 amount and the sponsor pays whatever the market is short. That applies only to pairs where par is a meaningful rate (both sides USD-pegged) and only up to a configured per-swap ceiling; outside those bounds the swap is priced at market.
+               * @default false
+               */
+              swapFees?: boolean
+              /**
+               * @description Whether to sponsor the Rhinestone protocol fee (`options.protocolFees`) for the intent. When `true`, the fee is charged to the integrator's sponsorship balance instead of carved from the user, without the sponsorship surcharge.
+               * @default false
+               */
+              protocolFees?: boolean
+            }
+          }
+        }
       }
     }
     responses: {
@@ -9470,7 +11586,7 @@ export interface operations {
                    */
                   type: 'eoa' | 'erc7579' | 'swig'
                   /**
-                   * @description Whether the smart account was assumed deployed on the source chain. Absent for an EOA, which pays no setup gas.
+                   * @description Whether the smart account was assumed deployed on the source chain. Absent for an EOA or a Swig, which pay no setup gas.
                    * @example false
                    */
                   deployed?: boolean
@@ -9495,22 +11611,270 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description The credential carries no platform token */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -9519,22 +11883,270 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description The sponsor of the requested sponsorship has no record */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Sponsorship or a request option refuses the route */
@@ -9543,22 +12155,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -9567,22 +12291,406 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description Quoting is paused */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+        }
+      }
+      /** @description A routing provider timed out */
+      504: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -9617,22 +12725,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Missing or invalid API key */
@@ -9641,22 +12861,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -9665,22 +12997,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -9722,22 +13166,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Missing or invalid API key */
@@ -9746,22 +13302,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -9770,22 +13438,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -9794,22 +13574,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -9856,22 +13748,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Missing or invalid API key */
@@ -9880,22 +13884,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -9904,22 +14020,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -9928,22 +14156,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -9984,22 +14324,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Missing or invalid API key */
@@ -10008,22 +14460,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description A withdrawal is already being signed */
@@ -10032,22 +14596,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -10056,22 +14732,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }
@@ -10118,22 +14906,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Missing or invalid API key */
@@ -10142,22 +15042,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description API key scope denied */
@@ -10166,22 +15178,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Withdrawal not found */
@@ -10190,22 +15314,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
       /** @description Server error */
@@ -10214,22 +15450,134 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            errors: {
-              /**
-               * @description Error message
-               * @example Invalid input
-               */
-              message: string
-              /** @description Additional error context */
-              context?: unknown
-            }[]
-            /**
-             * @description Trace ID for request correlation. Returned in x-trace-id for all responses and in legacy alps error bodies for compatibility.
-             * @example eb0ba4657f36364b33ec565c15f98368
-             */
-            traceId: string
-          }
+          'application/json':
+            | {
+                /** @enum {string} */
+                code: 'VALIDATION_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Per-field validation issues */
+                details?: {
+                  /** @description Human-readable issue description */
+                  message: string
+                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
+            | {
+                /** @enum {string} */
+                code: 'SIMULATION_FAILED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Classified on-chain simulation failure details */
+                details?: {
+                  nonce?: string
+                  category: string
+                  errorSelector: string
+                  errorName: string
+                  errorArgs?: {
+                    [key: string]: string
+                  }
+                  retryable: boolean
+                  /** @enum {string} */
+                  retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
+                  simulations?: unknown
+                } & {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'INSUFFICIENT_LIQUIDITY'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Fillable subset and unfillable remainder */
+                details?: {
+                  /** @description Intents fillable with current liquidity */
+                  availableIntents: {
+                    [key: string]: string
+                  }[]
+                  /** @description Token amounts that cannot be filled */
+                  unfillable: {
+                    [key: string]: string
+                  }
+                }
+              }
+            | {
+                /** @enum {string} */
+                code: 'KEY_SCOPE_DENIED'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description Single-element list describing the failing scope */
+                details?: {
+                  message: string
+                  context: {
+                    /**
+                     * @description Which scope rejected the request
+                     * @enum {string}
+                     */
+                    scope: 'allowMainnet' | 'intents' | 'deposits'
+                    /** @description Minimum level the endpoint demands */
+                    required: boolean | ('read' | 'write')
+                    /** @description Level resolved on the key */
+                    actual: boolean | ('none' | 'read' | 'write')
+                  }
+                }[]
+              }
+            | {
+                /**
+                 * @description Machine-readable error code
+                 * @enum {string}
+                 */
+                code:
+                  | 'NOT_FOUND'
+                  | 'UNAUTHORIZED'
+                  | 'FORBIDDEN'
+                  | 'SPONSORSHIP_BINDING_MISMATCH'
+                  | 'SPONSORSHIP_BINDING_UNSUPPORTED'
+                  | 'QUOTE_AUTHORIZATION_MISSING'
+                  | 'QUOTE_OWNER_MISMATCH'
+                  | 'QUOTE_AUTHORIZATION_EXPIRED'
+                  | 'SPONSORSHIP_AUTHORIZATION_USED'
+                  | 'CONFLICT'
+                  | 'WITHDRAWAL_IN_PROGRESS'
+                  | 'UNPROCESSABLE_CONTENT'
+                  | 'TOO_MANY_REQUESTS'
+                  | 'SETTLEMENT_QUOTE_ERROR'
+                  | 'SETTLEMENT_EXECUTION_ERROR'
+                  | 'EXTERNAL_SERVICE_TIMEOUT'
+                  | 'RELAYER_MARKET_UNAVAILABLE'
+                  | 'SERVICE_PAUSED'
+                  | 'INTERNAL_ERROR'
+                /**
+                 * @description Human-readable error message
+                 * @example Invalid input
+                 */
+                message: string
+                /** @description The error and its structured context */
+                details?: {
+                  /** @description Error message */
+                  message: string
+                  /** @description Structured context. A planning refusal names its reason in `context.code` (e.g. `NO_PLAN_AVAILABLE`). */
+                  context?: {
+                    [key: string]: unknown
+                  }
+                }[]
+              }
         }
       }
     }

@@ -121,12 +121,16 @@ repository, ref and commit it was generated from, the artifact's SHA-256, and
 the command that produced it. The orchestrator generates it with its opt-in
 `scripts/generateOpenApi.ts --version 2026-09.caucasus`.
 
-The pinned document is the dual-shape Caucasus contract: `POST /quotes` and
-`POST /quotes/estimate` accept both the legacy body and the singular one. The
-SDK sends only the singular branch, `WireSingularQuoteRequest` in `wire.ts`, and
-`mapIntentRequestToWire` returns that type, so a change to the singular schema
-is a typecheck error at the mapper. `provenance.test.ts` also asserts the
-singular branch's shape directly.
+The pinned document is the accepted singular-only Caucasus artifact from
+orchestrator commit `30aa909db5053fbe67170513dfa21b4e0f984d09` (SHA-256
+`b2ada4e7d36cd10cc91d682fff21937d6159ca46d0800f9e7e9d32fb4cda2fcd`).
+`POST /quotes` and `POST /quotes/estimate` advertise only singular bodies, with
+numeric EVM signature modes, corrected unions, nullable fields, and documented
+errors. `WireSingularQuoteRequest` in `wire.ts` directly aliases the complete
+quote request; `mapIntentRequestToWire` returns it, preserving the structural
+check at the mapper. `provenance.test.ts` asserts the direct request schemas.
+This alignment preserves SDK runtime behavior and does not resolve the
+artifact's acknowledged upstream error-envelope and submit-coverage gaps.
 
 Both are verified before generating: a snapshot whose bytes or declared version
 disagree with the manifest fails loudly rather than producing plausible types
@@ -140,9 +144,10 @@ moving upstream would break *every* open SDK PR the moment it moved. The per-PR
 CI check (`Verify wire types match the pinned OpenAPI document`) regenerates and
 diffs, so `wire.gen.ts` only ever reflects an intentional change.
 
-The [`Sync wire types`](../.github/workflows/sync-wire-types.yaml) workflow
-(hourly cron + `workflow_dispatch`) is the *only* thing that changes
-`wire.gen.ts`. While Caucasus is unpublished it reports a clean no-op — it never
+Intentional, reviewed re-vendoring updates the snapshot, provenance, and
+`wire.gen.ts` together. The [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
+workflow (hourly cron + `workflow_dispatch`) handles future automated sync.
+While Caucasus is unpublished it reports a clean no-op — it never
 falls back to an older version, and never points at a file that does not exist.
 Once the document is published it starts opening the rolling PR that swaps the
 source to the immutable public commit, regenerates and typechecks. A regen that
