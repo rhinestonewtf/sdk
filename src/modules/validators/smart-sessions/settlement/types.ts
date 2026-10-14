@@ -42,7 +42,7 @@ export interface SettlementAddresses {
     readonly appFeeCollector: Address
     readonly paymaster: Address
   }
-  /** The USD stablecoins a `swap.stableFloor` session may treat as 1:1. */
+  /** The USD stablecoins the orchestrator serves as 1:1, with their decimals: the ECO_IE floor and `swap.stableFloor` read them. */
   readonly usdStablecoins?: readonly ServedStablecoin[]
 }
 
@@ -75,6 +75,8 @@ export interface SettlementContext {
   readonly timeFrame: readonly SessionPolicy[]
   /** `ECO_IE` only: the solver's maximum cut, in basis points of the cap. */
   readonly maxFeeBps?: number
+  /** The permit's `validAfter`, in seconds. */
+  readonly validAfter?: bigint
   /** The permit's `validUntil`, in seconds. */
   readonly validUntil?: bigint
 }

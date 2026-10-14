@@ -312,6 +312,9 @@ export function resolveSettlementScope(
     cap,
     timeFrame,
     ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
+    ...(permit.validAfter === undefined
+      ? {}
+      : { validAfter: permit.validAfter }),
     ...(permit.validUntil === undefined
       ? {}
       : { validUntil: permit.validUntil }),
