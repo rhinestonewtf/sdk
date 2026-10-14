@@ -242,7 +242,17 @@ export function validateSessionDefinition(
     (collect) => resolveSession(definition, options, collect),
     log,
   )
-  const warnings = sessionWarnings(definition)
+  const warnings = [
+    ...sessionWarnings(definition),
+    ...(result?.sharedActionWindow
+      ? [
+          {
+            code: 'ACTION_WINDOW_SHARED_PERMISSION_ID' as const,
+            message: `an action window on a zeroHash-salted session: it shares its permissionId with any other zero-salt session of the same owners, so the window, like the session's other policies, may not be installed when an intent enables the session; use ${result.access.kind === 'scoped' ? "saltMode 'strict' or " : ''}a fresh session key`,
+          },
+        ]
+      : []),
+  ]
   const warned = warnings.length ? { warnings } : {}
   if (result === undefined) return { refusals, ...warned }
   const { access, settlementCoverage } = result
@@ -292,6 +302,8 @@ function resolveSession(
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
   readonly settlementCoverage: SettlementCoverage | undefined
   readonly access: SessionAccess
+  /** An action window on a session salted with zeroHash. */
+  readonly sharedActionWindow: boolean
 } {
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
@@ -1118,6 +1130,9 @@ function resolveSession(
   }
   return {
     data,
+    // An intent sends no enable data for a permissionId already enabled, so
+    // the window may not be installed.
+    sharedActionWindow: windowed.windows.length > 0 && data.salt === zeroHash,
     settlementLayers: settlementScope?.settlementLayers ?? [],
     settlementCoverage: settlementScope && {
       dropped: settlementScope.dropped,
@@ -1172,10 +1187,9 @@ const POLICY_COMPONENTS = [
 /**
  * Pick the salt for a session, defaulting to the historical `zeroHash`.
  *
- * Unsalted sessions are always `zeroHash`: an unrestricted session has only one
- * shape, so two for the same signer are the same session and sharing a
- * permissionId is correct. Restricted and one-time-use ones can differ, which is
- * what makes a salt necessary.
+ * Unrestricted sessions are always `zeroHash`, so two for the same signer share
+ * a permissionId even when their permissions differ. Restricted and one-time-use
+ * ones can take a salt that tells them apart.
  */
 function sessionSalt(
   mode: 'none' | 'v1' | 'strict' | undefined,
