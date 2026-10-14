@@ -20,7 +20,7 @@ import type {
   UniversalActionPolicyParamRule,
 } from '../types'
 import { OFT_SEND_SELECTOR, SEND } from './oft'
-import { served } from './served'
+import { SettlementLayerRefusal, served } from './served'
 import type { SettlementContext } from './types'
 
 /**
@@ -134,13 +134,13 @@ interface Route {
 /** The execute call, pinned to the permit's destinations, recipients and cap. */
 export function scopeLz(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: LZ moves one token (USDC) per chain; give exactly one `from` token on this chain',
     )
   }
   const account = ctx.account
   if (!account) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: LZ sweeps what it does not bridge back to the account, so the session definition needs `account`',
     )
   }
@@ -299,7 +299,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     }
   }
   if (routes.length === 0) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: LZ moves only USDC; the \`from\` token on chain ${ctx.chainId} is ${token}`,
     )
   }
@@ -311,7 +311,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   )
   for (const leg of legs) {
     if (routes.every((route) => route.leg(leg) === undefined)) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
       )
     }
@@ -332,7 +332,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     ]
   })
   if (branches.length === 0) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
     )
   }

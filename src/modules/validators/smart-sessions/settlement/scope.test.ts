@@ -485,10 +485,12 @@ describe('settlement-scoped crossChainPermits', () => {
     ).toThrow('twice; the second config would overwrite the first on-chain')
   })
 
-  test('refuses a permit naming two IntentExecutor layers', () => {
+  test('refuses a permit naming a layer that does not route from the chain', () => {
     expect(() =>
-      resolveSessionData(definition({ settlementLayers: ['CCTP', 'OFT'] })),
-    ).toThrow('name one IntentExecutor layer per permit')
+      resolveSessionData(
+        definition({ settlementLayers: ['CCTP', 'OFT'] }, withOnce),
+      ),
+    ).toThrow('OFT does not route to chain 8453')
   })
 
   test.each(['ACROSS', 'ECO', 'SAME_CHAIN'] as const)(

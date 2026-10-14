@@ -15,7 +15,7 @@ import type {
   ScopedAction,
   UniversalActionPolicyParamRule,
 } from '../types'
-import { served } from './served'
+import { SettlementLayerRefusal, served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -101,7 +101,7 @@ function requireStablecoin(
       isAddressEqual(t, token),
     )
   ) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE moves only USD stablecoins; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
@@ -109,7 +109,7 @@ function requireStablecoin(
     isAddressEqual(t.address, token),
   )
   if (usd?.decimals !== ECO_DECIMALS) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: ECO_IE prices reward against delivery 1:1, so the \`${leg}\` token ${token} on chain ${chainId} must be a served ${ECO_DECIMALS}-decimal USD stablecoin; ${usd === undefined ? 'the orchestrator serves no usdStablecoins entry for it' : `it has ${usd.decimals} decimals`}`,
     )
   }
@@ -149,20 +149,20 @@ const anyOf = (branches: ArgPolicyExpression[]): ArgPolicyExpression =>
 /** The publish call, pinned to the permit's destinations, provers and prices. */
 export function scopeEco(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE funds one reward token per chain; give exactly one `from` token on this chain',
     )
   }
   requireStablecoin(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE refunds an unfilled reward to the account, so the session definition needs `account`',
     )
   }
   // The key sets the delivery against the reward; only a floor stops it from
   // paying a solver for next to nothing.
   if (ctx.cap === undefined || ctx.maxFeeBps === undefined) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver',
     )
   }
@@ -171,14 +171,14 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
     ctx.maxFeeBps < 0 ||
     ctx.maxFeeBps >= 10_000
   ) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
     )
   }
   // An unfillable intent is refundable only after its reward deadline, so an
   // unbounded one would lock the reward for good.
   if (ctx.validUntil === undefined) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',
     )
   }
@@ -188,7 +188,7 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   const firstUse =
     ctx.validAfter !== undefined && ctx.validAfter > now ? ctx.validAfter : now
   if (ctx.validUntil < firstUse + ECO_MIN_VALIDITY_SECONDS) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       "crossChainPermits: ECO_IE needs validUntil at least 7 days after it can first act (now or validAfter): Eco's reward deadline is ~7 days out and the session pins it",
     )
   }
@@ -233,13 +233,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   const legs = ctx.destinations.map((leg): ArgPolicyExpression => {
     requireStablecoin(ctx.settlement, leg.chainId, leg.token, 'to')
     if (leg.recipient === undefined) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         "crossChainPermits: ECO_IE needs a concrete recipient; 'any' cannot pin the route's transfer",
       )
     }
     const provers = proversBetween(ctx.settlement, ctx.chainId, leg.chainId)
     if (provers.length === 0) {
-      throw new Error(
+      throw new SettlementLayerRefusal(
         `crossChainPermits: no Eco prover is deployed on both chain ${ctx.chainId} and chain ${leg.chainId}`,
       )
     }

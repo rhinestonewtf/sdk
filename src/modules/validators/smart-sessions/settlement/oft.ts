@@ -14,7 +14,7 @@ import {
   swapAction,
 } from '../swap/rules'
 import type { ScopedAction, UniversalActionPolicyParamRule } from '../types'
-import { served } from './served'
+import { SettlementLayerRefusal, served } from './served'
 import type { SettlementCatalog, SettlementContext } from './types'
 
 /**
@@ -87,7 +87,7 @@ function requireUsdt0(
   leg: 'from' | 'to',
 ) {
   if (!isAddressEqual(token, served(settlement, chainId, 'oft').token)) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       `crossChainPermits: OFT moves only USDT0; the \`${leg}\` token on chain ${chainId} is ${token}`,
     )
   }
@@ -96,13 +96,13 @@ function requireUsdt0(
 /** The send call, pinned to the permit's destinations, refund and cap. */
 export function scopeOft(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: OFT sends one token (USDT0) per chain; give exactly one `from` token on this chain',
     )
   }
   requireUsdt0(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
   if (!ctx.account) {
-    throw new Error(
+    throw new SettlementLayerRefusal(
       'crossChainPermits: OFT refunds its LayerZero fee to the account, so the session definition needs `account`',
     )
   }
