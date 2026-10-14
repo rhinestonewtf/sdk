@@ -44,6 +44,8 @@ import { swapperAddresses } from './swap/rhinestone'
 import { resolveSwapScope } from './swap/scope'
 import { assertStableFloorIsolated } from './swap/stable-floor'
 import type {
+  CrossChainPermit,
+  CrossChainSettlementLayer,
   IntentExecutorSettlementLayer,
   Permission,
   ResolvedAction,
@@ -922,6 +924,23 @@ function strictSessionSalt(session: {
 }
 
 /**
+ * The Permit2 layers the session's permit names. Empty when it names none,
+ * which admits every Permit2 arbiter. A session carries at most one Permit2
+ * permit (a second claim policy is refused when the session resolves).
+ */
+function permit2Layers(
+  permits: readonly CrossChainPermit[],
+): CrossChainSettlementLayer[] {
+  return [
+    ...new Set(
+      permits.flatMap(({ settlementLayers }) =>
+        Array.isArray(settlementLayers) ? settlementLayers : [],
+      ),
+    ),
+  ]
+}
+
+/**
  * The definition's policy addresses, with the deployed UniversalActionPolicy
  * copies defaulted in for a settlement-scoped session on a chain that has them.
  */
@@ -966,6 +985,9 @@ export function toSession(
     resolveCrossChainPermission,
   )
   const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
+  const intentLayers = settlementLayers.length
+    ? settlementLayers
+    : permit2Layers(resolvedPermits)
   const expandedClaims = resolvedPermits
     .filter((permit) => !isSettlementScopedPermit(permit))
     .map((permit) => expandCrossChainPermit(permit, environment).claim)
@@ -997,7 +1019,7 @@ export function toSession(
     // on-chain claim (lockTag) field empty, which the manager skips anyway.
     claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
     ...(definition.swap ? { swap: definition.swap } : {}),
-    ...(settlementLayers.length ? { settlementLayers } : {}),
+    ...(intentLayers.length ? { settlementLayers: intentLayers } : {}),
     ...(definition.oneTimeUse && {
       oneTimeUse: {
         id: definition.oneTimeUse.id,
