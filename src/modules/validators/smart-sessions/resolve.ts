@@ -169,6 +169,11 @@ function resolveSession(
       'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
     )
   }
+  if (settlementScope !== undefined && definition.saltMode === 'v1') {
+    throw new Error(
+      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
+    )
+  }
   const restricted =
     definition.restrictToActions === true ||
     swapScope !== undefined ||
@@ -537,14 +542,18 @@ function resolveSession(
   const data: SessionData = {
     sessionValidator: validator.address,
     sessionValidatorInitData: validator.initData,
-    // A one-time-use, stable-floor or claim-policy session must never share a
-    // permissionId with another session: enabling it would union with that
-    // session's policies, and for a floor that means the unfloored swap actions.
+    // A one-time-use, stable-floor, settlement-scoped or claim-policy session
+    // must never share a permissionId with another session: enabling it would
+    // union with that session's policies, and for a floor or a settlement scope
+    // that means the unscoped actions.
     // A claim-policy session is never `restricted`, so without this it would
     // salt to zeroHash and collide with any plain session for the same signer,
     // leaving that session's signing policy beside the claim policy.
     salt: sessionSalt(
-      definition.oneTimeUse || stableFloor || claimPoliciesMoved
+      definition.oneTimeUse ||
+        stableFloor ||
+        claimPoliciesMoved ||
+        settlementScope !== undefined
         ? 'strict'
         : definition.saltMode,
       restricted || Boolean(definition.oneTimeUse) || claimPoliciesMoved,

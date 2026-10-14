@@ -342,6 +342,8 @@ export interface SessionDefinition {
    *
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it.
+   * A settlement-scoped session (a `crossChainPermits` entry naming an
+   * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
    */
   saltMode?: 'none' | 'v1' | 'strict'
   /**
