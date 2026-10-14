@@ -20,7 +20,8 @@ import type {
 /**
  * ECO_IE's `scopeEco` frozen as of 366001ca, so the differential test can show
  * the live builder emits the same policy wherever its behaviour is unchanged.
- * Self-contained: nothing here moves when the live helpers do.
+ * Self-contained: nothing here moves when the live helpers do, except the
+ * validUntil check, which follows the live builder since validAfter was removed.
  */
 
 const PUBLISH = {
@@ -202,11 +203,9 @@ export function frozenScopeEco(ctx: SettlementContext): ScopedAction {
     )
   }
   const now = BigInt(Math.floor(Date.now() / 1000))
-  const firstUse =
-    ctx.validAfter !== undefined && ctx.validAfter > now ? ctx.validAfter : now
-  if (ctx.validUntil < firstUse + ECO_MIN_VALIDITY_SECONDS) {
+  if (ctx.validUntil < now + ECO_MIN_VALIDITY_SECONDS) {
     throw new SettlementLayerRefusal(
-      "crossChainPermits: ECO_IE needs validUntil at least 7 days after it can first act (now or validAfter): Eco's reward deadline is ~7 days out and the session pins it",
+      "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
     )
   }
   const cap = ctx.cap
@@ -304,7 +303,6 @@ export function frozenScopeEco(ctx: SettlementContext): ScopedAction {
         valueLimitPerUse: 0n,
         expression: allOfExpressions(expression),
       },
-      ...ctx.timeFrame,
     ],
   }
 }

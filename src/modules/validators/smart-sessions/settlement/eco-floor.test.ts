@@ -39,7 +39,6 @@ const base: SettlementContext = {
   cap: 100n,
   maxFeeBps: 100,
   validUntil: 1_900_000_000n,
-  timeFrame: [],
 }
 
 describe('scopeEco against the frozen builder', () => {
@@ -83,15 +82,8 @@ describe('scopeEco against the frozen builder', () => {
     expect(scopeEco(ctx)).toEqual(frozenScopeEco(ctx))
   })
 
-  test('a time frame and validAfter emit the same policy', () => {
-    const ctx = {
-      ...base,
-      validAfter: NOW + 86_400n,
-      validUntil: NOW + 30n * 86_400n,
-      timeFrame: [
-        { type: 'time-frame', validAfter: 1, validUntil: 2 } as const,
-      ],
-    }
+  test('a later validUntil emits the same policy', () => {
+    const ctx = { ...base, validUntil: NOW + 30n * 86_400n }
     expect(scopeEco(ctx)).toEqual(frozenScopeEco(ctx))
   })
 

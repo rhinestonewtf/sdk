@@ -60,6 +60,12 @@ export const DUMMY_PRECLAIMOP_TARGET =
   '0x0000000000000000000000000000000000000420' as const
 export const DUMMY_PRECLAIMOP_SELECTOR = '0x69123456' as const
 
+function minDefined(a?: bigint, b?: bigint): bigint | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return a < b ? a : b
+}
+
 function usesEns(definition: SessionDefinition['owners']): boolean {
   return (
     definition.type === 'ens' ||
@@ -146,9 +152,21 @@ function resolveSession(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
-  const resolvedPermits = (definition.crossChainPermits ?? []).map(
-    resolveCrossChainPermission,
-  )
+  const resolvedPermits = (definition.crossChainPermits ?? []).map((input) => {
+    const until = input.validUntil
+    // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
+    // and a past deadline only fails at enable, as an opaque signature error.
+    if (
+      until !== undefined &&
+      isSettlementScopedPermit(input) &&
+      !(Number.isFinite(until.getTime()) && until.getTime() > Date.now())
+    ) {
+      throw new Error(
+        'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
+      )
+    }
+    return resolveCrossChainPermission(input)
+  })
   // A permit naming an IntentExecutor layer compiles to argument-pinned scoped
   // actions, which only bind with the fallback gone — so it restricts too.
   const settlementScope = resolveSettlementScope(resolvedPermits, {
@@ -452,10 +470,14 @@ function resolveSession(
         'oneTimeUse.validUntil must be a valid Date in the future',
       )
     }
+    // A settlement-scoped permit's validUntil joins it as the session deadline.
     const once = oneTimeUseIdErc1271Policy({
       policy: addresses.oneTimeUseId,
       id: definition.oneTimeUse.id,
-      deadline: validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+      deadline: minDefined(
+        validUntil && BigInt(Math.floor(validUntil.getTime() / 1000)),
+        settlementScope?.onceDeadline,
+      ),
     })
     // Install the once-policy on EVERY action: on the executor route the contract's
     // on-chain guard (a `consume` may only name the session's own id) runs via

@@ -356,7 +356,6 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           right: anyOf(branches),
         },
       },
-      ...ctx.timeFrame,
     ],
   }
 }

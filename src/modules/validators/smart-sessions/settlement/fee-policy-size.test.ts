@@ -73,10 +73,6 @@ const WITH_FEES: SettlementCatalog = {
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
   [arbitrum.id]: { ...SETTLEMENT_CATALOG[arbitrum.id], fees: FEES },
 }
-const TIME_FRAME: SessionPolicy[] = [
-  { type: 'time-frame', validAfter: 0, validUntil: VALID_UNTIL.getTime() },
-]
-
 type Fees = NonNullable<SettlementAddresses['fees']>
 type ParamsPolicy = Extract<
   SessionPolicy,
@@ -90,7 +86,6 @@ function legacyAddFeeBranch(
   target: Address,
   selector: Hex,
   branch: ArgPolicyExpression,
-  timeFrame: readonly SessionPolicy[],
 ): void {
   const index = actions.findIndex(
     (a) => isAddressEqual(a.target, target) && a.selector === selector,
@@ -101,7 +96,6 @@ function legacyAddFeeBranch(
       selector,
       policies: [
         { type: 'arg-policy', valueLimitPerUse: 0n, expression: branch },
-        ...timeFrame,
       ],
     })
     return
@@ -130,7 +124,6 @@ function legacyWithFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: Fees,
-  timeFrame: readonly SessionPolicy[],
 ): ScopedAction[] {
   const out = [...actions]
   const cap = () => cumulativeCap(32n, SETTLEMENT_FEE_CAP)
@@ -140,27 +133,19 @@ function legacyWithFeeActions(
       token,
       TRANSFER,
       allOf([pin(0n, fees.appFeeCollector), cap()]),
-      timeFrame,
     )
     legacyAddFeeBranch(
       out,
       token,
       APPROVE,
       allOf([pin(0n, fees.paymaster), cap()]),
-      timeFrame,
     )
   }
-  legacyAddFeeBranch(
-    out,
-    fees.paymaster,
-    CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-    {
-      type: 'and',
-      left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
-      right: allOf([cap()]),
-    },
-    timeFrame,
-  )
+  legacyAddFeeBranch(out, fees.paymaster, CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR, {
+    type: 'and',
+    left: anyOf(sourceTokens.map((token) => allOf([pin(0n, token)]))),
+    right: allOf([cap()]),
+  })
   return out
 }
 
@@ -623,9 +608,8 @@ function expectSameJudgement(
 
 describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
   const input = baseActions(layer)
-  const legacy = () =>
-    legacyWithFeeActions(input, [layer.token], FEES, TIME_FRAME)
-  const current = () => withFeeActions(input, [layer.token], FEES, TIME_FRAME)
+  const legacy = () => legacyWithFeeActions(input, [layer.token], FEES)
+  const current = () => withFeeActions(input, [layer.token], FEES)
 
   test('the scoped session’s fee path is withFeeActions', () => {
     expect(scope(permit(layer, { allowFees: true })).actions).toEqual(current())
@@ -659,8 +643,8 @@ describe.each(Object.entries(LAYERS))('allowFees on %s', (_, layer) => {
 
 describe('two `from` tokens', () => {
   const tokens = [USDC, USDC_ARB]
-  const legacy = legacyWithFeeActions([], tokens, FEES, TIME_FRAME)
-  const current = withFeeActions([], tokens, FEES, TIME_FRAME)
+  const legacy = legacyWithFeeActions([], tokens, FEES)
+  const current = withFeeActions([], tokens, FEES)
 
   test('no valid fee call is refused and no mutation is judged differently', () => {
     const valid = tokens.flatMap((token) => [
@@ -726,7 +710,7 @@ describe('policy size on enable', () => {
     const table = Object.fromEntries(
       Object.entries(LAYERS).map(([name, layer]) => {
         const input = baseActions(layer)
-        const args = [input, [layer.token], FEES, TIME_FRAME] as const
+        const args = [input, [layer.token], FEES] as const
         const old = legacyWithFeeActions(...args)
         const now = withFeeActions(...args)
         return [
@@ -770,7 +754,7 @@ describe('policy size on enable', () => {
 
   test('per action, CCTP on Base', () => {
     const input = baseActions(LAYERS.CCTP)
-    const args = [input, [USDC], FEES, TIME_FRAME] as const
+    const args = [input, [USDC], FEES] as const
     expect({
       before: rows(legacyWithFeeActions(...args), USDC),
       after: rows(withFeeActions(...args), USDC),
