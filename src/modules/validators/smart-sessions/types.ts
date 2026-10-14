@@ -210,8 +210,8 @@ export interface SessionPolicyAddresses {
   readonly timeFrame?: Address
   readonly usageLimit?: Address
   readonly valueLimit?: Address
-  // Required when a session sets `oneTimeUse`; no default until the policy has a
-  // canonical deployment.
+  // Used by `oneTimeUse` sessions. Defaults to the deployed OneTimeUseIdPolicy on
+  // chains that have one; required elsewhere.
   readonly oneTimeUseId?: Address
 }
 
@@ -452,7 +452,12 @@ export interface Session {
   access?: SessionAccess
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
-  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
+  oneTimeUse?: {
+    readonly id: bigint
+    readonly policy: Address
+    /** Set when the SDK filled in the deployed address, so intents check it is on their chains. */
+    readonly defaultPolicy?: true
+  }
 }
 
 export interface SessionData {

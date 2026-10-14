@@ -1,5 +1,5 @@
 import { decodeAbiParameters, zeroHash } from 'viem'
-import { arbitrum, base } from 'viem/chains'
+import { arbitrum, base, linea, sepolia } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 
 import { accountA } from '../../../../test/consts'
@@ -7,7 +7,11 @@ import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionData } from './digest'
 import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
-import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
+import {
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
+  TIME_FRAME_POLICY_ADDRESS,
+} from './policies/addresses'
 import { resolveSessionData, toSession } from './resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from './types'
 
@@ -362,10 +366,12 @@ describe('resolveSessionData — one-time-use session', () => {
     ).toThrow(/saltMode 'v1'/)
   })
 
-  test('throws when oneTimeUse is set without policyAddresses.oneTimeUseId', () => {
+  test('throws on a chain with no deployment when policyAddresses.oneTimeUseId is unset', () => {
     expect(() =>
-      resolveSessionData({ chain: base, owners, oneTimeUse: { id: 42n } }),
-    ).toThrow(/oneTimeUseId/)
+      resolveSessionData({ chain: linea, owners, oneTimeUse: { id: 42n } }),
+    ).toThrow(
+      'oneTimeUse: no OneTimeUseIdPolicy is deployed on chain 59144; pass its address as policyAddresses.oneTimeUseId',
+    )
   })
 
   test('toSession keeps claim policies on the high-level session (permit2 signature calldata) but off the on-chain claim surface', () => {
@@ -389,6 +395,106 @@ describe('resolveSessionData — one-time-use session', () => {
     ).toBeGreaterThan(1)
   })
 })
+
+describe('resolveSessionData — default OneTimeUseIdPolicy address', () => {
+  const ARBITER = '0x00000000000000000000000000000000000000ab' as const
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  const definition = {
+    chain: base,
+    owners,
+    claimPolicies: [{ type: 'permit2' as const, spenders: [ARBITER] }],
+    oneTimeUse: { id: 42n },
+  }
+
+  test.each([
+    ['production', ONE_TIME_USE_ID_POLICY_ADDRESS],
+    ['development', ONE_TIME_USE_ID_POLICY_ADDRESS_DEV],
+  ] as const)(
+    'on a deployed chain (%s) resolves exactly as passing %s explicitly',
+    (environment, address) => {
+      const byDefault = toSession(definition, { environment })
+      const explicit = toSession(
+        { ...definition, policyAddresses: { oneTimeUseId: address } },
+        { environment },
+      )
+      // Only the marker that an intent should check the deployment differs.
+      expect({ ...byDefault, oneTimeUse: explicit.oneTimeUse }).toEqual(
+        explicit,
+      )
+      expect(byDefault.permissionId).toBe(explicit.permissionId)
+      expect(getSessionData(byDefault)).toEqual(getSessionData(explicit))
+      expect(byDefault.oneTimeUse).toEqual({
+        id: 42n,
+        policy: address,
+        defaultPolicy: true,
+      })
+      expect(explicit.oneTimeUse).toEqual({ id: 42n, policy: address })
+      expect(
+        byDefault.actions.filter((action) => action.actionTarget === address),
+      ).toHaveLength(2)
+    },
+  )
+
+  test('an explicit address wins over the default', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    const session = toSession({
+      ...definition,
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })
+    expect(JSON.stringify(getSessionData(session), bigintJson)).not.toMatch(
+      new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS, 'i'),
+    )
+  })
+
+  test('a chain deployed for production only throws for the development contracts', () => {
+    expect(
+      toSession({ ...definition, chain: sepolia }).oneTimeUse?.policy,
+    ).toBe(ONE_TIME_USE_ID_POLICY_ADDRESS)
+    expect(() =>
+      toSession(
+        { ...definition, chain: sepolia },
+        { environment: 'development' },
+      ),
+    ).toThrow(
+      'oneTimeUse: no OneTimeUseIdPolicy is deployed on chain 11155111 (development contracts); pass its address as policyAddresses.oneTimeUseId',
+    )
+  })
+
+  test('rejects a user action on the default policy address', () => {
+    expect(() =>
+      resolveSessionData({
+        ...definition,
+        actions: [
+          {
+            target: ONE_TIME_USE_ID_POLICY_ADDRESS,
+            selector: '0x12345678',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+      }),
+    ).toThrow(/authorise their own burn/)
+  })
+
+  test.each(['production', 'development'] as const)(
+    'a session without oneTimeUse never references the policy (%s)',
+    (environment) => {
+      const session = toSession({ chain: base, owners }, { environment })
+      expect(session.oneTimeUse).toBeUndefined()
+      const serialized = JSON.stringify(getSessionData(session), bigintJson)
+      expect(serialized).not.toMatch(
+        new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS, 'i'),
+      )
+      expect(serialized).not.toMatch(
+        new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS_DEV, 'i'),
+      )
+    },
+  )
+})
+
+function bigintJson(_key: string, value: unknown) {
+  return typeof value === 'bigint' ? value.toString() : value
+}
 
 describe('resolveSessionData — Permit2-route permit maxAmount', () => {
   const POLICY = '0x00000000000000000000000000000000000000aa' as const
