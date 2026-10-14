@@ -21,15 +21,13 @@ vi.mock('./policies/addresses', async (importOriginal) => ({
   timeFramePolicyDeployed: () => true,
 }))
 
-// Kept out of resolve.test.ts because that file imports fast-check (declared in
-// package.json but not installed in every working copy); these are plain
-// example-based tests for the OneTimeUseId wiring (RHI-5798).
+// Kept out of resolve.test.ts, whose fast-check import is not installed in every
+// working copy.
 describe('resolveSessionData — one-time-use session', () => {
   const POLICY = '0x00000000000000000000000000000000000000aa' as const
   const ARBITER = '0x00000000000000000000000000000000000000ab' as const
   const owners = { type: 'ecdsa' as const, accounts: [accountA] }
-  // source: OneTimeUseIdPolicy init layout (smart-sessions-v2#56 @ 493fd86) —
-  // word 0 is the id (42 = 0x2a), word 1 the deadline; none given, so zero.
+  // Word 0 is the id (42 = 0x2a), word 1 the deadline; none given, so zero.
   const onceEntry = {
     policy: POLICY,
     initData:
@@ -61,7 +59,7 @@ describe('resolveSessionData — one-time-use session', () => {
     expect(list).toHaveLength(2)
     expect(list[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
     expect(list[1]).toEqual(onceEntry)
-    // the claim policy moved OFF the claim surface onto the 1271 surface
+    // the claim policy sits on the 1271 surface, not the claim surface
     expect(data.claimPolicies).toHaveLength(0)
   })
 
@@ -70,7 +68,7 @@ describe('resolveSessionData — one-time-use session', () => {
       chain: base,
       owners,
       claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
-      // source: 1_900_000_000 s = 2030-03-17T17:46:40Z (date -u -r 1900000000)
+      // 1_900_000_000 s = 2030-03-17T17:46:40Z
       oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
       policyAddresses: { oneTimeUseId: POLICY },
     })
@@ -389,7 +387,7 @@ describe('resolveSessionData — one-time-use session', () => {
       policyAddresses: { oneTimeUseId: POLICY },
     })
     // Populated so claimPolicyData() can build the permit2 settlement calldata
-    // that the erc1271-resident Permit2ClaimPolicy reads (RHI-5798).
+    // that the erc1271-resident Permit2ClaimPolicy reads.
     expect(session.claimPolicies).toHaveLength(1)
     // Drives prepareIntentSessions: the burn it injects and the verify-execution mode.
     expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })

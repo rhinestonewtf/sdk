@@ -108,15 +108,6 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
     otherWithoutAccount: session(permit(OTHER, ['ACROSS']), null),
   }
 
-  // Moved when Permit2-route sessions became scoped and gained their Permit2
-  // approve (RHI-8045); `account` named the now-refused ECO, so it names
-  // SAME_CHAIN, and the omitted-layer claims admit only ACROSS. Every row now
-  // sets fallback: 'intentExecution', which a reusable session without
-  // preClaimOps: 'none' needs. They moved again when a fallback session
-  // stopped carrying the Permit2 approve, which the wildcard admits; the two
-  // rows naming ACROSS were back to their pre-RHI-8045 values. All moved again when a
-  // fallback session started signing in verify-execution mode; permissionId and
-  // data are unchanged.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(

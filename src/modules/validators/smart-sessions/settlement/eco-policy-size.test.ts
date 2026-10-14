@@ -44,11 +44,9 @@ import { served } from './served'
 import type { SettlementContext } from './types'
 
 /**
- * Enabling a session stores every action policy's config, and the cost tracks
- * the non-zero slots written. This file guards the ECO_IE publish policy's size
- * reduction: a frozen copy of the policy as it stood before it, and a
- * differential that every valid call is still admitted and every mutation the
- * old policy refused is still refused, unless no solver can ever fill it.
+ * Guards the ECO_IE publish policy's size reduction against a frozen copy of the
+ * old policy: every valid call is still admitted, and every mutation it refused
+ * is still refused unless no solver can ever fill it.
  */
 
 const NOW = 1_800_000_000n
@@ -219,12 +217,9 @@ function fillReverts(
 }
 
 /**
- * Whether the publish is one the old policy admits but for its funding words:
- * `allowPartial`, the route's and the reward's native amounts. With
- * `msg.value` held at 0, `_fundNative` can fill reward native only from a
- * vault a third party pre-funded, partial funding pulls at most the capped
- * reward, `Vault.withdraw` pays at most what the vault holds, and the
- * destination takes route native from the solver. The account pays no more.
+ * Whether the publish is one the old policy admits but for its funding words
+ * (`allowPartial`, route and reward native): with `msg.value` held at 0 the
+ * account pays no more.
  */
 function sameAccountOutflow(legacy: ScopedAction, calldata: Hex): boolean {
   if (size(calldata) < 4 + Number(PUBLISH.rewardNativeAmount) + 32) return false
@@ -237,12 +232,9 @@ function sameAccountOutflow(legacy: ScopedAction, calldata: Hex): boolean {
 }
 
 /**
- * Whether no solver can ever fill the publish. The source hashes the route
- * bytes as given, the destination re-encodes the decoded `Route`, so a route
- * that is not the canonical encoding of any `Route` never matches, and a
- * canonical one whose fill reverts never lands either. Its reward only refunds
- * to the pinned creator after the reward deadline — what a route deadline in
- * the past, which the policy has always admitted, already does.
+ * Whether no solver can ever fill the publish: the destination re-encodes the
+ * decoded route, so a non-canonical one never matches its hash, and a canonical
+ * one whose fill reverts never lands. Its reward only refunds after the deadline.
  */
 function unfillable(calldata: Hex): boolean {
   const args = slice(calldata, 4)

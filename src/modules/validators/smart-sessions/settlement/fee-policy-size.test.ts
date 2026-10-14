@@ -45,11 +45,9 @@ import { resolveSettlementScope } from './scope'
 import type { SettlementAddresses, SettlementCatalog } from './types'
 
 /**
- * Enabling a session stores every action policy's config, and the cost tracks
- * the non-zero slots written. This file guards the size of what `allowFees`
- * adds: a frozen copy of the fee builder as it stood before, and a differential
- * that every valid fee call is still admitted, every one-word mutation is
- * judged the same, and every cumulative-cap sequence ends the same.
+ * Guards the size of what `allowFees` adds against a frozen copy of the old fee
+ * builder: valid calls, one-word mutations and cumulative-cap sequences are
+ * judged the same.
  */
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
