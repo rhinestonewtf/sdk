@@ -36,6 +36,16 @@ import {
 } from './policies/claim'
 import { encodeActionPolicies } from './policies/encode'
 import {
+  collectRefusals,
+  RefusalCollectionHalted,
+  type Refuse,
+  recover,
+  refusal,
+  type refusalLog,
+  refuser,
+  type SessionValidation,
+} from './refusals'
+import {
   isSettlementScopedPermit,
   resolveSettlementScope,
 } from './settlement/scope'
@@ -80,13 +90,29 @@ function minDefined(a?: bigint, b?: bigint): bigint | undefined {
 /**
  * Each validUntil the session's actions set, in seconds. A session's time window
  * is expressed as the one-time-use deadline, so a window without oneTimeUse, or
- * any validAfter, is refused.
+ * any validAfter, is refused; a dry run records it and skips that window.
  */
-function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
+function sessionWindowDeadlines(
+  definition: SessionDefinition,
+  refuse: Refuse,
+): bigint[] {
   const deadlines: bigint[] = []
-  const take = (field: string, validUntil: unknown, hasValidAfter: boolean) => {
+  const take = (
+    field: string,
+    validUntil: unknown,
+    hasValidAfter: boolean,
+    permitIndex?: number,
+  ) => {
+    const context = permitIndex === undefined ? {} : { permitIndex }
     if (hasValidAfter || (validUntil !== undefined && !definition.oneTimeUse)) {
-      throw new Error(sessionWindowRefusal(field))
+      refuse(
+        refusal(
+          'SESSION_WINDOW_REQUIRES_ONE_TIME_USE',
+          sessionWindowRefusal(field),
+          context,
+        ),
+      )
+      return
     }
     if (validUntil === undefined) return
     // As for oneTimeUse.validUntil: 0 or less would read as "never expires".
@@ -97,7 +123,14 @@ function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
         validUntil.getTime() > Date.now()
       )
     ) {
-      throw new Error(`${field}: validUntil must be a valid Date in the future`)
+      refuse(
+        refusal(
+          'VALID_UNTIL_NOT_IN_FUTURE',
+          `${field}: validUntil must be a valid Date in the future`,
+          context,
+        ),
+      )
+      return
     }
     deadlines.push(BigInt(Math.floor(validUntil.getTime() / 1000)))
   }
@@ -134,6 +167,7 @@ function sessionWindowDeadlines(definition: SessionDefinition): bigint[] {
         `crossChainPermits[${index}]`,
         permit.validUntil,
         permit.validAfter !== undefined,
+        index,
       )
     }
   }
@@ -180,10 +214,32 @@ export function resolveSessionData(
   return resolveSession(definition, options).data
 }
 
-/** The session data and the IntentExecutor layers its actions were scoped to. */
+/**
+ * The dry run of `toSession`: every refusal it meets and, when there is none,
+ * the `access` and `settlementCoverage` the session gets. Never throws a refusal.
+ */
+export function validateSessionDefinition(
+  definition: SessionDefinition,
+  options: ResolveSessionOptions = {},
+  log?: ReturnType<typeof refusalLog>,
+): SessionValidation {
+  const { refusals, result } = collectRefusals(
+    (collect) => resolveSession(definition, options, collect),
+    log,
+  )
+  if (result === undefined) return { refusals }
+  const { access, settlementCoverage } = result
+  return { refusals, access, ...(settlementCoverage && { settlementCoverage }) }
+}
+
+/**
+ * The session data and the IntentExecutor layers its actions were scoped to.
+ * With `collect`, a dry run: independent refusals are recorded, not thrown.
+ */
 function resolveSession(
   definition: SessionDefinition,
   options: ResolveSessionOptions,
+  collect?: Refuse,
 ): {
   readonly data: SessionData
   readonly settlementLayers: readonly IntentExecutorSettlementLayer[]
@@ -218,7 +274,8 @@ function resolveSession(
         options.settlement?.[definition.chain.id]?.usdStablecoins,
       )
     : undefined
-  const windowDeadlines = sessionWindowDeadlines(definition)
+  const refuse = refuser(collect)
+  const windowDeadlines = sessionWindowDeadlines(definition, refuse)
   const stableFloor = definition.swap?.stableFloor !== undefined
   if (stableFloor && definition.swap) {
     assertStableFloorIsolated({
@@ -246,21 +303,29 @@ function resolveSession(
   // global intent-execution whitelist allows, which is the opposite of what the
   // caller asked for. `restrictToActions` stays as the explicit spelling for
   // sessions scoped by hand.
-  const resolvedPermits = (definition.crossChainPermits ?? []).map((input) => {
-    const until = input.validUntil
-    // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
-    // and a past deadline only fails at enable, as an opaque signature error.
-    if (
-      until !== undefined &&
-      isSettlementScopedPermit(input) &&
-      !(Number.isFinite(until.getTime()) && until.getTime() > Date.now())
-    ) {
-      throw new Error(
-        'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
+  const resolvedPermits = (definition.crossChainPermits ?? []).map(
+    (input, permitIndex) => {
+      const until = input.validUntil
+      // As for oneTimeUse.validUntil: 0 or less would read as "never expires",
+      // and a past deadline only fails at enable, as an opaque signature error.
+      if (
+        until !== undefined &&
+        isSettlementScopedPermit(input) &&
+        !(Number.isFinite(until.getTime()) && until.getTime() > Date.now())
+      ) {
+        refuse(
+          refusal(
+            'VALID_UNTIL_NOT_IN_FUTURE',
+            'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
+            { permitIndex },
+          ),
+        )
+      }
+      return resolveCrossChainPermission(input, (error) =>
+        refuse(error, { permitIndex }),
       )
-    }
-    return resolveCrossChainPermission(input)
-  })
+    },
+  )
   // An invalid oneTimeUse.validUntil is left out here and refused below.
   const otuUntil = definition.oneTimeUse?.validUntil
   const sessionDeadline = windowDeadlines.reduce(
@@ -279,6 +344,7 @@ function resolveSession(
     account: definition.account,
     oneTimeUse: Boolean(definition.oneTimeUse),
     ...(options.settlement ? { settlement: options.settlement } : {}),
+    ...(collect ? { collect } : {}),
     ...(sessionDeadline === undefined ? {} : { sessionDeadline }),
   })
   // An ERC-1271 signing surface would let the key sign a Permit2 transfer that
@@ -288,13 +354,19 @@ function resolveSession(
     definition.signing !== undefined &&
     definition.signing.mode !== 'disabled'
   ) {
-    throw new Error(
-      'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+    refuse(
+      refusal(
+        'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
+        'crossChainPermits: an IntentExecutor-layer permit cannot enable `signing`',
+      ),
     )
   }
   if (settlementScope !== undefined && definition.saltMode === 'v1') {
-    throw new Error(
-      "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
+    refuse(
+      refusal(
+        'SETTLEMENT_SCOPED_SALT_V1',
+        "crossChainPermits: a settlement-scoped session cannot use saltMode 'v1': it must not share a permissionId with an unscoped session",
+      ),
     )
   }
   const access = sessionAccess(
@@ -339,11 +411,14 @@ function resolveSession(
     ((definition.crossChainPermits?.length && settlementScope === undefined) ||
       definition.claimPolicies?.length)
   ) {
-    throw new Error(
-      'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
-        'dropping the fallback also drops the permit guardrails (spending ' +
-        'limits). Use a restricted scoped-action session or a permit session, ' +
-        'not both.',
+    refuse(
+      refusal(
+        'RESTRICTED_WITH_PERMIT2_GRANTS',
+        'restrictToActions is incompatible with crossChainPermits/claimPolicies: ' +
+          'dropping the fallback also drops the permit guardrails (spending ' +
+          'limits). Use a restricted scoped-action session or a permit session, ' +
+          'not both.',
+      ),
     )
   }
   if (definition.oneTimeUse) {
@@ -400,23 +475,37 @@ function resolveSession(
       )
     }
   }
-  const permit2Permits = resolvedPermits.filter(
-    (permit) => !isSettlementScopedPermit(permit),
-  )
   // A Permit2-route maxAmount is enforced together with oneTimeUse.
-  if (
-    !definition.oneTimeUse &&
-    permit2Permits.some((permit) =>
-      permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
-    )
-  ) {
-    throw new Error(
-      "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+  const uncappedIndex = definition.oneTimeUse
+    ? -1
+    : resolvedPermits.findIndex(
+        (permit) =>
+          !isSettlementScopedPermit(permit) &&
+          permit.from?.some(({ maxAmount }) => maxAmount !== undefined),
+      )
+  if (uncappedIndex !== -1) {
+    refuse(
+      refusal(
+        'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+        "crossChainPermits: a Permit2-route permit's maxAmount is enforced only with oneTimeUse; set oneTimeUse or drop maxAmount",
+        { permitIndex: uncappedIndex },
+      ),
     )
   }
-  const expandedPermits = permit2Permits.map((permit) =>
-    expandCrossChainPermit(permit, environment, onceDeadline),
-  )
+  let expansionRefused = false
+  const expandedPermits = resolvedPermits.flatMap((permit, permitIndex) => {
+    if (isSettlementScopedPermit(permit)) return []
+    const expanded = recover(
+      (error) => {
+        expansionRefused = true
+        refuse(error, { permitIndex })
+      },
+      () => expandCrossChainPermit(permit, environment, onceDeadline),
+    )
+    return expanded === undefined ? [] : [expanded]
+  })
+  // The claims a dry run dropped feed the checks below, so it stops here.
+  if (expansionRefused) throw new RefusalCollectionHalted()
   const permitFallbackPolicies = expandedPermits.flatMap(
     ({ fallbackPolicies }) => fallbackPolicies,
   )
@@ -550,10 +639,11 @@ function resolveSession(
     definition.saltMode === 'v1' &&
     environment === 'development' &&
     definition.swap !== undefined
-      ? resolveSessionData(definition, {
-          ...options,
-          environment: 'production',
-        }).actions
+      ? resolveSession(
+          definition,
+          { ...options, environment: 'production' },
+          collect,
+        ).data.actions
       : undefined
   const rawClaimPolicies = [
     ...(definition.claimPolicies ?? []),
@@ -656,7 +746,8 @@ function resolveSession(
     // signing policy is sudo and is dropped rather than advertising a capability
     // the session no longer has.
     if (signing !== undefined && signing.mode !== 'unrestricted') {
-      throw new Error(
+      throw refusal(
+        'CLAIM_POLICIES_SIGNING_MODE',
         `Claim policies take over the session's ERC-1271 list, so \`signing.mode: '${signing.mode}'\` cannot also be configured — it rewrites the ERC-7739 content gate the claim policy is reached through, leaving the policy unreachable. Omit \`signing\` to keep only the claim policies, or use \`{ mode: 'unrestricted', validAfter, validUntil }\` to bound them with a window.`,
       )
     }
@@ -673,7 +764,8 @@ function resolveSession(
         signing.validUntil.getTime() > Date.now()
       )
     ) {
-      throw new Error(
+      throw refusal(
+        'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
         'signing.validUntil must be a valid Date in the future when the session carries claim policies — an expired window leaves no surface that can authorize a claim',
       )
     }
@@ -693,7 +785,8 @@ function resolveSession(
     for (const { policy } of erc1271Policies) {
       const key = policy.toLowerCase()
       if (seen.has(key)) {
-        throw new Error(
+        throw refusal(
+          'DUPLICATE_ERC1271_POLICY',
           `Session carries ERC-1271 policy ${policy} twice; the second config would overwrite the first on-chain, so only one of the declared restrictions would be enforced. Split them across sessions.`,
         )
       }
@@ -1044,8 +1137,8 @@ export function toSession(
       ...(options.settlement ? { settlement: options.settlement } : {}),
     },
   )
-  const resolvedPermits = (definition.crossChainPermits ?? []).map(
-    resolveCrossChainPermission,
+  const resolvedPermits = (definition.crossChainPermits ?? []).map((permit) =>
+    resolveCrossChainPermission(permit),
   )
   const scopedPermits = resolvedPermits.filter(isSettlementScopedPermit)
   const intentLayers = settlementLayers.length

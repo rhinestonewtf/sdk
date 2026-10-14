@@ -168,12 +168,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: LZ moves one token (USDC) per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   const account = ctx.account
   if (!account) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: LZ sweeps what it does not bridge back to the account, so the session definition needs `account`',
+      { code: 'ACCOUNT_REQUIRED' },
     )
   }
   const [token] = ctx.sourceTokens
@@ -240,6 +242,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (minAmount <= 0n) {
       throw new SettlementLayerRefusal(
         'crossChainPermits: an LZ `to.minAmount` must be positive',
+        { code: 'MIN_AMOUNT_NOT_POSITIVE', chainId: leg.chainId, leg: 'to' },
       )
     }
     // Stargate casts `minAmountLD` in shared decimals to uint64; a larger floor
@@ -247,6 +250,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (minAmount > maxUint64) {
       throw new SettlementLayerRefusal(
         'crossChainPermits: an LZ `to.minAmount` above uint64 cannot be met by any Stargate send',
+        { code: 'MIN_AMOUNT_ABOVE_UINT64', chainId: leg.chainId, leg: 'to' },
       )
     }
     // Legs are ORed, so a second leg into the chain would admit the send
@@ -256,12 +260,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     ) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: a floored LZ leg must be the only \`to\` leg on chain ${leg.chainId}; give one \`to\` leg per chain`,
+        { code: 'LZ_FLOORED_LEG_NOT_ALONE', chainId: leg.chainId, leg: 'to' },
       )
     }
     // depositForBurn takes a maxFee, not a minimum out, so no word carries it.
     if (cctpReaches(leg)) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: LZ pins \`to.minAmount\` only on a Stargate send, and chain ${leg.chainId} is reached over CCTP`,
+        { code: 'LZ_FLOOR_ON_CCTP_ROUTE', chainId: leg.chainId, leg: 'to' },
       )
     }
     // Stargate reads `minAmountLD` in source units and pays out in destination
@@ -271,6 +277,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (from === undefined || to === undefined || from !== to) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: an LZ \`to.minAmount\` needs the \`from\` and \`to\` tokens served with equal decimals; chain ${ctx.chainId} serves ${from ?? 'none'}, chain ${leg.chainId} ${to ?? 'none'}`,
+        { code: 'FLOOR_DECIMALS_MISMATCH', chainId: leg.chainId, leg: 'to' },
       )
     }
   }
@@ -388,6 +395,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   if (routes.length === 0) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: LZ moves only USDC; the \`from\` token on chain ${ctx.chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId: ctx.chainId, leg: 'from' },
     )
   }
 
@@ -400,6 +408,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (routes.every((route) => route.leg(leg) === undefined)) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
+        { code: 'TOKEN_NOT_ROUTED', chainId: leg.chainId, leg: 'to' },
       )
     }
     if (leg.minAmount !== undefined)
@@ -424,6 +433,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   if (branches.length === 0) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: LZ has no route from chain ${ctx.chainId} to any \`to\` chain`,
+      { code: 'LZ_NO_ROUTE', chainId: ctx.chainId },
     )
   }
   // A pure pin that every branch of a group carries (`group.every`) is checked

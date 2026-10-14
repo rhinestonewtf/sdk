@@ -4,6 +4,7 @@ import type {
   InternalPermit2ClaimPolicy,
   Permit2ClaimMessage,
 } from '../../policies/claim/permit2'
+import { refusal } from '../refusals'
 import type {
   CrossChainPermit,
   Permit2ClaimPolicy,
@@ -21,19 +22,24 @@ export function expandCrossChainPermit(
   // Unreachable ('all' is settlement-scoped); narrows the type for the arbiters.
   if (permit.settlementLayers === 'all') {
     throw new Error(
-      "crossChainPermits: settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
+      "crossChainPermits (internal): settlementLayers 'all' names IntentExecutor layers, which have no Permit2 claim",
     )
   }
   if (permit.maxFeeBps !== undefined) {
-    throw new Error('crossChainPermits: maxFeeBps applies only to ECO_IE')
+    throw refusal(
+      'MAX_FEE_BPS_ONLY_ECO_IE',
+      'crossChainPermits: maxFeeBps applies only to ECO_IE',
+    )
   }
   if (permit.allowFees) {
-    throw new Error(
+    throw refusal(
+      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
       'crossChainPermits: allowFees applies only to IntentExecutor layers',
     )
   }
   if (permit.to?.some((leg) => leg.minAmount !== undefined)) {
-    throw new Error(
+    throw refusal(
+      'MIN_AMOUNT_ON_PERMIT2_LAYER',
       'crossChainPermits: `to.minAmount` does not apply to Permit2 layers',
     )
   }

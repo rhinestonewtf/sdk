@@ -64,6 +64,7 @@ function requireUsdc(
   if (!isAddressEqual(token, served(settlement, chainId, 'cctp').usdc)) {
     throw new SettlementLayerRefusal(
       `crossChainPermits: CCTP moves only USDC; the \`${leg}\` token on chain ${chainId} is ${token}`,
+      { code: 'TOKEN_NOT_ROUTED', chainId, leg },
     )
   }
 }
@@ -73,6 +74,7 @@ export function scopeCctp(ctx: SettlementContext): ScopedAction {
   if (ctx.sourceTokens.length !== 1) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: CCTP burns one token (USDC) per chain; give exactly one `from` token on this chain',
+      { code: 'ONE_SOURCE_TOKEN', chainId: ctx.chainId },
     )
   }
   requireUsdc(ctx.settlement, ctx.chainId, ctx.sourceTokens[0], 'from')
