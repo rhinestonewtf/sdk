@@ -262,7 +262,7 @@ export function buildPermit2ClaimPolicyCalldata(
 }
 
 export const PERMIT2_CLAIM_POLICY_ADDRESS: Address =
-  '0x62E3588C6d861C9f986E82EC3757434EDF16ce91'
+  '0x4F9FAbC867E196Ebb27E7D7FaeD8AF41B2021B0e'
 
 export function encodePermit2ClaimPolicyInitData(
   policy: InternalPermit2ClaimPolicy,
