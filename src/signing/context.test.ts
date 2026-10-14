@@ -25,7 +25,9 @@ describe('account signature routing', () => {
   test.each(['safe', 'nexus', 'kernel', 'startale'] as const)(
     'routes alternate passkey and MFA validators through the selected %s envelope',
     (kind) => {
-      const sdk = resolveSdkConfig({ apiKey: 'test' })
+      const sdk = resolveSdkConfig({
+        auth: { mode: 'apiKey' as const, apiKey: 'test' },
+      })
       const account = resolveAccountConfig(sdk, {
         account: { type: kind },
         owners: { type: 'ecdsa', accounts: [owner] },
@@ -72,7 +74,9 @@ describe('account signature routing', () => {
   )
 
   test('routes registry-free MFA through the Nexus signing context', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       account: { type: 'nexus' },
       owners: { type: 'ecdsa', accounts: [owner] },
@@ -108,7 +112,9 @@ describe('account signature routing', () => {
   test.each(['safe', 'nexus', 'kernel', 'startale'] as const)(
     'routes guardian UserOperations to the social recovery validator on %s',
     (kind) => {
-      const sdk = resolveSdkConfig({ apiKey: 'test' })
+      const sdk = resolveSdkConfig({
+        auth: { mode: 'apiKey' as const, apiKey: 'test' },
+      })
       const account = resolveAccountConfig(sdk, {
         account: { type: kind },
         owners: { type: 'ecdsa', accounts: [owner] },
@@ -148,7 +154,9 @@ describe('account signature routing', () => {
   )
 
   test('signs guardian UserOperations as a prefixed message, not typed data', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       account: { type: 'nexus' },
       owners: { type: 'ecdsa', accounts: [owner] },

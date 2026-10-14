@@ -29,7 +29,7 @@ function wireOptionsFor(via: readonly unknown[] | undefined) {
   const intent = adaptTransaction(
     { account: {} } as never,
     {
-      chain: base,
+      destination: { chain: base },
       calls: [],
       signers: {
         type: 'session',
@@ -47,12 +47,12 @@ function wireOptionsFor(via: readonly unknown[] | undefined) {
     } as never,
   )
 
-  const request = buildIntentRequest({
+  const { request } = buildIntentRequest({
     transaction: intent,
-    account: { address: ACCOUNT, accountType: 'ERC7579' },
+    account: { kind: 'erc7579', address: ACCOUNT, setupOps: [] },
     calls: [],
-    sourceCalls: {},
-    providedFunds: {},
+    sourceCalls: [],
+    providedFunds: 0n,
   } as never)
 
   const wire = mapIntentRequestToWire(request) as {

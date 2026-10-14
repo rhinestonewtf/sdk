@@ -6,16 +6,22 @@
 // passkeys, and mfa) resolve unambiguously.
 //
 // Scope is intentionally the hot path: the RhinestoneSDK entry point, the
-// account instance, actions, and utils. Types, errors, jwt-server, and the
+// account instance, actions, and the VM-specific helpers. Types, errors, jwt-server, and the
 // /smart-sessions module are out of scope for now.
 
 export type SymbolEntry = {
   kind: 'symbol'
   symbol: string
-  // Subpath export the symbol is reached through: '.', './actions/ecdsa', './utils', etc.
+  // Subpath export the symbol is reached through: '.', './actions/ecdsa', './evm', etc.
+  // A container resolves in the module that exports it.
   source: string
   // Owning interface/class for instance methods.
-  container?: 'RhinestoneAccount' | 'RhinestoneSDK'
+  container?:
+    | 'RhinestoneAccountBase'
+    | 'ManagedTransactionAccount'
+    | 'ManagedEvmAccount'
+    | 'SolanaStandaloneAccount'
+    | 'RhinestoneSDK'
   // How the symbol is reached, for the Import/Usage section.
   callStyle:
     | 'function'
@@ -37,14 +43,31 @@ export type Group = {
 
 export type Node = Group | SymbolEntry
 
-const accountMethod = (symbol: string, experimental = false): SymbolEntry => ({
-  kind: 'symbol',
-  symbol,
-  source: '.',
-  container: 'RhinestoneAccount',
-  callStyle: 'accountMethod',
-  experimental,
-})
+const transactionMethods = new Set([
+  'prepareTransaction',
+  'getTransactionMessages',
+  'signTransaction',
+  'assembleTransaction',
+  'signAuthorizations',
+  'submitTransaction',
+])
+
+const accountMethod = (symbol: string, experimental = false): SymbolEntry => {
+  const container =
+    symbol === 'getAddress'
+      ? 'RhinestoneAccountBase'
+      : transactionMethods.has(symbol)
+        ? 'ManagedTransactionAccount'
+        : 'ManagedEvmAccount'
+  return {
+    kind: 'symbol',
+    symbol,
+    source: container === 'ManagedEvmAccount' ? './evm' : '.',
+    container,
+    callStyle: 'accountMethod',
+    experimental,
+  }
+}
 
 const action = (
   symbol: string,
@@ -58,10 +81,10 @@ const action = (
   experimental,
 })
 
-const util = (symbol: string, experimental = false): SymbolEntry => ({
+const evm = (symbol: string, experimental = false): SymbolEntry => ({
   kind: 'symbol',
   symbol,
-  source: './utils',
+  source: './evm',
   callStyle: 'function',
   experimental,
 })
@@ -138,6 +161,14 @@ export const manifest: Group[] = [
         group: 'Deployment',
         items: [
           accountMethod('deploy'),
+          {
+            kind: 'symbol',
+            symbol: 'deploy',
+            source: './solana',
+            container: 'SolanaStandaloneAccount',
+            callStyle: 'accountMethod',
+            title: 'deploy (Solana)',
+          },
           accountMethod('isDeployed'),
           accountMethod('setup'),
           accountMethod('getInitData'),
@@ -291,11 +322,60 @@ export const manifest: Group[] = [
   },
   {
     kind: 'group',
-    group: 'Utils',
+    group: 'Solana',
     items: [
-      util('experimental_getV0InitData', true),
-      util('experimental_getRhinestoneInitData', true),
-      util('toViewOnlyAccount'),
+      {
+        kind: 'symbol',
+        symbol: 'solanaAddress',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'createSolanaSwigId',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'addPasskey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'removePasskey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'addEcdsaKey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'removeEcdsaKey',
+        source: './solana',
+        callStyle: 'function',
+      },
+      {
+        kind: 'symbol',
+        symbol: 'getAuthorityStatus',
+        source: './solana',
+        container: 'SolanaStandaloneAccount',
+        callStyle: 'accountMethod',
+      },
+    ],
+  },
+  {
+    kind: 'group',
+    group: 'EVM',
+    items: [
+      evm('experimental_getV0InitData', true),
+      evm('experimental_getRhinestoneInitData', true),
+      evm('toViewOnlyAccount'),
     ],
   },
 ]

@@ -1,8 +1,20 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { generateApiCompatibilityReport } from './api-compat.ts'
 import { generateApiReport } from './api-report.ts'
+import {
+  assignabilityFixture,
+  consumerFixtures,
+  detectPackageGeneration,
+} from './generation.ts'
 import {
   createConsumerLayout,
   declaresSurfaceChange,
@@ -21,22 +33,7 @@ interface PackedSubject {
 
 const repositoryRoot = resolve(import.meta.dir, '../..')
 const runtimeProbePath = join(import.meta.dir, 'runtime-probe.mjs')
-const consumerFixturePath = join(
-  repositoryRoot,
-  'test/contract/fixtures/consumer.ts',
-)
-const currentConsumerFixturePath = join(
-  repositoryRoot,
-  'test/contract/fixtures/current-consumer.ts',
-)
-const legacyConsumerFixturePath = join(
-  repositoryRoot,
-  'test/contract/fixtures/legacy-consumer.ts',
-)
-const assignabilityFixturePath = join(
-  repositoryRoot,
-  'test/contract/fixtures/assignability.ts',
-)
+const fixtureDirectory = join(repositoryRoot, 'test/contract/fixtures')
 
 function resolveCommit(reference: string): string {
   return runCommand('git', ['rev-parse', `${reference}^{commit}`], {
@@ -176,10 +173,7 @@ function stageConsumerSet(
   return { full, withoutOptionalPeers, withoutExpress, packageDirectory }
 }
 
-function compileConsumer(
-  consumerDirectory: string,
-  fixturePath = consumerFixturePath,
-): void {
+function compileConsumer(consumerDirectory: string, fixturePath: string): void {
   const fixtureName = basename(fixturePath)
   cpSync(fixturePath, join(consumerDirectory, fixtureName))
   writeJson(join(consumerDirectory, 'tsconfig.json'), {
@@ -196,6 +190,25 @@ function compileConsumer(
   runCommand(
     join(repositoryRoot, 'node_modules/.bin/tsc'),
     ['--project', 'tsconfig.json'],
+    { cwd: consumerDirectory },
+  )
+}
+
+function bundleBrowserConsumer(consumerDirectory: string): void {
+  const entry = join(consumerDirectory, 'browser-entry.ts')
+  writeFileSync(
+    entry,
+    `import { RhinestoneSDK } from '@rhinestone/sdk'\nimport { solanaAddress } from '@rhinestone/sdk/solana'\nconst address = solanaAddress('11111111111111111111111111111111')\nvoid new RhinestoneSDK({ auth: { mode: 'apiKey' as const, apiKey: 'browser' } }).createAccount({ solana: { address } })\n`,
+  )
+  runCommand(
+    join(repositoryRoot, 'node_modules/.bin/esbuild'),
+    [
+      entry,
+      '--bundle',
+      '--platform=browser',
+      '--format=esm',
+      `--outfile=${join(consumerDirectory, 'browser-bundle.js')}`,
+    ],
     { cwd: consumerDirectory },
   )
 }
@@ -283,11 +296,21 @@ async function main(): Promise<void> {
       runtimeProbePath,
       includeOptionalPeers: true,
     })
-    compileConsumer(baseConsumers.full)
-    compileConsumer(baseConsumers.full, legacyConsumerFixturePath)
-    compileConsumer(currentConsumers.full)
-    compileConsumer(currentConsumers.full, legacyConsumerFixturePath)
-    compileConsumer(currentConsumers.full, currentConsumerFixturePath)
+    const baseGeneration = detectPackageGeneration(
+      readJson<PackageManifest>(
+        join(baseBuild.subject.packageDirectory, 'package.json'),
+      ),
+    )
+    const currentGeneration = detectPackageGeneration(
+      readJson<PackageManifest>(join(current.packageDirectory, 'package.json')),
+    )
+    for (const fixture of consumerFixtures(baseGeneration)) {
+      compileConsumer(baseConsumers.full, join(fixtureDirectory, fixture))
+    }
+    for (const fixture of consumerFixtures(currentGeneration)) {
+      compileConsumer(currentConsumers.full, join(fixtureDirectory, fixture))
+    }
+    bundleBrowserConsumer(currentConsumers.full)
 
     const compatibilityConsumer = join(
       temporaryDirectory,
@@ -317,7 +340,13 @@ async function main(): Promise<void> {
         'Skipping bidirectional assignability check: PR declares an intentional public-surface change\n',
       )
     } else {
-      compileConsumer(compatibilityConsumer, assignabilityFixturePath)
+      compileConsumer(
+        compatibilityConsumer,
+        join(
+          fixtureDirectory,
+          assignabilityFixture(baseGeneration, currentGeneration),
+        ),
+      )
     }
     validateMetadata(baseBuild.subject.packageDirectory)
     validateMetadata(current.packageDirectory)

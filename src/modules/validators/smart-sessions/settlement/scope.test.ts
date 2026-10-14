@@ -1296,12 +1296,11 @@ describe('settlement-scoped crossChainPermits', () => {
         resolveSessionData(
           definition(
             {},
+            // @ts-expect-error Removed raw definition input.
             { claimPolicies: [{ type: 'permit2', spenders: [OTHER] }] },
           ),
         ),
-      ).toThrow(
-        'a scoped session (restrictToActions, swap or crossChainPermits) cannot hold claimPolicies',
-      )
+      ).toThrow('`SessionDefinition.claimPolicies` was removed')
     })
   })
 

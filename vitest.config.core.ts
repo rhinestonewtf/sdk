@@ -21,7 +21,7 @@ const boundaryTestGlobs = [
   'src/api/project-mappers.test.ts',
   'src/actions/**/*.test.ts',
   'src/smart-sessions/**/*.test.ts',
-  'src/utils/**/*.test.ts',
+  'src/evm/**/*.test.ts',
   'test/vectors/**/*.test.ts',
 ] as const
 

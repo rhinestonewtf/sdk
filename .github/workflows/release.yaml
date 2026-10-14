@@ -101,7 +101,7 @@ jobs:
       always() &&
       needs.release-mode.result == 'success' &&
       (
-        (github.ref != 'refs/heads/main' && needs.release-mode.outputs.has-changesets == 'true') ||
+        ((github.ref == 'refs/heads/release' || github.ref == 'refs/heads/v1') && needs.release-mode.outputs.has-changesets == 'true') ||
         (github.ref == 'refs/heads/v1' && needs.release-mode.outputs.has-changesets != 'true' && needs.build-and-test.result == 'success') ||
         ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release') && needs.build-and-test.result == 'success' && needs.integration-tests.result == 'success')
       )
@@ -135,7 +135,13 @@ jobs:
       # Snapshot publish (main → @dev)
       - name: Version snapshot
         if: github.ref == 'refs/heads/main'
-        run: bunx changeset version --snapshot dev && bun run scripts/sync-version.ts
+        run: |
+          # Changesets otherwise leaves the version unchanged when none are pending.
+          if [ "${{ needs.release-mode.outputs.has-changesets }}" != "true" ]; then
+            printf '%s\n' '---' '"@rhinestone/sdk": patch' '---' 'Development snapshot.' > .changeset/dev-snapshot.md
+          fi
+          bunx changeset version --snapshot dev --snapshot-prerelease-template '{tag}-{datetime}-{commit}'
+          bun run scripts/sync-version.ts
 
       - name: Build and publish snapshot
         if: github.ref == 'refs/heads/main'

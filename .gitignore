@@ -4,6 +4,7 @@ dist
 
 .env
 .artifacts/
+.scratch/
 coverage/
 
 examples/

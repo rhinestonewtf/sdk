@@ -5,7 +5,9 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'scripts/architecture/**/*.test.ts',
+      'scripts/sync-version.test.ts',
       'scripts/contract/**/*.test.ts',
+      'scripts/openapi/**/*.test.ts',
       'scripts/reference/**/*.test.ts',
       'test/integration/config/**/*.test.ts',
       'test/integration/framework/**/*.test.ts',

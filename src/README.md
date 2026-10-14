@@ -124,38 +124,102 @@ const signer = createJwtSigner({
 
 ## Quickstart
 
+Solana helpers and types live in `@rhinestone/sdk/solana`; EVM helpers,
+validator addresses and EVM account types live in `@rhinestone/sdk/evm`.
+
 Create a smart account:
 
 ```ts
 import { RhinestoneSDK } from '@rhinestone/sdk'
 
-const rhinestone = new RhinestoneSDK({ apiKey: 'your-api-key' })
-const account = await rhinestone.createAccount({
+const rhinestone = new RhinestoneSDK({
+  auth: { mode: 'apiKey', apiKey: 'your-api-key' },
+})
+const evmConfig = {
   owners: {
-    type: 'ecdsa',
+    type: 'ecdsa' as const,
     accounts: [signer],
   },
+}
+const account = await rhinestone.createAccount({ evm: evmConfig })
+
+const address = account.getAddress('evm')
+```
+
+Add an address-only Solana destination when you need to receive tokens there:
+
+```ts
+import { solanaAddress } from '@rhinestone/sdk/solana'
+
+const crossVmAccount = await rhinestone.createAccount({
+  evm: evmConfig,
+  solana: { address: solanaAddress(existingSolanaAddress) },
 })
 ```
 
-Send a crosschain transaction:
+Address-only entries cannot prepare, sign, or execute transactions. To use an
+existing Swig, supply its saved state-account address and its
+independent private-key or passkey owner; the wallet PDA is derived:
+
+```ts
+const managedSolana = {
+  owner: { type: 'ecdsa' as const, account: solanaSigner },
+  // Existing Swig state account; the wallet PDA is derived automatically.
+  swig: solanaAddress(savedStateAddress),
+}
+
+const solanaAccount = await rhinestone.createAccount({
+  solana: managedSolana,
+  // Optional: a receiver address, or a separately managed EVM config.
+  evm: { address: evmReceiver },
+})
+```
+
+Adding or changing `evm` does not change the selected Swig. Plain Solana
+transfers, instructions, and deliveries use only the Solana owner. An EVM
+receiver can default a delivery recipient but cannot spend or execute calls.
+Solana-to-EVM destination calls require a managed EVM account whose existing
+backend-compatible pair matches the explicit Swig. Account construction does
+not create or verify a Swig; provisioning remains an operator step. Managed
+Solana runs on production with the default endpoint, or with
+`useDevContracts: true` and
+`endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev'`.
+
+Deliver from Solana to EVM, capping what the Swig wallet may debit:
+
+```ts
+import { solanaDevnet } from '@rhinestone/sdk/solana'
+
+const prepared = await solanaAccount.prepareTransaction({
+  // `maxAmount` is a ceiling on the source debit; omit it for no cap.
+  source: { chain: solanaDevnet, token: splMint, maxAmount: 4_000_000n },
+  // No destination amount: deliver as much as the capped debit buys.
+  destination: { chain: baseSepolia, token: usdc, recipient: evmReceiver },
+})
+```
+
+Send a crosschain transaction. It spends one `source` token and lands on one
+`destination`; omit `source.chain` to spend on the destination chain:
 
 ```ts
 const prepared = await account.prepareTransaction({
-  sourceChains: [baseSepolia],
-  targetChain: arbitrumSepolia,
-  calls: [
-    {
-      to: usdc,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'transfer',
-        args: [recipient, amount],
-      }),
-    },
-  ],
-  tokenRequests: [{ address: usdc, amount }],
+  source: { chain: baseSepolia, token: usdcOnBaseSepolia },
+  destination: {
+    chain: arbitrumSepolia,
+    token: usdc,
+    amount,
+    calls: [
+      {
+        to: usdc,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [recipient, amount],
+        }),
+      },
+    ],
+  },
 })
 
 const signed = await account.signTransaction(prepared)
@@ -188,22 +252,22 @@ const session = toSession({
       },
     },
   ],
-  claimPolicies: [
+  crossChainPermits: [
     {
-      type: 'permit2',
-      spenders: [permit2Spender],
-      sourceTokens: [{ chain: base, address: usdc }],
-      destinationTokens: [{ chain: optimism, address: usdc }],
-      recipients: [{ chain: optimism, address: recipient }],
-      permitDeadline: { max: permitDeadline },
-      fillDeadline: [{ chain: optimism, max: fillDeadline }],
+      settlementLayers: ['ACROSS'],
+      from: { chain: base, token: usdc, maxAmount: 1000n },
+      to: { chain: optimism, token: usdc, recipient },
+      allowRecipientNotAccount: true,
+      validUntil: new Date(Date.now() + 60 * 60 * 1000),
     },
   ],
 })
 ```
 
-Smart Session ERC-1271 signing is unrestricted when `signing` is omitted. It
-can be disabled, time-boxed, or scoped to exact EIP-712 domains and schemas:
+Unrestricted sessions default to unrestricted ERC-1271 signing. Scoped action
+sessions default to disabled signing; cross-chain permits install their compiled
+claim gates instead. Signing can be disabled, time-boxed, or scoped to exact
+EIP-712 domains and schemas:
 
 ```ts
 const disabled = { mode: 'disabled' } as const

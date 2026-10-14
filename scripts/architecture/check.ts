@@ -32,7 +32,8 @@ const publishedBarrels = new Set([
   'src/hypercore/index.ts',
   'src/jwt-server/index.ts',
   'src/smart-sessions/index.ts',
-  'src/utils/index.ts',
+  'src/evm/index.ts',
+  'src/solana/index.ts',
 ])
 
 const workflowLayers = new Set(['intents', 'user-operations'])
@@ -228,9 +229,16 @@ function edgeViolation(
     toLayer === 'clients' &&
     fromLayer !== 'clients' &&
     fromLayer !== 'api' &&
-    !['port.ts', 'types.ts', 'errors.ts', 'public.ts'].includes(
-      clientFile(edge.to) ?? '',
-    ) &&
+    // `sponsorship-approval.ts` joins the stable set: it is the SDK's own
+    // versioned sponsorship approval contract, pure functions over the request
+    // body rather than any transport.
+    ![
+      'port.ts',
+      'types.ts',
+      'errors.ts',
+      'public.ts',
+      'sponsorship-approval.ts',
+    ].includes(clientFile(edge.to) ?? '') &&
     !(
       edge.to === 'src/clients/rpc/compatibility.ts' &&
       (edge.from === 'src/actions/runtime.ts' ||
@@ -435,7 +443,7 @@ export function analyzeArchitecture(
         'src/api/account.ts',
         'src/calls/resolve.ts',
         'src/config/account.ts',
-        'src/utils/index.ts',
+        'src/evm/index.ts',
       ].includes(file)
     ) {
       violations.push({

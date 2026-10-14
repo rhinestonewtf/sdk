@@ -197,7 +197,7 @@ export async function waitForOrchestratorUsdc(
     await sleep(2_000)
   }
   throw new Error(
-    `Orchestrator portfolio for ${account.getAddress()} never showed >= ${min} ` +
+    `Orchestrator portfolio for ${account.getAddress('evm')} never showed >= ${min} ` +
       `USDC on ${chain.name} after funding`,
   )
 }

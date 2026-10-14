@@ -1,31 +1,40 @@
 import {
   type Account,
   type Address,
-  concat,
   encodeAbiParameters,
   erc20Abi,
   type Hex,
-  pad,
-  toHex,
+  isAddressEqual,
+  type TypedDataDefinition,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
+import {
+  delegationRequest,
+  eip712Request,
+  personalSignRequest,
+  plan,
+  quote,
+} from '../../test/utils/caucasus'
 import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toEvmChainReference } from '../chains/caip2'
+import { solanaAddress, solanaDevnet } from '../chains/non-evm'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import type { OrchestratorPort } from '../clients/orchestrator/port'
+import type { OrchestratorIntentRequest } from '../clients/orchestrator/types'
 import type { RpcReadPort } from '../clients/rpc/port'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
+import { UnsupportedAccountCapabilityError } from '../errors/capability'
+import {
+  Eip7702InitSignatureRequiredError,
+  SolanaQuoteExpiredError,
+} from '../errors/execution'
+import { getIntentExecutorModule } from '../modules/intent-executor'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
-import {
-  UNIVERSAL_ACTION_POLICY_ADDRESS,
-  UNIVERSAL_ACTION_POLICY_COPIES,
-} from '../modules/validators/smart-sessions/policies/addresses'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
-import { SWAP_EXACT_IN_SELECTOR } from '../modules/validators/smart-sessions/swap/rhinestone'
 import { createCoreComposition } from './compose'
 import type { CoreDependencies } from './compose-types'
 
@@ -40,8 +49,34 @@ function catalogChain(name: string, testnet: boolean) {
   return { name, testnet, supportedTokens: 'all' as const }
 }
 
+// A same-chain quote: the claim and the fill are authorised by the same
+// payload, so the destination slot reuses the origin signature while staying
+// its own authorisation.
+function quoteFor(request: OrchestratorIntentRequest) {
+  const account = request.account.evm?.address ?? target
+  const typedData = {
+    domain: { chainId: 1, verifyingContract: account },
+    types: { Test: [{ name: 'value', type: 'uint256' }] },
+    primaryType: 'Test',
+    message: { value: '1' },
+  } as unknown as TypedDataDefinition
+  return quote({
+    signingRequests: [
+      eip712Request({ chainId: 1, account, typedData }),
+      eip712Request({
+        chainId: 1,
+        account,
+        purpose: 'destinationAuthorization',
+        typedData,
+      }),
+    ],
+  })
+}
+
 function fixture() {
-  const sdk = resolveSdkConfig({ apiKey: 'test' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   const account = resolveAccountConfig(sdk, {
     account: { type: 'nexus', version: '1.2.0' },
     owners: { type: 'ecdsa', accounts: [owner] },
@@ -53,44 +88,10 @@ function fixture() {
     compatibilityConfig: {},
   }
   const orchestrator: OrchestratorPort = {
-    createQuote: vi.fn(async (request) => {
-      const typedData = {
-        domain: {
-          chainId: 1,
-          verifyingContract: request.account.address,
-        },
-        types: { Test: [{ name: 'value', type: 'uint256' }] },
-        primaryType: 'Test',
-        message: { value: '1' },
-      } as const
-      return {
-        traceId: 'trace-prepare',
-        routes: [
-          {
-            intentId: 'intent-1',
-            expiresAt: 1,
-            estimatedFillTime: { seconds: 1 },
-            settlementLayer: 'SAME_CHAIN' as const,
-            signData: { origin: [typedData], destination: typedData },
-            cost: {
-              input: [],
-              output: [],
-              fees: {
-                total: { usd: 0 },
-                breakdown: {
-                  gas: { usd: 0, sponsored: false },
-                  bridge: { usd: 0, sponsored: false },
-                  swap: { usd: 0, sponsored: false },
-                  app: { usd: 0, sponsored: false },
-                  protocol: { usd: 0, sponsored: false },
-                  sponsorSurcharge: { usd: 0, sponsored: false },
-                },
-              },
-            },
-          },
-        ],
-      }
-    }),
+    createQuote: vi.fn(async (request) => ({
+      traceId: 'trace-prepare',
+      routes: [quoteFor(request)],
+    })),
     submitIntent: vi.fn(async () => ({
       traceId: 'trace-submit',
       intentId: 'intent-1',
@@ -98,8 +99,8 @@ function fixture() {
     getIntentStatus: vi.fn(async (intentId) => ({
       traceId: 'trace-status',
       intentId,
+      purpose: 'execution' as const,
       status: 'COMPLETED' as const,
-      account: target,
       operations: [],
     })),
     splitIntents: vi.fn(async () => ({ traceId: 'trace-split', intents: [] })),
@@ -159,9 +160,7 @@ describe('internal core composition', () => {
     const workflows = composition.createAccount(context).workflows
     const prepared = await workflows.prepareIntent(context, {
       destination: chain,
-      sourceChains: [chain],
       calls: [{ target, value: 0n, data: '0x' }],
-      tokenRequests: [],
     })
     const { intent: signed } = await workflows.signIntent(context, prepared)
     const submitted = await workflows.submitIntent(context, signed)
@@ -174,6 +173,141 @@ describe('internal core composition', () => {
     })
     expect(orchestrator.createQuote).toHaveBeenCalledOnce()
   })
+
+  // A standalone Solana account has no EVM account to scope a composition, so
+  // it reaches the same workflows through the project.
+  test.each(['account', 'project'] as const)(
+    'runs the managed Solana workflow from the %s scope without RPC or catalog reads and enforces expiry before effects',
+    async (scope) => {
+      const base = fixture()
+      const mint = solanaAddress('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
+      const recipient = solanaAddress('11111111111111111111111111111112')
+      const walletAddress = solanaAddress(
+        'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+      )
+      const swigAddress = solanaAddress(
+        '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs',
+      )
+      const message = 'ab'.repeat(32)
+      const devnet = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
+      const costEntry = {
+        chainId: devnet,
+        tokenAddress: mint,
+        symbol: 'USDC',
+        decimals: 6,
+        price: { usd: 1 },
+        amount: 100n,
+      }
+      const createQuote = vi.fn(async () => ({
+        traceId: 'solana-prepare',
+        routes: [
+          {
+            ...quote({
+              intentId: 'solana-intent',
+              expiresAt: 2_000_000_000,
+              // A Solana origin authorises its spend with one opaque
+              // personal-sign payload naming the Swig wallet and its authority.
+              signingRequests: [
+                personalSignRequest({
+                  chainId: devnet,
+                  wallet: walletAddress,
+                  swigAccount: swigAddress,
+                  authority: owner.address,
+                  message,
+                }),
+              ],
+              cost: {
+                input: [costEntry],
+                output: [costEntry],
+                fees: {
+                  total: { usd: 0 },
+                  breakdown: {
+                    gas: { usd: 0, sponsored: false },
+                    bridge: { usd: 0, sponsored: false },
+                    swap: { usd: 0, sponsored: false },
+                    app: { usd: 0, sponsored: false },
+                    protocol: { usd: 0, sponsored: false },
+                    sponsorSurcharge: { usd: 0, sponsored: false },
+                  },
+                },
+              },
+            }),
+            plan: plan(devnet),
+          },
+        ],
+      }))
+      const submitIntent = vi.fn(async () => ({
+        traceId: 'solana-submit',
+        intentId: 'solana-intent',
+      }))
+      const getChainCatalog = vi.fn(base.orchestrator.getChainCatalog)
+      const forChain = vi.fn(base.dependencies.rpc.forChain)
+      let now = 1_900_000_000_000
+      const dependencies = {
+        ...base.dependencies,
+        orchestrator: {
+          ...base.orchestrator,
+          createQuote,
+          submitIntent,
+          getChainCatalog,
+        },
+        rpc: { forChain },
+        clock: { ...base.dependencies.clock, now: () => now },
+      }
+      const composition = createCoreComposition(base.context.sdk, dependencies)
+      const workflows =
+        scope === 'account'
+          ? composition.createAccount(base.context).workflows
+          : composition.project.solana
+      const transfer = {
+        chain: solanaDevnet,
+        action: {
+          kind: 'transfer' as const,
+          mint,
+          amount: 100n,
+          delivery: { kind: 'same-chain' as const, recipient },
+        },
+        accountAddress: target,
+        accountType: 'ERC7579' as const,
+        authority: { kind: 'secp256k1' as const, address: owner.address },
+        walletAddress,
+        swigAddress,
+        namespace: 'dev-v1' as const,
+        endpoint: 'https://dev.example',
+      }
+      const prepared = await workflows.prepareSolanaIntent(transfer)
+      const signMessage = vi.fn(owner.signMessage)
+      const signed = await workflows.signSolanaIntent({
+        prepared,
+        owner: { ...owner, signMessage },
+      })
+      await expect(workflows.submitSolanaIntent(signed)).resolves.toMatchObject(
+        {
+          intentId: 'solana-intent',
+          targetChain: 792703810,
+        },
+      )
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(submitIntent).toHaveBeenCalledOnce()
+      expect(forChain).not.toHaveBeenCalled()
+      expect(getChainCatalog).not.toHaveBeenCalled()
+
+      now = 2_000_000_000_000
+      signMessage.mockClear()
+      submitIntent.mockClear()
+      await expect(
+        workflows.signSolanaIntent({
+          prepared,
+          owner: { ...owner, signMessage },
+        }),
+      ).rejects.toThrow(SolanaQuoteExpiredError)
+      await expect(workflows.submitSolanaIntent(signed)).rejects.toThrow(
+        SolanaQuoteExpiredError,
+      )
+      expect(signMessage).not.toHaveBeenCalled()
+      expect(submitIntent).not.toHaveBeenCalled()
+    },
+  )
 
   test('runs a UserOperation and project/account queries', async () => {
     const { composition, context } = fixture()
@@ -190,6 +324,9 @@ describe('internal core composition', () => {
       withdrawableUsd: 1,
       pendingUsd: 2,
     })
+    await expect(
+      composition.project.waitForIntentStatus('intent-1'),
+    ).resolves.toMatchObject({ intentId: 'intent-1', status: 'COMPLETED' })
     await expect(workflows.getPortfolio(context)).resolves.toEqual({
       tokens: [],
     })
@@ -467,15 +604,19 @@ describe('internal core composition', () => {
       first.context,
     ).workflows
 
-    await expect(intentWorkflows.deploy(first.context, chain)).resolves.toBe(
-      true,
-    )
+    await expect(
+      intentWorkflows.deploy(first.context, chain, { sourceToken: target }),
+    ).resolves.toBe(true)
     expect(first.orchestrator.submitIntent).toHaveBeenCalledOnce()
-    expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith('intent-1')
+    // Polling stays lean: the recorded detail block is not asked for.
+    expect(first.orchestrator.getIntentStatus).toHaveBeenCalledWith(
+      'intent-1',
+      undefined,
+    )
 
     const second = fixture()
     const customSdk = resolveSdkConfig({
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       bundler: { type: 'custom', url: 'https://bundler.test' },
     })
     const customContext = {
@@ -513,9 +654,60 @@ describe('internal core composition', () => {
     }
     const workflows = base.composition.createAccount(adoptedContext).workflows
 
-    await expect(workflows.deploy(adoptedContext, chain)).resolves.toBe(true)
+    await expect(
+      workflows.deploy(adoptedContext, chain, { sponsored: true }),
+    ).resolves.toBe(true)
     expect(base.orchestrator.createQuote).toHaveBeenCalledOnce()
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
+  })
+
+  test('deploy sends no source and full sponsorship when sponsored', async () => {
+    const base = fixture()
+    const workflows = base.composition.createAccount(base.context).workflows
+
+    await workflows.deploy(base.context, chain, { sponsored: true })
+
+    const request = vi.mocked(base.orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request).not.toHaveProperty('source')
+    expect(request?.options?.sponsorship).toEqual({
+      gas: true,
+      bridgeFees: true,
+      swapFees: true,
+    })
+  })
+
+  test('unsponsored intent-path deploy without a source token throws before any RPC read', async () => {
+    const base = fixture()
+    const getCode = vi.fn(async () => ({ code: undefined }))
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+
+    await expect(workflows.deploy(base.context, chain)).rejects.toThrow(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(getCode).not.toHaveBeenCalled()
+    expect(base.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('unsponsored intent-path deploy with a source token sends it as the source', async () => {
+    const base = fixture()
+    const workflows = base.composition.createAccount(base.context).workflows
+
+    await workflows.deploy(base.context, chain, { sourceToken: target })
+
+    const request = vi.mocked(base.orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request?.source).toMatchObject({
+      chainId: 'eip155:1',
+      token: target,
+    })
   })
 
   test('signs chainless Nexus init typed data without switching a wallet chain', async () => {
@@ -591,63 +783,6 @@ describe('internal core composition', () => {
     )
   })
 
-  test('refuses the details of an enabled lifetime-budget session unless told to reset it', async () => {
-    const base = fixture()
-    // A plain read from a lagging node says not enabled; the pinned one decides.
-    const readContract = vi.fn(
-      async (_context: unknown, request: { functionName: string }) =>
-        request.functionName === 'isPermissionEnabled' ? false : 0n,
-    )
-    const multicall = vi.fn(async () => [{ result: 5n }, { result: true }])
-    const dependencies = {
-      ...base.dependencies,
-      rpc: {
-        forChain: () => ({
-          ...base.dependencies.rpc.forChain(),
-          readContract: readContract as RpcReadPort['readContract'],
-          multicall: multicall as RpcReadPort['multicall'],
-        }),
-      },
-    } satisfies CoreDependencies
-    const workflows = createCoreComposition(
-      base.context.sdk,
-      dependencies,
-    ).createAccount(base.context).workflows
-    const session = toSession({
-      chain: baseChain,
-      owners: { type: 'ecdsa', accounts: [owner] },
-      account: target,
-      crossChainPermits: [
-        {
-          from: {
-            chain: baseChain,
-            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
-            maxAmount: 100n,
-          },
-          to: {
-            chain: arbitrum,
-            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
-          },
-          settlementLayers: ['ACROSS'],
-        },
-      ],
-    })
-
-    await expect(
-      workflows.getSessionDetails(base.context, [session]),
-    ).rejects.toThrow('allowBudgetReset')
-    // One address for the nonce, the enabled state and the digest.
-    const [[, [nonceRead, enabledRead]]] = multicall.mock.calls as unknown as [
-      [unknown, [{ args: unknown[] }, { args: unknown[] }]],
-    ]
-    expect(enabledRead.args[0]).toBe(nonceRead.args[0])
-    await expect(
-      workflows.getSessionDetails(base.context, [session], {
-        allowBudgetReset: true,
-      }),
-    ).resolves.toMatchObject({ nonces: [0n] })
-  })
-
   test('rejects multi-chain Startale K1 enablement before signing', async () => {
     const base = fixture()
     const invoke = vi.fn()
@@ -711,7 +846,9 @@ describe('internal core composition', () => {
         }),
       },
     } satisfies CoreDependencies
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const context = {
       ...base.context,
       sdk,
@@ -746,24 +883,381 @@ describe('internal core composition', () => {
     expect(base.dependencies.bundler.send).not.toHaveBeenCalled()
   })
 
-  test('signs raw SignData through the standalone signIntent path (no intent id)', async () => {
+  function missingModuleKernelContext(base: ReturnType<typeof fixture>) {
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
+    return {
+      ...base.context,
+      sdk,
+      account: resolveAccountConfig(sdk, {
+        account: { type: 'kernel' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        modules: [{ type: 'hook', address: `0x${'44'.repeat(20)}` }],
+      }),
+    }
+  }
+
+  // Installed except the intent executor, so the missing module list still
+  // resolves to the intent path rather than the UserOperation one.
+  function intentPathMulticall() {
+    const intentExecutor = getIntentExecutorModule('production')
+    return vi.fn(
+      async (
+        _context: unknown,
+        requests: readonly { args: readonly unknown[] }[],
+      ) =>
+        requests.map(({ args }) => ({
+          result: isAddressEqual(args[1] as Address, intentExecutor.address),
+        })),
+    )
+  }
+
+  test('setup intent path without a source token throws before the orchestrator is called', async () => {
+    const base = fixture()
+    const multicall = intentPathMulticall()
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: '0x01' as const })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: async <TResult>() => 0n as unknown as TResult,
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = missingModuleKernelContext(base)
+    const workflows = createCoreComposition(
+      context.sdk,
+      dependencies,
+    ).createAccount(context).workflows
+
+    await expect(workflows.setup(context, chain)).rejects.toThrow(
+      UnsupportedAccountCapabilityError,
+    )
+    expect(base.orchestrator.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('setup intent path with a source token sends it as the source', async () => {
+    const base = fixture()
+    const multicall = intentPathMulticall()
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          getCode: vi.fn(async () => ({ code: '0x01' as const })),
+          getTransactionCount: vi.fn(async () => 0n),
+          readContract: async <TResult>() => 0n as unknown as TResult,
+          multicall: multicall as RpcReadPort['multicall'],
+        }),
+      },
+    } satisfies CoreDependencies
+    const context = missingModuleKernelContext(base)
+    const orchestrator = {
+      ...base.orchestrator,
+      createQuote: vi.fn(async (request) => ({
+        traceId: 'trace-prepare',
+        routes: [quoteFor(request)],
+      })),
+    }
+    const workflows = createCoreComposition(context.sdk, {
+      ...dependencies,
+      orchestrator,
+    }).createAccount(context).workflows
+
+    await workflows.setup(context, chain, { sourceToken: target })
+
+    const request = vi.mocked(orchestrator.createQuote).mock.calls[0]?.[0]
+    expect(request?.source).toMatchObject({
+      chainId: 'eip155:1',
+      token: target,
+    })
+  })
+
+  test('signs raw signing requests through the standalone signIntent path (no intent id)', async () => {
     const { composition, context } = fixture()
     const workflows = composition.createAccount(context).workflows
+    const account = workflows.getAddress(context, chain)
     const typedData = {
       domain: { chainId: 1, verifyingContract: target },
       types: { Test: [{ name: 'value', type: 'uint256' }] },
       primaryType: 'Test',
       message: { value: 1n },
-    } as const
+    } as unknown as TypedDataDefinition
 
-    const signed = await workflows.signIntentFromSignData(context, {
-      signData: { origin: [typedData], destination: typedData },
+    const signed = await workflows.signIntentFromRequests(context, {
+      signingRequests: [
+        eip712Request({ chainId: 1, account, typedData }),
+        eip712Request({
+          chainId: 1,
+          account,
+          purpose: 'destinationAuthorization',
+          typedData,
+        }),
+      ],
       targetChain: chain,
     })
 
-    expect(signed.originSignatures).toHaveLength(1)
-    expect(signed.originSignatures[0]).toMatch(/^0x/u)
-    expect(signed.destinationSignature).toMatch(/^0x/u)
+    // One proof per request, in the quoted order — the destination slot is its
+    // own authorisation even though the same bytes satisfy it.
+    expect(signed.proofs).toHaveLength(2)
+    for (const proof of signed.proofs) {
+      if (proof.kind !== 'eip712' || typeof proof.signature !== 'string') {
+        throw new Error('Expected one plain EIP-712 signature per request')
+      }
+      expect(proof.signature).toMatch(/^0x/u)
+    }
+  })
+
+  describe('resolving a Solana-origin delivery’s destination calls', () => {
+    const destination = toEvmChainReference(baseChain.id)
+    const call = { target, value: 0n, data: '0xabcdef' as Hex }
+
+    test('resolves lazy calls against the account and carries its deployment setup', async () => {
+      const { composition, context } = fixture()
+      const workflows = composition.createAccount(context).workflows
+      const address = workflows.getAddress(context, destination)
+      const resolve = vi.fn(async () => call)
+
+      const resolved = await workflows.resolveSolanaEvmDestination(context, {
+        chain: destination,
+        calls: [call, { resolve }],
+      })
+
+      expect(resolve).toHaveBeenCalledWith({
+        account: address,
+        chain: destination,
+        config: {},
+      })
+      expect(resolved.calls).toEqual([call, call])
+      expect(resolved.account).toEqual({
+        kind: 'erc7579',
+        address,
+        setupOps: [
+          {
+            to: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/u),
+            data: expect.stringMatching(/^0x[0-9a-f]+$/u),
+          },
+        ],
+      })
+    })
+
+    test('takes an EIP-7702 account’s init signature and names its delegation', async () => {
+      const base = fixture()
+      const context = {
+        ...base.context,
+        account: resolveAccountConfig(base.context.sdk, {
+          account: { type: 'nexus', version: '1.2.0' },
+          owners: { type: 'ecdsa', accounts: [owner] },
+          eoa: owner,
+        }),
+      }
+      const workflows = base.composition.createAccount(context).workflows
+
+      await expect(
+        workflows.resolveSolanaEvmDestination(context, {
+          chain: destination,
+          calls: [call],
+        }),
+      ).rejects.toThrow(Eip7702InitSignatureRequiredError)
+      const resolved = await workflows.resolveSolanaEvmDestination(context, {
+        chain: destination,
+        calls: [call],
+        eip7702InitSignature: `0x${'11'.repeat(65)}`,
+      })
+      expect(resolved.account).toEqual({
+        kind: 'erc7579',
+        address: owner.address,
+        setupOps: [
+          {
+            to: owner.address,
+            data: expect.stringMatching(/^0x[0-9a-f]+$/u),
+          },
+        ],
+        delegationContract: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/u),
+      })
+    })
+
+    // The child's SingleChainOps is an origin authorization with no destination
+    // authorization beside it, followed by the delegation the child needs.
+    test('signs the child authorization and its delegation with no destination request', async () => {
+      const base = fixture()
+      const context = {
+        ...base.context,
+        account: resolveAccountConfig(base.context.sdk, {
+          account: { type: 'nexus', version: '1.2.0' },
+          owners: { type: 'ecdsa', accounts: [owner] },
+          eoa: owner,
+        }),
+      }
+      const workflows = base.composition.createAccount(context).workflows
+
+      const signed = await workflows.signIntentFromRequests(context, {
+        signingRequests: [
+          eip712Request({ chainId: baseChain.id, account: owner.address }),
+          delegationRequest({
+            chainId: baseChain.id,
+            contract: `0x${'77'.repeat(20)}`,
+            account: owner.address,
+          }),
+        ],
+        targetChain: destination,
+      })
+
+      expect(signed.proofs).toEqual([
+        {
+          kind: 'eip712',
+          signature: expect.stringMatching(/^0x[0-9a-f]+$/u),
+        },
+        {
+          kind: 'eip7702',
+          nonce: 0,
+          signature: {
+            r: expect.stringMatching(/^0x/u),
+            s: expect.stringMatching(/^0x/u),
+            yParity: expect.any(Number),
+          },
+        },
+      ])
+    })
+  })
+
+  test('validateSession records code mismatches before catalog refusals; creation fails first', async () => {
+    const base = fixture()
+    const canonical = '0x1111111111111111111111111111111111111111' as const
+    const copy = '0x2222222222222222222222222222222222222222' as const
+    const getCode = vi.fn(async (_context: unknown, address: Address) => ({
+      code: address === canonical ? ('0x1234' as const) : ('0x5678' as const),
+    }))
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      policyAddresses: {
+        universalAction: canonical,
+        universalActionCopies: [copy],
+      },
+    }
+    const result = await composition.project.validateSession(definition)
+    expect(result.refusals.map(({ code }) => code)).toEqual([
+      'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
+      'WRAPPED_NATIVE_TOKEN_UNSERVED',
+    ])
+    expect(getCode).toHaveBeenCalledTimes(2)
+    await expect(
+      composition.project.createSession(definition),
+    ).rejects.toMatchObject({ code: result.refusals[0].code })
+  })
+
+  test('online session creation and validation share served catalog and exact deployed-copy checks', async () => {
+    const base = fixture()
+    const getCode = vi.fn(async () => ({ code: '0x1234' as const }))
+    const getChainCatalog = vi.fn(
+      async () =>
+        new ChainCatalog({
+          [baseChain.id]: {
+            name: 'Base',
+            testnet: false,
+            supportedTokens: 'all',
+            wrappedNativeToken: {
+              symbol: 'WETH',
+              address: '0x4200000000000000000000000000000000000006',
+              decimals: 18,
+            },
+            settlement: SETTLEMENT_CATALOG[baseChain.id],
+          },
+          [arbitrum.id]: {
+            name: 'Arbitrum',
+            testnet: false,
+            supportedTokens: 'all',
+            settlement: SETTLEMENT_CATALOG[arbitrum.id],
+          },
+        }),
+    )
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+      orchestrator: { ...base.orchestrator, getChainCatalog },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      account: owner.address,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 100n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP' as const],
+        },
+      ],
+    }
+    const session = await composition.project.createSession(definition)
+    const validation = await composition.project.validateSession(definition)
+    expect(validation.refusals).toEqual([])
+    expect(validation.access).toEqual(session.access)
+    expect(session.settlementLayers).toEqual(['CCTP'])
+    expect(getCode).toHaveBeenCalled()
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+    getCode.mockRejectedValueOnce(new Error('RPC unavailable'))
+    await expect(
+      composition.project.validateSession(definition),
+    ).rejects.toThrow('RPC unavailable')
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  test('session details use coherent reads and require budget-reset consent', async () => {
+    const base = fixture()
+    const readContract = vi.fn(async () => 7n)
+    const multicall = vi.fn(async () => [{ result: 7n }, { result: true }])
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () =>
+          ({
+            ...base.dependencies.rpc.forChain(),
+            readContract,
+            multicall,
+          }) as RpcReadPort,
+      },
+    })
+    const session = {
+      ...toSession({
+        chain: baseChain,
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+      lifetimeBudget: true as const,
+    }
+    const workflows = composition.createAccount(base.context).workflows
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('already enabled')
+    expect(multicall).toHaveBeenCalledOnce()
+    expect(readContract).not.toHaveBeenCalled()
+    const details = await workflows.getSessionDetails(base.context, [session], {
+      allowBudgetReset: true,
+    })
+    expect(details.nonces).toEqual([7n])
+    expect(readContract).toHaveBeenCalledOnce()
+    multicall.mockResolvedValueOnce([])
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('Could not read')
+    expect(readContract).toHaveBeenCalledOnce()
   })
 
   test('createSession resolves the wrapped-native token from the chain catalog', async () => {
@@ -811,94 +1305,6 @@ describe('internal core composition', () => {
     ).toBe(true)
   })
 
-  /** A settlement-scoped createSession on Base, reading code through `getCode`. */
-  const createSettlementSession = (
-    getCode: RpcReadPort['getCode'] = vi.fn(async () => ({
-      code: '0x6080604052' as Hex,
-    })),
-  ) => {
-    const base = fixture()
-    const served = (id: number) => ({
-      name: String(id),
-      testnet: false,
-      supportedTokens: 'all' as const,
-      settlement: SETTLEMENT_CATALOG[id],
-    })
-    const composition = createCoreComposition(base.context.sdk, {
-      ...base.dependencies,
-      orchestrator: {
-        ...base.orchestrator,
-        getChainCatalog: vi.fn(
-          async () =>
-            new ChainCatalog({
-              [baseChain.id]: {
-                ...served(baseChain.id),
-                wrappedNativeToken: {
-                  symbol: 'WETH',
-                  address: '0x4200000000000000000000000000000000000006',
-                  decimals: 18,
-                },
-              },
-              [arbitrum.id]: served(arbitrum.id),
-            }),
-        ),
-      },
-      rpc: {
-        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
-      },
-    })
-
-    return composition.project.createSession({
-      chain: baseChain,
-      owners: { type: 'ecdsa', accounts: [owner] },
-      account: '0x1111111111111111111111111111111111111111',
-      crossChainPermits: [
-        {
-          from: {
-            chain: baseChain,
-            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
-          },
-          to: {
-            chain: arbitrum,
-            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
-          },
-          settlementLayers: ['CCTP'],
-        },
-      ],
-    })
-  }
-
-  test("createSession scopes an IntentExecutor-layer permit with /chains' settlement addresses", async () => {
-    const session = await createSettlementSession()
-
-    expect(session.actions[0].actionTarget).toBe(
-      SETTLEMENT_CATALOG[baseChain.id].cctp!.tokenMessenger,
-    )
-  })
-
-  test('createSession checks the deployed copies a settlement-scoped session defaults to', async () => {
-    const UAP_CODE = '0x6080604052'
-    const getCode = vi.fn(async (_: unknown, _address: Address) => ({
-      code: UAP_CODE as Hex,
-    }))
-    await createSettlementSession(getCode)
-    expect(getCode.mock.calls.map(([, address]) => address)).toEqual([
-      UNIVERSAL_ACTION_POLICY_ADDRESS,
-      ...UNIVERSAL_ACTION_POLICY_COPIES,
-    ])
-
-    const last = UNIVERSAL_ACTION_POLICY_COPIES[2]
-    await expect(
-      createSettlementSession(
-        vi.fn(async (_: unknown, address: Address) => ({
-          code: (address === last ? '0x' : UAP_CODE) as Hex,
-        })),
-      ),
-    ).rejects.toThrow(
-      `universalActionCopies ${last} does not hold the code of universalAction`,
-    )
-  })
-
   test('createSession fails fast when the chain has no wrapped-native token', async () => {
     const base = fixture()
     const composition = createCoreComposition(base.context.sdk, {
@@ -924,240 +1330,5 @@ describe('internal core composition', () => {
         owners: { type: 'ecdsa', accounts: [owner] },
       }),
     ).rejects.toThrow('no wrapped-native token')
-  })
-
-  // The default UniversalActionPolicy copies are checked first, as createSession does.
-  const dryRun = (copyCode: () => Promise<Hex | undefined>) => {
-    const base = fixture()
-    const getCode = vi.fn(async (_: unknown, address: Address) => ({
-      code:
-        address.toLowerCase() === UNIVERSAL_ACTION_POLICY_ADDRESS.toLowerCase()
-          ? ('0x6080604052' as Hex)
-          : await copyCode(),
-    }))
-    const composition = createCoreComposition(base.context.sdk, {
-      ...base.dependencies,
-      rpc: {
-        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
-      },
-      orchestrator: {
-        ...base.orchestrator,
-        getChainCatalog: vi.fn(
-          async () =>
-            new ChainCatalog({
-              [baseChain.id]: {
-                name: 'Base',
-                testnet: false,
-                supportedTokens: 'all',
-                settlement: SETTLEMENT_CATALOG[baseChain.id],
-              },
-              [arbitrum.id]: {
-                name: 'Arbitrum',
-                testnet: false,
-                supportedTokens: 'all',
-                settlement: SETTLEMENT_CATALOG[arbitrum.id],
-              },
-            }),
-        ),
-      },
-    })
-    const definition = {
-      chain: baseChain,
-      owners: { type: 'ecdsa' as const, accounts: [owner] },
-      account: '0x1111111111111111111111111111111111111111' as const,
-      crossChainPermits: [
-        {
-          from: {
-            chain: baseChain,
-            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
-            maxAmount: 1n,
-          },
-          to: {
-            chain: arbitrum,
-            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
-          },
-          settlementLayers: ['CCTP' as const],
-        },
-      ],
-    }
-    return {
-      validate: () => composition.project.validateSession(definition),
-      create: () => composition.project.createSession(definition),
-    }
-  }
-
-  test.each([
-    ['0x6080604052', []],
-    [undefined, ['UNIVERSAL_ACTION_COPY_CODE_MISMATCH']],
-  ] as const)(
-    'validateSession reports what createSession throws, then the rest (copy code %s)',
-    async (copyCode, first) => {
-      const { validate, create } = dryRun(async () => copyCode)
-      const { refusals } = await validate()
-      const thrown = await create().catch((error: Error) => error.message)
-
-      expect(refusals.map(({ code }) => code)).toEqual([
-        ...first,
-        'WRAPPED_NATIVE_TOKEN_UNSERVED',
-      ])
-      expect(refusals[0].message).toBe(thrown)
-    },
-  )
-
-  test('validateSession throws a failed code read, as createSession does', async () => {
-    const outage = new Error('rpc unavailable')
-    const { validate, create } = dryRun(async () => {
-      throw outage
-    })
-    await expect(validate()).rejects.toBe(outage)
-    await expect(create()).rejects.toBe(outage)
-  })
-
-  describe('createSession with universalActionCopies', () => {
-    const uap = UNIVERSAL_ACTION_POLICY_ADDRESS
-    const copies: Address[] = [
-      '0x00000000000000000000000000000000000000c1',
-      '0x00000000000000000000000000000000000000c2',
-    ]
-    const UAP_CODE = '0x6080604052'
-    const withCode = (code: Record<string, Hex | undefined>) => {
-      const base = fixture()
-      const getCode = vi.fn(async (_: unknown, address: Address) => ({
-        code: code[address.toLowerCase()],
-      }))
-      const composition = createCoreComposition(base.context.sdk, {
-        ...base.dependencies,
-        orchestrator: {
-          ...base.orchestrator,
-          getChainCatalog: vi.fn(
-            async () =>
-              new ChainCatalog({
-                [baseChain.id]: {
-                  name: 'Base',
-                  testnet: false,
-                  supportedTokens: 'all',
-                  wrappedNativeToken: {
-                    symbol: 'WETH',
-                    address: '0x4200000000000000000000000000000000000006',
-                    decimals: 18,
-                  },
-                },
-              }),
-          ),
-        },
-        rpc: {
-          forChain: () => ({
-            ...base.dependencies.rpc.forChain(),
-            getCode,
-          }),
-        },
-      })
-      const create = (universalActionCopies?: Address[]) =>
-        composition.project.createSession({
-          chain: baseChain,
-          owners: { type: 'ecdsa', accounts: [owner] },
-          ...(universalActionCopies
-            ? { policyAddresses: { universalActionCopies } }
-            : {}),
-        })
-      return { create, getCode }
-    }
-    const codes = (copyCode: (i: number) => Hex | undefined) =>
-      Object.fromEntries([
-        [uap.toLowerCase(), UAP_CODE as Hex],
-        ...copies.map((c, i) => [c.toLowerCase(), copyCode(i)]),
-      ])
-
-    test('accepts copies holding the UniversalActionPolicy code', async () => {
-      const { create, getCode } = withCode(codes(() => UAP_CODE))
-      await expect(create(copies)).resolves.toBeDefined()
-      expect(getCode.mock.calls.map(([, address]) => address)).toEqual([
-        uap,
-        ...copies,
-      ])
-    })
-
-    test('reads no code when no copy is configured', async () => {
-      const { create, getCode } = withCode({})
-      await expect(create()).resolves.toBeDefined()
-      expect(getCode).not.toHaveBeenCalled()
-    })
-
-    test('refuses a copy with other code or none', async () => {
-      for (const other of ['0x6080604053', undefined, '0x'] as const) {
-        const { create } = withCode(
-          codes((i) => (i === 1 ? (other as Hex | undefined) : UAP_CODE)),
-        )
-        await expect(create(copies)).rejects.toThrow(
-          `universalActionCopies ${copies[1]} does not hold the code of universalAction`,
-        )
-      }
-    })
-
-    test('refuses when universalAction itself has no code', async () => {
-      const { create } = withCode({})
-      await expect(create(copies)).rejects.toThrow('has no code on chain')
-    })
-  })
-
-  test('createSession hands the served USD stablecoins to a stableFloor swap scope', async () => {
-    const usdc: Address = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
-    const usdt: Address = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'
-    const account: Address = '0x1111111111111111111111111111111111111111'
-    // A swap chain: its catalog is 'all', so the floor must read the served list.
-    const withServed = (
-      usdStablecoins?: { symbol: string; address: Address; decimals: number }[],
-    ) => {
-      const base = fixture()
-      return createCoreComposition(base.context.sdk, {
-        ...base.dependencies,
-        orchestrator: {
-          ...base.orchestrator,
-          getChainCatalog: vi.fn(
-            async () =>
-              new ChainCatalog({
-                [baseChain.id]: {
-                  name: 'Base',
-                  testnet: false,
-                  supportedTokens: 'all',
-                  wrappedNativeToken: {
-                    symbol: 'WETH',
-                    address: '0x4200000000000000000000000000000000000006',
-                    decimals: 18,
-                  },
-                  ...(usdStablecoins ? { settlement: { usdStablecoins } } : {}),
-                },
-              }),
-          ),
-        },
-      })
-    }
-    const definition = {
-      chain: baseChain,
-      owners: { type: 'ecdsa' as const, accounts: [owner] },
-      swap: {
-        sell: { token: usdc, maxTotal: 1_000_000n },
-        buy: { token: usdt },
-        to: account,
-        stableFloor: true as const,
-      },
-    }
-
-    const session = await withServed([
-      { symbol: 'USDC', address: usdc, decimals: 6 },
-      { symbol: 'USDT', address: usdt, decimals: 6 },
-    ]).project.createSession(definition)
-    const exactIn = session.actions.find(
-      (action) => action.actionTargetSelector === SWAP_EXACT_IN_SELECTOR,
-    )
-    // The encoded rule (greaterThanOrEqual = 3, offset 96, not limited, 990000):
-    // 1_000_000 USDC less 100 bps, pinned on minAmountOut.
-    const floorRule = concat(
-      [3n, 96n, 0n, 990_000n].map((word) => pad(toHex(word))),
-    ).slice(2)
-    expect(exactIn?.actionPolicies[0]?.initData).toContain(floorRule)
-    await expect(
-      withServed().project.createSession(definition),
-    ).rejects.toThrow("needs the orchestrator's stablecoins")
   })
 })

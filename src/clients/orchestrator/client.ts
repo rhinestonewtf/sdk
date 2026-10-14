@@ -7,6 +7,7 @@ import { type FetchPort, fetchOrchestratorJson } from './fetch'
 import {
   mapIntentRequestToWire,
   mapIntentStatusFromWire,
+  mapIntentSubmissionFromWire,
   mapPortfolioFromWire,
   mapQuoteResponseFromWire,
   mapSignedIntentToWire,
@@ -14,11 +15,12 @@ import {
   mapSplitResultFromWire,
 } from './mappers'
 import type { OrchestratorPort } from './port'
+import { assertSponsorshipApproval } from './sponsorship-approval'
 import type { OrchestratorQuoteContext } from './types'
 import type { WireChainsResponse } from './wire'
 
-const SDK_VERSION = '2.17.0'
-const API_VERSION = '2026-04.blanc'
+const SDK_VERSION = '3.0.0-rc.0'
+const API_VERSION = '2026-09.caucasus'
 // Bounds how long a killed layer or pulled settlement address stays pinnable.
 const CHAIN_CATALOG_TTL_MS = 10 * 60 * 1000
 
@@ -64,34 +66,47 @@ export function createOrchestratorClient(
     })
   }
 
-  // Fetched lazily on first use — never at account construction — and reused
-  // for the TTL. A failed fetch is forgotten so the next call retries.
+  // Fetched lazily on first use and reused for the TTL, including in-flight reads.
   let chainCatalog:
     | { readonly promise: Promise<ChainCatalog>; readonly fetchedAt: number }
     | undefined
 
   return {
-    createQuote: async (input, context) =>
-      mapQuoteResponseFromWire(
+    createQuote: async (input, context) => {
+      // One body object: the approval is checked against exactly the bytes
+      // that are sent, before the integrator is asked for a grant.
+      const body = mapIntentRequestToWire(input)
+      if (context && options.auth.requestsIntentExtension(context.sponsored)) {
+        assertSponsorshipApproval(body, context.intentInput)
+      }
+      return mapQuoteResponseFromWire(
         await request({
           path: 'quotes',
           method: 'POST',
-          body: mapIntentRequestToWire(input),
+          body,
           ...(context ? { quoteContext: context } : {}),
         }),
-      ),
-    submitIntent: async (input) => {
-      const value = (await request({
-        path: 'intents',
-        method: 'POST',
-        body: mapSignedIntentToWire(input),
-      })) as { readonly traceId?: string; readonly intentId?: string }
-      return { traceId: value.traceId ?? '', intentId: value.intentId ?? '' }
+      )
     },
-    getIntentStatus: async (intentId) =>
+    // Never carries the intent extension: the grant was presented with the
+    // quote and is single-use, so the submission bills from the quoted fees.
+    submitIntent: async (input) =>
+      mapIntentSubmissionFromWire(
+        input.intentId,
+        await request({
+          path: 'intents',
+          method: 'POST',
+          body: mapSignedIntentToWire(input),
+        }),
+      ),
+    getIntentStatus: async (intentId, options) =>
       mapIntentStatusFromWire(
         intentId,
-        await request({ path: `intents/${encodeURIComponent(intentId)}` }),
+        await request({
+          path: `intents/${encodeURIComponent(intentId)}${
+            options?.full ? '?full=true' : ''
+          }`,
+        }),
       ),
     splitIntents: async (input) =>
       mapSplitResultFromWire(

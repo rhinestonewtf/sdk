@@ -5,10 +5,12 @@
       "**",
       "!src/dist",
       "!.artifacts",
+      "!.scratch",
       "!coverage",
       "!integration-test",
       "!.changeset",
-      "!src/clients/orchestrator/wire.gen.ts"
+      "!src/clients/orchestrator/wire.gen.ts",
+      "!scripts/openapi/*.json"
     ]
   },
   "formatter": {

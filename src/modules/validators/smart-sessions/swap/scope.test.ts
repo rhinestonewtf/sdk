@@ -651,7 +651,7 @@ describe('swap scope through toSession', () => {
 
   test('a swap session cannot also carry a permit', () => {
     expect(() => build({ claimPolicies: [{ type: 'permit2' }] })).toThrow(
-      /cannot hold claimPolicies/,
+      /claimPolicies.*was removed/,
     )
   })
 

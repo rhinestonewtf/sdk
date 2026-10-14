@@ -11,7 +11,7 @@
 // The catalog only owns the chain *facts*.
 
 import { type Address, isAddress } from 'viem'
-import { chainIdFromCaip2, isCaip2 } from '../../chains/caip2'
+import { chainIdFromCaip2, formatCaip2, isCaip2 } from '../../chains/caip2'
 import type {
   SettlementAddresses,
   SettlementCatalog,
@@ -38,8 +38,8 @@ export type ChainInfo = {
 export type ChainInfoMap = Record<number, ChainInfo>
 
 /**
- * Read-only view over the chain facts returned by `GET /chains`. Built once per
- * client (fetched lazily) and read synchronously thereafter.
+ * Read-only snapshot of the chain facts returned by `GET /chains`, fetched
+ * lazily and refreshed by the client after its cache TTL.
  */
 export class ChainCatalog {
   constructor(private readonly chains: ChainInfoMap) {}
@@ -99,7 +99,7 @@ const isIndex = (value: unknown): value is number =>
 const isAddrs = (value: unknown): value is Address[] =>
   Array.isArray(value) && value.length > 0 && value.every(isAddr)
 
-// Validates the untyped `settlement` field until wire.gen.ts is regenerated; a block with any invalid field is dropped.
+// Malformed settlement blocks are omitted independently of other chain facts.
 function parseSettlement(value: unknown): SettlementAddresses | undefined {
   if (!isObject(value)) return undefined
   const out: {
@@ -199,9 +199,13 @@ export function parseChains(json: WireChainsResponse): ChainInfoMap {
   for (const [key, entry] of Object.entries(json)) {
     const id = isCaip2(key) ? chainIdFromCaip2(key) : Number(key)
     if (id === undefined || !Number.isFinite(id)) continue
-    const settlement = parseSettlement(
-      (entry as { settlement?: unknown }).settlement,
-    )
+    // Native-VM chain facts remain available, but settlement policies are EVM-only.
+    const settlement =
+      Number.isSafeInteger(id) &&
+      id >= 0 &&
+      formatCaip2(id).startsWith('eip155:')
+        ? parseSettlement(entry.settlement)
+        : undefined
     out[id] = {
       name: entry.name,
       testnet: entry.testnet,

@@ -1,11 +1,12 @@
 {
   "private": true,
   "scripts": {
-    "build": "bun run clean && tsc && tsc-esm-fix --target=src/dist",
+    "build": "bun run clean && bun run scripts/sync-version.ts && tsc && tsc-esm-fix --target=src/dist",
     "clean": "rimraf src/dist",
     "test": "bun run test:unit",
     "test:unit": "vitest --config vitest.config.unit.ts",
     "test:contract": "bun run scripts/contract/run.ts",
+    "test:reference": "bun run scripts/reference/check-examples.ts",
     "test:coverage:core": "vitest --config vitest.config.core.ts --coverage --run",
     "test:coverage:pure": "vitest --config vitest.config.core.ts --coverage --run",
     "test:integration": "vitest --config vitest.config.integration.ts",
@@ -29,6 +30,8 @@
     "./src"
   ],
   "dependencies": {
+    "@noble/curves": "^1.9.1",
+    "@scure/base": "^1.2.6",
     "viem": "^2.55.0"
   },
   "devDependencies": {

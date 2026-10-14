@@ -200,16 +200,27 @@ const intentionalSurfaceChange =
 const additiveOnly = declaredBump === 'minor'
 
 describe('packed package contract', () => {
+  it('sends the exact packed manifest version by default', () => {
+    const manifest = readJson<PackageManifest>(
+      join(currentPackageDirectory, 'package.json'),
+    )
+    expect(runProbe<string>(currentConsumerDirectory, 'sdk-version')).toBe(
+      manifest.version,
+    )
+  })
   it('uses a concrete release commit as the base subject', () => {
     expect(baseSha).toMatch(/^[0-9a-f]{40}$/)
   })
 
-  it('publishes without runtime dependencies', () => {
+  it('publishes only the explicit Solana derivation dependencies', () => {
     const currentManifest = readJson<PackageManifest>(
       join(currentPackageDirectory, 'package.json'),
     )
 
-    expect(Object.keys(currentManifest.dependencies ?? {})).toEqual([])
+    expect(currentManifest.dependencies).toEqual({
+      '@noble/curves': '^1.9.1',
+      '@scure/base': '^1.2.6',
+    })
   })
 
   it('preserves manifest entry points and package metadata', () => {

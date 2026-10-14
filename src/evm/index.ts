@@ -2,13 +2,17 @@ import type { Account, Address, Hex } from 'viem'
 import { createAccountConstruction } from '../accounts/construction'
 import { getRhinestoneInitData, getV0InitData } from '../accounts/legacy'
 import { toViewOnlyAccount as createViewOnlyAccount } from '../accounts/wallet-account'
-import type {
-  RhinestoneAccountConfig,
-  RhinestoneConfig,
-} from '../config/account'
+import type { EvmAccountConfig, RhinestoneConfig } from '../config/account'
 import { resolveStandaloneAccountConfig } from '../config/resolve'
 import { assertAccountOwnersConfigured } from '../config/validate'
 import { toLegacyModuleSetup } from '../modules/legacy-core'
+import {
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+} from '../modules/validators/multi-factor'
+import { OWNABLE_VALIDATOR_ADDRESS } from '../modules/validators/ownable'
+import { SMART_SESSION_EMISSARY_ADDRESS } from '../modules/validators/smart-sessions/module'
+import { WEBAUTHN_VALIDATOR_ADDRESS } from '../modules/validators/webauthn'
 import {
   walletClientToAccount,
   wrapParaAccount,
@@ -59,19 +63,19 @@ function standaloneConstruction(
  * @returns The account address, factory, factory data, and whether the intent executor is installed
  * @example
  * ```ts
- * import { experimental_getV0InitData } from '@rhinestone/sdk/utils'
+ * import { experimental_getV0InitData } from '@rhinestone/sdk/evm'
  *
  * const initData = experimental_getV0InitData({
  *   owners: { type: 'ecdsa', accounts: [owner] },
  * })
  *
- * const account = await sdk.createAccount({
+ * const account = await sdk.createAccount({ evm: {
  *   owners: { type: 'ecdsa', accounts: [owner] },
  *   initData,
- * })
+ * }})
  * ```
  */
-function experimental_getV0InitData(config: RhinestoneAccountConfig): {
+function experimental_getV0InitData(config: EvmAccountConfig): {
   address: Address
   factory: Address
   factoryData: Hex
@@ -90,19 +94,19 @@ function experimental_getV0InitData(config: RhinestoneAccountConfig): {
  * @returns The account address, plus factory data when the account is not yet deployed
  * @example
  * ```ts
- * import { experimental_getRhinestoneInitData } from '@rhinestone/sdk/utils'
+ * import { experimental_getRhinestoneInitData } from '@rhinestone/sdk/evm'
  *
  * const initData = experimental_getRhinestoneInitData({
  *   owners: { type: 'ecdsa', accounts: [owner] },
  * })
  *
- * const account = await sdk.createAccount({
+ * const account = await sdk.createAccount({ evm: {
  *   owners: { type: 'ecdsa', accounts: [owner] },
  *   initData,
- * })
+ * }})
  * ```
  */
-function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
+function experimental_getRhinestoneInitData(config: EvmAccountConfig):
   | {
       address: Address
       factory: Address
@@ -133,11 +137,11 @@ function experimental_getRhinestoneInitData(config: RhinestoneAccountConfig):
  * @returns A viem account that can be read from but not signed with
  * @example
  * ```ts
- * import { toViewOnlyAccount } from '@rhinestone/sdk/utils'
+ * import { toViewOnlyAccount } from '@rhinestone/sdk/evm'
  *
- * const account = await sdk.createAccount({
+ * const account = await sdk.createAccount({ evm: {
  *   owners: { type: 'ecdsa', accounts: [toViewOnlyAccount(userAddress)] },
- * })
+ * }})
  * ```
  */
 function toViewOnlyAccount(address: Address): Account {
@@ -160,4 +164,17 @@ export {
   toViewOnlyAccount,
   walletClientToAccount,
   wrapParaAccount,
+  // Validator addresses
+  OWNABLE_VALIDATOR_ADDRESS,
+  WEBAUTHN_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_ADDRESS,
+  MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+  SMART_SESSION_EMISSARY_ADDRESS,
 }
+
+export type { ManagedEvmAccount } from '../api/account'
+export type {
+  EvmAccountConfig,
+  EvmAccountEntry,
+  EvmReceiverAccountConfig,
+} from '../config/account'

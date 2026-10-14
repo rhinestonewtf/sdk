@@ -85,6 +85,37 @@ describe('computeIntentInputDigest', () => {
 
     expect(digest1).toBe(digest2)
   })
+
+  it('produces a deterministic digest over a singular approval input', async () => {
+    const singular = {
+      contractVersion: 'sdk-3.0.0-caucasus',
+      account: {
+        evm: {
+          type: 'erc7579',
+          address: '0x1234000000000000000000000000000000000000',
+        },
+      },
+      destination: {
+        vm: 'evm',
+        chainId: 'eip155:8453',
+        execution: {
+          calls: [
+            {
+              to: '0xaaaa000000000000000000000000000000000000',
+              value: '1000000',
+              data: '0x',
+            },
+          ],
+        },
+      },
+      options: {},
+    }
+    const digest1 = await computeIntentInputDigest(singular)
+    const digest2 = await computeIntentInputDigest({ ...singular })
+
+    expect(digest1).toBe(digest2)
+    expect(digest1).toMatch(/^[0-9a-f]{64}$/)
+  })
 })
 
 describe('shouldSponsor', () => {
@@ -193,6 +224,175 @@ describe('shouldSponsor', () => {
   })
 })
 
+describe('shouldSponsor (singular format)', () => {
+  const evmIntentInput = {
+    contractVersion: 'sdk-3.0.0-caucasus',
+    account: {
+      evm: {
+        type: 'erc7579',
+        address: '0x1234000000000000000000000000000000000000',
+      },
+    },
+    destination: {
+      vm: 'evm',
+      chainId: 'eip155:8453',
+      execution: {
+        calls: [
+          {
+            to: '0xaaaa000000000000000000000000000000000000',
+            value: '1000000',
+            data: '0x',
+          },
+        ],
+      },
+    },
+    options: {},
+  }
+
+  it('resolves the numeric chain id from destination.chainId CAIP-2', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      chain: (chain) => chain.id === 8453,
+    })
+    expect(result).toBe(true)
+
+    const rejected = await shouldSponsor(evmIntentInput, {
+      chain: (chain) => chain.id === 1,
+    })
+    expect(rejected).toBe(false)
+  })
+
+  it('resolves a Solana devnet chain id from its CAIP-2 id', async () => {
+    const solanaIntentInput = {
+      ...evmIntentInput,
+      account: {
+        svm: {
+          type: 'swig',
+          address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+        },
+      },
+      destination: {
+        vm: 'svm',
+        chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      },
+    }
+    const result = await shouldSponsor(solanaIntentInput, {
+      chain: (chain) => chain.id === 792703810,
+    })
+    expect(result).toBe(true)
+  })
+
+  it('reads the account address from account.evm', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      account: (address) =>
+        address === '0x1234000000000000000000000000000000000000',
+    })
+    expect(result).toBe(true)
+  })
+
+  it('falls back to account.svm when the request has no evm entry', async () => {
+    const svmIntentInput = {
+      ...evmIntentInput,
+      account: {
+        svm: {
+          type: 'swig',
+          address: 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+        },
+      },
+    }
+    const result = await shouldSponsor(svmIntentInput, {
+      account: (address) =>
+        (address as string) === 'DfBX7Po1bmnXt4GuEF3Eg5UYUHAjs9m5n8nbb9WUqgw2',
+    })
+    expect(result).toBe(true)
+  })
+
+  it('passes EVM destination.execution.calls with value as bigint', async () => {
+    const result = await shouldSponsor(evmIntentInput, {
+      calls: (calls) => {
+        expect(calls).toHaveLength(1)
+        expect(calls[0].to).toBe('0xaaaa000000000000000000000000000000000000')
+        expect(calls[0].value).toBe(1000000n)
+        expect(calls[0].data).toBe('0x')
+        return true
+      },
+    })
+    expect(result).toBe(true)
+  })
+
+  it('passes HyperCore destination.execution.settlement.calls', async () => {
+    const hyperCoreIntentInput = {
+      ...evmIntentInput,
+      destination: {
+        vm: 'hypercore',
+        chainId: 'hypercore:perp',
+        execution: {
+          actions: [{ type: 'order', orders: [] }],
+          settlement: {
+            calls: [
+              {
+                to: '0xaaaa000000000000000000000000000000000000',
+                value: '7',
+                data: '0x',
+              },
+            ],
+          },
+        },
+      },
+    }
+    const result = await shouldSponsor(hyperCoreIntentInput, {
+      calls: (calls) => {
+        expect(calls).toEqual([
+          {
+            to: '0xaaaa000000000000000000000000000000000000',
+            value: 7n,
+            data: '0x',
+          },
+        ])
+        return true
+      },
+    })
+    expect(result).toBe(true)
+  })
+
+  it('passes an empty calls array when the destination has no execution', async () => {
+    const noExecution = {
+      ...evmIntentInput,
+      destination: { vm: 'evm', chainId: 'eip155:8453' },
+    }
+    const result = await shouldSponsor(noExecution, {
+      calls: (calls) => {
+        expect(calls).toEqual([])
+        return true
+      },
+    })
+    expect(result).toBe(true)
+  })
+})
+
+it.each([
+  'caucasus-1',
+  'sdk-3.0.1-caucasus',
+  'sdk-caucasus-2026-09',
+  'sdk-2.16.2-blanc',
+])('shouldSponsor throws on an unknown contractVersion %s', async (unknown) => {
+  await expect(
+    shouldSponsor(
+      {
+        contractVersion: unknown,
+        account: {
+          evm: {
+            type: 'erc7579',
+            address: '0x1234000000000000000000000000000000000000',
+          },
+        },
+        destination: { vm: 'evm', chainId: 'eip155:8453' },
+        options: {},
+      },
+      {},
+    ),
+  ).rejects.toThrow(`intentInput.contractVersion "${unknown}" is not supported`)
+})
+
 describe('createJwtSigner', () => {
   async function makeTestConfig() {
     const { privateKey } = await generateKeyPair('RS256', {
@@ -298,6 +498,35 @@ describe('createJwtSigner', () => {
 
     const payload = decodeJwt(token) as any
     expect(payload.typ).toBe('intent_extension')
+  })
+
+  it('signs the digest of a stable approval input that passes the filters', async () => {
+    const config = await makeTestConfig()
+    const signer = createJwtSigner({
+      ...config,
+      shouldSponsor: {
+        chain: (chain) => chain.id === 8453,
+        account: (address) =>
+          address === '0x1234000000000000000000000000000000000000',
+      },
+    })
+    const intentInput = {
+      contractVersion: 'sdk-3.0.0-caucasus',
+      account: {
+        evm: {
+          type: 'erc7579',
+          address: '0x1234000000000000000000000000000000000000',
+        },
+      },
+      destination: { vm: 'evm', chainId: 'eip155:8453' },
+      options: {},
+    }
+    const token = await signer.getIntentExtensionToken(intentInput)
+
+    const payload = decodeJwt(token) as any
+    expect(payload.policy.sponsorship.intent_input.digest).toBe(
+      await computeIntentInputDigest(intentInput),
+    )
   })
 
   it('throws SponsorshipDeniedError when a filter rejects', async () => {

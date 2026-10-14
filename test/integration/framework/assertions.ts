@@ -9,7 +9,7 @@ export async function expectDeployed(
   const deployed = await waitForDeployment(account, chain)
   expect(
     deployed,
-    `${account.getAddress()} should be deployed on ${chain.name} (${chain.id})`,
+    `${account.getAddress('evm')} should be deployed on ${chain.name} (${chain.id})`,
   ).toBe(true)
 }
 
@@ -19,7 +19,7 @@ export async function expectNotDeployed(
 ): Promise<void> {
   expect(
     await account.isDeployed(chain),
-    `${account.getAddress()} should not be deployed on ${chain.name} (${
+    `${account.getAddress('evm')} should not be deployed on ${chain.name} (${
       chain.id
     })`,
   ).toBe(false)
@@ -30,9 +30,10 @@ export async function expectSessionEnabled(
   session: Session,
 ): Promise<void> {
   const enabled = await waitForSessionEnabled(account, session)
-  expect(enabled, `Session should be enabled on ${account.getAddress()}`).toBe(
-    true,
-  )
+  expect(
+    enabled,
+    `Session should be enabled on ${account.getAddress('evm')}`,
+  ).toBe(true)
 }
 
 export async function expectSessionDisabled(
@@ -42,7 +43,7 @@ export async function expectSessionDisabled(
   const disabled = await waitForSessionDisabled(account, session)
   expect(
     disabled,
-    `Session should be disabled on ${account.getAddress()}`,
+    `Session should be disabled on ${account.getAddress('evm')}`,
   ).toBe(true)
 }
 

@@ -38,17 +38,6 @@ export function createNoopCall() {
   }
 }
 
-export function createUsdcRequestWithoutFunds(chainId: number) {
-  return {
-    tokenRequests: [
-      {
-        address: getTokenAddress('USDC', chainId),
-        amount: 1_000_000n,
-      },
-    ],
-  }
-}
-
 export function createUnfundedUsdcTransferCall(chain: Chain) {
   const usdcAddress = getTokenAddress('USDC', chain.id)
 

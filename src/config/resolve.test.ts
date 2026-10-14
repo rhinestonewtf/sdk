@@ -109,7 +109,7 @@ const sdkInputArbitrary: fc.Arbitrary<SdkConstructionInput> = fc
     providerKey: fc.string({ minLength: 1, maxLength: 20 }),
   })
   .map(({ apiKey, endpointUrl, development, providerKind, providerKey }) => ({
-    apiKey,
+    auth: { mode: 'apiKey' as const, apiKey },
     ...(endpointUrl === undefined ? {} : { endpointUrl }),
     ...(development ? { useDevContracts: true } : {}),
     ...(providerKind === 'custom'
@@ -129,17 +129,20 @@ function serializeInput(value: unknown): string {
 }
 
 describe('SDK config resolution', () => {
-  test('matches auth precedence and the legacy missing-auth error', () => {
-    const current = { mode: 'apiKey' as const, apiKey: 'current' }
-    expect(resolveSdkConfig({ apiKey: 'legacy', auth: current }).auth).toEqual({
+  test('requires nested auth and rejects the removed shorthand even beside auth', () => {
+    const auth = { mode: 'apiKey' as const, apiKey: 'current' }
+    expect(resolveSdkConfig({ auth }).auth).toEqual({
       kind: 'api-key',
       apiKey: 'current',
     })
-    expect(
-      resolveSdkConfig({ apiKey: 'legacy', auth: undefined }).auth,
-    ).toEqual({ kind: 'api-key', apiKey: 'legacy' })
-    expect(() => resolveSdkConfig({ apiKey: '' })).toThrowError(
-      'RhinestoneSDK requires either `apiKey` or `auth` in config',
+    for (const apiKey of ['legacy', '', undefined]) {
+      const widened = { apiKey, auth }
+      expect(() => resolveSdkConfig(widened)).toThrow(
+        /Top-level `apiKey` was removed/,
+      )
+    }
+    expect(() => resolveSdkConfig({} as SdkConstructionInput)).toThrow(
+      'RhinestoneSDK requires `auth` in config',
     )
   })
 
@@ -193,7 +196,9 @@ describe('SDK config resolution', () => {
         safeAdapterProfile: 'safe-legacy-v0-adapter' as const,
       },
     }
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const accountInput: AccountConstructionInput = {
       account: { type: 'safe' },
       owners: { type: 'ecdsa', accounts: [accountA] },
@@ -226,13 +231,18 @@ describe('SDK config resolution', () => {
   })
 
   test('materializes fresh contexts from a fixed profile, shared auth, and live compatibility state', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const compatibility = createLegacyAccountConfig(
       {
         account: { type: 'safe' },
         owners: { type: 'ecdsa', accounts: [accountA] },
       },
-      captureLegacySdkConfig({ apiKey: 'test' }, sdk.auth),
+      captureLegacySdkConfig(
+        { auth: { mode: 'apiKey' as const, apiKey: 'test' } },
+        sdk.auth,
+      ),
     )
 
     const first = materializeAccountInvocationContext(
@@ -270,7 +280,7 @@ describe('SDK config resolution', () => {
   test('matches the rich resolved-config golden', () => {
     const expiration = new Date('2030-01-01T00:00:00.000Z')
     const sdk = resolveSdkConfig({
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       endpointUrl: 'https://orchestrator.test',
       provider: { type: 'custom', urls: { 1: 'https://rpc.test' } },
       bundler: { type: 'pimlico', apiKey: 'bundler' },
@@ -444,7 +454,9 @@ describe('SDK config resolution', () => {
       },
     },
   ])('resolves $name', ({ input, expected }) => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     expect(resolveAccountConfig(sdk, input).account).toEqual(expected)
   })
 
@@ -460,7 +472,9 @@ describe('SDK config resolution', () => {
   ])(
     'uses nullish threshold resolution for $type threshold $threshold',
     ({ expected, ...owners }) => {
-      const sdk = resolveSdkConfig({ apiKey: 'test' })
+      const sdk = resolveSdkConfig({
+        auth: { mode: 'apiKey' as const, apiKey: 'test' },
+      })
       expect(resolveAccountConfig(sdk, { owners }).owners?.threshold).toBe(
         expected,
       )
@@ -491,7 +505,9 @@ describe('SDK config resolution', () => {
   })
 
   test('resolves passkey owners and explicit validator/session overrides', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       owners: {
         type: 'passkey',
@@ -523,7 +539,9 @@ describe('SDK config resolution', () => {
   })
 
   test('retains init data and registry-free multi-factor selection', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const initData = { address: addressA }
     const account = resolveAccountConfig(sdk, {
       initData,
@@ -546,7 +564,9 @@ describe('SDK config resolution', () => {
   })
 
   test('installs the social recovery validator from recovery config', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       owners: { type: 'ecdsa', accounts: [accountA] },
       recovery: { guardians: [accountC, accountB], threshold: 2 },
@@ -577,7 +597,9 @@ describe('SDK config resolution', () => {
   })
 
   test('defaults the recovery threshold and keeps user modules', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       owners: { type: 'ecdsa', accounts: [accountA] },
       recovery: { guardians: [accountB] },
@@ -603,7 +625,9 @@ describe('SDK config resolution', () => {
   })
 
   test('omits recovery modules when unconfigured', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const account = resolveAccountConfig(sdk, {
       owners: { type: 'ecdsa', accounts: [accountA] },
     })
@@ -696,7 +720,7 @@ describe('config resolution properties', () => {
 describe('account invocation materialization', () => {
   test('reflects live compatibility mutations under the original profile', () => {
     const sdkInput: SdkConstructionInput = {
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       provider: { type: 'custom', urls: { 1: 'https://initial.test' } },
       headers: { initial: 'true' },
     }
@@ -765,7 +789,9 @@ describe('account invocation materialization', () => {
   })
 
   test('reapplies omitted SDK defaults and current service replacements', () => {
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const sdk = resolveSdkConfig(sdkInput)
     const compatibility = createLegacyAccountConfig(
       { owners: { type: 'ecdsa', accounts: [accountA] } },

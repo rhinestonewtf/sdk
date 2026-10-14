@@ -1,5 +1,5 @@
 import { keccak256, toHex } from 'viem'
-import type { RhinestoneAccountConfig } from '../../../src/index'
+import type { EvmAccountConfig } from '../../../src/evm/index'
 import {
   accountA,
   accountB,
@@ -21,7 +21,7 @@ export type VectorCase = {
    * args.
    */
   readonly pins: 'deployment' | 'address'
-  readonly config: RhinestoneAccountConfig
+  readonly config: EvmAccountConfig
   /** Builds `initData` from another case's derived deployment plan. */
   readonly pinnedFrom?: string
 }
@@ -49,26 +49,26 @@ const ENS_EXPIRATION = new Date('2030-01-01T00:00:00.000Z')
 const ecdsa = {
   type: 'ecdsa',
   accounts: [accountA],
-} as const satisfies RhinestoneAccountConfig['owners']
+} as const satisfies EvmAccountConfig['owners']
 const passkeySingle = {
   type: 'passkey',
   accounts: [passkeyAccount],
-} as const satisfies RhinestoneAccountConfig['owners']
+} as const satisfies EvmAccountConfig['owners']
 const passkeyMulti = {
   type: 'passkey',
   accounts: [passkeyA, passkeyB],
-} as const satisfies RhinestoneAccountConfig['owners']
+} as const satisfies EvmAccountConfig['owners']
 const multiFactor = {
   type: 'multi-factor',
   validators: [
     { type: 'ecdsa', accounts: [accountA] },
     { type: 'passkey', accounts: [passkeyAccount] },
   ],
-} as const satisfies RhinestoneAccountConfig['owners']
+} as const satisfies EvmAccountConfig['owners']
 const ensSingle = {
   type: 'ens',
   owners: [{ account: accountA }],
-} as const satisfies RhinestoneAccountConfig['owners']
+} as const satisfies EvmAccountConfig['owners']
 
 const validatorModule = {
   type: 'validator',
@@ -84,15 +84,15 @@ const customModules = [
   fallbackModule,
 ]
 
-function deployment(id: string, config: RhinestoneAccountConfig): VectorCase {
+function deployment(id: string, config: EvmAccountConfig): VectorCase {
   return { id, profile: 'current', pins: 'deployment', config }
 }
 
-function addressOnly(id: string, config: RhinestoneAccountConfig): VectorCase {
+function addressOnly(id: string, config: EvmAccountConfig): VectorCase {
   return { id, profile: 'current', pins: 'address', config }
 }
 
-function v0(id: string, config: RhinestoneAccountConfig): VectorCase {
+function v0(id: string, config: EvmAccountConfig): VectorCase {
   return { id, profile: 'v0', pins: 'deployment', config }
 }
 
@@ -446,6 +446,14 @@ const pinnedAndAdoption: VectorCase[] = [
     pins: 'deployment',
     config: { account: { type: 'nexus' }, owners: ecdsa },
     pinnedFrom: 'nexus-ecdsa',
+  },
+  // Factory material pins the version, so no `version` still restores 1.0.0.
+  {
+    id: 'startale-pinned-factory-1-0-0',
+    profile: 'current',
+    pins: 'deployment',
+    config: { account: { type: 'startale' }, owners: ecdsa },
+    pinnedFrom: 'startale-version-1-0-0',
   },
   addressOnly('nexus-7702-ecdsa', {
     account: { type: 'nexus' },
