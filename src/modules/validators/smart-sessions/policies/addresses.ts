@@ -21,10 +21,27 @@ export const INTENT_EXECUTION_POLICY_ADDRESS: Address =
 export const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
   '0xa09b47de6e510cbdc18b97e9239bedcb44fb4901'
 
+// CREATE2 deployments of the canonical UniversalActionPolicy bytecode, at the
+// same addresses on every chain in UNIVERSAL_ACTION_POLICY_COPY_CHAINS.
+export const UNIVERSAL_ACTION_POLICY_COPIES: readonly Address[] = Object.freeze(
+  [
+    '0x68744D25604872d2F81FAa864963353F3ee9b4d2',
+    '0x8a026acb4DF6EFbc9BD4664D1E8750D470E7dD9F',
+    '0x6EB915A22F2015A776eec56F11EF96cda1EDCC54',
+  ],
+)
+// Static so the encoding never depends on an RPC read.
+export const UNIVERSAL_ACTION_POLICY_COPY_CHAINS: ReadonlySet<number> = new Set(
+  [
+    1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+    8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155111, 11155420,
+  ],
+)
+
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
   readonly universalAction: Address
-  // Only present when configured: no copy has a canonical deployment yet.
+  // Only present when configured or defaulted for a settlement-scoped session.
   readonly universalActionCopies?: readonly Address[]
   readonly argPolicy: Address
   readonly spendingLimits: Address
