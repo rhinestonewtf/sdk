@@ -22,12 +22,18 @@ type Config =
       readonly root: number
       readonly nodes: readonly bigint[]
     }
+  | { readonly kind: 'value-limit'; readonly limit: bigint }
   | { readonly kind: 'other' }
 
 /** Which deployments hold which policy code. */
 export interface PolicyKinds {
   readonly universalAction: readonly Address[]
   readonly argPolicy: Address
+  /**
+   * ValueLimitPolicy: one cumulative native-value counter per config and
+   * account (getUsed/limitUsed), as the deployment answers on a fork.
+   */
+  readonly valueLimit?: Address
 }
 
 /**
@@ -134,6 +140,10 @@ function decode(policy: ResolvedPolicy, kinds: PolicyKinds): Config {
       nodes: c.paramRules.packedNodes,
     }
   }
+  if (kinds.valueLimit?.toLowerCase() === address) {
+    const [limit] = decodeAbiParameters([{ type: 'uint256' }], policy.initData)
+    return { kind: 'value-limit', limit }
+  }
   return { kind: 'other' }
 }
 
@@ -157,8 +167,8 @@ class Reverted extends Error {}
 /**
  * Whether the installed action admits one call. Policies run in list order and
  * every one must pass; a refusal reverts the transaction, so no counter moves
- * unless the whole check passes. Policies other than UniversalActionPolicy and
- * ArgPolicy carry no argument rules and pass here. `rollback: false` keeps the
+ * unless the whole check passes. ValueLimitPolicy (when its address is given)
+ * counts the call's value; other policies carry no argument rules and pass here. `rollback: false` keeps the
  * counters a refused call moved, as a chain without that revert would.
  */
 export function admits(
@@ -202,6 +212,13 @@ export function admits(
     for (const address of action.order) {
       const config = action.configs.get(address) as Config
       if (config.kind === 'other') continue
+      if (config.kind === 'value-limit') {
+        const key = `${address}:value`
+        const prior = used.get(key) ?? 0n
+        if (prior + value > config.limit) return false
+        used.set(key, prior + value)
+        continue
+      }
       if (value > config.valueLimitPerUse) return false
       if (config.kind === 'universal-action') {
         if (config.rules.length === 0) return false

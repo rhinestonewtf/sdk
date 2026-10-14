@@ -218,7 +218,7 @@ export function scopeSameChain(ctx: SameChainContext): SameChainScope {
     )
   }
   // The floor is a fixed amount, not a price: only against a capped input does
-  // maxAmount : minAmount bound the rate, and the cap brings oneTimeUse.
+  // maxAmount : minAmount bound the rate, over one swap or a lifetime of them.
   if (ctx.cap === undefined) {
     throw refusal(
       'SAME_CHAIN_IE_SWAP_NEEDS_MAX_AMOUNT',

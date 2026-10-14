@@ -470,6 +470,10 @@ export interface Session {
   /** Whether the session keeps the intent-execution fallback, and why. Metadata
    *  only; absent on sessions stored before it existed. */
   access?: SessionAccess
+  /** Set on a session without `oneTimeUse` whose permit sets `maxAmount`: its
+   *  budget lives in counters an enable re-initialises, so getSessionDetails
+   *  refuses one already enabled unless told to reset it. Metadata only. */
+  lifetimeBudget?: true
   // A one-time-use session's id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: {
@@ -478,6 +482,14 @@ export interface Session {
     /** Set when the SDK filled in the deployed address, so intents check it is on their chains. */
     readonly defaultPolicy?: true
   }
+}
+
+export interface SessionDetailsOptions {
+  /**
+   * Sign a session whose lifetime `maxAmount` is already enabled; its enable
+   * then resets that budget.
+   */
+  readonly allowBudgetReset?: boolean
 }
 
 export interface SessionData {

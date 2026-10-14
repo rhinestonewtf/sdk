@@ -6,6 +6,7 @@ import {
   isAddressEqual,
   keccak256,
   stringToHex,
+  zeroAddress,
 } from 'viem'
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
@@ -996,7 +997,7 @@ describe('a window is refused at resolve when', () => {
         crossChainPermits: [
           {
             from: { chain: base, token: WETH, maxAmount: 1n },
-            to: { chain: arbitrum, token: USDC_ARB },
+            to: { chain: arbitrum, token: zeroAddress },
             settlementLayers: ['ACROSS'],
           },
         ],
@@ -1006,7 +1007,7 @@ describe('a window is refused at resolve when', () => {
           .refusals.map(({ code }) => code)
           .sort(),
       ).toEqual([
-        'PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE',
+        'NATIVE_DESTINATION_UNSUPPORTED',
         'VALID_AFTER_EXCEEDS_VALID_UNTIL',
       ])
     },
@@ -1076,11 +1077,12 @@ describe('a window is refused at resolve when', () => {
   )
 })
 
-test('a Permit2-route maxAmount still requires oneTimeUse, window or not', () => {
+test('a Permit2-route maxAmount with fallback still requires oneTimeUse, window or not', () => {
   expect(() =>
     toSession({
       chain: base,
       owners,
+      fallback: 'intentExecution',
       crossChainPermits: [
         {
           from: { chain: base, token: USDC, maxAmount: 100n },
