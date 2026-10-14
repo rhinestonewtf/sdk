@@ -56,7 +56,9 @@ const registryFreeMfaConfig = {
   },
 } satisfies EvmAccountConfig
 
-new RhinestoneSDK({ apiKey: 'legacy-api-key' })
+new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'legacy-api-key' },
+})
 new RhinestoneSDK({
   auth: { mode: 'apiKey', apiKey: 'api-key' },
   provider: { type: 'custom', urls: { [mainnet.id]: 'https://rpc.example' } },
@@ -337,7 +339,9 @@ void rootOwnable
 export type { MovedTypes, RootEvmAccountConfig, RootSolanaAddress }
 
 async function crossVmAccountSurface() {
-  const sdk = new RhinestoneSDK({ apiKey: 'types' })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'types' },
+  })
   const solana = solanaAddress('11111111111111111111111111111111')
   const managed = await sdk.createAccount({
     evm: accountConfig,

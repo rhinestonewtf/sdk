@@ -147,7 +147,9 @@ const setupWithSource = {
 } satisfies EvmSetupOptions
 
 async function deploySetupSurface() {
-  const sdk = new RhinestoneSDK({ apiKey: 'types' })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'types' },
+  })
   const account = await sdk.createAccount({
     evm: { owners: { type: 'ecdsa', accounts: [owner] } },
   })
@@ -296,7 +298,9 @@ const authorityWithSponsorship = {
 // Account-branch gating: a Solana-only account cannot prepare an EVM-origin
 // transaction, and an EVM-only account cannot prepare a Solana-origin one.
 async function accountBranchGating() {
-  const sdk = new RhinestoneSDK({ apiKey: 'types' })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'types' },
+  })
   const solanaOnly = await sdk.createAccount({
     solana: { address: solanaRecipient },
   })

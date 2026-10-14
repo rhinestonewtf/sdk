@@ -1,9 +1,4 @@
 import { encodeAbiParameters, keccak256 } from 'viem'
-import {
-  encodePermit2ClaimPolicyInitData,
-  PERMIT2_CLAIM_POLICY_ADDRESS,
-} from '../policies/claim/permit2'
-import { resolvePermit2ClaimPolicy } from './policies/claim'
 import type { Session, SessionData } from './types'
 
 export function getPermissionIdFromData(session: SessionData): `0x${string}` {
@@ -30,12 +25,9 @@ export function getSessionData(session: Session): SessionData {
     salt: session.salt,
     erc7739Policies: session.erc7739Policies,
     actions: session.actions,
-    claimPolicies: session.claimPolicies.map((policy) => ({
-      policy: PERMIT2_CLAIM_POLICY_ADDRESS,
-      initData: encodePermit2ClaimPolicyInitData(
-        resolvePermit2ClaimPolicy(policy),
-      ),
-    })),
+    // Claim policies are enforced from the erc1271 list, already in
+    // `erc7739Policies`; the manager skips this lockTag surface under a zero lock tag.
+    claimPolicies: [],
   }
 }
 

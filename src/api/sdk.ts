@@ -8,6 +8,7 @@ import type {
   RhinestoneSDKConfig,
 } from '../config/account'
 import type { SdkConstructionInput } from '../config/input'
+import type { SessionValidation } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
@@ -143,13 +144,40 @@ class RhinestoneSDK {
    * Create a smart session, resolving the chain's wrapped-native token from the
    * orchestrator's chain catalog (`GET /chains`) so native-token wrapping is
    * permitted automatically. Project-scoped — needs the API key but no account.
+   * Resolves served settlement addresses and verifies deployed UniversalActionPolicy
+   * copies against the canonical bytecode. Store the resolved session rather than
+   * rebuilding an authorized definition under changing catalog defaults.
    * For a fully offline build, use the standalone `toSession` and pass
-   * `wrappedNativeToken` yourself.
+   * `wrappedNativeToken` yourself. Use `crossChainPermits` for settlement scope;
+   * definition-input `claimPolicies` is rejected before any reads, even when empty
+   * or undefined. A stored `Session` is an artifact for enable/sign methods, not
+   * a new definition.
    * @param definition The session definition
    * @returns The resolved session
    */
   createSession(definition: SessionDefinition): Promise<Session> {
     return this.#sdk.composition.project.createSession(definition)
+  }
+
+  /**
+   * Validate a session definition with the same reads as `createSession`.
+   *
+   * Reports stable refusal codes instead of throwing the first refusal. Network
+   * failures still throw. Removed definition-input `claimPolicies` returns a
+   * refusal without network reads. Successful validation includes access and settlement
+   * coverage metadata; it does not enable or sign the session.
+   * For a network-free check, use `validateSession` from `@rhinestone/sdk/smart-sessions`.
+   * @param definition The session definition to resolve
+   * @returns Refusals, warnings and successful access/coverage metadata
+   * @example
+   * ```ts
+   * const { refusals, access } = await sdk.validateSession(definition)
+   * for (const { code, message } of refusals) console.warn(code, message)
+   * if (access?.kind === 'open') console.warn('The session keeps a wildcard fallback')
+   * ```
+   */
+  validateSession(definition: SessionDefinition): Promise<SessionValidation> {
+    return this.#sdk.composition.project.validateSession(definition)
   }
 }
 

@@ -45,6 +45,18 @@ export function pin(
   return { condition: 'equal', calldataOffset, referenceValue }
 }
 
+/** Require a calldata word to be at least `floor`, per call. */
+export function atLeast(
+  calldataOffset: bigint,
+  floor: bigint,
+): UniversalActionPolicyParamRule {
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset,
+    referenceValue: floor,
+  }
+}
+
 /**
  * Cap a swap's own sell amount, cumulatively across every call.
  *
@@ -70,6 +82,42 @@ export function cumulativeCap(
 }
 
 /**
+ * `cumulativeCap` with only the usage limit, which stores one slot fewer.
+ *
+ * It still bounds each call because the policies count a limited rule under
+ * any condition with checked math: `used + value > limit` is refused, and a
+ * sum past 2^256 reverts, so both fail closed.
+ */
+export function cumulativeOnly(
+  calldataOffset: bigint,
+  cap: bigint,
+): UniversalActionPolicyParamRule {
+  return {
+    condition: 'greaterThanOrEqual',
+    calldataOffset,
+    referenceValue: 0n,
+    usageLimit: cap,
+  }
+}
+
+/**
+ * The least `to`-token amount worth `cap` `from` tokens at `numerator /
+ * denominator`, for two 1:1 assets, rescaled between their decimals. Rounded up,
+ * so the floor never admits a rate below the one asked for.
+ */
+export function floorFor(
+  cap: bigint,
+  numerator: bigint,
+  denominator: bigint,
+  fromDecimals: number,
+  toDecimals: number,
+): bigint {
+  const scaled = cap * numerator * 10n ** BigInt(toDecimals)
+  const unit = denominator * 10n ** BigInt(fromDecimals)
+  return (scaled + unit - 1n) / unit
+}
+
+/**
  * Wrap rules into the action's policy.
  *
  * `valueLimitPerUse: 0n` because the approve cap only bounds ERC-20 pulls —
@@ -77,10 +125,17 @@ export function cumulativeCap(
  * through the router.
  */
 /** Every rule must hold, as a right-folded AND over the expression tree. */
-function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
+export function allOf(
+  rules: UniversalActionPolicyParamRule[],
+): ArgPolicyExpression {
   return rules
     .map((rule): ArgPolicyExpression => ({ type: 'rule', rule }))
     .reduceRight((right, left) => ({ type: 'and', left, right }))
+}
+
+/** At least one branch must hold. */
+export function anyOf(branches: ArgPolicyExpression[]): ArgPolicyExpression {
+  return branches.reduce((left, right) => ({ type: 'or', left, right }))
 }
 
 /**
@@ -97,7 +152,7 @@ function allOf(rules: UniversalActionPolicyParamRule[]): ArgPolicyExpression {
  * pin to be dropped. Preferring the simpler policy keeps the common case on the
  * contract it has always used.
  */
-const UNIVERSAL_ACTION_MAX_RULES = 16
+export const UNIVERSAL_ACTION_MAX_RULES = 16
 
 export function swapAction(
   target: Address,
@@ -111,13 +166,18 @@ export function swapAction(
    * alternatives become an OR instead.
    */
   alternatives: UniversalActionPolicyParamRule[][] = [],
+  /**
+   * Native value each call may carry. Zero for every swap; a bridge that pays
+   * its messaging fee in `msg.value` (OFT) raises it.
+   */
+  valueLimitPerUse = 0n,
 ): ScopedAction {
   const usable = alternatives.filter((set) => set.length > 0)
   const policy: SessionPolicy =
     usable.length > 0
       ? {
           type: 'arg-policy',
-          valueLimitPerUse: 0n,
+          valueLimitPerUse,
           expression: {
             type: 'and',
             left: allOf(rules),
@@ -129,13 +189,13 @@ export function swapAction(
       : rules.length <= UNIVERSAL_ACTION_MAX_RULES
         ? {
             type: 'universal-action',
-            valueLimitPerUse: 0n,
+            valueLimitPerUse,
             rules: rules as [
               UniversalActionPolicyParamRule,
               ...UniversalActionPolicyParamRule[],
             ],
           }
-        : { type: 'arg-policy', valueLimitPerUse: 0n, expression: allOf(rules) }
+        : { type: 'arg-policy', valueLimitPerUse, expression: allOf(rules) }
   return { target, selector, policies: [policy] }
 }
 
@@ -172,6 +232,8 @@ export interface VenueContext {
   readonly recipient: Address
   /** Cumulative sell-token cap, or undefined for no cap. */
   readonly cap: bigint | undefined
+  /** Per-call buy-token output floor per Swapper direction, set only by an opted-in `stableFloor`. */
+  readonly minOut?: { readonly exactIn: bigint; readonly exactOut: bigint }
 }
 
 /**

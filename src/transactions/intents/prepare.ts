@@ -34,6 +34,7 @@ import { normalizeIntentQuote } from './normalize'
 import { originChainId } from './origin-chain'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
+import { constrainSessionIntent } from './session-routing'
 import { prepareIntentSessions } from './sessions'
 import type {
   IntentInput,
@@ -47,6 +48,7 @@ export async function prepareIntent<CompatibilityConfig>(
 ): Promise<PreparedIntent<CompatibilityConfig>> {
   const accountChain = selectAccountChain(input)
   const runtime = await context.account.forChain(accountChain)
+  input = constrainSessionIntent(input, runtime.identity.address)
   const calls = await resolveDestinationCalls(context, input, runtime)
   const source = await resolveSourceCalls(context, input, runtime)
   const sessions = await prepareIntentSessions({
@@ -75,7 +77,10 @@ export async function prepareIntent<CompatibilityConfig>(
         : {}),
     }),
     ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
-    calls,
+    calls:
+      sessions?.destinationBurn && calls.length > 0
+        ? [sessions.destinationBurn, ...calls]
+        : calls,
     sourceCalls: [...preClaimCalls, ...source.calls],
     providedFunds: source.providedFunds,
   })

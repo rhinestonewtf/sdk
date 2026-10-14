@@ -64,9 +64,9 @@ describe('reference rendering', () => {
     },
   )
 
-  it('preserves all 73 pages and centrally applies action policy to all 23 wrappers, not recovery helpers', () => {
+  it('preserves all 74 pages and centrally applies action policy to all 23 wrappers, not recovery helpers', () => {
     const pages = leaves(manifest)
-    expect(pages).toHaveLength(73)
+    expect(pages).toHaveLength(74)
     const actions = pages.filter((page) => page.callStyle === 'action')
     expect(actions).toHaveLength(23)
     for (const action of actions) {

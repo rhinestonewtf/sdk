@@ -16,7 +16,6 @@ describe('legacy account config compatibility', () => {
     const provider = { type: 'custom' as const, urls: { 1: 'https://rpc' } }
     const headers = { 'x-test': 'value' }
     const sdkInput = {
-      apiKey: 'legacy-secret',
       auth: { mode: 'apiKey' as const, apiKey: 'current-secret' },
       endpointUrl: 'https://orchestrator.test',
       provider,
@@ -48,7 +47,9 @@ describe('legacy account config compatibility', () => {
   })
 
   test('retains undefined SDK fields as enumerable compatibility keys', async () => {
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const accountInput = {
       owners: { type: 'ecdsa' as const, accounts: [accountA] },
     }
@@ -104,7 +105,7 @@ describe('legacy account config compatibility', () => {
     const urls = { 1: 'https://initial.test' }
     const initialProvider = { type: 'custom' as const, urls }
     const sdkInput: SdkConstructionInput = {
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       provider: initialProvider,
     }
     const captured = captureLegacySdkConfig(sdkInput, {})
@@ -122,7 +123,9 @@ describe('legacy account config compatibility', () => {
   })
 
   test('shares one auth provider without sharing account compatibility objects', () => {
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const authProvider = {}
     const captured = captureLegacySdkConfig(sdkInput, authProvider)
     const first = createLegacyAccountConfig(
@@ -142,7 +145,9 @@ describe('legacy account config compatibility', () => {
   })
 
   test('public methods retain the captured config after property reassignment', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'test' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const owners = { type: 'ecdsa' as const, accounts: [accountA] }
     const input = { evm: { owners } }
     const account = await sdk.createAccount(input)

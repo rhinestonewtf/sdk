@@ -73,7 +73,9 @@ async function resolveCallInputs(calls: readonly CallInput[], config: unknown) {
 }
 
 async function accountConfig() {
-  const sdk = new RhinestoneSDK({ apiKey: 'test' })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   return (
     await sdk.createAccount({
       evm: {

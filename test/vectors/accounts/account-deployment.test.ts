@@ -82,7 +82,9 @@ const currentCases = vectorCases.filter(
 )
 
 describe('account deployment vectors (adapter path)', () => {
-  const sdk = resolveSdkConfig({ apiKey: 'vector-only' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'vector-only' },
+  })
 
   test.each(currentCases)('$id', (vectorCase) => {
     const resolved = resolveAccountConfig(sdk, vectorCase.config)

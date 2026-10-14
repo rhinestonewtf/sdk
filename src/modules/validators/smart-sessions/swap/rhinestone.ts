@@ -8,6 +8,7 @@ import type {
 import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
 import type { VenueContext, VenueScoping } from './rules'
 import {
+  atLeast,
   cumulativeCap,
   pin,
   pinValue,
@@ -150,8 +151,7 @@ export function swapperAddresses(environment: 'production' | 'development'): {
  * pointer, the length, and each element pointer fixes every position, making the
  * target offsets exact.
  *
- * Derived from live Plasma calldata and reproduced by
- * `zeroExRouteRules` in the test suite:
+ * Derived from live Plasma calldata and reproduced by `offsets.test.ts`:
  *   @224 array pointer  = 256   (tail begins right after the head)
  *   @256 length         = 2     (approve + aggregator call)
  *   @288 elem[0] pointer= 64    (element table is 2 words)
@@ -174,14 +174,15 @@ const CALLS_ELEM0_VALUE_OFFSET = 384n
 const CALLS_ELEM1_VALUE_OFFSET = 608n
 const NESTED_EXEC_TOKEN_OFFSET = 740n
 /**
- * The nested fynd call: `swap(amountIn, tokenIn, tokenOut, minOut, receiver)`.
- * Verified against production calldata — the receiver is the Swapper itself,
- * which collects the output and forwards it to the scope's recipient, so that
- * is what gets pinned rather than the end recipient.
+ * The nested fynd call: `singleSwap(amountIn, tokenIn, tokenOut,
+ * expectedAmountOut, minAmountOut, receiver, ...)`, its head starting at 708.
+ * The receiver is the Swapper itself, which collects the output and forwards
+ * it to the scope's recipient, so that is what gets pinned rather than the end
+ * recipient.
  */
 const NESTED_FYND_TOKEN_IN_OFFSET = 740n
 const NESTED_FYND_TOKEN_OUT_OFFSET = 772n
-const NESTED_FYND_RECEIVER_OFFSET = 836n
+const NESTED_FYND_RECEIVER_OFFSET = 868n
 const CALLS_ELEM1_DATA_POINTER_OFFSET = 640n
 /** Head words of the `AllowanceHolder.exec` nested in `calls[1].data`. */
 const NESTED_EXEC_OPERATOR_OFFSET = 708n
@@ -346,6 +347,8 @@ export function scopeRhinestone(
   const rulesFor = (
     offsets: Record<string, bigint>,
     sellAmountParam: string,
+    outputParam: string,
+    direction: 'exactIn' | 'exactOut',
   ): UniversalActionPolicyParamRule[] => {
     const rules = [
       // With one token the pin stays here, which is what keeps the rule order,
@@ -357,6 +360,11 @@ export function scopeRhinestone(
       pin(offsets.tokenOut, ctx.buyToken),
       pin(offsets.recipient, ctx.recipient),
     ]
+    // Before the cap: usage-limited rules go last so the order stays safe if
+    // these rules ever land in an ArgPolicy AND branch.
+    if (ctx.minOut !== undefined) {
+      rules.push(atLeast(offsets[outputParam], ctx.minOut[direction]))
+    }
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
@@ -428,13 +436,13 @@ export function scopeRhinestone(
       swapAction(
         swapper,
         SWAP_EXACT_IN_SELECTOR,
-        rulesFor(EXACT_IN, 'amountIn'),
+        rulesFor(EXACT_IN, 'amountIn', 'minAmountOut', 'exactIn'),
         assertSellTokenPinned(alternativesFor(EXACT_IN)),
       ),
       swapAction(
         swapper,
         SWAP_EXACT_OUT_SELECTOR,
-        rulesFor(EXACT_OUT, 'amountInMax'),
+        rulesFor(EXACT_OUT, 'amountInMax', 'amountOut', 'exactOut'),
         assertSellTokenPinned(alternativesFor(EXACT_OUT)),
       ),
     ],

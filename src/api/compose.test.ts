@@ -17,6 +17,7 @@ import {
   plan,
   quote,
 } from '../../test/utils/caucasus'
+import { SETTLEMENT_CATALOG } from '../../test/utils/settlement-catalog'
 import { toEvmChainReference } from '../chains/caip2'
 import { solanaAddress, solanaDevnet } from '../chains/non-evm'
 import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
@@ -73,7 +74,9 @@ function quoteFor(request: OrchestratorIntentRequest) {
 }
 
 function fixture() {
-  const sdk = resolveSdkConfig({ apiKey: 'test' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   const account = resolveAccountConfig(sdk, {
     account: { type: 'nexus', version: '1.2.0' },
     owners: { type: 'ecdsa', accounts: [owner] },
@@ -613,7 +616,7 @@ describe('internal core composition', () => {
 
     const second = fixture()
     const customSdk = resolveSdkConfig({
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       bundler: { type: 'custom', url: 'https://bundler.test' },
     })
     const customContext = {
@@ -843,7 +846,9 @@ describe('internal core composition', () => {
         }),
       },
     } satisfies CoreDependencies
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const context = {
       ...base.context,
       sdk,
@@ -879,7 +884,9 @@ describe('internal core composition', () => {
   })
 
   function missingModuleKernelContext(base: ReturnType<typeof fixture>) {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     return {
       ...base.context,
       sdk,
@@ -1114,6 +1121,143 @@ describe('internal core composition', () => {
         },
       ])
     })
+  })
+
+  test('validateSession records code mismatches before catalog refusals; creation fails first', async () => {
+    const base = fixture()
+    const canonical = '0x1111111111111111111111111111111111111111' as const
+    const copy = '0x2222222222222222222222222222222222222222' as const
+    const getCode = vi.fn(async (_context: unknown, address: Address) => ({
+      code: address === canonical ? ('0x1234' as const) : ('0x5678' as const),
+    }))
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      policyAddresses: {
+        universalAction: canonical,
+        universalActionCopies: [copy],
+      },
+    }
+    const result = await composition.project.validateSession(definition)
+    expect(result.refusals.map(({ code }) => code)).toEqual([
+      'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
+      'WRAPPED_NATIVE_TOKEN_UNSERVED',
+    ])
+    expect(getCode).toHaveBeenCalledTimes(2)
+    await expect(
+      composition.project.createSession(definition),
+    ).rejects.toMatchObject({ code: result.refusals[0].code })
+  })
+
+  test('online session creation and validation share served catalog and exact deployed-copy checks', async () => {
+    const base = fixture()
+    const getCode = vi.fn(async () => ({ code: '0x1234' as const }))
+    const getChainCatalog = vi.fn(
+      async () =>
+        new ChainCatalog({
+          [baseChain.id]: {
+            name: 'Base',
+            testnet: false,
+            supportedTokens: 'all',
+            wrappedNativeToken: {
+              symbol: 'WETH',
+              address: '0x4200000000000000000000000000000000000006',
+              decimals: 18,
+            },
+            settlement: SETTLEMENT_CATALOG[baseChain.id],
+          },
+          [arbitrum.id]: {
+            name: 'Arbitrum',
+            testnet: false,
+            supportedTokens: 'all',
+            settlement: SETTLEMENT_CATALOG[arbitrum.id],
+          },
+        }),
+    )
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({ ...base.dependencies.rpc.forChain(), getCode }),
+      },
+      orchestrator: { ...base.orchestrator, getChainCatalog },
+    })
+    const definition = {
+      chain: baseChain,
+      owners: { type: 'ecdsa' as const, accounts: [owner] },
+      account: owner.address,
+      crossChainPermits: [
+        {
+          from: {
+            chain: baseChain,
+            token: SETTLEMENT_CATALOG[baseChain.id].cctp!.usdc,
+            maxAmount: 100n,
+          },
+          to: {
+            chain: arbitrum,
+            token: SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc,
+          },
+          settlementLayers: ['CCTP' as const],
+        },
+      ],
+    }
+    const session = await composition.project.createSession(definition)
+    const validation = await composition.project.validateSession(definition)
+    expect(validation.refusals).toEqual([])
+    expect(validation.access).toEqual(session.access)
+    expect(session.settlementLayers).toEqual(['CCTP'])
+    expect(getCode).toHaveBeenCalled()
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+    getCode.mockRejectedValueOnce(new Error('RPC unavailable'))
+    await expect(
+      composition.project.validateSession(definition),
+    ).rejects.toThrow('RPC unavailable')
+    expect(getChainCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  test('session details use coherent reads and require budget-reset consent', async () => {
+    const base = fixture()
+    const readContract = vi.fn(async () => 7n)
+    const multicall = vi.fn(async () => [{ result: 7n }, { result: true }])
+    const composition = createCoreComposition(base.context.sdk, {
+      ...base.dependencies,
+      rpc: {
+        forChain: () =>
+          ({
+            ...base.dependencies.rpc.forChain(),
+            readContract,
+            multicall,
+          }) as RpcReadPort,
+      },
+    })
+    const session = {
+      ...toSession({
+        chain: baseChain,
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+      lifetimeBudget: true as const,
+    }
+    const workflows = composition.createAccount(base.context).workflows
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('already enabled')
+    expect(multicall).toHaveBeenCalledOnce()
+    expect(readContract).not.toHaveBeenCalled()
+    const details = await workflows.getSessionDetails(base.context, [session], {
+      allowBudgetReset: true,
+    })
+    expect(details.nonces).toEqual([7n])
+    expect(readContract).toHaveBeenCalledOnce()
+    multicall.mockResolvedValueOnce([])
+    await expect(
+      workflows.getSessionDetails(base.context, [session]),
+    ).rejects.toThrow('Could not read')
+    expect(readContract).toHaveBeenCalledOnce()
   })
 
   test('createSession resolves the wrapped-native token from the chain catalog', async () => {

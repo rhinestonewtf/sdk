@@ -9,9 +9,10 @@ The repo generates two artifacts. Neither is hand-edited — regenerate instead.
 
 ## SDK Reference
 
-The docs site's "SDK Reference" tab is generated from this repo's JSDoc, so the
-doc comment you write on a public symbol ships verbatim to integrators. For how
-to *write* those comments, use the `jsdoc` skill; this section is the pipeline.
+The docs site's Wallets → Custom signer → SDK reference group is generated
+from this repo's JSDoc, so the doc comment you write on a public symbol ships
+verbatim to integrators. For how to *write* those comments, use the `jsdoc`
+skill; this section is the pipeline.
 
 ### How it works
 
@@ -22,9 +23,7 @@ to *write* those comments, use the `jsdoc` skill; this section is the pipeline.
    `scripts/reference/manifest.ts`, looks up each symbol in that model, and
    renders one MDX page per symbol against a fixed template (Import / Usage /
    Parameters / Returns / See also). It then patches the `SDK reference` group
-   under the Wallets → Custom signer menu in `docs/docs.json`. When the docs
-   checkout carries unified-docs inventories, it synchronizes their generated
-   page entries too.
+   under the Wallets → Custom signer menu in `docs/docs.json`.
 
 ```bash
 bun run generate:reference            # extract + render (run from the sdk repo root)
@@ -32,25 +31,20 @@ bun run generate:reference:extract    # typedoc JSON only
 bun run generate:reference:render     # render MDX from existing JSON
 ```
 
-Output defaults to the sibling `docs` repo and can be overridden:
+Output defaults to the sibling `docs` repo. Filesystem controls support
+isolated CI validation without changing public routes or navigation:
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `SDK_REF_OUT` | Output dir | `../docs/wallets/custom-signer/sdk-reference` |
-| `SDK_REF_NAV_BASE` | Doc-root-relative generated path | `wallets/custom-signer/sdk-reference` |
-| `SDK_REF_DOCS_JSON` | `docs.json` to patch | `../docs/docs.json` |
-| `SDK_REF_TAB` | Host navigation tab | `Wallets` |
-| `SDK_REF_MENU_ITEM` | Host menu item; set empty for legacy tab-level pages | `Custom signer` |
-| `SDK_REF_SECTION_NAME` | Generated navigation group | `SDK reference` |
-| `SDK_REF_OWNERSHIP_JSON` | Unified destination inventory | `../docs/unified-docs/ownership.json` |
-| `SDK_REF_PATHS_FIXTURE` | Generated relative-path fixture | `../docs/scripts/fixtures/sdk-reference-paths.json` |
-| `SDK_REF_DEFAULT_OWNER` | Owner for a generated page with no existing subtree metadata | `RHI-7109` |
+| `SDK_REF_OUT` | Dedicated generated output directory | `../docs/wallets/custom-signer/sdk-reference` |
+| `SDK_REF_DOCS_JSON` | `docs.json` to patch; a missing file skips navigation patching | `../docs/docs.json` |
+| `SDK_REF_TYPEDOC_JSON` | TypeDoc model consumed by the renderer | `scripts/reference/typedoc.json.out` |
+| `SDK_REF_CHECK` | Set to `1` to fail on unresolved manifest symbols or undocumented exports | unset |
 
-The two inventory files are optional only as a pair, which keeps generation
-compatible with docs branches predating the unified hierarchy. If present, the
-generator preserves non-generated destinations and existing page ownership.
-New pages inherit ownership from an unambiguous generated subtree, then fall
-back to `SDK_REF_DEFAULT_OWNER`. Existing per-page metadata always wins.
+An existing `docs.json` must contain exactly one Wallets tab and one Custom
+signer menu item. Unsupported or ambiguous navigation fails instead of falling
+back to a legacy location. The generated group always uses the canonical
+`wallets/custom-signer/sdk-reference` route root.
 
 ### Reference example gate
 
@@ -69,25 +63,9 @@ compiler program; a probe passes only when its own file reports the expected TS
 code, and any other diagnostic fails the gate. Each heavy step runs under a
 per-step RSS budget with a host-wide lock; see
 [Testing](testing.md#reference-examples) for the budget, lock, and pass
-criteria. CI runs this command; do not replace it with source-alias
-typechecking or execute snippets that can submit transactions.
-
-For a manual preview, put every generated path under one scratch root so the
-sibling docs checkout is never touched:
-
-```bash
-scratch=.scratch/reference-preview
-rm -rf "$scratch"
-mkdir -p "$scratch"
-bunx typedoc --options scripts/reference/typedoc.json --json "$scratch/typedoc.json"
-SDK_REF_TYPEDOC_JSON="$scratch/typedoc.json" \
-SDK_REF_OUT="$scratch/pages" \
-SDK_REF_DOCS_JSON="$scratch/docs.json" \
-SDK_REF_OWNERSHIP_JSON="$scratch/ownership.json" \
-SDK_REF_PATHS_FIXTURE="$scratch/paths.json" \
-SDK_REF_CHECK=1 \
-bun run scripts/reference/generate.ts
-```
+criteria. Reference generation and this validation gate run in CI only; do not
+run them locally, reconstruct their heavy steps manually, replace them with
+source-alias typechecking, or execute snippets that can submit transactions.
 
 ### Scope and content
 
@@ -108,21 +86,33 @@ symbols there.
 - Code samples come from `@example` blocks; without one a minimal snippet is
   synthesized from the signature.
 - `@remarks` renders as a `<Note>`; experimental entries get a `<Warning>`.
-- Hand-written pages in `MANUAL_PAGES` (e.g. `introduction.mdx`) survive
-  regeneration.
+- Files explicitly listed in `MANUAL_PAGES` survive regeneration. The list is
+  currently empty; the output directory is otherwise generator-owned.
 
 ### Committing
 
-The generated MDX is committed to the `docs` repo — Mintlify builds from repo
-content, so the pages must be present in git. Re-run `bun run generate:reference`
-with the intended docs branch checked out as a sibling and commit the result
-whenever the public API or its JSDoc changes.
+Canonical generated MDX is committed to the `docs` repo because Mintlify builds
+from repository content. Filesystem output overrides isolate CI validation;
+they do not publish production documentation automatically.
 
-Production releases currently target the docs integration branch configured by
-the `SDK_REFERENCE_DOCS_BASE_BRANCH` GitHub repository variable, defaulting to
-`integration/unified-wallet-docs`. After that branch merges at launch, set the
-variable to `main`. The rolling output branch defaults to
-`update/sdk-reference-unified`, separate from the pre-migration reference PR.
+A successful production v2 publish creates a GitHub Release, which triggers the
+independent [`Sync SDK reference`](../.github/workflows/sync-sdk-reference.yaml)
+workflow. The workflow verifies the automated stable-v2 release, immutable tag
+commit, `release` ancestry, package version, and npm `latest` before generating.
+It checks npm again before writing so a delayed run cannot replace newer docs.
+
+Generation starts from fresh docs `main` and may stage only
+`wallets/custom-signer/sdk-reference/` and `docs.json`. The retired inventory
+files and launch-time branch variables are not part of this pipeline. Changed
+output opens or updates the automation-owned `update/sdk-reference` PR;
+unchanged output and superseded releases are successful no-ops. Dev snapshots,
+v1 publishes, prereleases, and release-PR creation never update the production
+reference.
+
+Package publication and docs synchronization have separate workflow statuses.
+A docs failure does not undo or fail an npm publication and must be repaired by
+retrying the docs-only run when appropriate or shipping an automation fix for a
+later release—never by republishing an existing version.
 
 ## Orchestrator wire types
 

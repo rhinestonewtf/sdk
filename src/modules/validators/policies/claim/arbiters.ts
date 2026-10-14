@@ -1,21 +1,21 @@
 import type { Address } from 'viem'
-import type { CrossChainSettlementLayer } from '../../smart-sessions/types'
+import type {
+  CrossChainSettlementLayer,
+  Permit2SettlementLayer,
+} from '../../smart-sessions/types'
 
 /**
  * The arbiter contract keys that each settlement layer expands to. `ACROSS`
  * whitelists both arbiter impls so a session is permissioned for the 7579 and
  * multicall paths regardless of which one the orchestrator picks at intent time.
  *
- * `ECO` intentionally remains mapped to the legacy Standard ECO arbiters. The
- * solver-network ECO route uses `intentExecutorAdapter`, but the current claim
- * policy only inspects the outer origin mandate. Authorizing that generic
- * adapter would also authorize unrelated IntentExecutor-backed routes without
- * enforcing the encoded Eco destination, token, recipient, or deadline. Keep
- * solver-network ECO blocked by this built-in permission until a route-aware
- * policy is available.
+ * `ECO` stays mapped to the legacy Standard ECO arbiters: the claim policy
+ * inspects only the origin mandate, so allowing the generic
+ * `intentExecutorAdapter` would admit every IntentExecutor-backed route without
+ * its Eco destination, token, recipient or deadline checked.
  */
 const SETTLEMENT_LAYER_CONTRACT_KEYS: Record<
-  CrossChainSettlementLayer,
+  Permit2SettlementLayer,
   readonly string[]
 > = {
   SAME_CHAIN: ['samechainArbiter'],
@@ -78,12 +78,18 @@ export function getArbitersForSettlementLayers(
   layers: readonly CrossChainSettlementLayer[] | undefined,
   useDevContracts?: boolean,
 ): Address[] | undefined {
-  const effectiveLayers: readonly CrossChainSettlementLayer[] =
+  // Fail closed: an empty result would leave the claim policy with no spender
+  // pin, which admits any arbiter. IntentExecutor layers never reach here.
+  for (const layer of layers ?? []) {
+    if (!(layer in SETTLEMENT_LAYER_CONTRACT_KEYS)) {
+      throw new Error(`Settlement layer ${layer} has no Permit2 arbiter`)
+    }
+  }
+  const effectiveLayers = (
     !layers || layers.length === 0
-      ? (Object.keys(
-          SETTLEMENT_LAYER_CONTRACT_KEYS,
-        ) as CrossChainSettlementLayer[])
+      ? Object.keys(SETTLEMENT_LAYER_CONTRACT_KEYS)
       : layers
+  ) as readonly Permit2SettlementLayer[]
 
   const book = ARBITER_ADDRESSES[useDevContracts ? 'dev' : 'prod']
   const keys = effectiveLayers.flatMap((l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l])

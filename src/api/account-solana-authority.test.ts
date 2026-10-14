@@ -57,7 +57,7 @@ const message = 'ab'.repeat(32)
 const challenge = `0x${'a3'.repeat(32)}` as const
 const now = () => 1_900_000_000_000
 const sdk = resolveSdkConfig({
-  apiKey: 'offline',
+  auth: { mode: 'apiKey' as const, apiKey: 'offline' },
   endpointUrl: DEV_ORCHESTRATOR_URL,
   useDevContracts: true,
 })

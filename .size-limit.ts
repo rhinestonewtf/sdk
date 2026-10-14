@@ -15,7 +15,8 @@ const limits = [
     // EVM calls after a Solana-origin delivery add their request, signing and
     // replay paths (~0.3 kB). Swig creation adds its request builder, route
     // validation and error mapping (~1.5 kB).
-    limit: '82 kB',
+    // The settlement/session compiler adds ~19 kB to the 85.78 kB v3 baseline.
+    limit: '106 kB',
     import: '*',
     ignore: viem,
   },
@@ -107,14 +108,16 @@ const limits = [
   {
     name: '@rhinestone/sdk/smart-sessions',
     path: `${packageRoot}/smart-sessions/index.js`,
-    limit: '25 kB',
+    // Full settlement policies and validation measure 32.14 kB (was 14.47 kB).
+    limit: '33 kB',
     import: '*',
     ignore: viem,
   },
   {
     name: '@rhinestone/sdk/jwt-server',
     path: `${packageRoot}/jwt-server/index.js`,
-    limit: '2 kB',
+    // Unchanged v3 baseline is 2.23 kB, including optional-peer diagnostics.
+    limit: '2.3 kB',
     import: '*',
     ignore: ['jose', 'jose/*', ...viem],
     modifyEsbuildConfig: (config: BuildOptions): BuildOptions => ({

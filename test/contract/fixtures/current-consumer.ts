@@ -18,6 +18,9 @@ import {
 } from '@rhinestone/sdk/errors'
 import type { EvmAccountConfig } from '@rhinestone/sdk/evm'
 import * as evmExports from '@rhinestone/sdk/evm'
+import { toSession, validateSession } from '@rhinestone/sdk/smart-sessions'
+// @ts-expect-error The passkey-only permission alias was removed.
+import type { SolanaPasskeyPermission } from '@rhinestone/sdk/solana'
 import * as solanaExports from '@rhinestone/sdk/solana'
 import {
   addEcdsaKey,
@@ -37,13 +40,35 @@ import {
   type SolanaCrossChainExecutionMetadata,
   type SolanaDeployOptions,
   type SolanaExecutionMetadata,
-  type SolanaPasskeyPermission,
   solanaAddress,
   solanaDevnet,
   solanaMainnet,
 } from '@rhinestone/sdk/solana'
 import { privateKeyToAccount } from 'viem/accounts'
 import { base, mainnet } from 'viem/chains'
+
+// @ts-expect-error The removed SDK shorthand must fail against packed declarations.
+new RhinestoneSDK({ apiKey: 'removed' })
+new RhinestoneSDK({
+  auth: { mode: 'apiKey', apiKey: 'contract' },
+  // @ts-expect-error Present undefined shorthand cannot accompany nested auth.
+  apiKey: undefined,
+})
+const definitionOwners = {
+  type: 'ecdsa' as const,
+  accounts: [privateKeyToAccount(`0x${'11'.repeat(32)}`)],
+}
+// @ts-expect-error Raw claims are not new session definitions.
+toSession({ chain: base, owners: definitionOwners, claimPolicies: [] })
+validateSession({
+  chain: base,
+  owners: definitionOwners,
+  // @ts-expect-error Undefined raw claims are not accepted either.
+  claimPolicies: undefined,
+})
+const compiledSession = toSession({ chain: base, owners: definitionOwners })
+void compiledSession.claimPolicies
+void (null as unknown as SolanaPasskeyPermission)
 
 function readEcoIntentHash(bridgeFill: BridgeFill): string | undefined {
   if (bridgeFill.type !== 'ECO') return undefined
@@ -96,7 +121,9 @@ const solanaRecipient = solanaAddress(
   'Vote111111111111111111111111111111111111111',
 )
 const usdcOnMainnet = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
-const sdk = new RhinestoneSDK({ apiKey: 'contract' })
+const sdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'contract' },
+})
 
 async function useCurrentAccountApi() {
   const account = await sdk.createAccount({ evm, solana: { address: solana } })
@@ -136,7 +163,7 @@ async function useCurrentAccountApi() {
 
 async function useManagedSolanaApi() {
   const devSdk = new RhinestoneSDK({
-    apiKey: 'contract',
+    auth: { mode: 'apiKey' as const, apiKey: 'contract' },
     useDevContracts: true,
   })
   const account = await devSdk.createAccount({
@@ -185,7 +212,7 @@ async function useManagedSolanaApi() {
     swigId: independent.id,
   }
   await standalone.deploy('solana', solanaDevnet, deployOptions)
-  const permission: SolanaPasskeyPermission = 'allButManageAuthority'
+  const permission: SolanaAuthorityPermission = 'allButManageAuthority'
   const passkey = `0x02${'11'.repeat(32)}` as const
   const change: SolanaAuthorityChange = addPasskey(passkey, { permission })
   const key: SolanaAuthorityKey = removePasskey(passkey).key

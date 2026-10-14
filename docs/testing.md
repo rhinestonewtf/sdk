@@ -70,7 +70,8 @@ cycles.
 
 `bun run test:reference` builds the SDK, regenerates the reference into an
 isolated scratch directory, packs `src/`, and type-checks every rendered
-TypeScript Usage block against that package. It covers 73 pages and 78 blocks.
+TypeScript Usage block against that package. The manifest includes 74 pages;
+CI reports the compiled block count.
 The manifest and context registry must match exactly; malformed fences,
 non-public imports, casts, suppressions, missing auth, legacy fields, missing
 exports, and unavailable account capabilities fail the gate.
@@ -168,6 +169,37 @@ Properties run on a fixed seed so a counterexample reproduces on any host.
 `SDK_PROPERTY_SEED` and `SDK_PROPERTY_RUNS` override the seed and run count for
 exploration — never commit a configuration that depends on them.
 
+## Smart Session parity
+
+Compiler suites live in `src/modules/validators/smart-sessions/`: settlement
+selection/coverage, scoped vs open access, time windows, once burns, lifetime
+caps and installed-policy semantics. Facade coverage in `src/api/compose.test.ts`
+checks online reads/refusal order, UAP-copy verification and coherent budget
+reset consent. `src/smart-sessions/index.test.ts` checks supplied offline catalog
+options without network dependencies. Intent suites exercise singular-source
+funding, burn ordering/deduplication and ordered signing/sponsorship preservation.
+
+`src/api/removed-inputs.test.ts` exercises public online and offline entrypoints
+with widened objects, present undefined/empty keys and inherited keys. Spies
+prove no catalog, RPC, fetch, token-provider or signing effects precede refusal.
+`test/types/removed-inputs.ts` and the packed current-consumer fixture reject the
+removed auth shorthand, raw claim definitions and Solana permission alias.
+Historical claim artifacts under `test/utils/persisted-*-claims.json` and
+`persisted-claim-sessions.json` retain encoding/identity probes; low-level
+policy tests retain raw guardrail coverage without a public raw constructor.
+Standard-permit replacements have separate identity pins rather than rewriting
+historical ones. See [migration guidance](session-migration.md).
+
+Run focused deterministic coverage with:
+
+```bash
+bun run test -- --run src/api src/smart-sessions src/transactions/intents
+```
+
+The reference example gate remains CI-only; do not run it locally or reproduce
+its steps manually. A compiler or fork pass does not verify served testnet
+catalog support, deployed bytecode or end-to-end settlement.
+
 ## Package contract
 
 `bun run test:contract` builds and packs both `origin/release` and the current
@@ -175,7 +207,19 @@ worktree, then stages isolated consumer projects against both tarballs. Set
 `SDK_CONTRACT_BASE_SHA` to compare against a specific release commit; CI pins it
 to the pull request's base SHA and installs that commit's frozen dependencies.
 Local runs reuse the existing dependency installation so the comparison remains
-offline. The command validates:
+offline. For the v3 migration contract, use the pre-v3 ancestor so the historical
+legacy-consumer probe is tested against the generation it describes:
+
+```bash
+SDK_CONTRACT_BASE_SHA=1529637ccc2553b28bfcba3adb8bf6ac40285228 \
+SDK_CONTRACT_INSTALL_BASE_DEPENDENCIES=1 bun run test:contract
+```
+
+Shared/current fixtures use nested auth; `legacy-consumer.ts` intentionally
+retains the old shorthand for the baseline only. Current-package negative probes
+must continue to reject the removed inputs. A size failure is separate from
+consumer compilation; do not suppress it to make the migration look green.
+The command validates:
 
 - every published subpath resolves, its declaration file exists, and its runtime
   export keys match the packed release package;

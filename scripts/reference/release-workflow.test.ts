@@ -9,15 +9,17 @@ const workflow = readFileSync(
   'utf8',
 )
 
-describe('release SDK reference workflow', () => {
-  it('keeps publishing and reference generation on supported SDK refs', () => {
+describe('SDK release workflow', () => {
+  it('preserves package release branches and gates without docs operations', () => {
     expect(workflow).toContain(
       'branches:\n      - main\n      - solana\n      - release\n      - v1',
     )
-    expect(workflow).toContain(
-      "steps.changesets.outputs.published == 'true' && github.ref == 'refs/heads/release'",
-    )
-    expect(workflow).not.toContain('- integration/unified-wallet-docs\n')
+    expect(workflow).toContain('Create Release Pull Request or Publish')
+    expect(workflow).toContain('needs.build-and-test.result')
+    expect(workflow).toContain('needs.integration-tests.result')
+    expect(workflow).not.toContain('docs-repo')
+    expect(workflow).not.toContain('generate:reference')
+    expect(workflow).not.toContain('SDK_REFERENCE_DOCS_')
   })
 
   it('gates both snapshot branches on build and smoke tests', () => {
@@ -75,31 +77,5 @@ describe('release SDK reference workflow', () => {
       "bunx changeset version --snapshot dev --snapshot-prerelease-template '{tag}-{datetime}-{commit}'",
     )
     expect(workflow).toContain('bun run scripts/sync-version.ts')
-  })
-
-  it('checks out and opens the docs PR against the configured non-default base', () => {
-    expect(workflow).toMatch(
-      /SDK_REFERENCE_DOCS_BASE_BRANCH: \$\{\{ vars\.SDK_REFERENCE_DOCS_BASE_BRANCH \|\| 'integration\/unified-wallet-docs' }}/,
-    )
-    expect(workflow).toMatch(
-      /ref: \$\{\{ env\.SDK_REFERENCE_DOCS_BASE_BRANCH }}/,
-    )
-    expect(workflow).toMatch(
-      /gh pr list --repo "\$\{GITHUB_REPOSITORY_OWNER}\/docs" --base "\$SDK_REFERENCE_DOCS_BASE_BRANCH"/,
-    )
-    expect(workflow).toContain('--base "$SDK_REFERENCE_DOCS_BASE_BRANCH"')
-    expect(workflow).toMatch(
-      /SDK_REFERENCE_DOCS_UPDATE_BRANCH: \$\{\{ vars\.SDK_REFERENCE_DOCS_UPDATE_BRANCH \|\| 'update\/sdk-reference-unified' }}/,
-    )
-  })
-
-  it('writes only the canonical reference subtree and its inventories', () => {
-    expect(workflow).toContain(
-      'SDK_REF_OUT: $' +
-        '{{ github.workspace }}/docs-repo/wallets/custom-signer/sdk-reference',
-    )
-    expect(workflow).toContain('unified-docs/ownership.json')
-    expect(workflow).toContain('scripts/fixtures/sdk-reference-paths.json')
-    expect(workflow).not.toContain('git add sdk-reference docs.json')
   })
 })

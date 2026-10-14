@@ -26,7 +26,6 @@ describe('getArbitersForSettlementLayers', () => {
   })
 
   test('ECO preserves production Standard ECO arbiters and excludes the generic IntentExecutor adapter', () => {
-    // source: shared-configs generated production address book
     expect(getArbitersForSettlementLayers(['ECO'])).toEqual([
       '0x2e7627CCfAe4eDb336eEb5a70f08415B0F1a2b8C',
       '0xA212A6ACCC8db0e4cdf4394D0A851c70Fc27A8F0',
@@ -61,7 +60,6 @@ describe('getArbitersForSettlementLayers', () => {
   })
 
   test('ECO preserves development Standard ECO arbiters and excludes the generic IntentExecutor adapter', () => {
-    // source: shared-configs generated development address book
     expect(getArbitersForSettlementLayers(['ECO'], true)).toEqual([
       '0x1BeBAfb3D05d84A5Bfd94800c88d1342f755d8AB',
       '0x8A061029AE4c5Cf69b5368119B3b0C80B31F55fE',
@@ -72,5 +70,16 @@ describe('getArbitersForSettlementLayers', () => {
     const single = getArbitersForSettlementLayers(['ECO'])!
     const doubled = getArbitersForSettlementLayers(['ECO', 'ECO'])!
     expect(doubled).toEqual(single)
+  })
+})
+
+describe('getArbitersForSettlementLayers fails closed', () => {
+  test('a layer with no arbiter throws instead of widening to any arbiter', () => {
+    expect(() => getArbitersForSettlementLayers(['CCTP'])).toThrow(
+      'Settlement layer CCTP has no Permit2 arbiter',
+    )
+    expect(() => getArbitersForSettlementLayers(['RELAY' as never])).toThrow(
+      'Settlement layer RELAY has no Permit2 arbiter',
+    )
   })
 })

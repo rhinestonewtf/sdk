@@ -36,7 +36,6 @@ export type {
   SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
-  SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
   SolanaStandaloneAccountConfig,
   SolanaTransactionSource,

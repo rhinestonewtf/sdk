@@ -78,6 +78,14 @@ enforced by `scripts/architecture/check.ts`:
   compatibility barrels re-exporting owning symbols, except `jwt-server/`, a
   separate server-side bounded context with an optional `jose` peer.
 
+## Authentication boundary
+
+SDK construction requires nested `auth`: API keys use
+`auth: { mode: 'apiKey', apiKey }`; JWT providers and bundler/paymaster service
+keys are unchanged. Config resolution and compatibility materialization reject
+any top-level `apiKey`, including empty, undefined and inherited keys, rather
+than letting legacy credentials override or disappear beside current auth.
+
 ## Cross-VM account boundary
 
 The public account configuration is composite: EVM and Solana entries are
@@ -328,6 +336,47 @@ chain-keyed maps. A prepared artifact is versioned (`caucasus-singular-1`);
 every restore path checks that version before it reads the persisted
 transaction, so an artifact from an earlier SDK generation fails with
 `InvalidPreparedTransactionError` instead of being reinterpreted.
+
+## Smart Sessions
+
+`api/queries/session.ts` supplies RPC and the served settlement catalog to the
+pure compiler. `sdk.createSession` checks UniversalActionPolicy copies against
+canonical bytecode, then loads `/chains` for wrapped-native and settlement
+addresses. `sdk.validateSession` follows the same reads, collecting stable
+refusal codes, warnings, access and coverage; transport failures still throw.
+Standalone `/smart-sessions` `toSession` and `validateSession` take optional
+`settlement` and `wrappedNativeToken` inputs and never perform those reads.
+A shared definition guard rejects any present `claimPolicies` key before online
+RPC/catalog reads or offline compilation; validation returns the stable
+`REMOVED_CLAIM_POLICIES_INPUT` refusal. This includes empty and undefined keys.
+New definitions use `crossChainPermits`; arbitrary custom-arbiter definition
+inputs have no replacement.
+
+Compiled `Session.claimPolicies` is distinct: preserve it for settlement signing
+and restore resolved artifacts directly into enable/disable/sign APIs. The
+on-chain Compact claim slot remains empty for newly compiled sessions; claim
+gates are installed on the ERC-1271 list. Low-level encoders and historical
+resolved metadata remain supported. Never feed a stored artifact back into
+`createSession`, `toSession` or definition validation.
+
+Scoped cross-chain permits default to all enforceable layers; explicit lists
+refuse unsupported layers, while `all` reports dropped layers. Open fallback
+is explicit (`intentExecution` or `sudo`), not a way to recover failed scope.
+Persist resolved sessions: catalog/time/default changes can change permission
+identity, and creating a new identity does not migrate an existing grant.
+
+Reusable `maxAmount` is a lifetime approval/value budget on counted paths,
+not a bound on existing allowances or arbitrary actions. Account and standalone
+`getSessionDetails` read nonce and enabled state in one multicall for a budgeted
+session and refuse already-enabled sessions unless `allowBudgetReset` is true.
+Read failure stays closed; ordinary sessions retain nonce-only reads. Pass the
+resulting details to `signEnableSession`; do not rebuild an authorized session.
+
+Intent preparation narrows the one explicit source and routing filters before
+quoting and binding sponsorship. Once sessions burn before user calls, at most
+once per participating EVM chain; own destination execution burns separately
+unless it is the same chain. Session-specific EVM behavior does not broaden
+managed/standalone Solana capabilities.
 
 ## Execution paths
 

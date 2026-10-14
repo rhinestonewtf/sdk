@@ -1,0 +1,627 @@
+import { decodeAbiParameters, zeroHash } from 'viem'
+import { arbitrum, base, linea, sepolia } from 'viem/chains'
+import { describe, expect, test, vi } from 'vitest'
+
+import { accountA } from '../../../../test/consts'
+import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
+import { getSessionData } from './digest'
+import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
+import {
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
+  TIME_FRAME_POLICY_ADDRESS,
+} from './policies/addresses'
+import { resolveSessionData, toSession } from './resolve'
+import type { CrossChainPermissionInput, SessionDefinition } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
+
+// Kept out of resolve.test.ts, whose fast-check import is not installed in every
+// working copy.
+describe('resolveSessionData — one-time-use session', () => {
+  const POLICY = '0x00000000000000000000000000000000000000aa' as const
+  const ARBITER = '0x00000000000000000000000000000000000000ab' as const
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  // Word 0 is the id (42 = 0x2a), word 1 the deadline; none given, so zero.
+  const onceEntry = {
+    policy: POLICY,
+    initData:
+      '0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000000000000000000000000000000000000000000000' as const,
+  }
+
+  function oneTimeUseSession() {
+    return resolveSessionData({
+      chain: base,
+      owners,
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
+      oneTimeUse: { id: 42n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+  }
+
+  test('installs the once-policy on EVERY action (executor route enforces via checkAction)', () => {
+    const data = oneTimeUseSession()
+    expect(data.actions.length).toBeGreaterThan(0)
+    for (const action of data.actions) {
+      expect(action.actionPolicies).toContainEqual(onceEntry)
+    }
+  })
+
+  test('co-locates the Permit2 claim policy with the once-policy on the 1271 list, and empties claimPolicies', () => {
+    const data = oneTimeUseSession()
+    const list = data.erc7739Policies.erc1271Policies
+    // [ Permit2ClaimPolicy (digest-binding partner), once-policy ] — no sudo
+    expect(list).toHaveLength(2)
+    expect(list[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(list[1]).toEqual(onceEntry)
+    // the claim policy sits on the 1271 surface, not the claim surface
+    expect(data.claimPolicies).toHaveLength(0)
+  })
+
+  test('carries a caller-set validUntil into the once-policy on every surface, in seconds', () => {
+    const data = resolveSessionData({
+      chain: base,
+      owners,
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
+      // 1_900_000_000 s = 2030-03-17T17:46:40Z
+      oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    const onceEntries = [
+      ...data.erc7739Policies.erc1271Policies,
+      ...data.actions.flatMap((action) => action.actionPolicies),
+    ].filter((entry) => entry.policy === POLICY)
+    expect(onceEntries.length).toBe(data.actions.length + 1)
+    for (const entry of onceEntries) {
+      expect(
+        decodeAbiParameters(
+          [{ type: 'uint256' }, { type: 'uint256' }],
+          entry.initData,
+        ),
+      ).toEqual([42n, 1_900_000_000n])
+    }
+  })
+
+  test('leaves a normal session untouched (sudo-only 1271 list, no once-policy on actions)', () => {
+    const data = resolveSessionData({ chain: base, owners })
+    expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
+    for (const action of data.actions) {
+      expect(action.actionPolicies).not.toContainEqual(onceEntry)
+    }
+  })
+
+  test.each([undefined, { mode: 'disabled' }] as const)(
+    'an executor-only one-time-use session has no signing surface (%o)',
+    (signing) => {
+      const data = resolveSessionData({
+        chain: base,
+        owners,
+        ...(signing && { signing }),
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+      expect(data.erc7739Policies.erc1271Policies).toEqual([])
+      expect(data.erc7739Policies.allowedERC7739Content).toEqual([])
+    },
+  )
+
+  test.each([
+    { mode: 'unrestricted' },
+    { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
+  ] as const)(
+    'an executor-only one-time-use session rejects a signing mode (%o)',
+    (signing) => {
+      expect(() =>
+        resolveSessionData({
+          chain: base,
+          owners,
+          signing,
+          oneTimeUse: { id: 42n },
+          policyAddresses: { oneTimeUseId: POLICY },
+        }),
+      ).toThrow(/cannot sign/)
+    },
+  )
+
+  test.each([
+    ['unrestricted', {}],
+    [
+      'permit',
+      {
+        crossChainPermits: [{ settlementLayers: ['ACROSS' as const] }],
+        fallback: 'intentExecution' as const,
+      },
+    ],
+    [
+      'restricted, two actions',
+      {
+        restrictToActions: true,
+        actions: [
+          {
+            target: '0x00000000000000000000000000000000000000c1' as const,
+            selector: '0x11111111' as const,
+            policies: [{ type: 'sudo' as const }],
+          },
+          {
+            target: '0x00000000000000000000000000000000000000c2' as const,
+            selector: '0x22222222' as const,
+            policies: [{ type: 'sudo' as const }],
+          },
+        ],
+      },
+    ],
+  ])(
+    'authorises its own burn and bounds every action (%s)',
+    (_label, shape) => {
+      const data = resolveSessionData({
+        chain: base,
+        owners,
+        ...shape,
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      })
+      for (const selector of [CONSUME_SELECTOR, CONSUME_FOR_SELECTOR]) {
+        expect(data.actions).toContainEqual({
+          actionTarget: POLICY,
+          actionTargetSelector: selector,
+          actionPolicies: [onceEntry],
+        })
+      }
+      expect(data.actions.length).toBeGreaterThan(2)
+      for (const action of data.actions) {
+        expect(action.actionPolicies).toContainEqual(onceEntry)
+      }
+    },
+  )
+
+  test.each([
+    ['the epoch, which would encode "never expires"', new Date(0)],
+    ['a past date', new Date('2020-01-01')],
+    ['an invalid date', new Date('nope')],
+  ])('rejects validUntil at %s', (_label, validUntil) => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        oneTimeUse: { id: 42n, validUntil },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/validUntil must be a valid Date in the future/)
+  })
+
+  const sessionWith = (
+    oneTimeUse: { id: bigint } | undefined,
+    extra: {
+      spenders?: `0x${string}`[]
+      saltMode?: 'none' | 'strict'
+    } = {},
+  ) =>
+    toSession({
+      chain: base,
+      owners,
+      crossChainPermits: [
+        {
+          settlementLayers: ['ACROSS'],
+          from: (extra.spenders ?? [ARBITER]).map((token) => ({
+            chain: base,
+            token,
+          })),
+        },
+      ],
+      fallback: 'intentExecution',
+      ...(oneTimeUse && { oneTimeUse }),
+      ...(extra.saltMode && { saltMode: extra.saltMode }),
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+
+  test('two one-time-use sessions that differ only by id get different permissionIds', () => {
+    expect(sessionWith({ id: 42n }).permissionId).toBe(
+      sessionWith({ id: 42n }).permissionId,
+    )
+    expect(sessionWith({ id: 42n }).permissionId).not.toBe(
+      sessionWith({ id: 43n }).permissionId,
+    )
+  })
+
+  test('a one-time-use session never shares a permissionId with a plain session of the same owner', () => {
+    expect(sessionWith({ id: 42n }).permissionId).not.toBe(
+      sessionWith(undefined).permissionId,
+    )
+  })
+
+  test.each([undefined, 'none', 'strict'] as const)(
+    'is salted as in strict whatever saltMode says (%s)',
+    (saltMode) => {
+      const salt = sessionWith({ id: 42n }, { saltMode }).salt
+      expect(salt).not.toBe(zeroHash)
+      expect(salt).toBe(sessionWith({ id: 42n }, { saltMode: 'strict' }).salt)
+    },
+  )
+
+  test('the claim policy moved onto the 1271 list is part of the permissionId', () => {
+    const a = '0x00000000000000000000000000000000000000b1' as const
+    const b = '0x00000000000000000000000000000000000000b2' as const
+    expect(sessionWith({ id: 42n }, { spenders: [a] }).permissionId).not.toBe(
+      sessionWith({ id: 42n }, { spenders: [b] }).permissionId,
+    )
+  })
+
+  test('a null oneTimeUse leaves a plain session unsalted', () => {
+    const plain = resolveSessionData({
+      chain: base,
+      owners,
+      saltMode: 'strict',
+      oneTimeUse: null as any,
+    })
+    expect(plain.salt).toBe(zeroHash)
+  })
+
+  test.each([
+    {
+      mode: 'scoped',
+      allowedContents: [
+        {
+          domain: { name: 'x' },
+          types: { M: [{ name: 'a', type: 'uint256' }] },
+          primaryType: 'M',
+        },
+      ],
+      validUntil: new Date('2030-01-01'),
+    },
+    { mode: 'disabled' },
+  ] as const)(
+    'rejects a signing mode that rewrites the content gate the claim policy is reached through',
+    (signing) => {
+      expect(() =>
+        resolveSessionData({
+          chain: base,
+          owners,
+          crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+          fallback: 'intentExecution',
+          oneTimeUse: { id: 42n },
+          signing,
+          policyAddresses: { oneTimeUseId: POLICY },
+        }),
+      ).toThrow(/cannot also be configured/)
+    },
+  )
+
+  test.each([
+    { signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') } },
+    { signing: { mode: 'unrestricted', validAfter: new Date('2020-01-01') } },
+  ] as const)(
+    'keeps a signing validity window with claim policies',
+    ({ signing }) => {
+      const policies = resolveSessionData({
+        chain: base,
+        owners,
+        crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+        fallback: 'intentExecution',
+        oneTimeUse: { id: 42n },
+        signing,
+        policyAddresses: { oneTimeUseId: POLICY },
+      }).erc7739Policies.erc1271Policies
+
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        TIME_FRAME_POLICY_ADDRESS,
+        POLICY,
+      ])
+    },
+  )
+
+  test.each([
+    { mode: 'unrestricted' },
+    { mode: 'unrestricted', validUntil: undefined },
+  ] as const)(
+    'drops a windowless signing policy with claim policies (%o)',
+    (signing) => {
+      const policies = resolveSessionData({
+        chain: base,
+        owners,
+        crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+        fallback: 'intentExecution',
+        oneTimeUse: { id: 42n },
+        signing,
+        policyAddresses: { oneTimeUseId: POLICY },
+      }).erc7739Policies.erc1271Policies
+
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        POLICY,
+      ])
+    },
+  )
+
+  test('rejects raw unpinned claims instead of silently accepting them', () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        // @ts-expect-error Removed raw definition input.
+        claimPolicies: [{ type: 'permit2' }],
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/claimPolicies.*was removed/)
+  })
+
+  test('rejects a user action on the policy, which would share the burn action id', () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        actions: [
+          {
+            target: POLICY,
+            selector: '0x96301d72',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+        oneTimeUse: { id: 42n },
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/authorise their own burn/)
+  })
+
+  test("rejects saltMode 'v1'", () => {
+    expect(() =>
+      resolveSessionData({
+        chain: base,
+        owners,
+        oneTimeUse: { id: 42n },
+        saltMode: 'v1',
+        policyAddresses: { oneTimeUseId: POLICY },
+      }),
+    ).toThrow(/saltMode 'v1'/)
+  })
+
+  test('throws on a chain with no deployment when policyAddresses.oneTimeUseId is unset', () => {
+    expect(() =>
+      resolveSessionData({ chain: linea, owners, oneTimeUse: { id: 42n } }),
+    ).toThrow(
+      'oneTimeUse: no OneTimeUseIdPolicy is deployed on chain 59144; pass its address as policyAddresses.oneTimeUseId',
+    )
+  })
+
+  test('toSession keeps claim policies on the high-level session (permit2 signature calldata) but off the on-chain claim surface', () => {
+    const session = toSession({
+      chain: base,
+      owners,
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
+      oneTimeUse: { id: 42n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    // Populated so claimPolicyData() can build the permit2 settlement calldata
+    // that the erc1271-resident Permit2ClaimPolicy reads.
+    expect(session.claimPolicies).toHaveLength(1)
+    // Drives prepareIntentSessions: the burn it injects and the verify-execution mode.
+    expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })
+    // ...but the on-chain claim (lockTag) surface stays empty — the policy is
+    // enforced via the erc1271 list, so getSessionData must not re-encode it.
+    expect(getSessionData(session).claimPolicies).toHaveLength(0)
+    expect(
+      getSessionData(session).erc7739Policies.erc1271Policies.length,
+    ).toBeGreaterThan(1)
+  })
+})
+
+describe('resolveSessionData — default OneTimeUseIdPolicy address', () => {
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  const definition = {
+    chain: base,
+    owners,
+    crossChainPermits: [{ settlementLayers: ['ACROSS' as const] }],
+    fallback: 'intentExecution' as const,
+    oneTimeUse: { id: 42n },
+  }
+
+  test.each([
+    ['production', ONE_TIME_USE_ID_POLICY_ADDRESS],
+    ['development', ONE_TIME_USE_ID_POLICY_ADDRESS_DEV],
+  ] as const)(
+    'on a deployed chain (%s) resolves exactly as passing %s explicitly',
+    (environment, address) => {
+      const byDefault = toSession(definition, { environment })
+      const explicit = toSession(
+        { ...definition, policyAddresses: { oneTimeUseId: address } },
+        { environment },
+      )
+      // Only the marker that an intent should check the deployment differs.
+      expect({ ...byDefault, oneTimeUse: explicit.oneTimeUse }).toEqual(
+        explicit,
+      )
+      expect(byDefault.permissionId).toBe(explicit.permissionId)
+      expect(getSessionData(byDefault)).toEqual(getSessionData(explicit))
+      expect(byDefault.oneTimeUse).toEqual({
+        id: 42n,
+        policy: address,
+        defaultPolicy: true,
+      })
+      expect(explicit.oneTimeUse).toEqual({ id: 42n, policy: address })
+      expect(
+        byDefault.actions.filter((action) => action.actionTarget === address),
+      ).toHaveLength(2)
+    },
+  )
+
+  test('an explicit address wins over the default', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    const session = toSession({
+      ...definition,
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })
+    expect(JSON.stringify(getSessionData(session), bigintJson)).not.toMatch(
+      new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS, 'i'),
+    )
+  })
+
+  test('a chain deployed for production only throws for the development contracts', () => {
+    expect(
+      toSession({ ...definition, chain: sepolia }).oneTimeUse?.policy,
+    ).toBe(ONE_TIME_USE_ID_POLICY_ADDRESS)
+    expect(() =>
+      toSession(
+        { ...definition, chain: sepolia },
+        { environment: 'development' },
+      ),
+    ).toThrow(
+      'oneTimeUse: no OneTimeUseIdPolicy is deployed on chain 11155111 (development contracts); pass its address as policyAddresses.oneTimeUseId',
+    )
+  })
+
+  test('rejects a user action on the default policy address', () => {
+    expect(() =>
+      resolveSessionData({
+        ...definition,
+        actions: [
+          {
+            target: ONE_TIME_USE_ID_POLICY_ADDRESS,
+            selector: '0x12345678',
+            policies: [{ type: 'sudo' }],
+          },
+        ],
+      }),
+    ).toThrow(/authorise their own burn/)
+  })
+
+  test.each(['production', 'development'] as const)(
+    'a session without oneTimeUse never references the policy (%s)',
+    (environment) => {
+      const session = toSession({ chain: base, owners }, { environment })
+      expect(session.oneTimeUse).toBeUndefined()
+      const serialized = JSON.stringify(getSessionData(session), bigintJson)
+      expect(serialized).not.toMatch(
+        new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS, 'i'),
+      )
+      expect(serialized).not.toMatch(
+        new RegExp(ONE_TIME_USE_ID_POLICY_ADDRESS_DEV, 'i'),
+      )
+    },
+  )
+})
+
+function bigintJson(_key: string, value: unknown) {
+  return typeof value === 'bigint' ? value.toString() : value
+}
+
+describe('resolveSessionData — Permit2-route permit maxAmount', () => {
+  const POLICY = '0x00000000000000000000000000000000000000aa' as const
+  const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
+  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+  const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
+  const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+  const REFUSAL =
+    "a Permit2-route permit's maxAmount is enforced only with oneTimeUse"
+  const withOnce = {
+    oneTimeUse: { id: 7n },
+    policyAddresses: { oneTimeUseId: POLICY },
+  } as const
+  const open = { fallback: 'intentExecution' } as const
+
+  function resolve(
+    permit: Partial<CrossChainPermissionInput>,
+    extra: Partial<SessionDefinition> = {},
+  ) {
+    return resolveSessionData(
+      {
+        chain: base,
+        owners,
+        account: ACCOUNT,
+        crossChainPermits: [
+          {
+            from: { chain: base, token: USDC },
+            to: { chain: arbitrum, token: USDC_ARB },
+            ...permit,
+          },
+        ],
+        ...extra,
+      },
+      { settlement: SETTLEMENT_CATALOG },
+    )
+  }
+
+  test('refuses ACROSS with maxAmount, fallback and no oneTimeUse', () => {
+    expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 1_000n },
+        },
+        open,
+      ),
+    ).toThrow(REFUSAL)
+  })
+
+  test('refuses a zero maxAmount too', () => {
+    expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 0n },
+        },
+        open,
+      ),
+    ).toThrow(REFUSAL)
+  })
+
+  test('refuses a maxAmount on a leg of another chain', () => {
+    expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: [
+            { chain: base, token: USDC },
+            { chain: arbitrum, token: USDC_ARB, maxAmount: 1_000n },
+          ],
+        },
+        open,
+      ),
+    ).toThrow(REFUSAL)
+  })
+
+  test('accepts a scoped ACROSS with maxAmount and no oneTimeUse', () => {
+    expect(() =>
+      resolve({
+        settlementLayers: ['ACROSS'],
+        from: { chain: base, token: USDC, maxAmount: 1_000n },
+      }),
+    ).not.toThrow()
+  })
+
+  test('accepts ACROSS with maxAmount and oneTimeUse', () => {
+    expect(() =>
+      resolve(
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: base, token: USDC, maxAmount: 1_000n },
+        },
+        withOnce,
+      ),
+    ).not.toThrow()
+  })
+
+  test('accepts ACROSS without maxAmount and without oneTimeUse', () => {
+    expect(() =>
+      resolve({ settlementLayers: ['ACROSS'], preClaimOps: 'none' }),
+    ).not.toThrow()
+  })
+
+  test('accepts an IntentExecutor-layer maxAmount with or without oneTimeUse', () => {
+    const cctp: Partial<CrossChainPermissionInput> = {
+      settlementLayers: ['CCTP'],
+      from: { chain: base, token: USDC, maxAmount: 1_000n },
+    }
+    expect(() => resolve(cctp)).not.toThrow()
+    expect(() => resolve(cctp, withOnce)).not.toThrow()
+  })
+})

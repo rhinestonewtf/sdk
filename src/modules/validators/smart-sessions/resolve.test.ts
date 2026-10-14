@@ -1,16 +1,29 @@
 import fc from 'fast-check'
-import { size, zeroHash } from 'viem'
+import { encodePacked, size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { encodeDisableSessionCall, encodeEnableSessionCall } from './calls'
 import {
   resolveCrossChainPermission,
   toCrossChainPermissionInput,
 } from './cross-chain-permits'
+import { getSessionData } from './digest'
 import { buildSmartSessionMockSignature } from './mock-signature'
-import { SMART_SESSIONS_FALLBACK_TARGET_FLAG, toSession } from './resolve'
-import type { SessionPolicy } from './types'
+import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
+import {
+  DEFAULT_POLICY_ADDRESSES,
+  SMART_SESSIONS_FALLBACK_TARGET_FLAG,
+  toSession,
+} from './resolve'
+import type { SessionDefinition, SessionPolicy } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {
@@ -401,5 +414,136 @@ describe('restricted session guards', () => {
         restrictToActions: true,
       }),
     ).toThrow(/Duplicate scoped action/)
+  })
+})
+
+describe('Permit2 claim policy placement', () => {
+  const definition: SessionDefinition = {
+    chain: base,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    crossChainPermits: [
+      {
+        settlementLayers: ['ACROSS'],
+        to: [
+          {
+            chain: base,
+            token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            recipient: accountA.address,
+          },
+        ],
+        allowRecipientNotAccount: true,
+      },
+    ],
+    fallback: 'intentExecution',
+  }
+
+  test('enforces declared claim policies from the ERC-1271 slot', () => {
+    // Permit2 verifies via `isValidSignature`, which only consults this slot.
+    const policies = toSession(definition).erc7739Policies.erc1271Policies
+    expect(policies).toHaveLength(1)
+    expect(policies[0].policy).toBe(PERMIT2_CLAIM_POLICY_ADDRESS)
+    expect(policies[0].initData).not.toBe('0x')
+  })
+
+  test('leaves the Compact claim slot empty', () => {
+    // The manager skips that slot entirely under NO_LOCKTAG, which is what the
+    // SDK enables with, so anything left here is silently dropped.
+    expect(getSessionData(toSession(definition)).claimPolicies).toEqual([])
+  })
+
+  test('keeps the direct-mode content entry so the policy is reachable', () => {
+    const content = toSession(definition).erc7739Policies.allowedERC7739Content
+    expect(content).toHaveLength(1)
+    expect(content[0].appDomainSeparator).toBe(zeroHash)
+  })
+
+  test.each([
+    { mode: 'disabled' },
+    {
+      mode: 'scoped',
+      allowedContents: [
+        {
+          domain: { name: 'x' },
+          types: { M: [{ name: 'a', type: 'uint256' }] },
+          primaryType: 'M',
+        },
+      ],
+    },
+  ] as const)('rejects claim policies with $mode signing', (signing) => {
+    expect(() => toSession({ ...definition, signing })).toThrow(
+      new RegExp(`signing.mode: '${signing.mode}'`),
+    )
+  })
+
+  test('keeps a signing validity window alongside claim policies', () => {
+    const windowed = toSession({
+      ...definition,
+      signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
+    }).erc7739Policies.erc1271Policies
+
+    expect(windowed.map(({ policy }) => policy)).toEqual([
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+      TIME_FRAME_POLICY_ADDRESS,
+    ])
+    // Packed `uint48 validUntil, uint48 validAfter` — pins the bounds, not just
+    // that some timeframe policy was carried.
+    expect(windowed[1].initData).toBe(
+      encodePacked(['uint48', 'uint48'], [1893456000, 0]),
+    )
+  })
+
+  // The 1271 list is the only surface a claim-policy session has, so a window
+  // that is already closed enables fine and then fails every signature.
+  // 'invalid' is refused upstream by the date encoder, the others by the guard.
+  test.each([
+    { label: 'past', validUntil: new Date('2020-01-01') },
+    { label: 'epoch', validUntil: new Date(0) },
+    { label: 'invalid', validUntil: new Date('nonsense') },
+  ])(
+    'rejects a $label validUntil alongside claim policies',
+    ({ validUntil }) => {
+      expect(() =>
+        toSession({
+          ...definition,
+          signing: { mode: 'unrestricted', validUntil },
+        }),
+      ).toThrow(/validUntil/)
+    },
+  )
+
+  test('drops a windowless signing policy alongside claim policies', () => {
+    const policies = toSession({
+      ...definition,
+      signing: { mode: 'unrestricted' },
+    }).erc7739Policies.erc1271Policies
+
+    expect(policies.map(({ policy }) => policy)).toEqual([
+      PERMIT2_CLAIM_POLICY_ADDRESS,
+    ])
+  })
+
+  test('salts the session so it cannot share a permissionId with a plain one', () => {
+    // Unsalted, `enable` would union this session's 1271 list with the plain
+    // session's signing policy under the same permissionId.
+    const plain = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+    })
+    expect(toSession(definition).permissionId).not.toBe(plain.permissionId)
+  })
+
+  test('keeps the declared config on the session for signing', () => {
+    // Signing reads this to build the policy calldata.
+    expect(toSession(definition).claimPolicies).toHaveLength(1)
+  })
+
+  test('does not displace the signing policy when none is declared', () => {
+    const session = toSession({
+      chain: base,
+      owners: { type: 'ecdsa', accounts: [accountA] },
+    })
+    expect(session.erc7739Policies.erc1271Policies[0].policy).toBe(
+      DEFAULT_POLICY_ADDRESSES.sudo,
+    )
   })
 })

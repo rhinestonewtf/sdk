@@ -18,9 +18,20 @@ import {
   SMART_SESSION_EMISSARY_ADDRESS,
   SMART_SESSION_EMISSARY_ADDRESS_DEV,
 } from '../modules/validators/smart-sessions/module'
+import type {
+  OneTimeUseBurnOp,
+  OneTimeUseSettlementRoute,
+} from '../modules/validators/smart-sessions/one-time-use'
+import {
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
+} from '../modules/validators/smart-sessions/one-time-use'
 import {
   ARG_POLICY_ADDRESS,
   INTENT_EXECUTION_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
   SPENDING_LIMITS_POLICY_ADDRESS,
   SUDO_POLICY_ADDRESS,
   TIME_FRAME_POLICY_ADDRESS,
@@ -29,13 +40,28 @@ import {
   VALUE_LIMIT_POLICY_ADDRESS,
 } from '../modules/validators/smart-sessions/policies/addresses'
 import {
+  SESSION_REFUSAL_CODES,
+  SESSION_WARNING_CODES,
+  type SessionRefusal,
+  type SessionRefusalCode,
+  type SessionValidation,
+  type SessionWarning,
+  type SessionWarningCode,
+} from '../modules/validators/smart-sessions/refusals'
+import {
   toSession as resolveSession,
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
+  validateSessionDefinition,
 } from '../modules/validators/smart-sessions/resolve'
+import type {
+  SettlementAddresses,
+  SettlementCatalog,
+} from '../modules/validators/smart-sessions/settlement/types'
 import {
   readSessionEnabled,
   readSessionNonce,
+  readSessionNonceAndEnabled,
 } from '../modules/validators/smart-sessions/state'
 import type { FyndChainId } from '../modules/validators/smart-sessions/swap/fynd'
 import {
@@ -57,9 +83,13 @@ import type {
   ChainDigest,
   Session as DomainSession,
   SessionDefinition as DomainSessionDefinition,
+  DroppedSettlementLayer,
   FyndVenue,
   RhinestoneSwapVenue,
+  SessionAccess,
   SessionDetails,
+  SessionDetailsOptions,
+  SettlementCoverage,
   SwapVenue,
   ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
@@ -68,29 +98,113 @@ function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'
 }
 
+/**
+ * Resolve a session offline from a definition and optional served catalog data.
+ * No RPC bytecode checks or network reads are made. Persist the result before enabling it.
+ * Use `crossChainPermits`, not removed raw `claimPolicies` definition inputs.
+ * Restore an authorized `Session` directly for enable/sign methods; do not resolve it again.
+ * @param definition The session's permissions and owners
+ * @param options Catalog inputs and deployment environment
+ * @returns The resolved session; throws the first coded refusal on invalid scope
+ */
 function toSession<
   const TAbis extends readonly Abi[],
   const TChain extends Chain,
 >(
   definition: SessionDefinition<TAbis, TChain>,
-  options: { useDevContracts?: boolean } = {},
+  options: SessionValidationOptions = {},
 ): Session {
   return resolveSession(definition as DomainSessionDefinition, {
     environment: environment(options.useDevContracts),
+    ...(options.wrappedNativeToken
+      ? { wrappedNativeToken: options.wrappedNativeToken }
+      : {}),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
   }) as Session
 }
 
+/** Inputs `createSession` takes from `/chains`, for the standalone `toSession` and {@link validateSession}. */
+interface SessionValidationOptions {
+  /** The orchestrator's settlement addresses by chain id. */
+  settlement?: SettlementCatalog
+  /** The chain's wrapped-native token, as `createSession` adds it. */
+  wrappedNativeToken?: Address
+  /** Resolve against the development deployments. */
+  useDevContracts?: boolean
+}
+
+/**
+ * Dry-run the resolution `createSession` runs, without network calls: return
+ * every refusal it would throw for a session definition instead of throwing
+ * the first. Given the same `settlement` and `wrappedNativeToken` as
+ * `createSession` gets from `/chains`, the first refusal is the error that
+ * resolution throws and `refusals` is empty exactly when it succeeds. When
+ * nothing is refused, the result also has the session's `access` and, for a
+ * settlement-scoped permit, its `settlementCoverage`.
+ *
+ * Unlike `RhinestoneSDK.validateSession`, it does not read the
+ * UniversalActionPolicy copies' code or check that `/chains` serves a
+ * wrapped-native token; `createSession` does both. Problems that do not depend
+ * on each other are all reported. Within one settlement layer only its first
+ * refusal is, as are refusals that leave nothing to check after them (e.g. a
+ * missing `to`).
+ * Removed `claimPolicies` inputs, including empty or undefined values, return a
+ * refusal. Compiled `Session.claimPolicies` remains metadata for enable/sign
+ * methods and must not be sent back through definition validation.
+ * @param definition The new session definition, not an already-resolved artifact
+ * @param options What `createSession` would take from `/chains`
+ * @returns The refusals, each with its stable `code`, and, when there are none, the session's `access` and `settlementCoverage`
+ */
+function validateSession<
+  const TAbis extends readonly Abi[],
+  const TChain extends Chain,
+>(
+  definition: SessionDefinition<TAbis, TChain>,
+  options: SessionValidationOptions = {},
+): SessionValidation {
+  return validateSessionDefinition(definition as DomainSessionDefinition, {
+    environment: environment(options.useDevContracts),
+    ...(options.wrappedNativeToken
+      ? { wrappedNativeToken: options.wrappedNativeToken }
+      : {}),
+    ...(options.settlement ? { settlement: options.settlement } : {}),
+  })
+}
+
+/**
+ * Build the typed data needed to enable persisted sessions on an account.
+ * Already-enabled lifetime-budget sessions require explicit reset consent.
+ * @param account The account enabling these sessions
+ * @param sessions Resolved sessions, not definitions to rebuild
+ * @param provider RPC provider used for nonce and coherent enabled-state reads
+ * @param useDevContracts Select development deployments
+ * @param options Explicit consent to reset an already-enabled lifetime budget
+ * @returns Enable details to sign; failed coherent reads are never retried as separate reads
+ */
 async function getSessionDetails(
   account: Address,
   sessions: Session[],
   provider: ProviderConfig | undefined,
   useDevContracts?: boolean,
+  options: SessionDetailsOptions = {},
 ): Promise<SessionDetails> {
   const runtimeEnvironment = environment(useDevContracts)
   return buildSessionDetails({
     account,
     sessions: sessions as DomainSession[],
     environment: runtimeEnvironment,
+    ...(options.allowBudgetReset && { allowBudgetReset: true }),
+    readNonceAndEnabled: (session) => {
+      const reader = materializeRpcReader({ chain: session.chain, provider })
+      return readSessionNonceAndEnabled({
+        rpc: reader.rpc,
+        chain: reader.chain,
+        account,
+        lockTag: SESSION_LOCK_TAG,
+        session: session as DomainSession,
+        environment: runtimeEnvironment,
+      })
+    },
     readNonce: async (session) => {
       const reader = materializeRpcReader({ chain: session.chain, provider })
       return readSessionNonce({
@@ -122,10 +236,22 @@ async function isSessionEnabled(
 
 export type {
   ChainDigest,
+  SessionAccess,
+  SettlementCoverage,
+  DroppedSettlementLayer,
+  SessionRefusal,
+  SessionRefusalCode,
+  SessionValidation,
+  SessionValidationOptions,
+  SessionWarning,
+  SessionWarningCode,
   FyndChainId,
   FyndVenue,
   RhinestoneSwapVenue,
   SessionDetails,
+  SessionDetailsOptions,
+  SettlementAddresses,
+  SettlementCatalog,
   SwapVenue,
   SwapVenueFor,
   ZeroExAnySettlerOptions,
@@ -134,6 +260,8 @@ export type {
 }
 export {
   ARG_POLICY_ADDRESS,
+  SESSION_REFUSAL_CODES,
+  SESSION_WARNING_CODES,
   FYND_CHAIN_IDS,
   fynd,
   getPermissionId,
@@ -141,6 +269,8 @@ export {
   getSessionDetails,
   INTENT_EXECUTION_POLICY_ADDRESS,
   isSessionEnabled,
+  ONE_TIME_USE_ID_POLICY_ADDRESS,
+  ONE_TIME_USE_ID_POLICY_ADDRESS_DEV,
   resolveZeroExSettler,
   rhinestoneSwap,
   SMART_SESSION_EMISSARY_ADDRESS,
@@ -155,7 +285,13 @@ export {
   UNIVERSAL_ACTION_POLICY_ADDRESS,
   USAGE_LIMIT_POLICY_ADDRESS,
   VALUE_LIMIT_POLICY_ADDRESS,
+  validateSession,
   // Venue-scoped swap sessions (RHI-6286)
   ZEROX_CHAIN_IDS,
   zeroEx,
+  // One-time-use sessions
+  buildOneTimeUseBurnOp,
+  encodeOneTimeUseIdInitData,
+  oneTimeUseIdErc1271Policy,
 }
+export type { OneTimeUseSettlementRoute, OneTimeUseBurnOp }

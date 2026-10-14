@@ -22,10 +22,12 @@ import type {
   AccountInvocationContext,
   ResolvedSdkConfig,
 } from '../config/resolved'
+import type { SessionValidation } from '../modules/validators/smart-sessions/refusals'
 import type {
   Session,
   SessionDefinition,
   SessionDetails,
+  SessionDetailsOptions,
 } from '../modules/validators/smart-sessions/types'
 import type { IndependentOwnerSignature } from '../signing/intent-plans/independent'
 import type {
@@ -99,6 +101,9 @@ export interface ProjectWorkflows {
    * runtime.
    */
   readonly createSession: (definition: SessionDefinition) => Promise<Session>
+  readonly validateSession: (
+    definition: SessionDefinition,
+  ) => Promise<SessionValidation>
   /** For a managed Solana account without managed EVM capabilities. */
   readonly solana: SolanaWorkflows
   readonly waitForIntentStatus: (intentId: string) => Promise<IntentStatus>
@@ -340,6 +345,7 @@ export interface AccountWorkflows<CompatibilityConfig = unknown>
   readonly getSessionDetails: (
     context: AccountInvocationContext<CompatibilityConfig>,
     sessions: readonly Session[],
+    options?: SessionDetailsOptions,
   ) => Promise<SessionDetails>
   readonly isSessionEnabled: (
     context: AccountInvocationContext<CompatibilityConfig>,

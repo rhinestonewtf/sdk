@@ -59,6 +59,9 @@ export const exampleContexts: Record<string, ExampleContext[]> = {
   'rhinestone-sdk/create-session': [
     context(sdk + argument('sdk', 'createSession', 'definition')),
   ],
+  'rhinestone-sdk/validate-session': [
+    context(sdk + argument('sdk', 'validateSession', 'definition')),
+  ],
   'account/deployment/deploy': [
     context(evm),
     context(`${evm}declare const usdcOnBase: Address\n`),

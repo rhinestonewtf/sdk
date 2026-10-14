@@ -48,7 +48,9 @@ const CHAINS: readonly EvmChainReference[] = [
   { kind: 'evm', id: 42161, caip2: 'eip155:42161' },
 ]
 
-const sdk = new RhinestoneSDK({ apiKey: 'vector-only' })
+const sdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'vector-only' },
+})
 
 function lower(value: string): string {
   return value.toLowerCase()

@@ -1,0 +1,595 @@
+import {
+  type Address,
+  type Chain,
+  decodeAbiParameters,
+  encodeFunctionData,
+  erc20Abi,
+  type Hex,
+  keccak256,
+  maxUint256,
+  toFunctionSelector,
+  toHex,
+} from 'viem'
+import { arbitrum, base, plasma } from 'viem/chains'
+import { describe, expect, test, vi } from 'vitest'
+import { accountA } from '../../../../../test/consts'
+import {
+  type RuleUsage,
+  satisfiesRules,
+} from '../../../../../test/utils/policy-rules'
+import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
+import { resolveCrossChainPermission } from '../cross-chain-permits'
+import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
+import { encodeSessionPolicy } from '../policies/encode'
+import { resolveSessionData, toSession } from '../resolve'
+import type {
+  CrossChainPermissionInput,
+  ScopedAction,
+  SessionDefinition,
+} from '../types'
+import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR } from './cctp'
+import { PUBLISH_AND_FUND_SELECTOR } from './eco'
+import { settlementFeeCap } from './fees'
+import { LZ_EXECUTE_SELECTOR } from './lz'
+import { resolveSettlementScope } from './scope'
+import type { SettlementCatalog } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
+
+const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
+const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
+const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
+const OTHER = '0x2222222222222222222222222222222222222222' as Address
+const ONE_TIME_USE = '0x3333333333333333333333333333333333333333' as Address
+const APPROVE = toFunctionSelector('approve(address,uint256)')
+const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
+const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
+const BASE = SETTLEMENT_CATALOG[base.id]
+const MESSENGER = BASE.cctp!.tokenMessenger
+const DELEGATE = BASE.lz!.transferDelegate
+const PORTAL = BASE.eco!.portal
+const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
+const FEES = {
+  appFeeCollector: '0x5555555555555555555555555555555555555555',
+  paymaster: PAYMASTER,
+} as const
+const WITH_FEES: SettlementCatalog = {
+  ...SETTLEMENT_CATALOG,
+  [base.id]: { ...BASE, fees: FEES },
+  [arbitrum.id]: { ...SETTLEMENT_CATALOG[arbitrum.id], fees: FEES },
+}
+const VALID_UNTIL = new Date(2_000_000_000_000)
+
+function definition(
+  permit: Partial<CrossChainPermissionInput>,
+  chain: Chain = base,
+): SessionDefinition {
+  return {
+    chain,
+    owners: { type: 'ecdsa', accounts: [accountA] },
+    account: ACCOUNT,
+    oneTimeUse: { id: 7n },
+    policyAddresses: { oneTimeUseId: ONE_TIME_USE },
+    crossChainPermits: [
+      {
+        from: { chain: base, token: USDC, maxAmount: 100n },
+        to: { chain: arbitrum, token: USDC_ARB },
+        ...permit,
+      },
+    ],
+  } as SessionDefinition
+}
+
+const scope = (
+  permit: Partial<CrossChainPermissionInput>,
+  settlement: SettlementCatalog = SETTLEMENT_CATALOG,
+  oneTimeUse = true,
+) => {
+  const input = definition(permit).crossChainPermits?.[0]
+  const resolved = resolveSettlementScope(
+    [resolveCrossChainPermission(input ?? {})],
+    {
+      chainId: base.id,
+      environment: 'production',
+      account: ACCOUNT,
+      oneTimeUse,
+      settlement,
+    },
+  )
+  if (!resolved) throw new Error('expected a settlement scope')
+  return resolved
+}
+
+const approveOf = (actions: readonly ScopedAction[]) => {
+  const approves = actions.filter((a) => a.selector === APPROVE)
+  expect(approves).toHaveLength(1)
+  return approves[0]
+}
+
+const approve = (spender: Address, amount = 100n) =>
+  encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [spender, amount],
+  })
+
+/** The ArgPolicy initData's rules and expression tree. */
+function decodeArgPolicy(initData: Hex) {
+  const [{ paramRules }] = decodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'valueLimitPerUse', type: 'uint256' },
+          {
+            name: 'paramRules',
+            type: 'tuple',
+            components: [
+              { name: 'rootNodeIndex', type: 'uint8' },
+              {
+                name: 'rules',
+                type: 'tuple[]',
+                components: [
+                  { name: 'condition', type: 'uint8' },
+                  { name: 'offset', type: 'uint64' },
+                  { name: 'isLimited', type: 'bool' },
+                  { name: 'ref', type: 'bytes32' },
+                  {
+                    name: 'usage',
+                    type: 'tuple',
+                    components: [
+                      { name: 'limit', type: 'uint256' },
+                      { name: 'used', type: 'uint256' },
+                    ],
+                  },
+                ],
+              },
+              { name: 'packedNodes', type: 'uint256[]' },
+            ],
+          },
+        ],
+      },
+    ] as const,
+    initData,
+  )
+  const node = (i: number) => {
+    const packed = paramRules.packedNodes[i]
+    return {
+      kind: ['rule', 'not', 'and', 'or'][Number(packed & 3n)],
+      rule: Number(packed >> 2n),
+      left: Number((packed >> 10n) & 0xffn),
+      right: Number((packed >> 18n) & 0xffn),
+    }
+  }
+  return { rules: paramRules.rules, root: node(paramRules.rootNodeIndex), node }
+}
+
+/** Base serves an OFT of its own USDC, so OFT and LZ can both settle one permit. */
+const USDC_OFT: SettlementCatalog = {
+  ...SETTLEMENT_CATALOG,
+  [base.id]: { ...BASE, oft: { adapter: OTHER, eid: 30184, token: USDC } },
+  [arbitrum.id]: {
+    ...SETTLEMENT_CATALOG[arbitrum.id],
+    oft: { ...OFT_ARB, token: USDC_ARB },
+  },
+}
+
+const digest = (def: SessionDefinition, settlement = SETTLEMENT_CATALOG) =>
+  keccak256(
+    toHex(
+      JSON.stringify(resolveSessionData(def, { settlement }).actions, (_, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      ),
+    ),
+  )
+
+const SINGLE: Record<string, SessionDefinition> = {
+  CCTP: definition({ settlementLayers: ['CCTP'] }),
+  LZ: definition({ settlementLayers: ['LZ'] }),
+  ECO_IE: definition({
+    settlementLayers: ['ECO_IE'],
+    maxFeeBps: 50,
+    validUntil: VALID_UNTIL,
+  }),
+  OFT: definition(
+    {
+      from: { chain: arbitrum, token: OFT_ARB.token, maxAmount: 100n },
+      to: { chain: plasma, token: OFT_PLASMA.token },
+      settlementLayers: ['OFT'],
+    },
+    arbitrum,
+  ),
+  'CCTP with fees': definition({ settlementLayers: ['CCTP'], allowFees: true }),
+}
+
+describe('multi-layer settlement permits', () => {
+  // A changed digest is a HashMismatch for every single-layer session already
+  // signed. Opted out of the default UniversalActionPolicy copies, which
+  // re-encode some of them.
+  test('single-layer digests are pinned', () => {
+    const digests = Object.fromEntries(
+      Object.entries(SINGLE).map(([name, def]) => [
+        name,
+        digest(
+          {
+            ...def,
+            policyAddresses: {
+              ...def.policyAddresses,
+              universalActionCopies: [],
+            },
+          },
+          WITH_FEES,
+        ),
+      ]),
+    )
+    expect(digests).toMatchInlineSnapshot(`
+      {
+        "CCTP": "0x579b4c3f004b4df034c8e28b13a5f5aadca12060696a508e3c33d921d58a27f7",
+        "CCTP with fees": "0xa39eff6593ad08ecc8aec6c71910b8cc19d30364dca8088889d8d2231c1de4bf",
+        "ECO_IE": "0x144645ed09cbd1686a2788e73ad42aeb7b07cddd954ac8cf0efa2cb41425fc0f",
+        "LZ": "0x782b98c47fd0664eeacb6907c683cfd622aacb2713dfd65322b96b0437146d85",
+        "OFT": "0xafb81473b9789f2853937b3fd3fc384cb4832bec534fd853d45830f27aec0c45",
+      }
+    `)
+  })
+
+  test('two layers compile to both settlement calls and one approve', () => {
+    const def = definition({ settlementLayers: ['CCTP', 'LZ'] })
+    const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
+    expect(
+      data.actions
+        .slice(0, 3)
+        .map((a) => [a.actionTarget, a.actionTargetSelector]),
+    ).toEqual([
+      [MESSENGER, DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR],
+      [BASE.lz!.multiCall, LZ_EXECUTE_SELECTOR],
+      [USDC, APPROVE],
+    ])
+    expect(
+      toSession(def, { settlement: SETTLEMENT_CATALOG }).settlementLayers,
+    ).toEqual(['CCTP', 'LZ'])
+  })
+
+  test('maxAmount bounds the total approved across the layers', () => {
+    const action = approveOf(
+      scope({ settlementLayers: ['CCTP', 'LZ'] }).actions,
+    )
+    expect(satisfiesRules(action, approve(MESSENGER))).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE))).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE, 101n))).toBe(false)
+    const usage: RuleUsage = new Map()
+    expect(satisfiesRules(action, approve(MESSENGER, 60n), usage)).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE, 60n), usage)).toBe(false)
+    expect(satisfiesRules(action, approve(DELEGATE, 40n), usage)).toBe(true)
+    expect(satisfiesRules(action, approve(MESSENGER, 1n), usage)).toBe(false)
+  })
+
+  test('the approve compiles to one cap counter, after the spender OR', () => {
+    const [policy] =
+      approveOf(scope({ settlementLayers: ['CCTP', 'LZ'] }).actions).policies ??
+      []
+    if (policy?.type !== 'arg-policy') throw new Error('expected an ArgPolicy')
+    const { rules, root, node } = decodeArgPolicy(
+      encodeSessionPolicy(policy, 'production').initData,
+    )
+    const limited = rules.filter((rule) => rule.isLimited)
+    expect(limited).toHaveLength(1)
+    expect(limited[0].offset).toBe(32n)
+    expect(limited[0].usage.limit).toBe(100n)
+    expect(root.kind).toBe('and')
+    expect(node(root.left).kind).toBe('or')
+    const cap = node(root.right)
+    expect(cap.kind).toBe('rule')
+    expect(rules[cap.rule].isLimited).toBe(true)
+  })
+
+  test('the order layers are named in does not change the session', () => {
+    const resolve = (
+      settlementLayers: CrossChainPermissionInput['settlementLayers'],
+    ) =>
+      resolveSessionData(definition({ settlementLayers }), {
+        settlement: SETTLEMENT_CATALOG,
+      })
+    expect(resolve(['LZ', 'CCTP'])).toEqual(resolve(['CCTP', 'LZ']))
+    expect(resolve(['CCTP', 'CCTP'])).toEqual(resolve(['CCTP']))
+  })
+
+  test('every action carries the once-policy, and each layer call the window', () => {
+    const def = definition({
+      settlementLayers: ['CCTP', 'LZ'],
+      validUntil: VALID_UNTIL,
+    })
+    const data = resolveSessionData(def, { settlement: SETTLEMENT_CATALOG })
+    for (const action of data.actions) {
+      const policies = action.actionPolicies.map((p) => p.policy)
+      expect(policies).toContain(ONE_TIME_USE)
+      expect(policies.includes(TIME_FRAME_POLICY_ADDRESS)).toBe(
+        action.actionTarget !== ONE_TIME_USE,
+      )
+    }
+  })
+
+  test("'all' keeps the same layers with validAfter", () => {
+    const layers = (window: Partial<CrossChainPermissionInput>) =>
+      scope({ settlementLayers: 'all', validUntil: VALID_UNTIL, ...window })
+        .settlementLayers
+    expect(layers({ validAfter: new Date(1_000_000_000_000) })).toEqual(
+      layers({}),
+    )
+  })
+
+  test('refuses a validUntil that would read as no deadline', () => {
+    expect(() =>
+      resolveSessionData(
+        definition({ settlementLayers: ['CCTP'], validUntil: new Date(0) }),
+        { settlement: SETTLEMENT_CATALOG },
+      ),
+    ).toThrow('a validUntil that is not a future Date')
+  })
+
+  test('refuses an approve to a layer the permit did not name', () => {
+    const action = approveOf(
+      scope({ settlementLayers: ['CCTP', 'LZ'] }).actions,
+    )
+    expect(satisfiesRules(action, approve(PORTAL))).toBe(false)
+    // LZMultiCall runs whatever it is handed, so it must never hold an allowance.
+    expect(satisfiesRules(action, approve(BASE.lz!.multiCall))).toBe(false)
+    expect(satisfiesRules(action, approve(OTHER))).toBe(false)
+  })
+
+  test("'all' keeps the layers the permit can satisfy", () => {
+    expect(scope({ settlementLayers: 'all' }).settlementLayers).toEqual([
+      'CCTP',
+      'LZ',
+    ])
+    const eco = scope({
+      settlementLayers: 'all',
+      maxFeeBps: 50,
+      validUntil: VALID_UNTIL,
+    })
+    expect(eco.settlementLayers).toEqual(['CCTP', 'ECO_IE', 'LZ'])
+    expect(eco.actions.map((a) => a.selector)).toEqual([
+      DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
+      PUBLISH_AND_FUND_SELECTOR,
+      LZ_EXECUTE_SELECTOR,
+      APPROVE,
+    ])
+    const action = approveOf(eco.actions)
+    for (const spender of [MESSENGER, PORTAL, DELEGATE]) {
+      expect(satisfiesRules(action, approve(spender))).toBe(true)
+    }
+  })
+
+  test("the session's layers are the ones 'all' kept", () => {
+    const session = toSession(definition({ settlementLayers: 'all' }), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(session.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
+  })
+
+  test("'all' without oneTimeUse or maxAmount keeps CCTP, uncapped", () => {
+    const resolved = scope(
+      { from: { chain: base, token: USDC }, settlementLayers: 'all' },
+      SETTLEMENT_CATALOG,
+      false,
+    )
+    expect(resolved.settlementLayers).toEqual(['CCTP'])
+    const action = approveOf(resolved.actions)
+    expect(satisfiesRules(action, approve(MESSENGER, maxUint256))).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE))).toBe(false)
+  })
+
+  test("'all' drops a layer only when it refuses the permit", () => {
+    const { stablecoins: _, ...eco } = BASE.eco!
+    const broken = {
+      ...SETTLEMENT_CATALOG,
+      [base.id]: { ...BASE, eco: eco as never },
+    }
+    expect(() =>
+      scope(
+        { settlementLayers: 'all', maxFeeBps: 50, validUntil: VALID_UNTIL },
+        broken,
+      ),
+    ).toThrow(TypeError)
+  })
+
+  test('refuses OFT and LZ together: each pays a native fee', () => {
+    expect(
+      scope({ settlementLayers: ['OFT'] }, USDC_OFT).settlementLayers,
+    ).toEqual(['OFT'])
+    const message = 'OFT and LZ each pay a native LayerZero fee'
+    expect(() => scope({ settlementLayers: ['OFT', 'LZ'] }, USDC_OFT)).toThrow(
+      message,
+    )
+    expect(() => scope({ settlementLayers: 'all' }, USDC_OFT)).toThrow(message)
+  })
+
+  test("'all' refuses a permit no layer can satisfy, saying why", () => {
+    const refusal = () =>
+      scope({
+        from: { chain: base, token: OTHER, maxAmount: 100n },
+        settlementLayers: 'all',
+      })
+    expect(refusal).toThrow('no IntentExecutor layer can settle this permit')
+    expect(refusal).toThrow('CCTP: CCTP moves only USDC')
+    expect(refusal).not.toThrow('CCTP: crossChainPermits:')
+    expect(refusal).toThrow('OFT does not route to chain 8453')
+  })
+
+  test.each([
+    [
+      'a layer that does not route from the chain',
+      { settlementLayers: ['CCTP', 'OFT'] },
+      'OFT does not route to chain 8453',
+    ],
+    [
+      'a layer whose requirements the permit misses',
+      { settlementLayers: ['CCTP', 'ECO_IE'] },
+      'ECO_IE needs maxAmount and maxFeeBps',
+    ],
+    [
+      'SAME_CHAIN_IE next to a bridge',
+      { settlementLayers: ['SAME_CHAIN_IE', 'CCTP'] },
+      'SAME_CHAIN_IE cannot share a permit with other IntentExecutor layers',
+    ],
+    [
+      'maxFeeBps without ECO_IE',
+      { settlementLayers: ['CCTP', 'LZ'], maxFeeBps: 50 },
+      'maxFeeBps applies only to ECO_IE',
+    ],
+    [
+      "maxFeeBps where 'all' drops ECO_IE",
+      {
+        settlementLayers: 'all',
+        maxFeeBps: 50,
+        validUntil: new Date(Date.now() + 86_400_000),
+      },
+      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil at least 7 days ahead',
+    ],
+  ] as const)('refuses %s', (_, permit, message) => {
+    expect(() => scope(permit as Partial<CrossChainPermissionInput>)).toThrow(
+      message,
+    )
+  })
+
+  test("'all' keeps ECO_IE without validUntil", () => {
+    expect(
+      scope({ settlementLayers: 'all', maxFeeBps: 50 }).settlementLayers,
+    ).toContain('ECO_IE')
+  })
+
+  test('allowFees joins the paymaster to the shared approve', () => {
+    const action = approveOf(
+      scope({ settlementLayers: ['CCTP', 'LZ'], allowFees: true }, WITH_FEES)
+        .actions,
+    )
+    const usage: RuleUsage = new Map()
+    // The fee budget is its own: a paymaster approve leaves the layers' cap whole.
+    expect(
+      satisfiesRules(
+        action,
+        approve(PAYMASTER, settlementFeeCap(base.id, 6)),
+        usage,
+      ),
+    ).toBe(true)
+    expect(satisfiesRules(action, approve(MESSENGER, 60n), usage)).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE, 40n), usage)).toBe(true)
+    expect(satisfiesRules(action, approve(DELEGATE, 1n), usage)).toBe(false)
+    expect(satisfiesRules(action, approve(PAYMASTER, 1n), usage)).toBe(false)
+  })
+})
+
+describe('settlement coverage', () => {
+  const session = (permit: Partial<CrossChainPermissionInput>) =>
+    toSession(definition(permit), { settlement: SETTLEMENT_CATALOG })
+
+  test("'all' lists the layers it dropped, with the refusal an explicit list throws", () => {
+    const { settlementLayers, settlementCoverage } = session({
+      settlementLayers: 'all',
+    })
+    expect(settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
+    expect(settlementCoverage).toEqual({
+      dropped: [
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
+        {
+          layer: 'ECO_IE',
+          reason:
+            'ECO_IE needs maxAmount and maxFeeBps to bound what a reward must deliver (or maxAmount and a `to.minAmount` on every leg)',
+        },
+      ],
+    })
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
+      expect(() => scope({ settlementLayers: [layer] })).toThrow(
+        `crossChainPermits: ${reason}`,
+      )
+    }
+    expect(JSON.parse(JSON.stringify(settlementCoverage))).toEqual(
+      settlementCoverage,
+    )
+  })
+
+  /** Each dropped reason is what naming that layer alone throws. */
+  const expectExplicitRefusals = (
+    sessionChain: Chain,
+    permit: Partial<CrossChainPermissionInput>,
+  ) => {
+    const { settlementCoverage } = toSession(definition(permit, sessionChain), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    for (const { layer, reason } of settlementCoverage?.dropped ?? []) {
+      expect(() =>
+        toSession(
+          definition({ ...permit, settlementLayers: [layer] }, sessionChain),
+          { settlement: SETTLEMENT_CATALOG },
+        ),
+      ).toThrow(`crossChainPermits: ${reason}`)
+    }
+    return settlementCoverage
+  }
+
+  test("'all' with a floor drops CCTP, and LZ for a leg it reaches over CCTP", () => {
+    const permit = {
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 98n },
+      validUntil: VALID_UNTIL,
+      settlementLayers: 'all',
+    } as const
+    const { settlementLayers } = toSession(definition(permit), {
+      settlement: SETTLEMENT_CATALOG,
+    })
+    expect(settlementLayers).toEqual(['ECO_IE'])
+    expect(expectExplicitRefusals(base, permit)).toEqual({
+      dropped: [
+        {
+          layer: 'ACROSS',
+          reason: '`to.minAmount` does not apply to Permit2 layers',
+        },
+        { layer: 'CCTP', reason: 'CCTP cannot enforce `to.minAmount`' },
+        { layer: 'OFT', reason: 'OFT does not route to chain 8453' },
+        {
+          layer: 'LZ',
+          reason: `LZ pins \`to.minAmount\` only on a Stargate send, and chain ${arbitrum.id} is reached over CCTP`,
+        },
+      ],
+    })
+  })
+
+  test('an explicit list that every layer settles drops none', () => {
+    expect(
+      session({ settlementLayers: ['CCTP', 'LZ'] }).settlementCoverage,
+    ).toEqual({ dropped: [] })
+  })
+
+  test('a session without a settlement-scoped permit carries no coverage', () => {
+    const { crossChainPermits: _, ...plain } = definition({})
+    expect(toSession(plain as SessionDefinition)).not.toHaveProperty(
+      'settlementCoverage',
+    )
+  })
+
+  test.each([
+    [{}, ['ACROSS', 'CCTP', 'LZ']],
+    // ACROSS cannot enforce maxFeeBps, so 'all' leaves it out.
+    [{ maxFeeBps: 50, validUntil: VALID_UNTIL }, ['CCTP', 'ECO_IE', 'LZ']],
+  ] as const)(
+    "'all' encodes the same session as the layers it kept (%o)",
+    (permit, kept) => {
+      const all = { ...permit, settlementLayers: 'all' } as const
+      const listed = { ...permit, settlementLayers: [...kept] }
+      expect(
+        resolveSessionData(definition(all), { settlement: SETTLEMENT_CATALOG }),
+      ).toEqual(
+        resolveSessionData(definition(listed), {
+          settlement: SETTLEMENT_CATALOG,
+        }),
+      )
+      const { settlementCoverage: _, ...fromAll } = session(all)
+      const { settlementCoverage: __, ...fromList } = session(listed)
+      expect(fromAll).toEqual(fromList)
+      expect(fromAll.permissionId).toBe(fromList.permissionId)
+    },
+  )
+})

@@ -20,11 +20,11 @@ import {
 import type {
   AccountConstructionInput,
   ProviderInput,
-  SdkAuthInput,
   SdkConstructionInput,
   ServiceInput,
 } from './input'
 import type { LegacyAccountConfig } from './legacy'
+import { assertNoRemovedApiKey, assertSdkAuthInput } from './removed-inputs'
 import type {
   AccountInvocationContext,
   AccountInvocationKind,
@@ -101,18 +101,7 @@ function configureRecovery(
 }
 
 function resolveAuth(input: SdkConstructionInput): ResolvedAuth {
-  let auth: SdkAuthInput | undefined
-  if ('auth' in input && input.auth) {
-    auth = input.auth
-  } else if ('apiKey' in input && input.apiKey) {
-    auth = { mode: 'apiKey', apiKey: input.apiKey }
-  }
-
-  if (!auth) {
-    throw new Error(
-      'RhinestoneSDK requires either `apiKey` or `auth` in config',
-    )
-  }
+  const auth = input.auth
   if (auth.mode === 'apiKey') {
     return { kind: 'api-key', apiKey: auth.apiKey }
   }
@@ -223,6 +212,7 @@ export function resolveSdkConfig(
   input: SdkConstructionInput,
   defaults: SdkSemanticConfigDefaults = currentV2Defaults,
 ): ResolvedSdkConfig {
+  assertSdkAuthInput(input)
   const bundler = resolveService(input.bundler)
   const paymaster = resolveService(input.paymaster)
   return {
@@ -249,6 +239,7 @@ export function resolveAccountConfig(
   sdk: ResolvedSdkConfig,
   input: AccountConstructionInput,
 ): ResolvedAccountConfig {
+  assertNoRemovedApiKey(input)
   return resolveAccountWithDefaults(
     input,
     { id: sdk.profile, ...sdk.defaults },
@@ -272,6 +263,7 @@ export function resolveStandaloneAccountConfig(
   input: AccountConstructionInput,
   profile: ConfigProfileId,
 ): ResolvedAccountConfig {
+  assertNoRemovedApiKey(input)
   return resolveAccountWithDefaults(
     input,
     standaloneDefaults[profile],
@@ -283,6 +275,7 @@ function materializeSdkInvocationConfig<AuthProvider>(
   sdk: ResolvedSdkConfig,
   compatibility: LegacyAccountConfig<AuthProvider>,
 ): ResolvedSdkConfig {
+  assertNoRemovedApiKey(compatibility)
   const bundler = resolveService(compatibility.bundler)
   const paymaster = resolveService(compatibility.paymaster)
   return {

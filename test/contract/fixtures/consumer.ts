@@ -13,7 +13,9 @@ import * as jwtServer from '@rhinestone/sdk/jwt-server'
 import * as passkeySigning from '@rhinestone/sdk/signing/passkeys'
 import * as smartSessions from '@rhinestone/sdk/smart-sessions'
 
-const legacySdk = new RhinestoneSDK({ apiKey: 'legacy-api-key' })
+const legacySdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'legacy-api-key' },
+})
 const apiKeySdk = new RhinestoneSDK({
   auth: { mode: 'apiKey', apiKey: 'api-key' },
 })
