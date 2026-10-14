@@ -234,6 +234,20 @@ export type CrossChainSettlementLayer =
   | Permit2SettlementLayer
   | IntentExecutorSettlementLayer
 
+/** A layer `settlementLayers: 'all'` left out of the session, and why. */
+export interface DroppedSettlementLayer {
+  /** `'all'` never includes `SAME_CHAIN_IE`, so it never drops it either. */
+  readonly layer: 'CCTP' | 'OFT' | 'ECO_IE' | 'LZ'
+  /** The refusal an explicit list naming the layer throws, without its `crossChainPermits: ` prefix. */
+  readonly reason: string
+}
+
+/** The layers a settlement-scoped permit left out; its session's `settlementLayers` lists the kept ones. */
+export interface SettlementCoverage {
+  /** Layers `'all'` left out. Always empty for an explicit list, which throws instead. */
+  readonly dropped: readonly DroppedSettlementLayer[]
+}
+
 export interface CrossChainPermit {
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   to?: {
@@ -418,6 +432,9 @@ export interface Session {
   /** The layers the session's permits name (IntentExecutor or Permit2), so a
    *  caller can restrict an intent to them. Metadata only, like `swap`. */
   settlementLayers?: readonly CrossChainSettlementLayer[]
+  /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
+   *  like `swap`; absent on sessions stored before it existed. */
+  settlementCoverage?: SettlementCoverage
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
