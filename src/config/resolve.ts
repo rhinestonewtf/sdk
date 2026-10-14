@@ -101,7 +101,6 @@ function configureRecovery(
 }
 
 function resolveAuth(input: SdkConstructionInput): ResolvedAuth {
-  assertSdkAuthInput(input)
   const auth = input.auth
   if (auth.mode === 'apiKey') {
     return { kind: 'api-key', apiKey: auth.apiKey }

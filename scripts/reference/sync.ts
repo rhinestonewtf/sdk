@@ -4,8 +4,6 @@ import { resolve } from 'node:path'
 
 export const SDK_PACKAGE = '@rhinestone/sdk'
 export const RELEASE_APP_ID = 258_219_874
-export const DOCS_BASE_BRANCH = 'main'
-export const DOCS_UPDATE_BRANCH = 'update/sdk-reference'
 export const REFERENCE_ROOT = 'wallets/custom-signer/sdk-reference'
 export const MANAGED_PATHS = [REFERENCE_ROOT, 'docs.json'] as const
 
@@ -123,34 +121,24 @@ export function assertManagedPaths(paths: string[]): void {
   }
 }
 
-export type CommandRunner = (
-  command: string,
-  args: string[],
-  cwd?: string,
-) => string
-
-const runCommand: CommandRunner = (command, args, cwd) =>
+const runCommand = (command: string, args: string[], cwd?: string): string =>
   execFileSync(command, args, {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
 
-function gitLines(
-  runner: CommandRunner,
-  cwd: string,
-  args: string[],
-): string[] {
-  const output = runner('git', args, cwd)
+function gitLines(cwd: string, args: string[]): string[] {
+  const output = runCommand('git', args, cwd)
   return output ? output.split('\n').filter(Boolean) : []
 }
 
-export function stageManagedDocs(
-  docsDirectory: string,
-  runner: CommandRunner = runCommand,
-): { changed: boolean; tree?: string } {
+export function stageManagedDocs(docsDirectory: string): {
+  changed: boolean
+  tree?: string
+} {
   const cwd = resolve(docsDirectory)
-  const alreadyStaged = gitLines(runner, cwd, [
+  const alreadyStaged = gitLines(cwd, [
     'diff',
     '--cached',
     '--name-only',
@@ -163,17 +151,13 @@ export function stageManagedDocs(
   }
 
   const changedPaths = new Set([
-    ...gitLines(runner, cwd, [
-      'diff',
-      '--name-only',
-      '--diff-filter=ACDMRTUXB',
-    ]),
-    ...gitLines(runner, cwd, ['ls-files', '--others', '--exclude-standard']),
+    ...gitLines(cwd, ['diff', '--name-only', '--diff-filter=ACDMRTUXB']),
+    ...gitLines(cwd, ['ls-files', '--others', '--exclude-standard']),
   ])
   assertManagedPaths([...changedPaths])
 
-  runner('git', ['add', '-A', '--', ...MANAGED_PATHS], cwd)
-  const staged = gitLines(runner, cwd, [
+  runCommand('git', ['add', '-A', '--', ...MANAGED_PATHS], cwd)
+  const staged = gitLines(cwd, [
     'diff',
     '--cached',
     '--name-only',
@@ -181,7 +165,7 @@ export function stageManagedDocs(
   ])
   assertManagedPaths(staged)
   if (staged.length === 0) return { changed: false }
-  return { changed: true, tree: runner('git', ['write-tree'], cwd) }
+  return { changed: true, tree: runCommand('git', ['write-tree'], cwd) }
 }
 
 function appendOutput(name: string, value: string): void {

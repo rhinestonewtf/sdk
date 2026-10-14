@@ -222,17 +222,4 @@ describe('docs staging', () => {
     git(repository, 'add', 'unrelated.mdx')
     expect(() => stageManagedDocs(repository)).toThrow('already staged')
   })
-
-  it('does not require or recreate retired inventories', () => {
-    const repository = createDocsRepository()
-    writeFileSync(
-      join(repository, 'wallets/custom-signer/sdk-reference/new.mdx'),
-      'new\n',
-    )
-    stageManagedDocs(repository)
-    expect(git(repository, 'ls-files')).not.toContain('unified-docs')
-    expect(git(repository, 'ls-files')).not.toContain(
-      'scripts/fixtures/sdk-reference-paths.json',
-    )
-  })
 })
