@@ -720,6 +720,10 @@ describe('crossChainPermits expansion', () => {
           to: [{ chain: base, token: USDC_ARB }],
         },
       ],
+      oneTimeUse: { id: 1n },
+      policyAddresses: {
+        oneTimeUseId: '0x00000000000000000000000000000000000000aa',
+      },
     })
     const data = getSessionData(session)
     const fallback = data.actions.find(
