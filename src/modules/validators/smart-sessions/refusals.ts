@@ -107,7 +107,7 @@ export const SESSION_REFUSAL_CODES = {
   FALLBACK_NOT_APPLICABLE:
     '`fallback` without a Permit2-layer permit, or with restrictToActions or swap',
   PERMIT2_ROUTE_NEEDS_BOUND:
-    "a Permit2-layer permit without oneTimeUse, preClaimOps: 'none' or `fallback`",
+    "a Permit2-layer permit without oneTimeUse, preClaimOps: 'none' or `fallback`, on a chain without Permit2SenderPolicy",
   PERMIT2_ROUTE_ACROSS_ONLY:
     'a Permit2-layer permit naming a layer other than ACROSS, without `fallback`',
   PRE_CLAIM_OPS_NOT_APPLICABLE:
