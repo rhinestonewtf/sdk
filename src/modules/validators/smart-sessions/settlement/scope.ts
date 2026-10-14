@@ -1,4 +1,5 @@
 import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
+import { recipientNotAllowed } from '../cross-chain-permits'
 import { sessionWindowRefusal } from '../one-time-use'
 import {
   RefusalCollectionHalted,
@@ -253,12 +254,7 @@ function scopePermit(
     recipient: Address | 'any' | undefined,
   ): Address | undefined => {
     if (recipient === 'any') {
-      if (recipientIsAccount) {
-        throw refusal(
-          'RECIPIENT_ANY_NOT_ALLOWED',
-          "crossChainPermits: recipient 'any' requires allowRecipientNotAccount",
-        )
-      }
+      if (recipientIsAccount) throw recipientNotAllowed(recipient)
       return undefined
     }
     if (recipient === undefined || recipientIsAccount) {
@@ -272,10 +268,7 @@ function scopePermit(
         recipient !== undefined &&
         !isAddressEqual(recipient, options.account)
       ) {
-        throw refusal(
-          'RECIPIENT_NOT_ACCOUNT',
-          'crossChainPermits: a recipient other than the account requires allowRecipientNotAccount',
-        )
+        throw recipientNotAllowed(recipient)
       }
       return options.account
     }
