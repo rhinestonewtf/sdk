@@ -769,7 +769,7 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(/one Permit2 claim policy/)
+    ).toThrow(/twice; the second config would overwrite/)
   })
 
   test('refuses multiple permits, which would collapse to one on-chain', () => {
@@ -783,7 +783,7 @@ describe('crossChainPermits expansion', () => {
         owners: { type: 'ecdsa', accounts: [accountA] },
         crossChainPermits: [permit, permit, permit],
       }),
-    ).toThrow(/one Permit2 claim policy/)
+    ).toThrow(/twice; the second config would overwrite/)
   })
 
   test('permit with neither from nor to still emits a claim policy (arbiter-only)', () => {
