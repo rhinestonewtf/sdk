@@ -37,7 +37,7 @@ import type {
 } from '../types'
 import {
   CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR,
-  SETTLEMENT_FEE_CAP,
+  settlementFeeCap,
   swapApprovesAsActions,
   withFeeActions,
 } from './fees'
@@ -62,12 +62,12 @@ const COLLECTOR = '0x5555555555555555555555555555555555555555' as Address
 const PAYMASTER = '0x6666666666666666666666666666666666666666' as Address
 const TRANSFER = toFunctionSelector('transfer(address,uint256)')
 const APPROVE = toFunctionSelector('approve(address,uint256)')
-const CAP = SETTLEMENT_FEE_CAP
+const CAP = settlementFeeCap(base.id, 6)
 const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
 const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 const VALID_UNTIL = new Date(2_000_000_000_000)
 
-const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER }
+const FEES = { appFeeCollector: COLLECTOR, paymaster: PAYMASTER, cap: CAP }
 const WITH_FEES: SettlementCatalog = {
   ...SETTLEMENT_CATALOG,
   [base.id]: { ...SETTLEMENT_CATALOG[base.id], fees: FEES },
@@ -126,7 +126,7 @@ function legacyWithFeeActions(
   fees: Fees,
 ): ScopedAction[] {
   const out = [...actions]
-  const cap = () => cumulativeCap(32n, SETTLEMENT_FEE_CAP)
+  const cap = () => cumulativeCap(32n, CAP)
   for (const token of sourceTokens) {
     legacyAddFeeBranch(
       out,

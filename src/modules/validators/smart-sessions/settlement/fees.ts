@@ -14,6 +14,7 @@ import {
   pin,
   swapAction,
 } from '../swap/rules'
+import { STABLE_DECIMALS } from '../swap/stable-floor'
 import type {
   ArgPolicyExpression,
   Permission,
@@ -27,12 +28,27 @@ import type { SettlementAddresses, SettlementCatalog } from './types'
 /**
  * `allowFees` (RHI-7884): the app-fee transfer and the unsponsored-gas paymaster
  * calls the orchestrator adds before the layer calls. Each call has its own
- * 5 USD cap: per `from` token for the transfer and approve, one shared across
- * tokens for the callback.
+ * USD cap ({@link settlementFeeCap}): per `from` token for the transfer and
+ * approve, one shared across tokens for the callback.
  */
 
-/** 5 USD at 6 decimals. Cumulative: the burning transaction admits every later op. */
-export const SETTLEMENT_FEE_CAP = 5_000_000n
+/** The per-call cap in whole USD where a chain has no entry below. */
+const DEFAULT_SETTLEMENT_FEE_USD = 5n
+
+/** Chains whose per-call cap differs from the default, in whole USD. */
+const SETTLEMENT_FEE_USD_BY_CHAIN: Readonly<Record<number, bigint>> = {
+  // Ethereum mainnet: a session enable needs a gas refund above 5 USD.
+  1: 30n,
+}
+
+/**
+ * The per-call fee cap on `chainId` in raw units of a stablecoin with
+ * `decimals`. Cumulative: the burning transaction admits every later op.
+ */
+export function settlementFeeCap(chainId: number, decimals: number): bigint {
+  const usd = SETTLEMENT_FEE_USD_BY_CHAIN[chainId] ?? DEFAULT_SETTLEMENT_FEE_USD
+  return usd * 10n ** BigInt(decimals)
+}
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
 const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
@@ -42,6 +58,9 @@ export const CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR = toFunctionSelector(
 
 type Fees = NonNullable<SettlementAddresses['fees']>
 
+/** The fee addresses, with the per-call cap in the `from` tokens' raw units. */
+export type ServedFees = Fees & { readonly cap: bigint }
+
 type ParamsPolicy = Extract<
   SessionPolicy,
   { type: 'universal-action' | 'arg-policy' }
@@ -50,12 +69,12 @@ type ParamsPolicy = Extract<
 const isParamsPolicy = (policy: SessionPolicy): policy is ParamsPolicy =>
   policy.type === 'universal-action' || policy.type === 'arg-policy'
 
-/** The chain's fee addresses, once every `from` token is one the layers serve. */
+/** The chain's fee addresses and cap, once every `from` token is one the layers serve with known decimals. */
 export function servedFees(
   settlement: SettlementCatalog | undefined,
   chainId: number,
   sourceTokens: readonly Address[],
-): Fees {
+): ServedFees {
   if (settlement === undefined) {
     throw refusal(
       'ALLOW_FEES_CATALOG_MISSING',
@@ -88,7 +107,39 @@ export function servedFees(
       )
     }
   }
-  return chain.fees
+  // The cap scales by the token's served decimals; a wrong scale moves it by
+  // orders of magnitude, so unknown decimals fail closed.
+  const decimals = sourceTokens.map((token) => {
+    const listed = (chain.usdStablecoins ?? []).filter((t) =>
+      isAddressEqual(t.address, token),
+    )
+    const why =
+      listed.length === 0
+        ? 'is not listed in usdStablecoins'
+        : listed.length > 1
+          ? `appears ${listed.length} times in usdStablecoins`
+          : !STABLE_DECIMALS.has(listed[0].decimals)
+            ? `is served with ${listed[0].decimals} decimals; expected 6 or 18`
+            : undefined
+    if (why !== undefined) {
+      throw refusal(
+        'ALLOW_FEES_NON_STABLECOIN',
+        `crossChainPermits: allowFees caps fees in USD, so every \`from\` token must be a served USD stablecoin with known decimals; ${token} on chain ${chainId} ${why}`,
+        { chainId },
+      )
+    }
+    return listed[0].decimals
+  })
+  // The callback's one cap is shared across tokens, so it needs one scale.
+  if (new Set(decimals).size > 1) {
+    throw refusal(
+      'ALLOW_FEES_MIXED_DECIMALS',
+      `crossChainPermits: allowFees shares one callback cap across \`from\` tokens, so they must have the same decimals; on chain ${chainId} they have ${[...new Set(decimals)].join(' and ')}`,
+      { chainId },
+    )
+  }
+  // No `from` token leaves only the callback, at main's 6-decimal scale.
+  return { ...chain.fees, cap: settlementFeeCap(chainId, decimals[0] ?? 6) }
 }
 
 /**
@@ -187,12 +238,12 @@ function addFeeBranch(
 export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
-  fees: Fees,
+  fees: ServedFees,
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
   // branch then fails.
-  const cap = () => cumulativeOnly(32n, SETTLEMENT_FEE_CAP)
+  const cap = () => cumulativeOnly(32n, fees.cap)
   for (const token of sourceTokens) {
     addFeeBranch(out, token, TRANSFER_SELECTOR, [
       pin(0n, fees.appFeeCollector),
