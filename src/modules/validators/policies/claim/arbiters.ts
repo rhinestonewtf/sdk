@@ -1,5 +1,8 @@
 import type { Address } from 'viem'
-import type { CrossChainSettlementLayer } from '../../smart-sessions/types'
+import type {
+  CrossChainSettlementLayer,
+  Permit2SettlementLayer,
+} from '../../smart-sessions/types'
 
 /**
  * The arbiter contract keys that each settlement layer expands to. `ACROSS`
@@ -15,7 +18,7 @@ import type { CrossChainSettlementLayer } from '../../smart-sessions/types'
  * policy is available.
  */
 const SETTLEMENT_LAYER_CONTRACT_KEYS: Record<
-  CrossChainSettlementLayer,
+  Permit2SettlementLayer,
   readonly string[]
 > = {
   SAME_CHAIN: ['samechainArbiter'],
@@ -78,12 +81,18 @@ export function getArbitersForSettlementLayers(
   layers: readonly CrossChainSettlementLayer[] | undefined,
   useDevContracts?: boolean,
 ): Address[] | undefined {
-  const effectiveLayers: readonly CrossChainSettlementLayer[] =
+  // Fail closed: an empty result would leave the claim policy with no spender
+  // pin, which admits any arbiter. IntentExecutor layers never reach here.
+  for (const layer of layers ?? []) {
+    if (!(layer in SETTLEMENT_LAYER_CONTRACT_KEYS)) {
+      throw new Error(`Settlement layer ${layer} has no Permit2 arbiter`)
+    }
+  }
+  const effectiveLayers = (
     !layers || layers.length === 0
-      ? (Object.keys(
-          SETTLEMENT_LAYER_CONTRACT_KEYS,
-        ) as CrossChainSettlementLayer[])
+      ? Object.keys(SETTLEMENT_LAYER_CONTRACT_KEYS)
       : layers
+  ) as readonly Permit2SettlementLayer[]
 
   const book = ARBITER_ADDRESSES[useDevContracts ? 'dev' : 'prod']
   const keys = effectiveLayers.flatMap((l) => SETTLEMENT_LAYER_CONTRACT_KEYS[l])

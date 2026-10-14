@@ -21,6 +21,8 @@ import type { WireChainsResponse } from './wire'
 
 const SDK_VERSION = '2.16.1'
 const API_VERSION = '2026-09.caucasus'
+// Bounds how long a killed layer or pulled settlement address stays pinnable.
+const CHAIN_CATALOG_TTL_MS = 10 * 60 * 1000
 
 export interface OrchestratorClientOptions {
   readonly url: string
@@ -64,9 +66,10 @@ export function createOrchestratorClient(
     })
   }
 
-  // Memoized so the chain catalog is fetched at most once per client, lazily on
-  // first use — never at account construction.
-  let chainCatalogPromise: Promise<ChainCatalog> | undefined
+  // Fetched lazily on first use and reused for the TTL, including in-flight reads.
+  let chainCatalog:
+    | { readonly promise: Promise<ChainCatalog>; readonly fetchedAt: number }
+    | undefined
 
   return {
     createQuote: async (input, context) => {
@@ -141,11 +144,21 @@ export function createOrchestratorClient(
       }
     },
     getChainCatalog: () => {
-      chainCatalogPromise ??= (async () => {
-        const json = (await request({ path: 'chains' })) as WireChainsResponse
-        return new ChainCatalog(parseChains(json))
-      })()
-      return chainCatalogPromise
+      if (
+        chainCatalog === undefined ||
+        Date.now() - chainCatalog.fetchedAt >= CHAIN_CATALOG_TTL_MS
+      ) {
+        const promise = (async () => {
+          const json = (await request({ path: 'chains' })) as WireChainsResponse
+          return new ChainCatalog(parseChains(json))
+        })()
+        const entry = { promise, fetchedAt: Date.now() }
+        chainCatalog = entry
+        promise.catch(() => {
+          if (chainCatalog === entry) chainCatalog = undefined
+        })
+      }
+      return chainCatalog.promise
     },
   }
 }

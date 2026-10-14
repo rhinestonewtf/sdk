@@ -74,3 +74,14 @@ describe('getArbitersForSettlementLayers', () => {
     expect(doubled).toEqual(single)
   })
 })
+
+describe('getArbitersForSettlementLayers fails closed', () => {
+  test('a layer with no arbiter throws instead of widening to any arbiter', () => {
+    expect(() => getArbitersForSettlementLayers(['CCTP'])).toThrow(
+      'Settlement layer CCTP has no Permit2 arbiter',
+    )
+    expect(() => getArbitersForSettlementLayers(['RELAY' as never])).toThrow(
+      'Settlement layer RELAY has no Permit2 arbiter',
+    )
+  })
+})

@@ -10,7 +10,12 @@
 // and `createPublicClient`) still come from viem — `/chains` can't carry those.
 // The catalog only owns the chain *facts*.
 
+import { type Address, isAddress } from 'viem'
 import { chainIdFromCaip2, isCaip2 } from '../../chains/caip2'
+import type {
+  SettlementAddresses,
+  SettlementCatalog,
+} from '../../modules/validators/smart-sessions/settlement/types'
 import type { WireChainsResponse } from './wire'
 
 export type CatalogToken = {
@@ -26,6 +31,8 @@ export type ChainInfo = {
   // so no explicit list is returned.
   supportedTokens: 'all' | CatalogToken[]
   wrappedNativeToken?: CatalogToken
+  // Addresses settlement-scoped sessions pin, per layer.
+  settlement?: SettlementAddresses
 }
 
 export type ChainInfoMap = Record<number, ChainInfo>
@@ -67,6 +74,94 @@ export class ChainCatalog {
   getSupportedTokens(chainId: number): 'all' | CatalogToken[] | undefined {
     return this.chains[chainId]?.supportedTokens
   }
+
+  /** Every chain's served settlement addresses; chains without any are omitted. */
+  getSettlementCatalog(): SettlementCatalog {
+    const out: Record<number, SettlementAddresses> = {}
+    for (const [id, info] of Object.entries(this.chains)) {
+      if (info.settlement) out[Number(id)] = info.settlement
+    }
+    return out
+  }
+}
+
+type Json = Record<string, unknown>
+
+const isObject = (value: unknown): value is Json =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isAddr = (value: unknown): value is Address =>
+  typeof value === 'string' && isAddress(value)
+
+const isIndex = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+
+const isAddrs = (value: unknown): value is Address[] =>
+  Array.isArray(value) && value.length > 0 && value.every(isAddr)
+
+// Validates the untyped `settlement` field until wire.gen.ts is regenerated; a block with any invalid field is dropped.
+function parseSettlement(value: unknown): SettlementAddresses | undefined {
+  if (!isObject(value)) return undefined
+  const out: {
+    -readonly [K in keyof SettlementAddresses]: SettlementAddresses[K]
+  } = {}
+  const { cctp, oft, eco, lz } = value
+  if (
+    isObject(cctp) &&
+    isIndex(cctp.domain) &&
+    isAddr(cctp.tokenMessenger) &&
+    isAddr(cctp.usdc)
+  ) {
+    out.cctp = {
+      domain: cctp.domain,
+      tokenMessenger: cctp.tokenMessenger,
+      usdc: cctp.usdc,
+    }
+  }
+  if (
+    isObject(oft) &&
+    isAddr(oft.adapter) &&
+    isIndex(oft.eid) &&
+    isAddr(oft.token)
+  ) {
+    out.oft = { adapter: oft.adapter, eid: oft.eid, token: oft.token }
+  }
+  if (
+    isObject(eco) &&
+    isAddr(eco.portal) &&
+    isAddrs(eco.provers) &&
+    isAddrs(eco.stablecoins)
+  ) {
+    out.eco = {
+      portal: eco.portal,
+      provers: eco.provers,
+      stablecoins: eco.stablecoins,
+    }
+  }
+  if (isObject(lz) && isAddr(lz.multiCall) && isAddr(lz.transferDelegate)) {
+    const { stargateUsdc: sg, cctp: lc } = lz
+    out.lz = {
+      multiCall: lz.multiCall,
+      transferDelegate: lz.transferDelegate,
+      ...(isObject(sg) && isAddr(sg.pool) && isAddr(sg.token) && isIndex(sg.eid)
+        ? { stargateUsdc: { pool: sg.pool, token: sg.token, eid: sg.eid } }
+        : {}),
+      ...(isObject(lc) &&
+      isIndex(lc.domain) &&
+      isAddr(lc.token) &&
+      isAddr(lc.feeReceiver)
+        ? {
+            cctp: {
+              domain: lc.domain,
+              token: lc.token,
+              feeReceiver: lc.feeReceiver,
+              ...(lc.feeless === true ? { feeless: true as const } : {}),
+            },
+          }
+        : {}),
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 // Adapter boundary: decode the CAIP-2-keyed wire response into a numeric-keyed
@@ -77,6 +172,9 @@ export function parseChains(json: WireChainsResponse): ChainInfoMap {
   for (const [key, entry] of Object.entries(json)) {
     const id = isCaip2(key) ? chainIdFromCaip2(key) : Number(key)
     if (id === undefined || !Number.isFinite(id)) continue
+    const settlement = parseSettlement(
+      (entry as { settlement?: unknown }).settlement,
+    )
     out[id] = {
       name: entry.name,
       testnet: entry.testnet,
@@ -84,6 +182,7 @@ export function parseChains(json: WireChainsResponse): ChainInfoMap {
       ...(entry.wrappedNativeToken
         ? { wrappedNativeToken: entry.wrappedNativeToken }
         : {}),
+      ...(settlement ? { settlement } : {}),
     }
   }
   return out
