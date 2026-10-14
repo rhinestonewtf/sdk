@@ -8,6 +8,7 @@ import {
   refuser,
 } from '../refusals'
 import { allOf, anyOf, cumulativeCap, pin, swapAction } from '../swap/rules'
+import { PERMIT2 } from '../swap/stable-floor'
 import type {
   CrossChainPermit,
   CrossChainSettlementLayer,
@@ -38,7 +39,9 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * its recipient, destination chain, token and amount pinned in each layer's
  * calldata. Those pins only bind when nothing else can run, so such a session
  * is restricted: the wildcard fallback is dropped and only the layers'
- * settlement calls and their shared approve remain.
+ * settlement calls and their shared approve remain. `ACROSS` beside them adds
+ * Permit2 as one more spender of that approve; its claim is bound from the
+ * ERC-1271 list.
  */
 
 /** Each layer's settlement contract on a chain and the scoped call it makes. */
@@ -129,13 +132,15 @@ export interface SettlementScopeOptions {
   readonly collect?: Refuse
   /** `oneTimeUse.validUntil`, in seconds. */
   readonly sessionDeadline?: bigint
+  /** Set when the permit names `ACROSS` or is `'all'`: `dropped` is why `'all'` left it out. */
+  readonly across?: { readonly dropped?: string }
 }
 
 export interface ResolvedSettlementScope {
   readonly actions: ScopedAction[]
   /** ABI-sugar permissions the layer adds (the SAME_CHAIN_IE swap's approve). */
   readonly permissions: Permission[]
-  readonly settlementLayers: IntentExecutorSettlementLayer[]
+  readonly settlementLayers: CrossChainSettlementLayer[]
   /** The layers `'all'` dropped, with the refusal that dropped each. */
   readonly dropped: DroppedSettlementLayer[]
 }
@@ -181,7 +186,10 @@ function scopePermit(
   const named = permit.settlementLayers
   const all = named === 'all'
   const layers = all ? [...CROSS_CHAIN_LAYERS] : (named ?? [])
-  const permit2Layers = layers.filter((layer) => !isIntentExecutorLayer(layer))
+  const across = options.across !== undefined && !options.across.dropped
+  const permit2Layers = layers.filter(
+    (layer) => !isIntentExecutorLayer(layer) && !(across && layer === 'ACROSS'),
+  )
   if (permit2Layers.length) {
     throw refusal(
       'PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER',
@@ -190,10 +198,10 @@ function scopePermit(
   }
   const requested = [...new Set(layers.filter(isIntentExecutorLayer))]
   // SAME_CHAIN_IE's transfer or swap shares no call shape with a bridge.
-  if (requested.length > 1 && requested.includes('SAME_CHAIN_IE')) {
+  if ((requested.length > 1 || across) && requested.includes('SAME_CHAIN_IE')) {
     throw refusal(
       'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
-      'crossChainPermits: SAME_CHAIN_IE cannot share a permit with other IntentExecutor layers',
+      `crossChainPermits: SAME_CHAIN_IE cannot share a permit with ${across ? 'ACROSS' : 'other IntentExecutor layers'}`,
     )
   }
 
@@ -267,8 +275,12 @@ function scopePermit(
       'crossChainPermits: an IntentExecutor-layer permit must name its `to` chains',
     )
   }
-  // fillDeadline bounds a Permit2 claim; no IntentExecutor layer carries one.
-  if (permit.fillDeadline?.length) {
+  // fillDeadline bounds a Permit2 claim; no IntentExecutor layer carries one,
+  // so 'all' keeps ACROSS alone.
+  const fillDeadlineDrops = Boolean(
+    permit.fillDeadline?.length && all && across,
+  )
+  if (permit.fillDeadline?.length && !fillDeadlineDrops) {
     refuse(
       refusal(
         'FILL_DEADLINE_ONLY_PERMIT2',
@@ -354,6 +366,12 @@ function scopePermit(
       ? options.sessionDeadline
       : permit.validUntil
   const scopeLayer = (layer: (typeof CROSS_CHAIN_LAYERS)[number]) => {
+    if (fillDeadlineDrops) {
+      throw new SettlementLayerRefusal(
+        'crossChainPermits: fillDeadline applies only to Permit2 layers',
+        { code: 'FILL_DEADLINE_ONLY_PERMIT2' },
+      )
+    }
     if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
       throw new SettlementLayerRefusal(
         `crossChainPermits: an ${layer} permit requires oneTimeUse`,
@@ -388,7 +406,9 @@ function scopePermit(
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
   // only the layers that can; any other error still throws. A fixed order keeps
   // the session the same however the layers were listed.
-  const skipped = new Map<(typeof CROSS_CHAIN_LAYERS)[number], string>()
+  const skipped = new Map<DroppedSettlementLayer['layer'], string>(
+    options.across?.dropped ? [['ACROSS', options.across.dropped]] : [],
+  )
   const scopedLayers = CROSS_CHAIN_LAYERS.filter((layer) =>
     requested.includes(layer),
   ).flatMap((layer) => {
@@ -419,10 +439,10 @@ function scopePermit(
       ),
     )
   }
-  if (scopedLayers.length === 0) {
+  if (scopedLayers.length === 0 && !across) {
     throw refusal(
       'NO_LAYER_CAN_SETTLE',
-      `crossChainPermits: no IntentExecutor layer can settle this permit on chain ${options.chainId} (${[
+      `crossChainPermits: no ${options.across ? '' : 'IntentExecutor '}layer can settle this permit on chain ${options.chainId} (${[
         ...skipped,
       ]
         .map(([layer, reason]) => `${layer}: ${reason}`)
@@ -443,13 +463,18 @@ function scopePermit(
       ),
     )
   }
-  const settlementLayers = scopedLayers.map(({ layer }) => layer)
-  const spenders = scopedLayers
-    .map(({ spender }) => spender)
-    .filter(
-      (spender, i, list) =>
-        list.findIndex((other) => isAddressEqual(other, spender)) === i,
-    )
+  const settlementLayers: CrossChainSettlementLayer[] = [
+    ...(across ? (['ACROSS'] as const) : []),
+    ...scopedLayers.map(({ layer }) => layer),
+  ]
+  // Permit2 joins the one approve, so ACROSS draws on the same maxAmount.
+  const spenders = [
+    ...scopedLayers.map(({ spender }) => spender),
+    ...(across ? [PERMIT2] : []),
+  ].filter(
+    (spender, i, list) =>
+      list.findIndex((other) => isAddressEqual(other, spender)) === i,
+  )
 
   // Without allowFees, only the layers' own approves: an unsponsored intent or
   // one carrying an app fee adds calls this session does not authorise.

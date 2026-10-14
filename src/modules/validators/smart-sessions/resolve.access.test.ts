@@ -148,7 +148,10 @@ describe('session access', () => {
         { ...DEFINITIONS.cctp, crossChainPermits: [permit()] },
         { settlement: SETTLEMENT_CATALOG },
       ).access,
-    ).toEqual({ kind: 'scoped', reason: 'settlement-scoped permit (CCTP)' })
+    ).toEqual({
+      kind: 'scoped',
+      reason: 'settlement-scoped permit (ACROSS, CCTP)',
+    })
   })
 
   test('pins the encoded session of each shape', () => {

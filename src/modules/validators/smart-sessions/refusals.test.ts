@@ -338,6 +338,7 @@ describe('collectSessionRefusals', () => {
         [
           cctp({
             from: { chain: base, token: USDT_ARB, maxAmount: 100n },
+            to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
             settlementLayers: 'all',
             maxFeeBps: 10,
           }),
@@ -435,7 +436,7 @@ describe('collectSessionRefusals', () => {
     ['MULTIPLE_INTENT_EXECUTOR_PERMITS', session([cctp(), cctp()])],
     [
       'PERMIT2_LAYER_WITH_INTENT_EXECUTOR_LAYER',
-      session([cctp({ settlementLayers: ['CCTP', 'ACROSS'] })]),
+      session([cctp({ settlementLayers: ['CCTP', 'SAME_CHAIN'] })]),
     ],
     [
       'SAME_CHAIN_IE_WITH_OTHER_LAYERS',
@@ -681,9 +682,10 @@ describe("refusals under settlementLayers 'all'", () => {
           OPTIONS,
         )
         expect(first.code).not.toBe('SESSION_REFUSED')
+        // A Permit2-layer refusal names no layer: the permit has only one.
         expect(first).toMatchObject({
           message: `crossChainPermits: ${reason}`,
-          layer,
+          ...(layer === 'ACROSS' ? {} : { layer }),
         })
       }
     },
@@ -701,12 +703,13 @@ describe("refusals under settlementLayers 'all'", () => {
     )
     expect(
       validation.settlementCoverage?.dropped.map(({ layer }) => layer),
-    ).toEqual(['CCTP', 'OFT', 'LZ'])
-    const codes = (layer: 'CCTP' | 'LZ') =>
+    ).toEqual(['ACROSS', 'CCTP', 'OFT', 'LZ'])
+    const codes = (layer: 'ACROSS' | 'CCTP' | 'LZ') =>
       validateRefusals(
         session([{ ...permit, settlementLayers: [layer] }], oneTimeUse),
         OPTIONS,
       ).map(({ code }) => code)
+    expect(codes('ACROSS')).toEqual(['MIN_AMOUNT_ON_PERMIT2_LAYER'])
     expect(codes('CCTP')).toEqual(['MIN_AMOUNT_NOT_ENFORCEABLE'])
     expect(codes('LZ')).toEqual(['LZ_FLOOR_ON_CCTP_ROUTE'])
   })
