@@ -178,6 +178,15 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
     actions: [{ target: TARGET, selector: '0x12345678' }],
   },
   'ECO_IE permit with oneTimeUse, no validUntil': eco(['ECO_IE']),
+  'swap scope': {
+    chain: base,
+    owners,
+    swap: {
+      sell: { token: WETH, maxTotal: 100n },
+      buy: { token: USDC },
+      to: ACCOUNT,
+    },
+  },
 }
 
 const PINS: Record<string, ReturnType<typeof fingerprint>> = {
@@ -220,6 +229,11 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
     permissionId:
       '0x87cd89541acd720fcf1ef0606465afd81d0796f79ef505ce47c293f5b2e14ec9',
     data: '0xa86846105fb19cbecc9bdc7c466bca318027bc28818aaac52906f01a676d5eff',
+  },
+  'swap scope': {
+    permissionId:
+      '0xb45b15b276c19135237bb960e9fc0b5226a65d673ffdb7a31717a713faf4e1b4',
+    data: '0x7e351760275617a7f8e115dc5e420327689f60658437e222aca41702205990e3',
   },
 }
 
@@ -321,6 +335,17 @@ const WINDOWED: Record<string, SessionDefinition> = {
       },
     ],
   },
+  'swap scope validAfter and validUntil': {
+    chain: base,
+    owners,
+    swap: {
+      sell: { token: WETH, maxTotal: 100n },
+      buy: { token: USDC },
+      to: ACCOUNT,
+      validAfter: AFTER,
+      validUntil: UNTIL,
+    },
+  },
 }
 
 // Each window is a time-frame policy on the actions it applies to.
@@ -369,6 +394,11 @@ const WINDOWED_PINS: Record<string, ReturnType<typeof fingerprint>> = {
     permissionId:
       '0x9a78f5fbb8ef9f5849c11562dffe57b1716fa3a44afa540d0809296fb97667ca',
     data: '0x6ad12ca9a55b2dfbd78ec63a68bafc98c38da3c3622a786c97dd10a8af0990d2',
+  },
+  'swap scope validAfter and validUntil': {
+    permissionId:
+      '0x65cef2b88267803c0dbaef6cb4c95825cb587f384cbfeb28bbd2f2941d891929',
+    data: '0xb21d8774553bf8b4692ff8499f4219ab30b7a94bd5e6e1a71c8613da66f80d3c',
   },
 }
 
@@ -895,6 +925,17 @@ describe('a window is refused at resolve when', () => {
         ],
       }),
     },
+    swap: {
+      field: 'swap',
+      define: (w: Window) => ({
+        swap: {
+          sell: { token: WETH },
+          buy: { token: USDC },
+          to: ACCOUNT,
+          ...w,
+        },
+      }),
+    },
   } as const
   const session = (define: (w: Window) => object, w: Window) =>
     ({ chain: base, owners, ...define(w) }) as SessionDefinition
@@ -1002,7 +1043,7 @@ describe('a window is refused at resolve when', () => {
   })
 
   test.each(
-    (['permissions', 'crossChainPermits'] as const).flatMap((name) =>
+    (['permissions', 'crossChainPermits', 'swap'] as const).flatMap((name) =>
       [null, '2033-05-18T03:33:20Z', UNTIL.getTime()].map(
         (validUntil) => [name, validUntil] as const,
       ),
