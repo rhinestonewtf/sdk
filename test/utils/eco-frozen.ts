@@ -197,6 +197,7 @@ export function frozenScopeEco(ctx: SettlementContext): ScopedAction {
       'crossChainPermits: maxFeeBps must be an integer in [0, 10000)',
     )
   }
+  // Historical: the live builder now leaves the deadlines unpinned here.
   if (ctx.validUntil === undefined) {
     throw new SettlementLayerRefusal(
       'crossChainPermits: ECO_IE needs validUntil to bound how long an unfilled reward can stay locked',

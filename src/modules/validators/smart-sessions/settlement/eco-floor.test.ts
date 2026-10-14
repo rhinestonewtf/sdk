@@ -104,7 +104,6 @@ describe('scopeEco against the frozen builder', () => {
     ['no cap', { cap: undefined }],
     ['no maxFeeBps', { maxFeeBps: undefined }],
     ['a maxFeeBps of 10000', { maxFeeBps: 10_000 }],
-    ['no validUntil', { validUntil: undefined }],
     ['a short validUntil', { validUntil: NOW + 86_400n }],
     ['no account', { account: undefined }],
     ['two source tokens', { sourceTokens: [USDC_BASE, OTHER] }],

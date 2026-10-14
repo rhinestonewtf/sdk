@@ -80,6 +80,9 @@ export interface SettlementContext {
   readonly fromCaps?: readonly (bigint | undefined)[]
   /** `ECO_IE` only: the most of the cap the solver may keep, in basis points. */
   readonly maxFeeBps?: number
-  /** The permit's `validUntil`, in seconds. */
+  /**
+   * The session's earliest deadline, the permit's `validUntil` included, in
+   * seconds; without one `ECO_IE` pins no deadline.
+   */
   readonly validUntil?: bigint
 }

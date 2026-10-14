@@ -441,13 +441,23 @@ describe('multi-layer settlement permits', () => {
     ],
     [
       "maxFeeBps where 'all' drops ECO_IE",
-      { settlementLayers: 'all', maxFeeBps: 50 },
-      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil',
+      {
+        settlementLayers: 'all',
+        maxFeeBps: 50,
+        validUntil: new Date(Date.now() + 86_400_000),
+      },
+      'maxFeeBps asks for ECO_IE, which cannot settle this permit: ECO_IE needs validUntil at least 7 days ahead',
     ],
   ] as const)('refuses %s', (_, permit, message) => {
     expect(() => scope(permit as Partial<CrossChainPermissionInput>)).toThrow(
       message,
     )
+  })
+
+  test("'all' keeps ECO_IE without validUntil", () => {
+    expect(
+      scope({ settlementLayers: 'all', maxFeeBps: 50 }).settlementLayers,
+    ).toContain('ECO_IE')
   })
 
   test('allowFees joins the paymaster to the shared approve', () => {

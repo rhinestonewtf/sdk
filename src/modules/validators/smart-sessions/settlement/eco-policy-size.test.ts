@@ -241,7 +241,7 @@ function sameAccountOutflow(legacy: ScopedAction, calldata: Hex): boolean {
  * bytes as given, the destination re-encodes the decoded `Route`, so a route
  * that is not the canonical encoding of any `Route` never matches, and a
  * canonical one whose fill reverts never lands either. Its reward only refunds
- * to the pinned creator after the pinned deadline — what a route deadline in
+ * to the pinned creator after the reward deadline — what a route deadline in
  * the past, which the policy has always admitted, already does.
  */
 function unfillable(calldata: Hex): boolean {
