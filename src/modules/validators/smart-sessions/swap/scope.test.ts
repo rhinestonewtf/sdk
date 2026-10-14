@@ -37,7 +37,7 @@ const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
 const PLASMA = 9745
-const TYCHO_PLASMA: Address = '0x8f9b3b0451efff0ae8100428aee35fa3cbc0b769'
+const TYCHO_PLASMA: Address = '0x0953c7e23b44259e5e5630e9b97c31d7278c4c85'
 
 function scope(overrides: Partial<SwapScopeInput> = {}): SwapScopeInput {
   return {
@@ -142,11 +142,13 @@ describe('resolveSwapScope — fynd', () => {
     expect(actions).toHaveLength(3)
     const direct = actions.find((a) => a.target.toLowerCase() === TYCHO_PLASMA)!
     expect(direct).toBeDefined()
-    expect(direct.selector).toBe('0xce25e49e')
+    expect(direct.selector).toBe('0x0c1a0ee7')
     const rules = rulesOf(direct)
     expect(ruleAt(rules, 32n)?.referenceValue).toBe(USDT0) // tokenIn
     expect(ruleAt(rules, 64n)?.referenceValue).toBe(USDC) // tokenOut
-    expect(ruleAt(rules, 128n)?.referenceValue).toBe(ACCOUNT) // receiver
+    expect(ruleAt(rules, 160n)?.referenceValue).toBe(ACCOUNT) // receiver
+    // 128 is minAmountOut; the receiver pin must not have stayed there.
+    expect(ruleAt(rules, 128n)).toBeUndefined()
   })
 
   test('approves the router for the direct pull and the proxy for the wrapped one', () => {
@@ -415,7 +417,7 @@ describe('the wrapped route pins the aggregator call it forwards', () => {
   test('fynd: the nested swap cannot retarget its tokens or receiver', () => {
     // Pinning calls[1].target to the Tycho router still leaves the swap it
     // performs free to name any tokens and send the output anywhere. Offsets
-    // verified against production calldata.
+    // checked against encoded calldata in offsets.test.ts.
     const { actions } = resolveSwapScope(scope({ via: [fynd()] }), PLASMA)
     const wrapped = actions.filter(
       (a) => a.target.toLowerCase() === SWAPPER_PLASMA.toLowerCase(),
@@ -426,7 +428,9 @@ describe('the wrapped route pins the aggregator call it forwards', () => {
       expect(ruleAt(rules, 740n)?.referenceValue).toBe(USDT0) // tokenIn
       expect(ruleAt(rules, 772n)?.referenceValue).toBe(USDC) // tokenOut
       // The Swapper collects the output and forwards it to the scope recipient.
-      expect(ruleAt(rules, 836n)?.referenceValue).toBe(SWAPPER_PLASMA)
+      expect(ruleAt(rules, 868n)?.referenceValue).toBe(SWAPPER_PLASMA)
+      // 836 is the nested minAmountOut, which nothing pins.
+      expect(ruleAt(rules, 836n)).toBeUndefined()
     }
   })
 })
@@ -716,7 +720,7 @@ describe('swap scope through toSession', () => {
 // values against the real on-chain signatures.
 describe('venue ABIs derive the on-chain selectors', () => {
   test('fynd singleSwap selector matches the deployed TychoRouter', () => {
-    expect(FYND_SWAP_SELECTOR).toBe('0xce25e49e')
+    expect(FYND_SWAP_SELECTOR).toBe('0x0c1a0ee7')
   })
 
   test('0x AllowanceHolder exec selector matches the deployed contract', () => {
@@ -732,8 +736,9 @@ describe('venue ABIs derive the on-chain selectors', () => {
       amountIn: 0n,
       tokenIn: 32n,
       tokenOut: 64n,
-      minAmountOut: 96n,
-      receiver: 128n,
+      expectedAmountOut: 96n,
+      minAmountOut: 128n,
+      receiver: 160n,
     })
   })
 
@@ -742,8 +747,8 @@ describe('venue ABIs derive the on-chain selectors', () => {
       tychoRouterAbi as unknown as Abi,
       'singleSwap',
     )
-    expect(offsets.permit).toBeUndefined()
-    expect(offsets.swap).toBeUndefined()
+    expect(offsets.clientFeeParams).toBeUndefined()
+    expect(offsets.swapData).toBeUndefined()
   })
 
   test('0x exec head offsets are the four static words', () => {
