@@ -7,6 +7,7 @@ import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { getSessionData } from './digest'
 import { CONSUME_FOR_SELECTOR, CONSUME_SELECTOR } from './one-time-use'
+import { TIME_FRAME_POLICY_ADDRESS } from './policies/addresses'
 import { resolveSessionData, toSession } from './resolve'
 import type { CrossChainPermissionInput, SessionDefinition } from './types'
 
@@ -246,8 +247,6 @@ describe('resolveSessionData — one-time-use session', () => {
   })
 
   test.each([
-    { mode: 'unrestricted', validUntil: new Date('2030-01-01') },
-    { mode: 'unrestricted', validAfter: new Date('2020-01-01') },
     {
       mode: 'scoped',
       allowedContents: [
@@ -259,8 +258,9 @@ describe('resolveSessionData — one-time-use session', () => {
       ],
       validUntil: new Date('2030-01-01'),
     },
+    { mode: 'disabled' },
   ] as const)(
-    'rejects any explicit signing with claim policies, whose replaced 1271 list would drop it',
+    'rejects a signing mode that rewrites the content gate the claim policy is reached through',
     (signing) => {
       expect(() =>
         resolveSessionData({
@@ -276,21 +276,47 @@ describe('resolveSessionData — one-time-use session', () => {
   )
 
   test.each([
+    { signing: { mode: 'unrestricted', validUntil: new Date('2030-01-01') } },
+    { signing: { mode: 'unrestricted', validAfter: new Date('2020-01-01') } },
+  ] as const)(
+    'keeps a signing validity window with claim policies',
+    ({ signing }) => {
+      const policies = resolveSessionData({
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+        oneTimeUse: { id: 42n },
+        signing,
+        policyAddresses: { oneTimeUseId: POLICY },
+      }).erc7739Policies.erc1271Policies
+
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        TIME_FRAME_POLICY_ADDRESS,
+        POLICY,
+      ])
+    },
+  )
+
+  test.each([
     { mode: 'unrestricted' },
     { mode: 'unrestricted', validUntil: undefined },
   ] as const)(
-    'rejects a signing mode even without a validity window, with claim policies (%o)',
+    'drops a windowless signing policy with claim policies (%o)',
     (signing) => {
-      expect(() =>
-        resolveSessionData({
-          chain: base,
-          owners,
-          claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
-          oneTimeUse: { id: 42n },
-          signing,
-          policyAddresses: { oneTimeUseId: POLICY },
-        }),
-      ).toThrow(/cannot also be configured/)
+      const policies = resolveSessionData({
+        chain: base,
+        owners,
+        claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+        oneTimeUse: { id: 42n },
+        signing,
+        policyAddresses: { oneTimeUseId: POLICY },
+      }).erc7739Policies.erc1271Policies
+
+      expect(policies.map(({ policy }) => policy)).toEqual([
+        PERMIT2_CLAIM_POLICY_ADDRESS,
+        POLICY,
+      ])
     },
   )
 
