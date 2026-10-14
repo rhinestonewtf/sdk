@@ -4,6 +4,8 @@ import type { Call } from '../../calls/types'
 import { isHyperCoreWireId } from '../../chains/caip2'
 import type { EvmChainReference } from '../../chains/types'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
+import { buildOneTimeUseBurnOp } from '../../modules/validators/smart-sessions/one-time-use'
+import { assertOneTimeUseIdPolicyDeployed } from '../../modules/validators/smart-sessions/policies/addresses'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
@@ -17,6 +19,7 @@ export interface PreparedIntentSessions {
   readonly mockSignatures: Readonly<Record<string, Hex>>
   /** Session-enable pre-claim calls, run on the source chain before any others. */
   readonly preClaimCalls: readonly Call[]
+  readonly destinationBurn?: Call
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -29,7 +32,12 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
 }): Promise<PreparedIntentSessions | undefined> {
   const selection = input.intent.signers
   if (!selection || selection.kind !== 'smart-session') return undefined
-  const chains = sessionChains(input.intent)
+  const chains = sessionChains(input.intent, input.runtime.identity.address)
+  for (const chain of chains) {
+    const once = selection.byChain[chain.id]?.session.oneTimeUse
+    if (once?.defaultPolicy)
+      assertOneTimeUseIdPolicyDeployed(once.policy, chain.id)
+  }
   const resolvedEntries = await Promise.all(
     chains.map(async (chain) => {
       const selected = selection.byChain[chain.id]
@@ -51,7 +59,9 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
         throw new Error(`Session state for chain ${chain.id} is missing`)
       }
       const verifyExecutions =
-        !enabled.enabled || selected.session.hasExplicitPermissions
+        !enabled.enabled ||
+        selected.session.hasExplicitPermissions ||
+        Boolean(selected.session.oneTimeUse)
       return [
         chain.id,
         {
@@ -66,6 +76,34 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     }),
   )
   const byChain = Object.fromEntries(resolvedEntries)
+  const forbidsPreClaim = (resolved: ResolvedSessionSignerSet) =>
+    resolved.session.claimPolicies.some(({ originOps }) =>
+      originOps?.some(
+        ({ chain, required }) =>
+          !required && chain.id === resolved.session.chain.id,
+      ),
+    )
+  if (
+    !input.intent.source &&
+    resolvedEntries.some(
+      ([, resolved]) =>
+        resolved.session.oneTimeUse || forbidsPreClaim(resolved),
+    )
+  ) {
+    throw new Error(
+      'This smart session requires an explicit source for its oneTimeUse burn or pre-claim restrictions',
+    )
+  }
+  const origin = input.intent.source && byChain[input.intent.source.chain.id]
+  if (
+    origin &&
+    forbidsPreClaim(origin) &&
+    (origin.enableData || input.intent.source?.calls?.length)
+  ) {
+    throw new Error(
+      'The session claim may not carry pre-claim calls: enable it first and omit source calls',
+    )
+  }
   const mockSignatures = Object.fromEntries(
     resolvedEntries.map(([chainId, resolved]) => [
       String(chainId),
@@ -88,8 +126,10 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   const enablingChain = input.intent.source?.chain ?? input.intent.destination
   const enabling =
     enablingChain.kind === 'evm' ? byChain[enablingChain.id] : undefined
-  const preClaimCalls: readonly Call[] =
-    enabling?.verifyExecutions && enabling.enableData
+  const sourceBurn = origin && oneTimeUseBurnCall(origin)
+  const preClaimCalls: readonly Call[] = sourceBurn
+    ? [sourceBurn]
+    : enabling?.verifyExecutions && enabling.enableData
       ? [
           {
             target: DUMMY_PRECLAIMOP_TARGET,
@@ -98,7 +138,18 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
           },
         ]
       : []
+  const destinationSession =
+    input.intent.destination.kind === 'evm'
+      ? byChain[input.intent.destination.id]
+      : undefined
+  const destinationBurn =
+    destinationSession &&
+    input.intent.destination.kind === 'evm' &&
+    input.intent.source?.chain.id !== input.intent.destination.id
+      ? oneTimeUseBurnCall(destinationSession)
+      : undefined
   return {
+    ...(destinationBurn ? { destinationBurn } : {}),
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
       ? 5
       : 1,
@@ -108,23 +159,30 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   }
 }
 
-// Chains a smart-session intent needs an enabled session on: the source, plus
-// the destination when the user's own account executes there.
-//
-// A HyperCore venue is excluded for the same reason it cannot host the account
-// runtime: it is EVM-ADDRESSED but virtual, so there is no account there to enable
-// a session on, and requiring one would demand a session on chain 1337001/1337002
-// that can never exist. Delivery is solver-mediated anyway — the orchestrator
-// builds the `depositFor` credit and the recipient never executes — so there is no
-// destination-side authorization for a session to grant (RHI-5510).
+// The orchestrator stamps the Permit2 witness; executor settlement ignores it.
+function oneTimeUseBurnCall(
+  resolved: ResolvedSessionSignerSet,
+): Call | undefined {
+  if (!resolved.session.oneTimeUse) return undefined
+  const op = buildOneTimeUseBurnOp({
+    ...resolved.session.oneTimeUse,
+    route: 'permit2',
+  })
+  return { target: op.to, value: op.value, data: op.data }
+}
+
+// Virtual venues and other recipients do not host this account's session.
 function sessionChains<CompatibilityConfig>(
   intent: IntentInput<CompatibilityConfig>,
+  account: string,
 ): readonly EvmChainReference[] {
   const chains = new Map<number, EvmChainReference>()
   if (intent.source) chains.set(intent.source.chain.id, intent.source.chain)
   if (
     intent.destination.kind === 'evm' &&
-    !isHyperCoreWireId(intent.destination.id)
+    !isHyperCoreWireId(intent.destination.id) &&
+    (!intent.recipient ||
+      intent.recipient.address.toLowerCase() === account.toLowerCase())
   ) {
     chains.set(intent.destination.id, intent.destination)
   }

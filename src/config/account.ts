@@ -38,6 +38,12 @@ import type {
   OpenPerpRequest,
 } from '../hypercore/types'
 import type { SwapVenueFor } from '../modules/validators/smart-sessions/swap/scope'
+import type {
+  DroppedSettlementLayer,
+  SessionAccess,
+  SettlementCoverage,
+  StableSwapFloor,
+} from '../modules/validators/smart-sessions/types'
 
 // Module type discriminator relocated verbatim from the legacy
 // `src/modules/common.ts` to preserve the exact published declaration closure.
@@ -271,37 +277,104 @@ interface Permit2ClaimPolicy {
   destinationTokens?: { chain: Chain; address: Address }[]
   /** Permitted recipients per destination chain (use `'any'` to allow all) */
   recipients?: { chain: Chain; address: Address | 'any' }[]
-  /** Enforce that the destination recipient is the smart account */
+  /**
+   * Enforce that the destination recipient is the smart account. The claim
+   * policy checks Permit2 claims only, so beside the session's wildcard
+   * fallback this holds for intents settled through `ACROSS`, not for those
+   * settled through an IntentExecutor layer.
+   */
   recipientIsAccount?: boolean
   /** Bounds for the Permit2 signature deadline */
   permitDeadline?: { min?: bigint; max?: bigint }
   /** Bounds for the mandate target fill deadline, per destination chain */
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
+  /** Whether a claim must (`true`) or may not (`false`) carry pre-claim calls, per origin chain */
+  originOps?: { chain: Chain; required: boolean }[]
 }
 
 /**
  * Settlement layers supported by the cross-chain session abstraction.
- * Each value maps to one or more Permit2 arbiter addresses from the SDK's
- * bundled arbiter allow-set — devs pick a layer, the SDK resolves it to the
- * on-chain arbiter whitelist.
  *
- * The set is intentionally narrower than the orchestrator's broader
- * `SettlementLayer` union (which also names intent-executor-backed
- * bridges like `CCTP`, `RHINO`, ...). Once the params-bearing
- * intent-executor policy lands in smart-sessions-v2 (see
- * `rhinestonewtf/smart-sessions-v2#46`), this union grows to cover those
- * layers via the same selector interface.
+ * - `SAME_CHAIN` and `ACROSS` settle through Permit2 arbiters from the SDK's
+ *   bundled allow-set. A smart account settles cross-chain through `ACROSS`,
+ *   so a Permit2-layer permit without `fallback` must name only `ACROSS`.
+ *   `ECO` is the retired Standard Eco arbiter and is refused: use `ECO_IE`.
+ * - `CCTP` (USDC), `OFT` (USDT0), `ECO_IE` (the USD stablecoins the
+ *   orchestrator serves for Eco), `SAME_CHAIN_IE` (a transfer, or a Rhinestone
+ *   Swapper swap, on the session's own chain) and `LZ` (USDC over Stargate or
+ *   CCTP) settle by the account executing the call. Naming any of them makes
+ *   the permit **settlement-scoped**: the session may only make those layers'
+ *   calls and their approve, with the `from` token, the `to` chains and
+ *   recipients, and `maxAmount` pinned in the calldata. Their addresses come
+ *   from `GET /chains`, so create these sessions with `sdk.createSession`.
+ *
+ *   A permit may name several of `CCTP`, `OFT`, `ECO_IE` and `LZ`, and each
+ *   must be able to settle it on the session's chain. `maxAmount` caps each
+ *   layer's call and is one budget across their approves, so an allowance the
+ *   account already gave one of their contracts can move more in total. `OFT`
+ *   and `LZ` cannot be combined, `SAME_CHAIN_IE` cannot be combined with
+ *   another layer, and `maxFeeBps` needs `ECO_IE`. A `to.minAmount` binds
+ *   every named layer. With `ECO_IE` among several layers, an intent
+ *   below Eco's floor may route through another layer, or fail if Eco is
+ *   picked.
+ *
+ *   Without `fallback`, such a permit may also name `ACROSS`. The session
+ *   then holds both surfaces: the layers' calls, and the ACROSS claim policy
+ *   bound as for an `ACROSS`-only permit. The recipient is pinned on every
+ *   route (a leg without one, to the account), and `approve(Permit2)` joins
+ *   the layers' approve, so what the session approves stays within one
+ *   `maxAmount` across all of them. Unlike the layers, the ACROSS route has
+ *   no per-call amount cap and no output floor: it is bounded by that
+ *   approve cap and by the claim policy's token,
+ *   chain and recipient, and an allowance the account already gave Permit2
+ *   is not counted against `maxAmount`. `ACROSS` cannot enforce
+ *   `to.minAmount` or `maxFeeBps`, and the layers cannot enforce
+ *   `fillDeadline`, so any of them is refused in such a permit.
+ *
+ *   `settlementLayers: 'all'` names `ACROSS` and every one of `CCTP`, `OFT`,
+ *   `ECO_IE` and `LZ` that can settle the permit on the session's chain,
+ *   fields included, and drops the rest into `settlementCoverage.dropped`
+ *   with the reason. `ACROSS` is dropped where a permit naming it is refused,
+ *   e.g. for a `to.minAmount`, `maxFeeBps`, a native token, or a reusable
+ *   session on a chain without Permit2SenderPolicy; with a `fillDeadline`, the
+ *   other layers are dropped instead. A `from` token no other layer serves
+ *   builds an ACROSS-only session. Kept or named beside the layers, ACROSS
+ *   has the bounds above, so for a `from` leg without its own `maxAmount`
+ *   nothing caps what it moves (`validateSession` warns with
+ *   `UNCAPPED_ACROSS_ROUTE`): set `maxAmount` on each `from`
+ *   leg, or name the other layers to leave it out. It never includes `SAME_CHAIN_IE`, is refused
+ *   when no layer qualifies, and refuses a dropped `ECO_IE` when `maxFeeBps`
+ *   is set. It resolves against `GET /chains` and the clock at creation, so
+ *   store the created session rather than rebuilding it from `'all'`. A
+ *   permit without `fallback` that names no layer gets `'all'`.
+ *
+ *   A settlement-scoped permit cannot be combined with `SAME_CHAIN`, nor
+ *   share a session with another permit. `OFT` and `LZ` require
+ *   `oneTimeUse`, since each send pays a native LayerZero fee that
+ *   `maxAmount` does not bound, and only
+ *   sponsored intents without an app fee settle through it unless it sets
+ *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
+ *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
+ *   {@link CrossChainPermissionInput.validUntil}).
  */
-type CrossChainSettlementLayer = 'SAME_CHAIN' | 'ECO' | 'ACROSS'
+type CrossChainSettlementLayer =
+  | 'SAME_CHAIN'
+  | 'ECO'
+  | 'ACROSS'
+  | 'CCTP'
+  | 'OFT'
+  | 'ECO_IE'
+  | 'SAME_CHAIN_IE'
+  | 'LZ'
 
 /**
  * A high-level permit that authorises a session key to move funds
  * between two chains via Permit2 arbiter settlement. The SDK expands
  * one `CrossChainPermit` into a {@link Permit2ClaimPolicy} (claim-side)
- * plus optional `SpendingLimitsPolicy` / `TimeFramePolicy`
- * entries on the fallback action — the claim policy itself doesn't
- * enforce amounts or expiry on-chain, so we lift those guarantees into
- * action-level policies that do.
+ * plus a capped `approve(Permit2, amount)` per `from` token. The claim
+ * policy itself doesn't check amounts, and the cap bounds only what the
+ * session approves: an allowance the account already holds for Permit2 is
+ * not bounded by it.
  *
  * Resolved from {@link CrossChainPermissionInput} by the SDK; consumers
  * normally set `SessionDefinition.crossChainPermits` with the input shape,
@@ -312,50 +385,118 @@ interface CrossChainPermit {
    * Allowed source legs: chain + token (+ optional max amount cap).
    * Omit for no source-token restriction (any token on any chain may be
    * pulled) — only the arbiter whitelist, deadline, and bridge-to-self
-   * flag then constrain the source side.
+   * flag then constrain the source side. On a Permit2-route permit,
+   * `maxAmount` with `fallback` requires `oneTimeUse`, and a native token
+   * is refused.
    */
   from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
   /**
    * Allowed destination legs: chain + token (+ optional recipient pin).
    * Omit for no destination-token restriction. Note `recipientIsAccount`
    * still constrains the destination recipient even when `to` is absent.
+   * With `fallback`, a recipient pin holds only for intents settled through
+   * `ACROSS` (see `allowRecipientNotAccount`).
    */
-  to?: { chain: Chain; token: Address; recipient?: Address | 'any' }[]
-  /** Upper bound on the permit deadline (Permit2 deadline) — unix seconds */
+  to?: ToLeg[]
+  /**
+   * Optional end of the permit's window — unix seconds. See
+   * {@link CrossChainPermissionInput}.
+   */
   validUntil?: bigint
-  /** Lower bound on the permit deadline — unix seconds */
+  /** Optional start of the permit's window — unix seconds. */
   validAfter?: bigint
   /** Per-destination fill-deadline windows — unix seconds */
   fillDeadline?: { chain: Chain; min?: bigint; max?: bigint }[]
   /**
    * Enforce bridge-to-self (the destination recipient must be the smart
    * account). Defaults to `true` when resolved from
-   * {@link CrossChainPermissionInput}.
+   * {@link CrossChainPermissionInput}. With `fallback`, it holds only for
+   * intents settled through `ACROSS` (see `allowRecipientNotAccount`).
    */
   recipientIsAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) for any supported layer — the SDK resolves to the union of
-   * every arbiter in its bundled allow-set.
-   *
-   * **Smart Session limitation:** the built-in `ECO` permission currently
-   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
-   * remain blocked by this allow-set until a route-aware claim policy can
-   * safely inspect their encoded delivery terms.
+   * `[]`) for `'all'`, or for `ACROSS` with `fallback`. See
+   * {@link CrossChainPermissionInput.settlementLayers}.
    */
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
+  /** `ECO_IE` only, and refused beside `ACROSS`. See {@link CrossChainPermissionInput.maxFeeBps}. */
+  maxFeeBps?: number
+  /** See {@link CrossChainPermissionInput.allowFees}. */
+  allowFees?: boolean
+  /** `ACROSS` only. See {@link CrossChainPermissionInput.preClaimOps}. */
+  preClaimOps?: 'none'
 }
 
 interface FromLeg {
   chain: Chain
   token: Address
+  /**
+   * Cap on what the session may move from this leg's token on its chain,
+   * across every route the permit settles through: it caps the sum of the
+   * session's approves of that token. With `oneTimeUse` that is one
+   * settlement; without it, a lifetime total shared by every intent the
+   * session signs, not a per-intent cap.
+   *
+   * Enabling the session again resets the budget, so `getSessionDetails`
+   * refuses to sign for such a session that is already enabled unless you
+   * pass `allowBudgetReset`. Disabling it and enabling it again also starts
+   * a fresh budget, by the owner's choice. Build the session once and store it: a
+   * definition using `'all'` or naming no layers resolves against
+   * `GET /chains` and the clock, so rebuilding it can give another
+   * permissionId, whose enable starts a new budget beside what the old
+   * session has left.
+   *
+   * It does not count the allowances the account already holds, which
+   * the session's routes can still spend: one the owner gave Permit2 or a
+   * bridge, or one another session left. For the cap to be the most the
+   * session can move, revoke those allowances for the token first. It does
+   * not count the `allowFees` calls either, which have caps of their own. On
+   * the wrapped native token, the native wrap is capped at `maxAmount` over
+   * the session's life as well, on a budget of its own.
+   * With `fallback` it requires `oneTimeUse`, and `preClaimOps: 'none'`
+   * refuses it.
+   */
   maxAmount?: bigint
 }
 
 interface ToLeg {
   chain: Chain
   token: Address
+  /**
+   * The recipient this leg must deliver to, or `'any'`. With `fallback`, the
+   * pin holds only for intents settled through `ACROSS` (see
+   * `allowRecipientNotAccount`).
+   */
   recipient?: Address | 'any'
+  /**
+   * `SAME_CHAIN_IE` swaps, `ECO_IE`, `OFT` and `LZ`: the least amount of
+   * `token` the swap, Eco route or OFT/Stargate send must deliver, in `token`'s
+   * smallest units. Required for a swap (with `maxAmount`), since the session
+   * key otherwise sets the swap's output bound; `maxAmount : minAmount` is the
+   * worst rate accepted.
+   *
+   * Every layer in the permit must enforce it: one that cannot (always `CCTP`)
+   * is refused when named and dropped under `'all'`. Where both tokens'
+   * decimals are served, a value outside half of to all of a `from` leg's
+   * `maxAmount` is refused as a units mistake.
+   *
+   * - `ECO_IE`: prices any pair of tokens served for `ECO_IE` and stands in for
+   *   `maxFeeBps` (given both, the higher floor applies). Without `maxFeeBps`,
+   *   every `from` leg must give the same `maxAmount`, and a `to` leg named
+   *   twice the same `minAmount`.
+   * - `OFT`: optional; floors the send's `minAmountLD`, so a smaller send is
+   *   refused. Both tokens need served, equal decimals; positive, at most
+   *   uint64.
+   * - `LZ`: optional, on a leg LZ reaches over Stargate; caps the pool's fee at
+   *   `amount sent − minAmount`. Refused at zero or above uint64, on a leg LZ
+   *   reaches over CCTP, beside a second `to` leg on the same chain, and unless
+   *   both tokens are served USD stablecoins with equal decimals.
+   *
+   * `OFT` and `LZ` quote with about 1% slippage, so set it to at most ~99% of
+   * the expected send or the session cannot settle it.
+   */
+  minAmount?: bigint
 }
 
 /**
@@ -363,8 +504,8 @@ interface ToLeg {
  * `SessionDefinition.crossChainPermits`; token fields are per-chain ERC-20
  * addresses (v2 no longer accepts symbols) and the SDK resolves `Date`s to
  * on-chain deadlines, then expands
- * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus optional
- * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
+ * each entry into a {@link Permit2ClaimPolicy} (claim-side) plus the capped
+ * Permit2 approve its settlement needs.
  */
 interface CrossChainPermissionInput {
   /**
@@ -372,41 +513,155 @@ interface CrossChainPermissionInput {
    * or an array for multi-leg permits. Omit for no source-token
    * restriction (any token on any chain may be pulled) — the arbiter
    * whitelist, deadline, and bridge-to-self flag still apply.
+   *
+   * On a Permit2 layer, each `from` token on the session's chain gets the
+   * `approve(Permit2, amount)` its settlement needs, capped at the largest
+   * `maxAmount` of its legs (uncapped if any leg sets none); with `fallback`
+   * it gets none, and the wildcard admits its approves. A Permit2-layer
+   * permit must name an ERC-20 `from` token on the session's chain unless the
+   * session sets `fallback`. A wrapped native `from` leg with a `maxAmount`
+   * also gets the wrapped native `deposit()`, its value capped at that amount,
+   * so native funds can be wrapped; the wrapped native address comes from
+   * the orchestrator's `GET /chains`, which `sdk.createSession` reads.
    */
   from?: FromLeg | FromLeg[]
   /**
    * Destination chain + token (+ optional recipient pin). Pass a single
    * leg or an array for fan-out destinations. Omit for no
    * destination-token restriction; `recipientIsAccount` still constrains
-   * the recipient.
+   * the recipient. On a Permit2 layer without `fallback`, a native token is
+   * refused: name the wrapped native token. With `fallback`, a recipient pin
+   * holds only for intents settled through `ACROSS` (see
+   * `allowRecipientNotAccount`).
    */
   to?: ToLeg | ToLeg[]
-  /** Upper bound on the permit deadline. */
+  /**
+   * Optional end (exclusive) of the permit's window, a future `Date`. Either
+   * end alone sets the window, a time-frame policy on every action the permit
+   * adds: its Permit2 approve, wrapped-native `deposit()`, fee calls and
+   * pre-claim action (with `fallback`, also the wildcard), or each
+   * IntentExecutor layer's calls and, without `oneTimeUse`, the pre-claim
+   * action. On a Permit2 layer the claim accepts a Permit2 deadline before
+   * it. Needs no `oneTimeUse`.
+   *
+   * For `ECO_IE` the earlier of this and `oneTimeUse.validUntil` must be at
+   * least 7 days ahead, and `ECO_IE` is usable only until it minus 7 days.
+   * Only when neither is set does an unfilled `ECO_IE` reward have no refund
+   * deadline.
+   */
   validUntil?: Date
-  /** Lower bound on the permit deadline. */
+  /**
+   * Optional start of the permit's window, earlier than `validUntil` and
+   * rounded up to a whole second. On a
+   * Permit2 layer it is also the earliest Permit2 deadline the claim accepts,
+   * and the window joins the session's ERC-1271 policies so no claim is
+   * signed before it opens (a `signing` window there is narrowed to both).
+   */
   validAfter?: Date
   /** Per-destination fill-deadline windows. */
   fillDeadline?: { chain: Chain; min?: Date; max?: Date }[]
   /**
    * Allow the destination recipient to differ from the smart account
-   * (the sponsor funding the cross-chain transfer). Defaults to
-   * `false`, which enforces bridge-to-self on-chain — the safer default
-   * since it prevents a compromised session key from routing funds to
-   * an attacker-controlled address. Set to `true` to opt out explicitly.
+   * (the sponsor funding the cross-chain transfer). Defaults to `false`,
+   * which enforces bridge-to-self on-chain, so the session key can only
+   * deliver to the account. Set to `true` to opt out explicitly.
+   *
+   * On a Permit2-layer permit the recipient (this default, or a `to` leg's
+   * `recipient`) is enforced by the Permit2 claim policy, which checks
+   * `ACROSS` claims. With `fallback` set, intents may also settle through
+   * IntentExecutor layers, whose calls the wildcard admits without reading
+   * their recipient: there the pin is not enforced. `validateSession` warns
+   * with `FALLBACK_RECIPIENT_PIN_ACROSS_ONLY`. For a recipient enforced on
+   * IntentExecutor layers, use a settlement-scoped permit (the recipient is
+   * pinned in the layer's calldata) without `fallback`.
    */
   allowRecipientNotAccount?: boolean
   /**
    * Settlement layers this session is permitted to use. Omit (or pass
-   * `[]`) to allow **any of the supported settlement layers** — the SDK
-   * resolves to the union of every arbiter in its bundled allow-set. Pass
-   * a subset (e.g. `['ECO']`) to narrow.
+   * `[]`) for `'all'`, which resolves against `GET /chains`: create the
+   * session with `sdk.createSession`, or pass `settlement` to `toSession`.
+   * With `fallback`, which `'all'` cannot share a session with, omitting it
+   * means `ACROSS`. Without `fallback`, the only Permit2 layer a permit may
+   * name is `ACROSS`, alone or beside IntentExecutor layers.
    *
-   * **Smart Session limitation:** the built-in `ECO` permission currently
-   * authorizes only the legacy Standard ECO arbiter. Eco solver-network routes
-   * remain blocked by this allow-set until a route-aware claim policy can
-   * safely inspect their encoded delivery terms.
+   * `CCTP`, `OFT`, `ECO_IE`, `SAME_CHAIN_IE` and `LZ` are IntentExecutor
+   * layers: naming them scopes the session to those layers' calls (and the
+   * ACROSS claim, when named too), and `'all'` to `ACROSS` and every bridging
+   * one that can settle the permit (see {@link CrossChainSettlementLayer}).
+   * Under `'all'` the ACROSS route has no per-call amount cap and no output
+   * floor, only the session's approve cap (`maxAmount`) and the claim's
+   * token, chain and recipient; name the layers
+   * to leave it out. `ECO`, the retired Permit2 Eco arbiter, is refused: use
+   * `ECO_IE`.
+   *
+   * Intents signed with the session offer the orchestrator only routes it
+   * admits: the layers kept, or `ACROSS` for a Permit2-layer permit. With
+   * `fallback`, they instead exclude only the Permit2 arbiters
+   * the permit does not name. An intent's own `settlementLayers` can only
+   * narrow this, and one that leaves no layer throws.
    */
-  settlementLayers?: CrossChainSettlementLayer[]
+  settlementLayers?: CrossChainSettlementLayer[] | 'all'
+  /**
+   * `ECO_IE` only: the solver keeps at most `maxFeeBps` of `maxAmount`, in basis
+   * points. The route must deliver at least `maxAmount × (1 − maxFeeBps / 10000)`,
+   * rescaled to the `to` token's decimals: a floor on the cap, not a fee on the
+   * reward actually sent. Without `oneTimeUse` that holds for every intent, so
+   * one smaller than the floor does not settle through `ECO_IE`, and the
+   * solvers keep at most `maxFeeBps` of `maxAmount` over the session's
+   * lifetime. `ACROSS` cannot enforce it, so a permit naming
+   * `ACROSS` refuses it and `'all'` leaves `ACROSS` out.
+   */
+  maxFeeBps?: number
+  /**
+   * Also let the session pay the intent's app fee (and a user-paid protocol
+   * fee) to the orchestrator's fee collector, and approve and call its
+   * paymaster for unsponsored gas. Defaults to `false`: an intent that carries
+   * an app fee or a protocol fee taken from the `from` token does not settle,
+   * nor, on IntentExecutor layers, one with unsponsored gas. On a Permit2
+   * layer it also needs a `from` token on the session's chain, even with
+   * `fallback: 'intentExecution'`, and cannot be combined with
+   * `preClaimOps: 'none'`. With `fallback: 'intentExecution'`, the paymaster
+   * approve is left to the wildcard: only the transfer and the callback are
+   * added. With `fallback: 'sudo'` it adds nothing: the wildcard admits every
+   * fee call.
+   *
+   * - Each fee call has its own cumulative cap of 5 USD (30 USD on Ethereum
+   *   mainnet), not one per session: the collector transfer and the paymaster
+   *   approve one per `from` token, the paymaster callback one shared across
+   *   tokens. So one token can pay up to about twice the cap (app fee plus
+   *   gas), and N tokens up to N times the cap of app fee.
+   * - Every `from` token on the session's chain must be one the orchestrator
+   *   serves for these layers (USD stablecoins today) and lists in
+   *   `settlement.usdStablecoins` with 6 or 18 decimals; the cap is scaled to
+   *   them. All `from` tokens on the chain must have the same decimals.
+   * - The fee addresses come from the orchestrator's `GET /chains`, so create
+   *   the session with `sdk.createSession`.
+   * - The orchestrator sizes the paymaster approve and callback at the refund
+   *   ceiling (about 1.8x the gas estimate) and the fee transfer at the full
+   *   fee. An intent whose ceiling or fee exceeds the remaining cap (e.g.
+   *   Ethereum mainnet gas at high prices, an app fee over the cap, or a reusable
+   *   session that has used its budget) is refused: it fails closed.
+   */
+  allowFees?: boolean
+  /**
+   * `ACROSS` only, alone or beside IntentExecutor layers: its claim may not
+   * carry pre-claim calls. A reusable
+   * scoped session does not need it on a chain with Permit2SenderPolicy (see
+   * `fallback`); elsewhere it is what bounds one. The session then settles
+   * only intents that need no pre-claim call: the account already holds
+   * enough Permit2 allowance for the `from` token, no fee is taken from it,
+   * and no native token is wrapped; one that needs a pre-claim call is
+   * refused before signing. Intents must list their
+   * `sourceChains`. It cannot be combined with `oneTimeUse`, whose burn is
+   * itself a pre-claim call, with `allowFees`, or with a `maxAmount`, which
+   * would not count the allowance its claims spend.
+   *
+   * The session must be enabled before its first intent, since an enable
+   * rides a pre-claim call: sign `account.getSessionDetails([session])` with
+   * `account.signEnableSession`, then send `enableSession` from
+   * `@rhinestone/sdk/actions/smart-sessions` as an owner-signed transaction.
+   */
+  preClaimOps?: 'none'
 }
 
 type Policy =
@@ -573,12 +828,19 @@ type PermissionFunctionConfig<TFn extends AbiFunction> = {
    */
   maxUses?: bigint
   /**
-   * Upper bound on `block.timestamp`. Pairs with `validAfter` into one
-   * `time-frame` policy. If only one of the two is set, the other defaults to
-   * "always passes" (validAfter=0 / validUntil=year-2100).
+   * Exclusive upper bound on `block.timestamp` for this function, a future
+   * `Date`. Pairs with `validAfter` into one `time-frame` policy. If only one
+   * of the two is set, the other defaults to "always passes" (validAfter=0 /
+   * validUntil=year-2100). While any action has a window, an ERC-1271 signing
+   * surface outside claim policies is bounded by the time they allow together.
+   * Under the default salt, see `ACTION_WINDOW_SHARED_PERMISSION_ID` on
+   * `saltMode`.
    */
   validUntil?: Date
-  /** Lower bound on `block.timestamp`. See `validUntil`. */
+  /**
+   * Lower bound on `block.timestamp`, rounded up to a whole second; earlier
+   * than `validUntil`.
+   */
   validAfter?: Date
 } & SpendingLimitField<TFn> &
   ValueLimitField<TFn>
@@ -612,11 +874,35 @@ type PermissionsForAbis<TAbis extends readonly Abi[]> = {
 interface SessionPolicyAddresses {
   sudo?: Address
   universalAction?: Address
+  /**
+   * Further deployments of the canonical UniversalActionPolicy bytecode on the
+   * session's chain, each distinct from every other policy address. An
+   * action's AND-only ArgPolicy is then installed as UniversalActionPolicy
+   * configs of up to 16 rules each, one per deployment, which can lower the
+   * storage written at enable; it stays an ArgPolicy when there are too few.
+   * `sdk.createSession` checks each copy holds `universalAction`'s code;
+   * `toSession` cannot. Not available with `saltMode: 'v1'`. Defaults to the
+   * three deployed copies for a session with an IntentExecutor-layer
+   * `crossChainPermits` entry on a chain that has them, unless
+   * `universalAction` is overridden; otherwise none. Set `[]` to opt out.
+   */
+  universalActionCopies?: readonly Address[]
   argPolicy?: Address
   spendingLimits?: Address
+  /**
+   * The TimeFramePolicy every window installs. The default holds a window on
+   * actions and ERC-1271 checks; on a chain where it is not deployed, an
+   * action window needs this set, and a `signing` window uses the previous
+   * deployment, `0x0000000000D30f611fA3bf652ac6879428586930`. That deployment
+   * holds a window on ERC-1271 checks only, so pass it only to rebuild a
+   * session enabled with it.
+   */
   timeFrame?: Address
   usageLimit?: Address
   valueLimit?: Address
+  // Used by `oneTimeUse` sessions. Defaults to the deployed OneTimeUseIdPolicy on
+  // chains that have one; required elsewhere.
+  oneTimeUseId?: Address
 }
 
 /** An EIP-712 domain and canonical schema that a scoped session may sign. */
@@ -755,6 +1041,51 @@ interface SwapScope<TChainId extends number = number> {
    * explicitly only for flows where the account calls a router directly.
    */
   via?: readonly SwapVenueFor<TChainId>[]
+  /**
+   * Opt-in rate floor for a stable-to-stable swap. The Swapper takes
+   * its output bound (`minAmountOut` / `amountOut`) from the caller and its
+   * `calls[]` route may call anything, so without this a session key can set
+   * that bound to zero and route the input away.
+   *
+   * On, every Swapper call must deliver at least
+   * `ceil(maxTotal × (1 − slippage))` of the buy token on exact-in, and
+   * `ceil(maxTotal ÷ (1 + slippage))` on exact-out (converted between the
+   * tokens' decimals), while selling at most `maxTotal`, so no call executes
+   * below floor/cap. `true` means 100 bps; pass `{ maxSlippageBps }` to choose.
+   * Total sell is bounded by the approve's cumulative spending limit
+   * (`maxTotal`) plus any allowance to the Swapper proxy that existed before
+   * the session; exact-in and exact-out keep separate swap counters.
+   *
+   * Requires one sell token, `sell.maxTotal`, both tokens among the USD
+   * stablecoins the orchestrator serves for the chain (`/chains`
+   * `settlement.usdStablecoins`, so create the session with
+   * `sdk.createSession`), and the Rhinestone Swapper as the only venue — a
+   * direct aggregator call would bypass the floor. It also refuses `signing`,
+   * `crossChainPermits`, `claimPolicies` and any other action on the sell
+   * token, Permit2 or the Swapper, and salts the session so it never shares a
+   * permissionId with an unfloored one. An action on another contract that
+   * already holds an allowance on the sell token is not checked.
+   *
+   * The floor is absolute, not proportional: a swap much smaller than
+   * `maxTotal` cannot meet it. In practice the session is single-use — after
+   * one full swap the remaining cap is below the floor.
+   */
+  stableFloor?: StableSwapFloor
+  /**
+   * Optional end (exclusive) of the swap window, a future `Date`. Either end
+   * alone sets the window, a time-frame policy on every action the scope adds
+   * (each sell token's approve and each venue's swap call), so the session
+   * swaps only inside it. Other actions in the session are not windowed, and
+   * an allowance granted inside the window stays. A `crossChainPermits`
+   * window covers only the permit's actions. A windowed scope is salted as in
+   * `saltMode: 'strict'`, unless `saltMode` is `'v1'`.
+   */
+  validUntil?: Date
+  /**
+   * Optional start of the swap window, earlier than `validUntil` and rounded
+   * up to a whole second.
+   */
+  validAfter?: Date
 }
 
 interface SessionDefinition<
@@ -764,18 +1095,37 @@ interface SessionDefinition<
   chain: TChain
   /**
    * Venue-scoped swap permissions. See {@link SwapScope}. Implies
-   * `restrictToActions`, and is mutually exclusive with
-   * `crossChainPermits`/`claimPolicies`.
+   * `restrictToActions`, and is mutually exclusive with `claimPolicies` and
+   * `fallback`.
    */
   swap?: SwapScope<TChain['id']>
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
+  /**
+   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
+   * expands to this plus a `maxAmount` spending limit (with `oneTimeUse`), takes
+   * `Date`s rather than raw deadlines, and defaults to bridge-to-self
+   * (`allowRecipientNotAccount: false`) rather than leaving the recipient open.
+   *
+   * It also picks the enforcement surface per settlement layer: a Permit2
+   * arbiter layer compiles to this claim policy, while an IntentExecutor layer
+   * compiles to argument-pinned actions instead — a claim policy does not bind
+   * an IntentExecutor route at all.
+   *
+   * Still exported as a low-level escape hatch: it is the only way to pin
+   * `spenders` to an arbiter outside the SDK's bundled allow-set.
+   */
   claimPolicies?: readonly Permit2ClaimPolicy[]
   /**
    * Cross-chain permits expanded by the SDK into matching
-   * {@link Permit2ClaimPolicy} (claim-side) plus action-level
-   * `SpendingLimitsPolicy` / `TimeFramePolicy` guardrails.
-   * See {@link CrossChainPermissionInput}.
+   * {@link Permit2ClaimPolicy} (claim-side) plus the scoped actions their
+   * settlement needs. A session holding one is scoped to those actions (see
+   * `fallback`).
+   * See {@link CrossChainPermissionInput}. A permit naming `CCTP`, `OFT`,
+   * `ECO_IE` or `LZ` needs `sdk.createSession`, which supplies the addresses
+   * it pins from the orchestrator's `GET /chains`. To see every refusal at
+   * once, each with a stable `code`, call `sdk.validateSession`
+   * (or `validateSession` from `@rhinestone/sdk/smart-sessions`).
    */
   crossChainPermits?: readonly CrossChainPermissionInput[]
   /**
@@ -787,10 +1137,42 @@ interface SessionDefinition<
    * Drop the wildcard intent-execution fallback so the session's explicit
    * permissions/actions are the ONLY ops it can run — any other (target,
    * selector) reverts. Requires at least one permission or action, and is
-   * mutually exclusive with `crossChainPermits`/`claimPolicies` (which rely on
-   * the fallback for their guardrails).
+   * mutually exclusive with `claimPolicies` (which rely on the fallback for
+   * their guardrails) and with `fallback`. A session with `crossChainPermits`
+   * is already scoped unless it sets `fallback`.
    */
   restrictToActions?: boolean
+  /**
+   * Add a wildcard action to a session holding a Permit2-layer
+   * `crossChainPermits` entry. Without it, such a session is scoped to the
+   * calls its settlement needs. Without `oneTimeUse` or the permit's
+   * `preClaimOps: 'none'`, its ERC-1271 list also gets Permit2SenderPolicy,
+   * which accepts a claim signature only when Permit2 presents it, so its
+   * pre-claim calls are checked as executions. On a chain without that policy
+   * such a session is refused with `PERMIT2_ROUTE_NEEDS_BOUND`.
+   *
+   * - `'intentExecution'`: the session key may also make the calls
+   *   Rhinestone's intent-execution policy admits, with the permit's
+   *   `maxAmount` (which then needs `oneTimeUse`) as a spending limit.
+   *   That policy is set by Rhinestone and
+   *   may admit more over time.
+   * - `'sudo'`: the session key may call any contract, any function, with any
+   *   arguments and native value.
+   *
+   * Either one reports `access.kind: 'open'`, admits a permit without `from`,
+   * one naming `SAME_CHAIN` or one with a native `to` token, and leaves
+   * intents free to take routes other than `ACROSS` and to fund them from any
+   * asset. A scoped session settles cross-chain intents only (or, with
+   * `swap`, same-chain intents funded from its sell tokens), and a
+   * destination call or leftover sweep on the destination chain needs the
+   * destination session to declare those actions or set a fallback. Refused with `FALLBACK_NOT_APPLICABLE` on a session
+   * without a Permit2-layer permit, and with `restrictToActions` or `swap`.
+   *
+   * A recipient pin (`allowRecipientNotAccount: false`, the default, or a `to`
+   * leg's `recipient`) then holds only for intents settled through `ACROSS`;
+   * see `allowRecipientNotAccount`.
+   */
+  fallback?: 'intentExecution' | 'sudo'
   /**
    * Configure ERC-1271 signing. Omission is unrestricted for backwards
    * compatibility; use `disabled` to remove signing capability explicitly.
@@ -825,9 +1207,43 @@ interface SessionDefinition<
    *
    * Opt-in: anything other than `'none'` moves the permissionId and digest, so
    * an existing session's stored signature no longer covers it. Unrestricted
-   * sessions stay on `zeroHash` in every mode.
+   * sessions stay on `zeroHash` in every mode, except a `oneTimeUse` session.
+   * A settlement-scoped session (a `crossChainPermits` entry naming an
+   * IntentExecutor layer) is always salted as in `'strict'`; `'v1'` is rejected.
+   * So is a `swap` scope with a window, unless `saltMode` is `'v1'`.
+   *
+   * An intent sends no enable data for a permissionId already enabled, so on
+   * `zeroHash` an action window, like the session's other policies, may not
+   * be installed when an intent enables the session. Use `'strict'` or a
+   * fresh session key (`validateSession` warns with
+   * `ACTION_WINDOW_SHARED_PERMISSION_ID`).
    */
   saltMode?: 'none' | 'v1' | 'strict'
+  /**
+   * Pins a one-time-use id on the session: the session settles at most
+   * once per chain. Uses the deployed OneTimeUseIdPolicy for the session's chain
+   * and contracts environment; on a chain without one, resolving the session
+   * throws unless `policyAddresses.oneTimeUseId` is set, and so does preparing an
+   * intent that uses the default on a chain without it. Use a fresh random id
+   * per session. Every intent the SDK prepares for the session burns the id first
+   * on each chain it settles on; the policy refuses any settlement that does not.
+   * Intents must name an explicit source. A Permit2-route session needs a
+   * claim policy pinning its arbiters, normally compiled from `crossChainPermits`;
+   * without one it has no signing surface and a `signing` mode is rejected.
+   * `validUntil` (a future Date; omit for never) bounds when the id can be
+   * spent, and so every action in the session. Windows on permission
+   * functions, raw `time-frame` actions, a `swap` scope or
+   * `crossChainPermits` entries are their own time-frame policies and do not
+   * change it.
+   * Always salted as in `'strict'`; `saltMode: 'v1'` is rejected.
+   */
+  oneTimeUse?: { id: bigint; validUntil?: Date }
+  /**
+   * The account this session is for. Required when a `CCTP` cross-chain permit
+   * leaves its recipient as the account (the default), since the pin is a
+   * literal address in the bridge call.
+   */
+  account?: Address
 }
 
 type SessionInput<TAbis extends readonly Abi[] = readonly Abi[]> = Omit<
@@ -870,6 +1286,46 @@ interface Session {
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
   swap?: SwapScope
+  /** The layers the session's cross-chain permit settles through. For a
+   *  settlement-scoped permit, the layers kept, `ACROSS` included
+   *  (`SAME_CHAIN_IE` adds no bridge filter); for a scoped Permit2 permit,
+   *  `['ACROSS']`, which intents are limited to. With `fallback`, the Permit2 layers the permit lists
+   *  (absent when it lists none), and intents exclude only the Permit2
+   *  arbiters it does not name. Metadata only. */
+  settlementLayers?: readonly CrossChainSettlementLayer[]
+  /** The layers `settlementLayers: 'all'` left out of a settlement-scoped permit
+   *  on the session's chain, each with the refusal that dropped it; the kept
+   *  ones are in `settlementLayers`. Metadata only — it does not change the
+   *  permission id. Absent on sessions without such a permit and on sessions
+   *  stored before this field existed. */
+  settlementCoverage?: SettlementCoverage
+  /** A scoped Permit2-route session's `from` tokens per chain, each with the
+   *  largest `maxAmount` of its legs (none if one leg sets none). Intents
+   *  signed with the session take them as their source assets, capped at that
+   *  amount: on a reusable session the whole lifetime cap, not what is left,
+   *  which the chain enforces. Metadata only — it does not change the
+   *  permission id. */
+  permit2Sources?: readonly {
+    readonly chain: Chain
+    readonly token: Address
+    readonly maxAmount?: bigint
+  }[]
+  /** Whether the session's key is held to its own actions (`'scoped'`) or keeps
+   *  the wildcard fallback action (`'open'`), with a human-readable reason that
+   *  is not a stable contract. Metadata only — it does not change the
+   *  permission id. Absent on sessions stored before this field existed. */
+  access?: SessionAccess
+  /** Set on a session without `oneTimeUse` whose `crossChainPermits` entry
+   *  sets `maxAmount` on its chain, making it a lifetime budget. Enabling
+   *  the session again resets that budget, so `getSessionDetails` refuses one
+   *  that is already enabled unless you pass `allowBudgetReset`; it finds the
+   *  budget in the session's actions too, so a stored session without this
+   *  field is still checked, as is a hand-written rule of the same cap shape.
+   *  Metadata only — it does not change the
+   *  permission id. */
+  lifetimeBudget?: true
+  /** A one-time-use session's id and policy; each intent burns the id. */
+  oneTimeUse?: { readonly id: bigint; readonly policy: Address }
 }
 
 interface ModuleInput {
@@ -1779,6 +2235,10 @@ export type {
   CrossChainPermissionInput,
   CrossChainPermit,
   CrossChainSettlementLayer,
+  DroppedSettlementLayer,
+  SessionAccess,
+  SettlementCoverage,
+  StableSwapFloor,
   ENSValidatorConfig,
   EoaAccount,
   EvmAccountConfig,

@@ -350,6 +350,204 @@ describe('intent workflow', () => {
     ])
   })
 
+  test.each([false, true])(
+    'fallback stays in verify-execution mode with enabled=%s',
+    async (enabled) => {
+      const session = toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+        fallback: 'intentExecution',
+        account: address,
+        crossChainPermits: [
+          {
+            from: { chain: mainnet, token: address },
+            to: { chain: arbitrum, token: address },
+            settlementLayers: ['ACROSS'],
+          },
+        ],
+      })
+      const read = vi.fn(async (checkpoint: { id: string }) => [
+        { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+      ])
+      const prepared = await prepareIntent(context({ checkpoints: { read } }), {
+        ...input,
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      })
+      expect(prepared.request.account.evm?.signatureMode).toBe(5)
+      expect(prepared.resolvedSessions?.[1]?.verifyExecutions).toBe(true)
+    },
+  )
+
+  test('NO_OPS session refuses user origin operations before quoting', async () => {
+    const session = {
+      ...toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+      }),
+      claimPolicies: [
+        {
+          type: 'permit2' as const,
+          originOps: [{ chain: mainnet, required: false }],
+        },
+      ],
+    }
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: true },
+    ])
+    const workflow = context({ checkpoints: { read } })
+    await expect(
+      prepareIntent(workflow, {
+        ...input,
+        source: {
+          chain,
+          token: address,
+          calls: [{ call: { target: address, value: 0n, data: '0x' } }],
+        },
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      }),
+    ).rejects.toThrow('may not carry pre-claim calls')
+    expect(workflow.quoteClient.createQuote).not.toHaveBeenCalled()
+  })
+
+  test.each([false, true])(
+    'burns an once session before user calls with enabled=%s and deduplicates the same-chain burn',
+    async (enabled) => {
+      const session = {
+        ...toSession({
+          chain: mainnet,
+          owners: { type: 'ecdsa', accounts: [account] },
+        }),
+        oneTimeUse: { id: 17n, policy: address },
+      }
+      const read = vi.fn(async (checkpoint: { id: string }) => [
+        { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+      ])
+      const workflow = context({ checkpoints: { read } })
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        calls: [{ target: address, value: 2n, data: '0x22' }],
+        source: {
+          chain,
+          token: address,
+          calls: [{ call: { target: address, value: 9n, data: '0x99' } }],
+        },
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      })
+      expect(prepared.request.account.evm?.signatureMode).toBe(5)
+      expect(prepared.request.source?.execution?.calls).toMatchObject([
+        { to: address, value: 0n, data: expect.stringMatching(/^0x/u) },
+        { to: address, value: 9n, data: '0x99' },
+      ])
+      expect(prepared.request.source?.execution?.calls).toHaveLength(2)
+      expect(prepared.request.destination).toMatchObject({
+        execution: { calls: [{ value: 2n, data: '0x22' }] },
+      })
+      expect(prepared.intentInput.source?.execution?.calls).toHaveLength(2)
+    },
+  )
+
+  test('adds a separate destination burn before its user calls', async () => {
+    const sessionOn = (chain: typeof mainnet | typeof arbitrum) => ({
+      ...toSession({ chain, owners: { type: 'ecdsa', accounts: [account] } }),
+      oneTimeUse: { id: 17n, policy: address },
+    })
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: true },
+    ])
+    const prepared = await prepareIntent(context({ checkpoints: { read } }), {
+      ...input,
+      destination: toEvmChainReference(arbitrum.id),
+      calls: [{ target: address, value: 2n, data: '0x22' }],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: { session: sessionOn(mainnet) },
+          [arbitrum.id]: { session: sessionOn(arbitrum) },
+        },
+      },
+    })
+    expect(prepared.request.destination).toMatchObject({
+      execution: {
+        calls: [
+          { to: address, value: 0n },
+          { value: 2n, data: '0x22' },
+        ],
+      },
+    })
+  })
+
+  test('delivery to another account requires no destination session or burn', async () => {
+    const session = {
+      ...toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+      }),
+      oneTimeUse: { id: 17n, policy: address },
+    }
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: true },
+    ])
+    const prepared = await prepareIntent(context({ checkpoints: { read } }), {
+      ...input,
+      destination: toEvmChainReference(arbitrum.id),
+      calls: [],
+      recipient: {
+        kind: 'bare',
+        address: '0x0000000000000000000000000000000000000099',
+      },
+      signers: { kind: 'smart-session', byChain: { 1: { session } } },
+    })
+    expect(Object.keys(prepared.resolvedSessions ?? {})).toEqual(['1'])
+    expect(prepared.request.destination).not.toHaveProperty('execution')
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  test('refuses incompatible explicit funding before quoting', async () => {
+    const session = {
+      ...toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+      }),
+      permit2Sources: [
+        {
+          chain: mainnet,
+          token: '0x0000000000000000000000000000000000000099' as const,
+        },
+      ],
+    }
+    const workflow = context()
+    await expect(
+      prepareIntent(workflow, {
+        ...input,
+        destination: toEvmChainReference(arbitrum.id),
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      }),
+    ).rejects.toThrow('funding scope')
+    expect(workflow.quoteClient.createQuote).not.toHaveBeenCalled()
+  })
+
+  test('refuses source-free once execution before quoting even if enabled', async () => {
+    const session = {
+      ...toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+      }),
+      oneTimeUse: { id: 17n, policy: address },
+    }
+    const read = vi.fn(async (checkpoint: { id: string }) => [
+      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: true },
+    ])
+    const workflow = context({ checkpoints: { read } })
+    await expect(
+      prepareIntent(workflow, {
+        destination: chain,
+        calls: [],
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
+      }),
+    ).rejects.toThrow('explicit source')
+    expect(workflow.quoteClient.createQuote).not.toHaveBeenCalled()
+  })
+
   test('refuses a source-free intent whose session needs enabling, before quoting', async () => {
     const session = toSession({
       chain: mainnet,

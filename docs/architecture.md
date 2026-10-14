@@ -329,6 +329,35 @@ every restore path checks that version before it reads the persisted
 transaction, so an artifact from an earlier SDK generation fails with
 `InvalidPreparedTransactionError` instead of being reinterpreted.
 
+## Smart Sessions
+
+`api/queries/session.ts` supplies RPC and the served settlement catalog to the
+pure compiler. `sdk.createSession` checks UniversalActionPolicy copies against
+canonical bytecode, then loads `/chains` for wrapped-native and settlement
+addresses. `sdk.validateSession` follows the same reads, collecting stable
+refusal codes, warnings, access and coverage; transport failures still throw.
+Standalone `/smart-sessions` `toSession` and `validateSession` take optional
+`settlement` and `wrappedNativeToken` inputs and never perform those reads.
+
+Scoped cross-chain permits default to all enforceable layers; explicit lists
+refuse unsupported layers, while `all` reports dropped layers. Open fallback
+is explicit (`intentExecution` or `sudo`), not a way to recover failed scope.
+Persist resolved sessions: catalog/time/default changes can change permission
+identity, and creating a new identity does not migrate an existing grant.
+
+Reusable `maxAmount` is a lifetime approval/value budget on counted paths,
+not a bound on existing allowances or arbitrary actions. Account and standalone
+`getSessionDetails` read nonce and enabled state in one multicall for a budgeted
+session and refuse already-enabled sessions unless `allowBudgetReset` is true.
+Read failure stays closed; ordinary sessions retain nonce-only reads. Pass the
+resulting details to `signEnableSession`; do not rebuild an authorized session.
+
+Intent preparation narrows the one explicit source and routing filters before
+quoting and binding sponsorship. Once sessions burn before user calls, at most
+once per participating EVM chain; own destination execution burns separately
+unless it is the same chain. Session-specific EVM behavior does not broaden
+managed/standalone Solana capabilities.
+
 ## Execution paths
 
 The account exposes two ways to execute, both ending at `waitForExecution`.

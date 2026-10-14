@@ -168,6 +168,26 @@ Properties run on a fixed seed so a counterexample reproduces on any host.
 `SDK_PROPERTY_SEED` and `SDK_PROPERTY_RUNS` override the seed and run count for
 exploration — never commit a configuration that depends on them.
 
+## Smart Session parity
+
+Compiler suites live in `src/modules/validators/smart-sessions/`: settlement
+selection/coverage, scoped vs open access, time windows, once burns, lifetime
+caps and installed-policy semantics. Facade coverage in `src/api/compose.test.ts`
+checks online reads/refusal order, UAP-copy verification and coherent budget
+reset consent. `src/smart-sessions/index.test.ts` checks supplied offline catalog
+options without network dependencies. Intent suites exercise singular-source
+funding, burn ordering/deduplication and ordered signing/sponsorship preservation.
+
+Run focused deterministic coverage with:
+
+```bash
+bun run test -- --run src/api src/smart-sessions src/transactions/intents
+```
+
+The reference example gate remains CI-only; do not run it locally or reproduce
+its steps manually. A compiler or fork pass does not verify served testnet
+catalog support, deployed bytecode or end-to-end settlement.
+
 ## Package contract
 
 `bun run test:contract` builds and packs both `origin/release` and the current

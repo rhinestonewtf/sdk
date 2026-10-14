@@ -91,7 +91,10 @@ import {
   ecdsaSignerId,
   webauthnSignerId,
 } from '../modules/validators/signer-id'
-import type { SessionDetails } from '../modules/validators/smart-sessions/types'
+import type {
+  SessionDetails,
+  SessionDetailsOptions,
+} from '../modules/validators/smart-sessions/types'
 import type {
   OwnerSignature,
   OwnerSignerSelection,
@@ -913,10 +916,16 @@ export interface ManagedEvmAccount<
   getPortfolio(onTestnets?: boolean): Promise<Portfolio>
   /**
    * Resolve the smart-session details for a set of sessions.
-   * @param sessions Sessions to resolve
-   * @returns The resolved session details
+   * Refuses an already-enabled lifetime-budget session unless resetting its
+   * budget is explicitly allowed. Nonce and enabled state are read together.
+   * @param sessions Persisted resolved sessions to enable
+   * @param options Explicit consent to reset an enabled session's lifetime budget
+   * @returns The resolved session details to pass to `signEnableSession`
    */
-  getSessionDetails(sessions: Session[]): Promise<SessionDetails>
+  getSessionDetails(
+    sessions: Session[],
+    options?: SessionDetailsOptions,
+  ): Promise<SessionDetails>
   /**
    * Check whether a smart session is enabled on the account.
    * @param session Session to check
@@ -1703,9 +1712,9 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         .getPortfolio(ctx, onTestnets)
         .then((portfolio) => portfolio.tokens as unknown as Portfolio)
     },
-    getSessionDetails(sessions) {
+    getSessionDetails(sessions, options) {
       const ctx = context('get-session-details')
-      return workflowsFor(ctx).getSessionDetails(ctx, sessions)
+      return workflowsFor(ctx).getSessionDetails(ctx, sessions, options)
     },
     isSessionEnabled(session) {
       const ctx = context('is-session-enabled')
