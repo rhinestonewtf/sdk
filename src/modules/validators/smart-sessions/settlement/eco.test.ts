@@ -414,7 +414,7 @@ describe('scopeEco', () => {
     expect(from(NOW - DAY, NOW + ECO_MIN_VALIDITY_SECONDS)).not.toThrow()
   })
 
-  describe('the 1:1 floor needs every token served at 6 decimals', () => {
+  describe('the 1:1 floor needs every token served with known decimals', () => {
     const withUsd = (
       chainId: number,
       usdStablecoins:
@@ -427,14 +427,22 @@ describe('scopeEco', () => {
 
     test.each([
       [
-        'an 18-decimal `from` token',
-        withUsd(8453, [{ address: USDC_BASE, symbol: 'USDC', decimals: 18 }]),
-        'the `from` token 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 on chain 8453 must be a served 6-decimal USD stablecoin; it has 18 decimals',
+        'an 8-decimal `from` token',
+        withUsd(8453, [{ address: USDC_BASE, symbol: 'USDC', decimals: 8 }]),
+        'the `from` token 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 on chain 8453 must be a served USD stablecoin with known decimals; it has 8 decimals; expected 6 or 18',
       ],
       [
-        'an 18-decimal `to` token',
-        withUsd(42161, [{ address: USDC_ARB, symbol: 'USDC', decimals: 18 }]),
-        'the `to` token 0xaf88d065e77c8cc2239327c5edb3a432268e5831 on chain 42161 must be a served 6-decimal USD stablecoin; it has 18 decimals',
+        'an 8-decimal `to` token',
+        withUsd(42161, [{ address: USDC_ARB, symbol: 'USDC', decimals: 8 }]),
+        'the `to` token 0xaf88d065e77c8cc2239327c5edb3a432268e5831 on chain 42161 must be a served USD stablecoin with known decimals; it has 8 decimals; expected 6 or 18',
+      ],
+      [
+        'a token served twice',
+        withUsd(42161, [
+          { address: USDC_ARB, symbol: 'USDC', decimals: 6 },
+          { address: USDC_ARB, symbol: 'USDC', decimals: 18 },
+        ]),
+        'it appears 2 times in usdStablecoins',
       ],
       [
         'no served usdStablecoins',

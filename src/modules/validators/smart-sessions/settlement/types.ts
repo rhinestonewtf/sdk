@@ -68,12 +68,14 @@ export interface SettlementContext {
     readonly chainId: number
     readonly token: Address
     readonly recipient?: Address
+    /** `ECO_IE` only: the owner's floor on delivery, in this leg's token. */
+    readonly minAmount?: bigint
   }[]
   /** Cumulative cap on the amount the layer call moves. */
   readonly cap?: bigint
   /** The permit's validity window, installed on every scoped action. */
   readonly timeFrame: readonly SessionPolicy[]
-  /** `ECO_IE` only: the solver's maximum cut, in basis points of the cap. */
+  /** `ECO_IE` only: the most of the cap the solver may keep, in basis points. */
   readonly maxFeeBps?: number
   /** The permit's `validAfter`, in seconds. */
   readonly validAfter?: bigint
