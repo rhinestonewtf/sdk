@@ -13,6 +13,7 @@ import {
 import { base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../../test/consts'
+import { withCompiledClaims } from '../../../test/utils/compiled-claims'
 import type { ArgPolicyExpression } from '../../config/account'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from './policies/claim/permit2'
 import { getPermissionId, getSessionData } from './smart-sessions/digest'
@@ -660,11 +661,13 @@ describe('getSessionData', () => {
     )
   })
 
-  test('claimPolicies resolves public Permit2 policy to policy data', () => {
-    const session = toSession({
-      chain: base,
-      owners: { type: 'ecdsa', accounts: [accountA] },
-      claimPolicies: [
+  test('persisted compiled claimPolicies encode every low-level guardrail', () => {
+    const session = withCompiledClaims(
+      toSession({
+        chain: base,
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      }),
+      [
         {
           type: 'permit2',
           spenders: ['0x1234567890123456789012345678901234567890'],
@@ -676,7 +679,7 @@ describe('getSessionData', () => {
           fillDeadline: [{ chain: base, min: 3n, max: 4n }],
         },
       ],
-    })
+    )
     const data = getSessionData(session)
     expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
     expect(data.erc7739Policies.erc1271Policies[0].policy).toBe(
@@ -779,6 +782,7 @@ describe('crossChainPermits expansion', () => {
       toSession({
         chain: base,
         owners: { type: 'ecdsa', accounts: [accountA] },
+        // @ts-expect-error Removed raw definition input.
         claimPolicies: [{ type: 'permit2' }],
         crossChainPermits: [
           {
@@ -788,7 +792,7 @@ describe('crossChainPermits expansion', () => {
           },
         ],
       }),
-    ).toThrow(/cannot hold claimPolicies/)
+    ).toThrow(/claimPolicies.*was removed/)
   })
 
   test('refuses multiple permits, which would collapse to one on-chain', () => {

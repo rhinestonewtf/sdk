@@ -34,7 +34,7 @@ function pinFor(via: readonly unknown[] | undefined, quoters?: unknown) {
   const intent = adaptTransaction(
     { account: {} } as never,
     {
-      chain: base,
+      destination: { chain: base },
       calls: [],
       signers: { type: 'session', session: session(via) },
       ...(quoters ? { quoters } : {}),
@@ -43,24 +43,27 @@ function pinFor(via: readonly unknown[] | undefined, quoters?: unknown) {
   return intent.options?.quoters
 }
 
-function pinForChains(
-  viaByChain: Record<number, readonly unknown[] | undefined>,
-) {
-  const sessions = Object.fromEntries(
-    Object.entries(viaByChain).map(([chainId, via]) => [
-      Number(chainId),
-      { session: session(via) },
-    ]),
-  )
-  // Every chain in the map is a source of this intent, so all of them are
-  // genuinely in play — a session map may carry chains the intent never signs
-  // on, and those are excluded from the derivation on purpose.
-  const chains = Object.keys(viaByChain).map((id) => ({ id: Number(id) }))
+/**
+ * Two legal roles an intent ever touches: its one `source` chain and its
+ * `destination` chain. A per-chain session map may carry more entries than
+ * that (see the last test below), but only these two are ever "in play" for a
+ * single intent — there is no discovery across further source chains.
+ */
+function pinForChains(input: {
+  readonly sourceChainId: number
+  readonly sourceVia: readonly unknown[] | undefined
+  readonly destinationChainId: number
+  readonly destinationVia: readonly unknown[] | undefined
+}) {
+  const sessions = {
+    [input.sourceChainId]: { session: session(input.sourceVia) },
+    [input.destinationChainId]: { session: session(input.destinationVia) },
+  }
   const intent = adaptTransaction(
     { account: {} } as never,
     {
-      targetChain: chains[0],
-      sourceChains: chains,
+      destination: { chain: { id: input.destinationChainId } },
+      source: { chain: { id: input.sourceChainId }, token: USDC },
       calls: [],
       signers: { type: 'session', sessions },
     } as never,
@@ -126,43 +129,54 @@ describe('quoter pin derived from a session venue scope', () => {
     })
   })
 
-  test('per-chain sessions that agree pin the venue they share', () => {
+  test('source and destination sessions that agree pin the venue they share', () => {
     expect(
       pinForChains({
-        8453: [zeroEx({ settler: SETTLER })],
-        10: [zeroEx({ settler: SETTLER })],
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER })],
+        destinationChainId: 10,
+        destinationVia: [zeroEx({ settler: SETTLER })],
       }),
     ).toEqual({ include: ['0x'] })
   })
 
-  test('per-chain sessions that DISAGREE fail closed rather than unpinned', () => {
+  test('source and destination sessions that DISAGREE fail closed rather than unpinned', () => {
     // `options.quoters` is one global filter with no chain dimension, so the
     // union would permit fynd on the 0x-only chain and be rejected on-chain
     // there. No venue satisfies both, so the request is unservable — an empty
     // filter says that, where omitting it would hand the orchestrator back the
     // free choice the pin exists to take away.
     expect(
-      pinForChains({ 8453: [zeroEx({ settler: SETTLER })], 10: [fynd()] }),
+      pinForChains({
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER })],
+        destinationChainId: 10,
+        destinationVia: [fynd()],
+      }),
     ).toEqual({ include: [] })
   })
 
-  test('per-chain sessions narrow to the venues every one of them permits', () => {
+  test('source and destination sessions narrow to the venues both permit', () => {
     // The 0x-only chain is the binding constraint; fynd is unsafe globally.
     expect(
       pinForChains({
-        8453: [zeroEx({ settler: SETTLER }), fynd()],
-        10: [zeroEx({ settler: SETTLER })],
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER }), fynd()],
+        destinationChainId: 10,
+        destinationVia: [zeroEx({ settler: SETTLER })],
       }),
     ).toEqual({ include: ['0x'] })
   })
 
-  test('an unconstrained chain session does not widen a constrained one', () => {
+  test('an unconstrained destination session does not widen a constrained source', () => {
     // A bare Swapper admits every venue, so it narrows nothing — 0x is still
     // safe for both.
     expect(
       pinForChains({
-        8453: [zeroEx({ settler: SETTLER })],
-        10: [rhinestoneSwap()],
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER })],
+        destinationChainId: 10,
+        destinationVia: [rhinestoneSwap()],
       }),
     ).toEqual({ include: ['0x'] })
   })
@@ -178,7 +192,7 @@ describe('quoter pin derived from a session venue scope', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        destination: { chain: base },
         calls: [],
         signers: { type: 'session', sessions },
       } as never,
@@ -190,7 +204,7 @@ describe('quoter pin derived from a session venue scope', () => {
     const intent = adaptTransaction(
       { account: {} } as never,
       {
-        chain: base,
+        destination: { chain: base },
         calls: [],
         signers: {
           type: 'session',

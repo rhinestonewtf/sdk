@@ -1,0 +1,108 @@
+{
+  "claimPolicies": {
+    "hasExplicitPermissions": false,
+    "permissionId": "0x914c7e60a0bf7b815d4740165850f91eb3b5f4c9e43efc76b01fb0e51898510d",
+    "sessionValidator": "0x000000000013fdb5234e4e3162a810f54d9f7e98",
+    "sessionValidatorInitData": "0x000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936",
+    "salt": "0x7ffbe4a1a1f80bf7e989a2bd916ae9fe4c994be029c7e77e80da9aa14fc66b67",
+    "erc7739Policies": {
+      "allowedERC7739Content": [
+        {
+          "appDomainSeparator": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "contentNames": [""]
+        }
+      ],
+      "erc1271Policies": [
+        {
+          "policy": "0x4F9FAbC867E196Ebb27E7D7FaeD8AF41B2021B0e",
+          "initData": "0x000000010100000000000000000000000000000000000000ab"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "actionTargetSelector": "0x00000001",
+        "actionTarget": "0x0000000000000000000000000000000000000001",
+        "actionPolicies": [
+          {
+            "policy": "0x0000000000FEEc8D74e3143fBaBbca515358d869",
+            "initData": "0x"
+          }
+        ]
+      }
+    ],
+    "claimPolicies": [
+      {
+        "type": "permit2",
+        "spenders": ["0x00000000000000000000000000000000000000ab"]
+      }
+    ],
+    "access": {
+      "kind": "open",
+      "reason": "claimPolicies only; the wildcard fallback is sudo"
+    }
+  },
+  "claimPoliciesWithActions": {
+    "hasExplicitPermissions": true,
+    "permissionId": "0x69ec24154bc702caf7fa1d726de4c02fe3bc334775df252691ce1ae17af6eb41",
+    "sessionValidator": "0x000000000013fdb5234e4e3162a810f54d9f7e98",
+    "sessionValidatorInitData": "0x000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936",
+    "salt": "0x5efee199dc944b58c6ebe574d8a5fcaa77fad2ffbc48cda40b30d2eac0d46a34",
+    "erc7739Policies": {
+      "allowedERC7739Content": [
+        {
+          "appDomainSeparator": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "contentNames": [""]
+        }
+      ],
+      "erc1271Policies": [
+        {
+          "policy": "0x4F9FAbC867E196Ebb27E7D7FaeD8AF41B2021B0e",
+          "initData": "0x000000010100000000000000000000000000000000000000ab"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "actionTargetSelector": "0x095ea7b3",
+        "actionTarget": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "actionPolicies": [
+          {
+            "policy": "0x0000000000FEEc8D74e3143fBaBbca515358d869",
+            "initData": "0x"
+          }
+        ]
+      },
+      {
+        "actionTargetSelector": "0x00000001",
+        "actionTarget": "0x0000000000000000000000000000000000000001",
+        "actionPolicies": [
+          {
+            "policy": "0xe9eA54d063975cDee9e06b7636d5563d95a7A23C",
+            "initData": "0x"
+          }
+        ]
+      },
+      {
+        "actionTargetSelector": "0x69123456",
+        "actionTarget": "0x0000000000000000000000000000000000000420",
+        "actionPolicies": [
+          {
+            "policy": "0x0000000000FEEc8D74e3143fBaBbca515358d869",
+            "initData": "0x"
+          }
+        ]
+      }
+    ],
+    "claimPolicies": [
+      {
+        "type": "permit2",
+        "spenders": ["0x00000000000000000000000000000000000000ab"]
+      }
+    ],
+    "access": {
+      "kind": "open",
+      "reason": "claimPolicies keep the intent-execution fallback"
+    }
+  }
+}

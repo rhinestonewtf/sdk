@@ -1,13 +1,296 @@
 import { describe, expect, test } from 'vitest'
 import {
+  ConflictError,
   InsufficientSponsorBalanceError,
   isInsufficientSponsorBalance,
+  isSolanaAccountAlreadyCreated,
+  isSolanaAccountNotCreated,
+  isSolanaAuthorityChangeRefused,
   isSponsorError,
   isSponsorLimitExceeded,
   parseErrorEnvelope,
+  SolanaAccountAlreadyCreatedError,
+  SolanaAccountNotCreatedError,
+  SolanaAuthorityChangeRefusedError,
   SponsorLimitExceededError,
   UnprocessableContentError,
+  ValidationError,
 } from './errors'
+
+describe('parseErrorEnvelope Solana account errors', () => {
+  test('maps structured missing-account details and preserves validation metadata', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-account',
+        details: [
+          {
+            message: 'No Swig at SwigAddress1 for this account yet',
+            context: {
+              domain: 'planning',
+              code: 'SOLANA_ACCOUNT_NOT_CREATED',
+              swigAddress: 'SwigAddress1',
+              chainId: 792703810,
+            },
+          },
+        ],
+      },
+      400,
+    )
+
+    expect(error).toBeInstanceOf(SolanaAccountNotCreatedError)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(error.code).toBe('VALIDATION_ERROR')
+    expect(error.statusCode).toBe(400)
+    expect(error.traceId).toBe('trace-solana-account')
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({
+      swigAddress: 'SwigAddress1',
+      chainId: 792703810,
+      issues: [
+        {
+          context: {
+            domain: 'planning',
+            code: 'SOLANA_ACCOUNT_NOT_CREATED',
+            swigAddress: 'SwigAddress1',
+            chainId: 792703810,
+          },
+        },
+      ],
+    })
+  })
+
+  test('maps the CAIP-2 chain id the live error boundary returns', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-caip2',
+        details: [
+          {
+            message: 'No Swig at SwigAddress1 for this account yet',
+            context: {
+              domain: 'planning',
+              code: 'SOLANA_ACCOUNT_NOT_CREATED',
+              swigAddress: 'SwigAddress1',
+              chainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+            },
+          },
+        ],
+      },
+      400,
+    )
+
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({
+      swigAddress: 'SwigAddress1',
+      chainId: 792703810,
+    })
+  })
+
+  test.each([
+    ['792703810'],
+    ['solana:UnknownClusterGenesisHash11111111'],
+    [-1],
+    [1.5],
+    [null],
+  ])('recognizes the error but drops an unusable chain id %p', (chainId) => {
+    const context = {
+      code: 'SOLANA_ACCOUNT_NOT_CREATED',
+      swigAddress: 'SwigAddress1',
+      chainId,
+    }
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'No Swig at SwigAddress1 for this account yet',
+        traceId: 'trace-solana-chain',
+        details: [{ message: 'no swig', context }],
+      },
+      400,
+    )
+
+    expect(isSolanaAccountNotCreated(error)).toBe(true)
+    expect(error).toMatchObject({ swigAddress: 'SwigAddress1' })
+    expect((error as SolanaAccountNotCreatedError).chainId).toBeUndefined()
+    expect((error as SolanaAccountNotCreatedError).issues[0]?.context).toEqual(
+      context,
+    )
+  })
+
+  test.each([
+    [{ code: 'SOLANA_ACCOUNT_NOT_CREATED' }],
+    [{ code: 'SOLANA_ACCOUNT_NOT_CREATED', swigAddress: '' }],
+  ])('keeps details without a Swig address generic', (context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request',
+        traceId: 'trace-generic',
+        details: [{ message: 'Invalid request', context }],
+      },
+      400,
+    )
+
+    expect(error.constructor).toBe(ValidationError)
+    expect(isSolanaAccountNotCreated(error)).toBe(false)
+    expect((error as ValidationError).issues[0]?.context).toEqual(context)
+  })
+})
+
+describe('parseErrorEnvelope Solana account creation refusals', () => {
+  const SWIG = '3wm644fHe3ekULLCPov4vkDeVCJEaQmnCfn5k2HhMS4B'
+
+  test('maps an existing Swig to the dedicated error', () => {
+    const context = {
+      domain: 'planning-gate',
+      code: 'ACCOUNT_ALREADY_DEPLOYED',
+      destinationChainId: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      swig: SWIG,
+      wallet: 'C4PvoicLfj71bcjnvSWFKo3QeDP8AXJbUzZFQPvRf3xm',
+    }
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: `The account's Swig ${SWIG} already exists on this chain.`,
+        traceId: 'trace-swig-exists',
+        details: [{ message: 'already exists', context }],
+      },
+      422,
+    )
+
+    expect(error).toBeInstanceOf(SolanaAccountAlreadyCreatedError)
+    expect(isSolanaAccountAlreadyCreated(error)).toBe(true)
+    expect(error).toBeInstanceOf(UnprocessableContentError)
+    expect(error.code).toBe('UNPROCESSABLE_CONTENT')
+    expect(error).toMatchObject({
+      swigAddress: SWIG,
+      chainId: 792703810,
+      statusCode: 422,
+      traceId: 'trace-swig-exists',
+      details: [{ context }],
+    })
+  })
+
+  test('omits a chain id it cannot read', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'exists',
+        traceId: 't',
+        details: [
+          {
+            message: 'exists',
+            context: { code: 'ACCOUNT_ALREADY_DEPLOYED', swig: SWIG },
+          },
+        ],
+      },
+      422,
+    )
+    expect(error).toBeInstanceOf(SolanaAccountAlreadyCreatedError)
+    expect((error as SolanaAccountAlreadyCreatedError).chainId).toBeUndefined()
+  })
+
+  // The same code refuses an EVM setup-only intent for a deployed account.
+  test.each([
+    [
+      {
+        code: 'ACCOUNT_ALREADY_DEPLOYED',
+        destinationChainId: 'eip155:8453',
+        account: '0x0000000000000000000000000000000000000001',
+        setupOpsCount: 1,
+      },
+    ],
+    [{ code: 'ACCOUNT_ALREADY_DEPLOYED', swig: '' }],
+  ])('keeps an EVM already-deployed refusal generic', (context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'already deployed',
+        traceId: 't',
+        details: [{ message: 'already deployed', context }],
+      },
+      422,
+    )
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(isSolanaAccountAlreadyCreated(error)).toBe(false)
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual(
+      context,
+    )
+  })
+
+  test.each([
+    ['UNSUPPORTED_ACCOUNT_TYPE', 'account.svm'],
+    ['SPONSORSHIP_REQUIRED', 'options.sponsorship'],
+  ])('keeps the %s refusal code readable', (code, field) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'refused',
+        traceId: 't',
+        details: [{ message: 'refused', context: { code, field } }],
+      },
+      400,
+    )
+    expect(error.constructor).toBe(ValidationError)
+    expect((error as ValidationError).issues[0]?.context).toMatchObject({
+      code,
+      field,
+    })
+  })
+})
+
+describe('parseErrorEnvelope signature context', () => {
+  test.each(['SIGNATURE_EXPIRED', 'SIGNATURE_INVALID'])(
+    'preserves %s validation context',
+    (code) => {
+      const error = parseErrorEnvelope(
+        {
+          code: 'VALIDATION_ERROR',
+          message: 'Re-quote and sign again.',
+          traceId: 'trace-signature',
+          details: [{ message: 'signature refused', context: { code } }],
+        },
+        400,
+      )
+
+      expect(error).toBeInstanceOf(ValidationError)
+      expect((error as ValidationError).issues).toEqual([
+        { message: 'signature refused', context: { code } },
+      ])
+    },
+  )
+
+  test('preserves SIGNATURE_REUSED conflict context and outer metadata', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'CONFLICT',
+        message: 'Re-quote and sign again.',
+        traceId: 'trace-reused',
+        details: [
+          {
+            message: 'Replay counter already spent',
+            context: { code: 'SIGNATURE_REUSED', counter: '7' },
+          },
+        ],
+      },
+      409,
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(error).toMatchObject({
+      code: 'CONFLICT',
+      statusCode: 409,
+      traceId: 'trace-reused',
+      details: [
+        {
+          context: { code: 'SIGNATURE_REUSED', counter: '7' },
+        },
+      ],
+    })
+  })
+})
 
 describe('parseErrorEnvelope sponsor errors', () => {
   test('maps sponsor limit failures to a typed compatible error', () => {
@@ -157,5 +440,178 @@ describe('parseErrorEnvelope sponsor errors', () => {
     expect(error).toBeInstanceOf(UnprocessableContentError)
     expect(error.constructor).toBe(UnprocessableContentError)
     expect(isSponsorError(error)).toBe(false)
+  })
+
+  test('surfaces the unsupported-instruction refusal with its code and message', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No strategy can serve destinationInstructions',
+        traceId: 'trace-instructions',
+        details: [
+          {
+            message: 'No strategy can serve destinationInstructions',
+            context: { code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS' },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(error.message).toBe('No strategy can serve destinationInstructions')
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual({
+      code: 'UNSUPPORTED_DESTINATION_INSTRUCTIONS',
+    })
+  })
+
+  test('surfaces an unsupported sponsorship refusal with its named categories', () => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'Unsupported sponsor settings',
+        traceId: 'trace-sponsor-settings',
+        details: [
+          {
+            message: 'Unsupported sponsor settings',
+            context: {
+              code: 'UNSUPPORTED_SPONSOR_SETTINGS',
+              unsupportedCategories: ['swapFees', 'bridgeFees'],
+            },
+          },
+        ],
+      },
+      422,
+    )
+
+    expect(error.constructor).toBe(UnprocessableContentError)
+    expect(isSponsorError(error)).toBe(false)
+    expect((error as UnprocessableContentError).details[0]?.context).toEqual({
+      code: 'UNSUPPORTED_SPONSOR_SETTINGS',
+      unsupportedCategories: ['swapFees', 'bridgeFees'],
+    })
+  })
+})
+
+describe('parseErrorEnvelope Swig authority change refusals', () => {
+  const swig = '9fTE4gQnweN345EGzy6jnXNFW8VryvZ8QwLZqgBubmMs'
+
+  function refusal(context: Record<string, unknown>) {
+    return parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: `Swig ${swig} refused the change`,
+        traceId: 'trace-authority',
+        details: [
+          {
+            message: `Swig ${swig} refused the change`,
+            context: {
+              ...context,
+              domain: 'strategy-gate',
+              code: 'SWIG_AUTHORITY_CHANGE_REFUSED',
+            },
+          },
+        ],
+      },
+      400,
+    )
+  }
+
+  test.each([
+    [{ reason: 'acting_permission', roleId: 1 }, { roleId: 1 }],
+    [
+      { reason: 'authority_exists', roleId: 3, permission: 'all' },
+      { roleId: 3, permission: 'all' },
+    ],
+    [
+      { reason: 'authority_exists', roleId: 1, permission: 'manageAuthority' },
+      { roleId: 1, permission: 'manageAuthority' },
+    ],
+    [
+      {
+        reason: 'authority_exists',
+        roleId: 2,
+        permission: 'allButManageAuthority',
+      },
+      { roleId: 2, permission: 'allButManageAuthority' },
+    ],
+    [{ reason: 'authority_exists', roleId: 3 }, { roleId: 3 }],
+    [{ reason: 'authority_not_found' }, {}],
+    [{ reason: 'authority_ambiguous', roleIds: [2, 4] }, { roleIds: [2, 4] }],
+    [{ reason: 'root_role', roleId: 0 }, { roleId: 0 }],
+    [{ reason: 'unsupported_authority', roleId: 5 }, { roleId: 5 }],
+    [{ reason: 'lockout', roleId: 1 }, { roleId: 1 }],
+  ])('types %o', (context, fields) => {
+    const error = refusal({ swig, ...context })
+    expect(error).toBeInstanceOf(SolanaAuthorityChangeRefusedError)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect(error.code).toBe('VALIDATION_ERROR')
+    expect(error.statusCode).toBe(400)
+    const refused = error as SolanaAuthorityChangeRefusedError
+    expect({
+      reason: refused.reason,
+      swigAddress: refused.swigAddress,
+      roleId: refused.roleId,
+      roleIds: refused.roleIds,
+      permission: refused.permission,
+    }).toEqual({
+      reason: context.reason,
+      swigAddress: swig,
+      roleId: undefined,
+      roleIds: undefined,
+      permission: undefined,
+      ...fields,
+    })
+    expect(refused.issues[0]?.context).toMatchObject({ swig, ...context })
+  })
+
+  test('keeps the error identity for a reason this SDK does not know', () => {
+    const error = refusal({ swig, reason: 'future_reason' })
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect((error as SolanaAuthorityChangeRefusedError).reason).toBeUndefined()
+    expect(
+      (error as SolanaAuthorityChangeRefusedError).issues[0]?.context?.reason,
+    ).toBe('future_reason')
+  })
+
+  test('drops malformed context values', () => {
+    const error = refusal({
+      swig: 42,
+      reason: 'authority_exists',
+      roleId: -1,
+      roleIds: [1, 'two'],
+      permission: 'programAll',
+    }) as SolanaAuthorityChangeRefusedError
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(true)
+    expect(error.reason).toBe('authority_exists')
+    expect(error.swigAddress).toBeUndefined()
+    expect(error.roleId).toBeUndefined()
+    expect(error.roleIds).toBeUndefined()
+    expect(error.permission).toBeUndefined()
+  })
+
+  test.each([
+    ['SWIG_ROLE_CHANGED', { reason: 'target_changed' }],
+    ['SWIG_ROLE_CHANGED', { reason: 'state_changed' }],
+    ['SOLANA_SIMULATION_FAILED', {}],
+    ['SIGNATURE_INVALID', {}],
+    ['UNSUPPORTED_ACCOUNT_TYPE', { reason: 'role_not_found' }],
+  ])('leaves %s %o a readable validation error', (code, context) => {
+    const error = parseErrorEnvelope(
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'refused',
+        traceId: 'trace',
+        details: [{ message: 'refused', context: { code, ...context } }],
+      },
+      400,
+    )
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(isSolanaAuthorityChangeRefused(error)).toBe(false)
+    expect((error as ValidationError).issues[0]?.context).toEqual({
+      code,
+      ...context,
+    })
   })
 })

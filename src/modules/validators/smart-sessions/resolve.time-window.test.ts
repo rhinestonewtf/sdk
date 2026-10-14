@@ -11,6 +11,7 @@ import {
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
+import persistedOnceClaims from '../../../../test/utils/persisted-once-claims.json'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import {
   encodePermit2ClaimPolicyInitData,
@@ -44,7 +45,6 @@ const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address
 const TARGET = '0x4444444444444444444444444444444444444444' as Address
 const WETH = '0x4200000000000000000000000000000000000006' as Address
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
-const ARBITER = '0x00000000000000000000000000000000000000ab' as Address
 const ONE_TIME_USE = '0x3333333333333333333333333333333333333333' as Address
 const PREVIOUS_TIME_FRAME =
   '0x0000000000D30f611fA3bf652ac6879428586930' as Address
@@ -157,10 +157,11 @@ const WINDOWLESS: Record<string, SessionDefinition> = {
       },
     ],
   },
-  'oneTimeUse with permissions and claim policies': {
+  'oneTimeUse with permissions and standard permits': {
     chain: base,
     owners,
-    claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+    crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+    fallback: 'intentExecution',
     oneTimeUse: { id: 42n, validUntil: UNTIL },
     policyAddresses: { oneTimeUseId: ONE_TIME_USE },
     permissions: [
@@ -216,6 +217,11 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
       '0x06c2faccc451915a0f80be98f62869f784577fdc36651be14341b9aebb85ea31',
     data: '0xe59abdf0d624b14a5687fb4501174e577be7f7c97cd7d0117ec14a7ba3a33464',
   },
+  'oneTimeUse with permissions and standard permits': {
+    permissionId:
+      '0x91eccc35ba81beec8ac8dd6a37d93c8faffc33d05fef80b330534ad6091e8e4a',
+    data: '0xace2d449a0f31bc5ead8b5fe0807054f2e3e010eeb9e7a6d835255e37fbea141',
+  },
   'oneTimeUse with permissions and claim policies': {
     permissionId:
       '0x9e3a4205e5610995830543d171b3b2b2b547b167d6ff28ecdc8df20fded09c3c',
@@ -239,6 +245,24 @@ const PINS: Record<string, ReturnType<typeof fingerprint>> = {
 }
 
 describe('a session without a window keeps its permissionId and data', () => {
+  test('the historical raw-claim artifact retains its identity without rebuilding', () => {
+    const session = {
+      ...persistedOnceClaims,
+      chain: base,
+      owners,
+      oneTimeUse: { ...persistedOnceClaims.oneTimeUse, id: 42n },
+    } as unknown as import('./types').Session
+    const historical = {
+      permissionId: session.permissionId,
+      data: keccak256(stringToHex(JSON.stringify(getSessionData(session)))),
+    }
+    expect(historical).toEqual(
+      PINS['oneTimeUse with permissions and claim policies'],
+    )
+    expect(historical.permissionId).not.toBe(
+      PINS['oneTimeUse with permissions and standard permits'].permissionId,
+    )
+  })
   test.each(Object.entries(WINDOWLESS))('%s', (name, definition) => {
     expect(fingerprint(definition)).toEqual(PINS[name])
   })
@@ -1240,7 +1264,10 @@ describe('an open signing surface is bounded by the action windows', () => {
     ],
     [
       'claim policies, which bound the ERC-1271 list',
-      { claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }] },
+      {
+        crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+        fallback: 'intentExecution',
+      },
     ],
   ] as const)('not with %s', (_, extra) => {
     expect(

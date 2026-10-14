@@ -31,33 +31,46 @@ bun run generate:reference:extract    # typedoc JSON only
 bun run generate:reference:render     # render MDX from existing JSON
 ```
 
-Output defaults to the sibling `docs` repo. These controls support isolated
-local previews and CI validation without changing the canonical public routes
-or navigation hierarchy:
+Output defaults to the sibling `docs` repo. Filesystem controls support
+isolated CI validation without changing public routes or navigation:
 
 | Var | Purpose | Default |
 | --- | --- | --- |
 | `SDK_REF_OUT` | Dedicated generated output directory | `../docs/wallets/custom-signer/sdk-reference` |
 | `SDK_REF_DOCS_JSON` | `docs.json` to patch; a missing file skips navigation patching | `../docs/docs.json` |
+| `SDK_REF_TYPEDOC_JSON` | TypeDoc model consumed by the renderer | `scripts/reference/typedoc.json.out` |
 | `SDK_REF_CHECK` | Set to `1` to fail on unresolved manifest symbols or undocumented exports | unset |
-
-For example, generate into a disposable directory without a docs checkout:
-
-```bash
-SDK_REF_OUT=/tmp/sdk-reference \
-SDK_REF_DOCS_JSON=/tmp/missing-docs.json \
-SDK_REF_CHECK=1 \
-bun run generate:reference
-```
 
 An existing `docs.json` must contain exactly one Wallets tab and one Custom
 signer menu item. Unsupported or ambiguous navigation fails instead of falling
 back to a legacy location. The generated group always uses the canonical
 `wallets/custom-signer/sdk-reference` route root.
 
+### Reference example gate
+
+`bun run test:reference` builds the SDK, extracts fresh TypeDoc, renders into an
+isolated `.scratch/reference-examples-*` directory, packs `src/`, and compiles
+every rendered TypeScript Usage block against the packed public package. It
+currently covers 73 pages and 78 blocks. The inventory comes from the manifest,
+so additions, missing Usage blocks, stale context registrations, malformed
+fences, non-public imports, casts, and suppressions fail closed.
+
+The gate keeps overload Usage blocks separate and checks their inferred return
+types, including both signing and polling contracts. It also runs negative
+compiler probes for missing auth, legacy transaction fields, missing exports,
+and unsupported account capabilities. Every fixture and probe shares a single
+compiler program; a probe passes only when its own file reports the expected TS
+code, and any other diagnostic fails the gate. Each heavy step runs under a
+per-step RSS budget with a host-wide lock; see
+[Testing](testing.md#reference-examples) for the budget, lock, and pass
+criteria. Reference generation and this validation gate run in CI only; do not
+run them locally, reconstruct their heavy steps manually, replace them with
+source-alias typechecking, or execute snippets that can submit transactions.
+
 ### Scope and content
 
-Hot path only: entry points, the account instance, actions, and utils. Types,
+Hot path only: entry points, the account instance, actions, and the
+`/solana` and `/evm` helpers. Types,
 errors, `jwt-server`, and the standalone `/smart-sessions` module are out of
 scope. Edit `manifest.ts` to change what is documented and how it is grouped —
 the mapping is **curated, not automatic**, so the generator warns when a public
@@ -65,8 +78,11 @@ export in an already-documented module is missing from `manifest.ts`; add new
 symbols there.
 
 - Prose, params, returns come from JSDoc on the exported symbol. For
-  account-instance methods the canonical JSDoc lives on the `RhinestoneAccount`
-  interface members (what TypeDoc reads), not the implementations.
+  account-instance methods, put the comment on the capability interface member
+  that exposes it (`RhinestoneAccountBase`, `ManagedTransactionAccount`,
+  `ManagedEvmAccount`, `SolanaStandaloneAccount`, or
+  `ManagedSolanaDeployment`), not the composed `RhinestoneAccount` alias or an
+  implementation.
 - Code samples come from `@example` blocks; without one a minimal snippet is
   synthesized from the signature.
 - `@remarks` renders as a `<Note>`; experimental entries get a `<Warning>`.
@@ -76,14 +92,16 @@ symbols there.
 ### Committing
 
 Canonical generated MDX is committed to the `docs` repo because Mintlify builds
-from repository content. Local output overrides are for preview and validation;
+from repository content. Filesystem output overrides isolate CI validation;
 they do not publish production documentation automatically.
 
-A successful production v2 publish creates a GitHub Release, which triggers the
+A successful stable v3 publish creates a GitHub Release, which triggers the
 independent [`Sync SDK reference`](../.github/workflows/sync-sdk-reference.yaml)
-workflow. The workflow verifies the automated stable-v2 release, immutable tag
-commit, `release` ancestry, package version, and npm `latest` before generating.
-It checks npm again before writing so a delayed run cannot replace newer docs.
+workflow. The workflow accepts only the automated stable-v3 release and verifies
+the immutable tag commit, `release` ancestry, package version, and npm `latest`
+before generating. It rejects v1, v2, snapshots, prereleases, forged source
+facts, and superseded releases, and checks npm again before writing so a delayed
+run cannot replace newer docs.
 
 Generation starts from fresh docs `main` and may stage only
 `wallets/custom-signer/sdk-reference/` and `docs.json`. The retired inventory
@@ -100,46 +118,67 @@ later release—never by republishing an existing version.
 
 ## Orchestrator wire types
 
-`src/clients/orchestrator/wire.gen.ts` is generated from the orchestrator's published
-OpenAPI spec (the `blanc` version) with `openapi-typescript`.
+`src/clients/orchestrator/wire.gen.ts` is generated from the orchestrator's
+OpenAPI document for the API version the SDK speaks (`2026-09.caucasus`) with
+`openapi-typescript`.
 
 ### Motivation
 
 The generated wire types are the single source of truth for the orchestrator's
 request/response shapes. The orchestrator mappers
 (`src/clients/orchestrator/mappers.ts`, via the `wire.ts` aliases) adapt them to
-the SDK's internal types — BigInt amounts, numeric chain ids —
-at one boundary. When the wire shape drifts, regenerating turns the change into
+the SDK's internal types — BigInt amounts, narrowed signing requests — at one
+boundary. When the wire shape drifts, regenerating turns the change into
 a **typecheck error at the adapter boundary** instead of a runtime surprise.
 
 ### How it works
 
 ```bash
-bun run generate:wire                          # default: pinned spec
-bun run generate:wire ./path/to/blanc.json     # local checkout
+bun run generate:wire                            # default: the vendored snapshot
+bun run generate:wire ./path/to/caucasus.json    # local checkout
 ORCH_OPENAPI_SPEC=<url|path> bun run generate:wire
 ```
 
-Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → pinned URL. The
-default targets the `openapi` commit pinned in
-`src/clients/orchestrator/.openapi-ref` — `orchestrator/blanc.json` at that SHA
-in the public `rhinestonewtf/openapi` repo, so no auth is needed.
+Source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → the vendored snapshot.
+Only an override resolves against your working directory; the default is
+module-relative, so generation does not depend on where you ran it from.
 
-### Pin and auto-sync
+### The vendored document
 
-The pin makes regeneration deterministic: `openapi/main` moves whenever the
-rolling spec PR the orchestrator opens there is merged, so generating against it
-live would break *every* open SDK PR the moment upstream moves. Pinning means the
-per-PR CI check (`Verify wire types match the published OpenAPI spec`)
-regenerates against a fixed SHA and only ever reflects intentional bumps.
+`2026-09.caucasus` is now published by the orchestrator. The SDK retains the
+reviewed vendored document at `scripts/openapi/caucasus.json` as its reproducible
+input, with `scripts/openapi/provenance.json` recording the API version, upstream
+repository, ref and commit, artifact SHA-256, and generation command. The
+orchestrator generates it with its opt-in
+`scripts/generateOpenApi.ts --version 2026-09.caucasus`.
 
-A new orchestrator field is therefore **two merges** from being usable here: the
-spec PR in `rhinestonewtf/openapi`, then the sync PR below.
+The pinned document remains the accepted singular-only Caucasus artifact from
+orchestrator commit `30aa909db5053fbe67170513dfa21b4e0f984d09`; its validated
+SHA-256 remains `b2ada4e7d36cd10cc91d682fff21937d6159ca46d0800f9e7e9d32fb4cda2fcd`.
+`POST /quotes` and `POST /quotes/estimate` advertise only singular bodies, with
+numeric EVM signature modes, corrected unions, nullable fields, and documented
+errors. `WireSingularQuoteRequest` in `wire.ts` directly aliases the complete
+quote request; `mapIntentRequestToWire` returns it, preserving the structural
+check at the mapper. `provenance.test.ts` asserts the direct request schemas.
+This alignment preserves SDK runtime behavior and does not resolve the
+artifact's acknowledged upstream error-envelope and submit-coverage gaps.
 
-The pin is advanced by the [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
-workflow (hourly cron + `workflow_dispatch`), the *only* thing that changes
-`wire.gen.ts`: it detects when `openapi/main` is ahead of the pin, bumps
-`.openapi-ref`, regenerates, typechecks, and opens/updates a rolling PR. A regen
-that fails typecheck (breaking upstream change) fails the job without opening a
-PR, so open PRs keep building until a human adapts the boundary. The pin is
-per-branch, so the v2 dev (`main`) and prod (`release`) lines can differ.
+Both are verified before generating: a snapshot whose bytes or declared version
+disagree with the manifest fails loudly rather than producing plausible types
+against a document nobody reviewed. Change the snapshot and the manifest hash in
+the same commit.
+
+### Determinism and auto-sync
+
+Pinning the document makes regeneration deterministic: generating against a
+moving upstream would break *every* open SDK PR the moment it moved. The per-PR
+CI check (`Verify wire types match the pinned OpenAPI document`) regenerates and
+diffs, so `wire.gen.ts` only ever reflects an intentional change.
+
+Intentional, reviewed re-vendoring updates the snapshot, provenance, and
+`wire.gen.ts` together. The [`Sync wire types`](../.github/workflows/sync-wire-types.yaml)
+workflow (hourly cron + `workflow_dispatch`) opens a rolling PR from the
+immutable published source, regenerates, and typechecks. A regen that fails
+typecheck (a breaking upstream change) fails the job without opening a PR, so
+open PRs keep building until a human adapts the boundary. It never falls back
+to an older API version or an absent file.

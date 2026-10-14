@@ -51,7 +51,7 @@ export function getIntegrationUseDevContracts(): boolean {
 
 export function createIntegrationSDK(): RhinestoneSDK {
   return new RhinestoneSDK({
-    apiKey: getIntegrationApiKey(),
+    auth: { mode: 'apiKey', apiKey: getIntegrationApiKey() },
     endpointUrl: getIntegrationOrchestratorUrl(),
     useDevContracts: getIntegrationUseDevContracts(),
   })

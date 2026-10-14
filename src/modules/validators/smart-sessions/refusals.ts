@@ -9,6 +9,8 @@ import type {
  * Codes never change once published; the messages beside them may.
  */
 export const SESSION_REFUSAL_CODES = {
+  REMOVED_CLAIM_POLICIES_INPUT:
+    'claimPolicies on a new session definition; use crossChainPermits',
   VALID_AFTER_EXCEEDS_VALID_UNTIL: 'a validAfter not earlier than validUntil',
   VALID_AFTER_INVALID: 'a validAfter that is not a Date within uint48 seconds',
   VALID_UNTIL_NOT_IN_FUTURE: 'a validUntil that is not a future Date',

@@ -21,6 +21,7 @@ import {
   expectSignatureMode,
   tamperExecutionSignatures,
 } from '../framework/signatures'
+import { getTokenAddress } from '../framework/tokens'
 
 describe.sequential('SDK integration sigmode', () => {
   // A plain owner signature takes the ERC-1271 path: a single hex signature and
@@ -28,7 +29,9 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits ERC-1271 mode with single signatures for a non-session owner', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
 
     const execution = await executeIntent({
@@ -36,9 +39,8 @@ describe.sequential('SDK integration sigmode', () => {
       label: 'sigmode/owner/erc1271',
       mode: 'sign',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -55,8 +57,10 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits hybrid execution mode with dual signatures for a fresh session', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -68,9 +72,9 @@ describe.sequential('SDK integration sigmode', () => {
       label: 'sigmode/session/hybrid',
       mode: 'sign',
       transaction: await withEnableData(account, session, {
-        chain: sourceChain,
+        source: { token: getTokenAddress('USDC', sourceChain.id) },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: { type: 'session' as const, session },
       }),
     })
@@ -90,8 +94,10 @@ describe.sequential('SDK integration sigmode', () => {
   test('emits ERC-1271 mode with single signatures for an enabled session', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createUnscopedSession({
       chain: sourceChain,
@@ -102,9 +108,9 @@ describe.sequential('SDK integration sigmode', () => {
       account,
       label: 'sigmode/enabled/enable',
       transaction: await withEnableData(account, session, {
-        chain: sourceChain,
+        source: { token: getTokenAddress('USDC', sourceChain.id) },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: { type: 'session' as const, session },
       }),
     })
@@ -116,9 +122,8 @@ describe.sequential('SDK integration sigmode', () => {
       label: 'sigmode/enabled/use',
       mode: 'sign',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: { type: 'session' as const, session },
       },
     })
@@ -137,8 +142,10 @@ describe.sequential('SDK integration sigmode', () => {
   test('rejects an intent whose execution signature was tampered with', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -150,9 +157,9 @@ describe.sequential('SDK integration sigmode', () => {
       label: 'sigmode/tampered/reject',
       transformSigned: tamperExecutionSignatures,
       transaction: await withEnableData(account, session, {
-        chain: sourceChain,
+        source: { token: getTokenAddress('USDC', sourceChain.id) },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: { type: 'session' as const, session },
       }),
     })

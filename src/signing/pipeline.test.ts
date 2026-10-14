@@ -369,7 +369,7 @@ describe('direct rewritten signing pipelines', () => {
     const startaleK1 = resolveAccountTypedDataSigning({
       typedData,
       chain,
-      context: startaleK1Context('1.0.0'),
+      context: startaleK1Context('1.0.1'),
     })
     expect(startaleK1).toMatchObject({
       material: { kind: 'message' },
@@ -379,13 +379,13 @@ describe('direct rewritten signing pipelines', () => {
       erc7739: { kind: 'wrap-typed-data', typedData },
     })
     expect(startaleK1.material).not.toEqual(messageOnly.material)
-    // The ERC-7739 verifier domain carries the deployed version, so 1.0.1
-    // signs a different hash than 1.0.0.
+    // The ERC-7739 verifier domain carries the deployed version, so 1.0.0
+    // signs a different hash than 1.0.1.
     expect(
       resolveAccountTypedDataSigning({
         typedData,
         chain,
-        context: startaleK1Context('1.0.1'),
+        context: startaleK1Context('1.0.0'),
       }).material,
     ).not.toEqual(startaleK1.material)
 

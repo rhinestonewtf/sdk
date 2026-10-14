@@ -4,10 +4,9 @@ import type { SerializedIntentInput } from './public'
 
 const address = '0x0000000000000000000000000000000000000001' as const
 const intentInput = {
-  account: { address, accountType: 'ERC7579' },
-  destinationChainId: 1,
-  destinationExecutions: [],
-  tokenRequests: [],
+  contractVersion: 'sdk-3.0.0-caucasus',
+  account: { evm: { type: 'erc7579', address } },
+  destination: { vm: 'evm', chainId: 'eip155:1' },
   options: {},
 } satisfies SerializedIntentInput
 
@@ -19,6 +18,7 @@ describe('orchestrator auth', () => {
     expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       'x-api-key': 'secret',
     })
+    expect(auth.requestsIntentExtension(true)).toBe(false)
   })
 
   test('sends only the bearer credential in jwt mode', async () => {
@@ -40,6 +40,8 @@ describe('orchestrator auth', () => {
       accessToken: async () => 'access',
       getIntentExtensionToken,
     })
+    expect(auth.requestsIntentExtension(true)).toBe(true)
+    expect(auth.requestsIntentExtension(false)).toBe(false)
 
     expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       Authorization: 'Bearer access',
@@ -59,6 +61,7 @@ describe('orchestrator auth', () => {
       accessToken: 'access',
     })
 
+    expect(auth.requestsIntentExtension(true)).toBe(false)
     expect(await auth.getQuoteHeaders(intentInput, true)).toEqual({
       Authorization: 'Bearer access',
     })

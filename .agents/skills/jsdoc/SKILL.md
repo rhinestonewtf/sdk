@@ -43,11 +43,12 @@ the template — every part below maps to a rendered section.
 
 ## Canonical location
 
-For methods on the account instance (the object returned by `createAccount`), the
-JSDoc that TypeDoc reads lives on the **`RhinestoneAccount` interface member**,
-not the inner implementation. Document the interface; the implementation needs no
-doc comment. Putting it on the implementation means it never reaches the
-reference.
+For methods on the account instance (the object returned by `createAccount`),
+put JSDoc on the capability interface member that exposes it:
+`RhinestoneAccountBase`, `ManagedTransactionAccount`, `ManagedEvmAccount`,
+`SolanaStandaloneAccount`, or `ManagedSolanaDeployment`. Do not put it on the
+composed `RhinestoneAccount` alias or an inner implementation; TypeDoc does not
+use those locations for the reference.
 
 ## Patterns
 
@@ -100,9 +101,8 @@ Keep it minimal and runnable-looking.
  * @returns the prepared transaction, including `quotes.all`
  * @example
  * const prepared = await account.prepareTransaction({
- *   targetChain: base,
- *   calls: [...],
- *   tokenRequests: [{ address: 'USDC', amount }],
+ *   destination: { chain: base, calls: [...] },
+ *   sponsored: true,
  * })
  * @see {@link signTransaction}
  */

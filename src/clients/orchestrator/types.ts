@@ -1,20 +1,22 @@
-import type {
-  Address,
-  Hex,
-  SignedAuthorization,
-  TypedDataDefinition,
-} from 'viem'
+import type { Address, Hex } from 'viem'
 import type {
   BridgeFill,
-  ChainOperation,
+  Caip2ChainId,
   Cost,
   HyperCoreAction,
-  IntentHyperCoreResult,
+  IntentAccountSummary,
+  IntentDetails,
+  IntentOperationGroup,
   IntentRefund,
+  IntentRequirement,
   IntentStatus,
+  QuotePlan,
   SerializedIntentInput,
   SettlementLayer,
-  TokenRequirements,
+  SigningProof,
+  SigningRequest,
+  SolanaAuthorityChangeRequest,
+  SwigAuthority,
 } from './public'
 
 export interface OrchestratorExecution {
@@ -23,105 +25,259 @@ export interface OrchestratorExecution {
   readonly data: Hex
 }
 
-export interface OrchestratorAccount {
-  readonly address: Address | string
-  readonly accountType?: 'GENERIC' | 'ERC7579' | 'EOA'
-  readonly setupOps?: readonly Pick<OrchestratorExecution, 'to' | 'data'>[]
-  readonly delegations?: Readonly<
-    Record<number, { readonly contract: Address }>
+/** EIP-7702 delegations, either chain-agnostic or per CAIP-2 chain. */
+export interface OrchestratorDelegations {
+  readonly default?: { readonly contract: Address }
+  readonly chains?: Readonly<
+    Record<Caip2ChainId, { readonly contract: Address }>
   >
-  readonly mockSignatures?: Readonly<Record<`${number}`, Hex>>
 }
 
-export interface OrchestratorAccountAccessList {
-  readonly chainIds?: readonly number[]
-  readonly tokens?: readonly (Address | string)[]
-  readonly chainTokens?: Readonly<Record<number, readonly (Address | string)[]>>
-  readonly chainTokenAmounts?: Readonly<
-    Record<number, Readonly<Record<Address, bigint>>>
-  >
+export interface OrchestratorAccountSimulation {
+  readonly mockSignature?: Hex
+  readonly mockSignaturesByChain?: Readonly<Record<Caip2ChainId, Hex>>
+}
+
+export interface OrchestratorEvmEoaAccount {
+  readonly type: 'eoa'
+  readonly address: Address
+  readonly signatureMode?: number
+  readonly delegations?: OrchestratorDelegations
+}
+
+export interface OrchestratorEvmSmartAccount {
+  readonly type: 'erc7579'
+  readonly address: Address
+  readonly initData?: {
+    readonly setupOps: readonly Pick<OrchestratorExecution, 'to' | 'data'>[]
+  }
+  readonly signatureMode?: number
+  readonly delegations?: OrchestratorDelegations
+  readonly simulation?: OrchestratorAccountSimulation
+}
+
+export type OrchestratorEvmAccount =
+  | OrchestratorEvmEoaAccount
+  | OrchestratorEvmSmartAccount
+
+/**
+ * A Swig the account controls, or, with `initData` on a request that delivers
+ * and executes nothing, the Swig that request creates.
+ */
+export interface OrchestratorSvmAccount {
+  readonly type: 'swig'
+  /** The asset-holding Swig wallet, not the Swig state account. */
+  readonly address: string
+  /**
+   * The Swig state account. Plain Solana spends always send it; the existing
+   * paired EVM+SVM destination-execution contract derives it server-side.
+   */
+  readonly swigAccount?: string
+  readonly authorization: SwigAuthority
+  readonly initData?: OrchestratorSwigInitData
+}
+
+/** What a Swig-creation request installs. */
+export interface OrchestratorSwigInitData {
+  /** The permanent root role. It must agree with `authorization`. */
+  readonly authority: {
+    readonly kind: 'secp256k1' | 'secp256r1'
+    readonly publicKey: Hex
+  }
+  /** The 32-byte Swig id. Required when the account has no `evm` entry. */
+  readonly id?: Hex
+}
+
+export interface OrchestratorIntentAccount {
+  readonly evm?: OrchestratorEvmAccount
+  readonly svm?: OrchestratorSvmAccount
+}
+
+/**
+ * A destination recipient. A bare `{ address }` is a payee that cannot
+ * authorize execution; the configured variants keep the capability the account
+ * entry describes.
+ */
+export type OrchestratorEvmRecipient =
+  | { readonly address: Address }
+  | {
+      readonly type: 'eoa'
+      readonly address: Address
+      readonly delegations?: OrchestratorDelegations
+    }
+  | {
+      readonly type: 'erc7579'
+      readonly address: Address
+      readonly initData?: {
+        readonly setupOps: readonly Pick<OrchestratorExecution, 'to' | 'data'>[]
+      }
+      readonly delegations?: OrchestratorDelegations
+      readonly simulation?: OrchestratorAccountSimulation
+    }
+
+export interface OrchestratorSolanaInstruction {
+  readonly programId: string
+  readonly accounts: readonly {
+    readonly pubkey: string
+    readonly isSigner: boolean
+    readonly isWritable: boolean
+  }[]
+  readonly data: string
+}
+
+export interface OrchestratorEvmDestinationExecution {
+  readonly calls: readonly OrchestratorExecution[]
+  readonly gasLimit?: bigint
+  readonly executionTokensReceived?: readonly Address[]
+}
+
+/**
+ * The singular Caucasus destination. `token` alone asks for everything the
+ * source yields; `token` with `amount` asks for exactly that amount; neither is
+ * an execution that delivers nothing.
+ */
+export type OrchestratorDestination =
+  | {
+      readonly vm: 'evm'
+      readonly chainId: Caip2ChainId
+      readonly token?: Address
+      readonly amount?: bigint
+      readonly recipient?: OrchestratorEvmRecipient
+      readonly execution?: OrchestratorEvmDestinationExecution
+    }
+  | {
+      readonly vm: 'svm'
+      readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
+      readonly recipient?: { readonly address: string }
+      readonly execution?:
+        | {
+            readonly instructions: readonly OrchestratorSolanaInstruction[]
+            readonly addressLookupTables?: readonly string[]
+          }
+        | { readonly authority: Readonly<SolanaAuthorityChangeRequest> }
+    }
+  | {
+      readonly vm: 'tvm' | 'stellar'
+      readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
+      readonly recipient: { readonly address: string }
+    }
+  | {
+      readonly vm: 'hypercore'
+      readonly chainId: Caip2ChainId
+      readonly token?: string
+      readonly amount?: bigint
+      readonly recipient?: OrchestratorEvmRecipient
+      readonly execution?: {
+        readonly actions?: readonly HyperCoreAction[]
+        readonly settlement?: OrchestratorEvmDestinationExecution
+      }
+    }
+
+/**
+ * The one chain and token a singular Caucasus request spends. `maxAmount` caps
+ * what the route may take from the observed balance; `auxiliaryFunds` is extra
+ * balance of the same token the source calls make available. Both, and
+ * `execution`, are EVM-only except `maxAmount`.
+ */
+export interface OrchestratorSource {
+  readonly vm: 'evm' | 'svm'
+  readonly chainId: Caip2ChainId
+  readonly token: string
+  readonly maxAmount?: bigint
+  readonly auxiliaryFunds?: bigint
+  readonly execution?: {
+    readonly calls: readonly OrchestratorExecution[]
+  }
+}
+
+export interface OrchestratorSponsorship {
+  readonly gas?: boolean
+  readonly bridgeFees?: boolean
+  readonly swapFees?: boolean
+  readonly protocolFees?: boolean
 }
 
 export interface OrchestratorIntentOptions {
   readonly appFees?: { readonly feeBps: number }
   readonly protocolFees?: { readonly feeBps: number }
   readonly customDeadline?: number
-  readonly sponsorSettings?: {
-    readonly gas: boolean
-    readonly bridgeFees: boolean
-    readonly swapFees: boolean
-    readonly protocolFees?: boolean
-  }
+  readonly sponsorship?: OrchestratorSponsorship
   readonly settlementLayers?:
     | { readonly include: readonly string[] }
     | { readonly exclude: readonly string[] }
-  /** Restricts which swap venues may serve this intent's swaps. */
   readonly quoters?:
     | { readonly include: readonly string[] }
     | { readonly exclude: readonly string[] }
-  readonly signatureMode?: number
-  readonly auxiliaryFunds?: Readonly<
-    Record<number, Readonly<Record<Address, bigint>>>
-  >
-  /** A Hyperliquid L1 action to authorise alongside this intent. */
-  readonly hyperCore?: { readonly action: HyperCoreAction }
+  readonly selectionStrategy?: 'cheapest' | 'fastest' | 'best'
 }
 
 export interface OrchestratorIntentRequest {
-  readonly account: OrchestratorAccount
-  readonly destinationChainId: number
-  readonly destinationExecutions: readonly OrchestratorExecution[]
-  readonly destinationGasUnits?: bigint
-  readonly tokenRequests: readonly {
-    readonly tokenAddress: Address | string
-    readonly amount?: bigint
-  }[]
-  readonly recipient?: OrchestratorAccount
-  readonly accountAccessList?: OrchestratorAccountAccessList
-  readonly options: OrchestratorIntentOptions
-  readonly preClaimExecutions?: Readonly<
-    Record<number, readonly OrchestratorExecution[]>
-  >
+  readonly account: OrchestratorIntentAccount
+  readonly destination: OrchestratorDestination
+  readonly source?: OrchestratorSource
+  readonly options?: OrchestratorIntentOptions
 }
 
-export interface OrchestratorQuote {
+export interface OrchestratorExecutionQuote {
   readonly intentId: string
+  readonly purpose: 'execution'
   readonly expiresAt: number
   readonly estimatedFillTime: { readonly seconds: number }
   readonly settlementLayer: SettlementLayer
-  readonly signData: {
-    readonly origin: readonly TypedDataDefinition[]
-    readonly destination: TypedDataDefinition
-    readonly targetExecution?: TypedDataDefinition
-  }
+  readonly plan: QuotePlan
   readonly cost: Cost
-  readonly tokenRequirements?: TokenRequirements
+  readonly requirements: readonly IntentRequirement[]
+  readonly signingRequests: readonly SigningRequest[]
   readonly bridgeFill?: BridgeFill
 }
+
+/** The rent one account initialization locks. */
+export interface OrchestratorDeploymentCost {
+  readonly vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
+  readonly chainId: Caip2ChainId
+  readonly rent: {
+    /** In the chain's native base unit (lamports on Solana). */
+    readonly amount: bigint
+    readonly usd: number
+    readonly sponsored: boolean
+  }
+}
+
+/** A route that only initializes an account: nothing to sign, nothing moved. */
+export interface OrchestratorDeploymentQuote {
+  readonly intentId: string
+  readonly purpose: 'deployment'
+  readonly expiresAt: number
+  readonly estimatedFillTime: { readonly seconds: number }
+  readonly settlementLayer: SettlementLayer
+  readonly plan: QuotePlan
+  readonly cost: Cost
+  readonly deploymentCosts: readonly OrchestratorDeploymentCost[]
+  readonly requirements: readonly IntentRequirement[]
+  readonly signingRequests: readonly SigningRequest[]
+}
+
+export type OrchestratorQuote =
+  | OrchestratorExecutionQuote
+  | OrchestratorDeploymentQuote
 
 export interface OrchestratorQuoteResponse {
   readonly traceId: string
   readonly routes: readonly OrchestratorQuote[]
 }
 
-export type OrchestratorOriginSignature =
-  | Hex
-  | { readonly preClaimSig: Hex; readonly notarizedClaimSig: Hex }
-
 export interface OrchestratorSignedIntent {
   readonly intentId: string
-  readonly signatures: {
-    readonly origin: readonly OrchestratorOriginSignature[]
-    readonly destination: Hex
-    readonly targetExecution?: Hex
-  }
-  readonly authorizations?: {
-    readonly sponsor?: readonly SignedAuthorization[]
-    readonly recipient?: readonly SignedAuthorization[]
-  }
+  /** One proof per signing request, in the quoted order. */
+  readonly proofs: readonly SigningProof[]
   readonly dryRun?: boolean
 }
 
+/** What a quote asks the integrator to approve, when it asks for sponsorship. */
 export interface OrchestratorQuoteContext {
   readonly intentInput: SerializedIntentInput
   readonly sponsored: boolean
@@ -135,11 +291,12 @@ export interface OrchestratorIntentSubmission {
 export interface OrchestratorIntentStatus {
   readonly traceId: string
   readonly intentId: string
+  readonly purpose: 'execution' | 'deployment'
   readonly status: IntentStatus
-  readonly account: Address
-  readonly operations: readonly ChainOperation[]
+  readonly accounts?: readonly IntentAccountSummary[]
+  readonly operations: readonly IntentOperationGroup[]
   readonly refunds?: readonly IntentRefund[]
-  readonly hyperCore?: IntentHyperCoreResult
+  readonly details?: IntentDetails
 }
 
 export interface OrchestratorPortfolioRequest {

@@ -1,6 +1,6 @@
 import { describe, test } from 'vitest'
 import { SimulationFailedError } from '../../../src/errors/index'
-import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../../../src/index'
+import { MULTI_FACTOR_VALIDATOR_V2_ADDRESS } from '../../../src/evm/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -22,13 +22,16 @@ import {
   expectNoOperationOnChain,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 describe.sequential('SDK integration smoke', () => {
   test('runs a sponsored same-chain intent on a fresh default account', async () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, sourceChain)
@@ -37,9 +40,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/fresh/sponsored',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -57,15 +59,17 @@ describe.sequential('SDK integration smoke', () => {
     const firstOwner = createOwner()
     const secondOwner = createOwner()
     const account = await sdk.createAccount({
-      account: { type: 'nexus' },
-      owners: {
-        type: 'multi-factor',
-        module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
-        threshold: 2,
-        validators: [
-          { type: 'ecdsa', accounts: [firstOwner] },
-          { type: 'ecdsa', accounts: [secondOwner] },
-        ],
+      evm: {
+        account: { type: 'nexus' },
+        owners: {
+          type: 'multi-factor',
+          module: MULTI_FACTOR_VALIDATOR_V2_ADDRESS,
+          threshold: 2,
+          validators: [
+            { type: 'ecdsa', accounts: [firstOwner] },
+            { type: 'ecdsa', accounts: [secondOwner] },
+          ],
+        },
       },
     })
 
@@ -75,9 +79,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/fresh/registry-free-mfa',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -93,7 +96,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, targetChain)
@@ -102,10 +107,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/cross-chain/fresh/sponsored',
       transaction: {
-        sourceChains: [sourceChain],
-        targetChain,
+        destination: { chain: targetChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -122,8 +125,10 @@ describe.sequential('SDK integration smoke', () => {
     const owner = createOwner()
     const sessionOwner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -138,9 +143,10 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/ssx/scoped-inline-enable',
       transaction: {
-        chain: sourceChain,
+        // Enabling runs a pre-claim call on the source, so the intent names one.
+        source: { token: getTokenAddress('USDC', sourceChain.id) },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         signers: {
           type: 'session',
           session,
@@ -164,16 +170,20 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     const execution = await executeIntent({
       account,
       label: 'smoke/simulation-failure/unfunded-usdc-transfer',
       transaction: {
-        chain: sourceChain,
+        destination: {
+          chain: sourceChain,
+          calls: [createUnfundedUsdcTransferCall(sourceChain)],
+        },
         sponsored: true,
-        calls: [createUnfundedUsdcTransferCall(sourceChain)],
       },
     })
 
@@ -190,7 +200,9 @@ describe.sequential('SDK integration smoke', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, sourceChain)
@@ -199,9 +211,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/deployed/deploy',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -216,9 +227,8 @@ describe.sequential('SDK integration smoke', () => {
       account,
       label: 'smoke/same-chain/deployed/reuse',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 

@@ -222,6 +222,15 @@ export interface ResolveSessionOptions {
   readonly settlement?: SettlementCatalog
 }
 
+export function assertSessionDefinitionInput(definition: object): void {
+  if ('claimPolicies' in definition) {
+    throw refusal(
+      'REMOVED_CLAIM_POLICIES_INPUT',
+      '`SessionDefinition.claimPolicies` was removed; use `crossChainPermits`. Keep compiled `Session.claimPolicies` when restoring an authorized session, and pass that Session directly to enable/sign methods, not definition resolution.',
+    )
+  }
+}
+
 export function resolveSessionData(
   definition: SessionDefinition,
   options: ResolveSessionOptions = {},
@@ -350,6 +359,7 @@ function resolveSession(
   /** An action window on a session salted with zeroHash. */
   readonly sharedActionWindow: boolean
 } {
+  assertSessionDefinitionInput(definition)
   if (usesEns(definition.owners)) {
     throw new Error('ENS owners are not supported for smart sessions')
   }
@@ -391,10 +401,7 @@ function resolveSession(
         ...(definition.actions ?? []).map((a) => a.target),
       ],
       signingMode: definition.signing?.mode,
-      hasCrossChainGrants: Boolean(
-        definition.crossChainPermits?.length ||
-          definition.claimPolicies?.length,
-      ),
+      hasCrossChainGrants: Boolean(definition.crossChainPermits?.length),
     })
     if (definition.saltMode === 'v1') {
       throw new Error(
@@ -639,19 +646,6 @@ function resolveSession(
     ),
     ...permit2Actions,
   ]
-  // Raw claimPolicies keep their spending guardrails on the fallback action, so
-  // a restricted session would drop them. A crossChainPermits entry carries
-  // its own on its scoped actions (a Permit2-layer permit's cap rides its
-  // Permit2 approve, its claim policy the 1271 list).
-  if (restricted && definition.claimPolicies?.length) {
-    refuse(
-      refusal(
-        'RESTRICTED_WITH_PERMIT2_GRANTS',
-        'a scoped session (restrictToActions, swap or crossChainPermits) ' +
-          'cannot hold claimPolicies, whose spending limits need the fallback; use crossChainPermits',
-      ),
-    )
-  }
   if (definition.oneTimeUse) {
     if (definition.saltMode === 'v1') {
       throw new Error(
@@ -924,10 +918,7 @@ function resolveSession(
           collect,
         ).data.actions
       : undefined
-  const rawClaimPolicies = [
-    ...(definition.claimPolicies ?? []),
-    ...expandedPermits.map(({ claim }) => claim),
-  ]
+  const rawClaimPolicies = expandedPermits.map(({ claim }) => claim)
   // The pre-claim entrypoint is permissionless and names its caller as the
   // arbiter, so an unpinned arbiter lets the session key settle without burning.
   if (
@@ -1188,9 +1179,7 @@ function resolveSession(
     access: sudoFallback
       ? {
           kind: 'open',
-          reason: definition.claimPolicies?.length
-            ? 'claimPolicies only; the wildcard fallback is sudo'
-            : 'no restriction set; the wildcard fallback is sudo',
+          reason: 'no restriction set; the wildcard fallback is sudo',
         }
       : access,
   }
@@ -1218,12 +1207,6 @@ function sessionAccess(
       : []),
   ]
   if (scopedBy.length) return { kind: 'scoped', reason: scopedBy.join('; ') }
-  if (definition.claimPolicies?.length) {
-    return {
-      kind: 'open',
-      reason: 'claimPolicies keep the intent-execution fallback',
-    }
-  }
   return { kind: 'open', reason: 'no restriction set' }
 }
 
@@ -1649,7 +1632,7 @@ export function toSession(
     actions: data.actions,
     // Kept for both routes: the Permit2 settlement signature builds their calldata
     // from here (see claimPolicyData); they are enforced from the 1271 list.
-    claimPolicies: [...(definition.claimPolicies ?? []), ...expandedClaims],
+    claimPolicies: expandedClaims,
     ...(definition.swap ? { swap: definition.swap } : {}),
     ...(intentLayers.length ? { settlementLayers: intentLayers } : {}),
     ...(settlementCoverage ? { settlementCoverage } : {}),

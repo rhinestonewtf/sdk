@@ -33,8 +33,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('injects the session-enable op before user source calls', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
-      sessions: { enabled: true },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+        sessions: { enabled: true },
+      },
     })
     const session = createScopedSession({
       chain: sourceChain,
@@ -46,11 +48,13 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/dummy-ordering',
       mode: 'sign',
       transaction: await withEnableData(account, session, {
-        sourceChains: [sourceChain],
-        targetChain,
+        source: {
+          chain: sourceChain,
+          token: getTokenAddress('USDC', sourceChain.id),
+          calls: [createNoopCall()],
+        },
+        destination: { chain: targetChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
-        sourceCalls: { [sourceChain.id]: [createNoopCall()] },
         signers: { type: 'session' as const, session },
       }),
     })
@@ -58,8 +62,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
     expectOutcome(execution, { kind: 'success' })
     if (execution.phase !== 'success') return
 
-    const ops =
-      execution.prepared.intentInput.preClaimExecutions?.[sourceChain.id]
+    const ops = execution.prepared.intentInput.source?.execution?.calls
     expect(ops?.length).toBe(2)
     expect(ops?.[0].to.toLowerCase()).toBe(
       DUMMY_PRECLAIMOP_TARGET.toLowerCase(),
@@ -74,7 +77,9 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('attaches no preclaim ops to a plain owner intent', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
 
     const execution = await executeIntent({
@@ -82,17 +87,15 @@ describe.sequential('SDK integration preclaim-ops', () => {
       label: 'preclaim/none',
       mode: 'sign',
       transaction: {
-        sourceChains: [sourceChain],
-        targetChain,
+        destination: { chain: targetChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
     expectOutcome(execution, { kind: 'success' })
     if (execution.phase !== 'success') return
 
-    expect(execution.prepared.intentInput.preClaimExecutions).toBeUndefined()
+    expect(execution.prepared.intentInput.source).toBeUndefined()
   })
 
   // Source calls aren't just encoded — they run on-chain. A cross-chain intent
@@ -102,9 +105,13 @@ describe.sequential('SDK integration preclaim-ops', () => {
   test('executes a user source call on-chain', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [createOwner()] },
+      },
     })
-    await ensureFunded(account.getAddress(), sourceChain, { usdc: 1_000_000n })
+    await ensureFunded(account.getAddress('evm'), sourceChain, {
+      usdc: 1_000_000n,
+    })
     await waitForOrchestratorUsdc(account, sourceChain, 1_000_000n)
 
     const recipient = createOwner().address
@@ -118,13 +125,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
       account,
       label: 'preclaim/execute',
       transaction: {
-        sourceChains: [sourceChain],
-        targetChain,
-        sponsored: true,
-        calls: [],
-        tokenRequests: [{ address: targetUsdc, amount: 10_000n }],
-        sourceCalls: {
-          [sourceChain.id]: [
+        source: {
+          chain: sourceChain,
+          token: sourceUsdc,
+          calls: [
             {
               to: sourceUsdc,
               value: 0n,
@@ -136,6 +140,8 @@ describe.sequential('SDK integration preclaim-ops', () => {
             },
           ],
         },
+        destination: { chain: targetChain, token: targetUsdc, amount: 10_000n },
+        sponsored: true,
       },
     })
 

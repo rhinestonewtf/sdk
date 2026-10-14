@@ -1,19 +1,25 @@
 /**
- * Generates `src/clients/orchestrator/wire.gen.ts` from the orchestrator's published
- * OpenAPI spec (blanc version). The generated wire types are the single source
- * of truth for the orchestrator's request/response shapes; the orchestrator
- * client adapts them to the SDK's internal types (BigInt amounts, numeric chain
- * ids). When the wire shape drifts, regenerating this file turns the change into
- * a typecheck error at the adapter boundary.
+ * Generates `src/clients/orchestrator/wire.gen.ts` from the orchestrator's
+ * Caucasus OpenAPI document. The generated wire types are the single source of
+ * truth for the orchestrator's request/response shapes; the orchestrator client
+ * adapts them to the SDK's internal types (BigInt amounts, native chain ids).
+ * When the wire shape drifts, regenerating this file turns the change into a
+ * typecheck error at the adapter boundary.
  *
- * Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → pinned URL.
- * The default targets the `openapi` commit pinned in `.openapi-ref` (next to
- * the generated file), so regeneration is deterministic and immune to upstream
- * `openapi/main` drift — the pin is bumped only by the scheduled sync workflow.
- * The published spec lives in the public `rhinestonewtf/openapi` repo, so the
- * default needs no auth. Pass a local path to generate against a checkout.
+ * Spec source resolves as: CLI arg → `ORCH_OPENAPI_SPEC` env → the vendored
+ * snapshot in `scripts/openapi/`. `2026-09.caucasus` is not in the
+ * orchestrator's published version set yet, so it is absent from the public
+ * `rhinestonewtf/openapi` repo; the snapshot is checked in with a provenance
+ * manifest (upstream commit, artifact hash, generation command) so regeneration
+ * stays deterministic and reviewable. The manifest's `sha256` and the
+ * document's `info.version` are verified before generating, so a swapped or
+ * truncated artifact fails loudly instead of producing plausible types.
+ *
+ * Once public publication lands (RHI-7424), a reviewed sync PR switches the
+ * default back to an immutable public OpenAPI URL and drops the snapshot.
  */
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -23,21 +29,56 @@ const OUT_PATH = fileURLToPath(
   new URL('../src/clients/orchestrator/wire.gen.ts', import.meta.url),
 )
 
-const REF_PATH = fileURLToPath(
-  new URL('../src/clients/orchestrator/.openapi-ref', import.meta.url),
-)
+// Module-relative, so generation does not depend on the caller's working
+// directory. Only a caller-supplied override resolves against `process.cwd()`.
+const SNAPSHOT_DIR = new URL('./openapi/', import.meta.url)
 
-const pinnedRef = readFileSync(REF_PATH, 'utf8').trim()
-const DEFAULT_SPEC = `https://raw.githubusercontent.com/rhinestonewtf/openapi/${pinnedRef}/orchestrator/blanc.json`
+interface Provenance {
+  readonly apiVersion: string
+  readonly artifact: string
+  readonly sha256: string
+}
 
-function resolveSpec(value: string): URL {
+/**
+ * Reads the provenance manifest and verifies the vendored snapshot against it.
+ * Returns the snapshot's URL.
+ * @param directory Snapshot directory; defaults to the vendored one. Tests
+ * point it at a copy so they never rewrite the tracked artifact.
+ */
+export function resolveVendoredSpec(directory: URL = SNAPSHOT_DIR): URL {
+  const provenance = JSON.parse(
+    readFileSync(fileURLToPath(new URL('provenance.json', directory)), 'utf8'),
+  ) as Provenance
+  const artifactPath = fileURLToPath(new URL(provenance.artifact, directory))
+  const bytes = readFileSync(artifactPath)
+
+  const actual = createHash('sha256').update(bytes).digest('hex')
+  if (actual !== provenance.sha256) {
+    throw new Error(
+      `Vendored OpenAPI snapshot hash mismatch for ${provenance.artifact}: manifest records ${provenance.sha256}, file is ${actual}. Regenerate the snapshot upstream and update scripts/openapi/provenance.json together.`,
+    )
+  }
+
+  const document = JSON.parse(bytes.toString('utf8')) as {
+    info?: { version?: string }
+  }
+  if (document.info?.version !== provenance.apiVersion) {
+    throw new Error(
+      `Vendored OpenAPI snapshot version mismatch: manifest records ${provenance.apiVersion}, document declares ${document.info?.version ?? '<missing>'}.`,
+    )
+  }
+
+  return pathToFileURL(artifactPath)
+}
+
+export function resolveSpec(value: string): URL {
   if (/^https?:\/\//.test(value)) return new URL(value)
   return pathToFileURL(resolve(process.cwd(), value))
 }
 
 async function main() {
-  const spec = process.argv[2] ?? process.env.ORCH_OPENAPI_SPEC ?? DEFAULT_SPEC
-  const input = resolveSpec(spec)
+  const override = process.argv[2] ?? process.env.ORCH_OPENAPI_SPEC
+  const input = override ? resolveSpec(override) : resolveVendoredSpec()
   console.info(`Generating wire types from: ${input.href}`)
   const ast = await openapiTS(input)
   const banner =
@@ -52,4 +93,6 @@ async function main() {
   console.info(`Wrote ${OUT_PATH}`)
 }
 
-main()
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  await main()
+}

@@ -6,7 +6,7 @@ import {
   resolveAccountConfig,
   resolveSdkConfig,
 } from '../../../src/config/resolve'
-import { experimental_getModuleSetup } from '../../../src/utils/index'
+import { experimental_getModuleSetup } from '../../../src/evm/index'
 import vector from './account-deployment.json'
 import { deriveVectorRecord } from './derive'
 import { type VectorCase, vectorCases } from './matrix'
@@ -82,7 +82,9 @@ const currentCases = vectorCases.filter(
 )
 
 describe('account deployment vectors (adapter path)', () => {
-  const sdk = resolveSdkConfig({ apiKey: 'vector-only' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'vector-only' },
+  })
 
   test.each(currentCases)('$id', (vectorCase) => {
     const resolved = resolveAccountConfig(sdk, vectorCase.config)

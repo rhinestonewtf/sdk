@@ -13,6 +13,7 @@ import {
   type SessionValidation,
 } from '../../modules/validators/smart-sessions/refusals'
 import {
+  assertSessionDefinitionInput,
   type ResolveSessionOptions,
   sessionPolicyAddresses,
   toSession,
@@ -80,6 +81,7 @@ async function sessionOptions(
 }
 
 export async function createSession(input: SessionInput): Promise<Session> {
+  assertSessionDefinitionInput(input.definition)
   return toSession(input.definition, await sessionOptions(input, refuser()))
 }
 
@@ -89,6 +91,12 @@ export async function validateSession(
 ): Promise<SessionValidation> {
   // One log, so a refusal met before resolving stays first, as createSession throws it.
   const log = refusalLog()
+  try {
+    assertSessionDefinitionInput(input.definition)
+  } catch (error) {
+    log.collect(error)
+    return { refusals: log.refusals }
+  }
   const options = await sessionOptions(input, refuser(log.collect))
   return validateSessionDefinition(input.definition, options, log)
 }

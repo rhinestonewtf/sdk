@@ -7,6 +7,9 @@ const manifest = JSON.parse(
   ),
 )
 
+// v2 baselines ship the EVM helpers as `/utils`; v3 renames it to `/evm`.
+const evmSpecifier = `${manifest.name}${'./evm' in manifest.exports ? '/evm' : '/utils'}`
+
 const packageSpecifier = (entrypoint) =>
   entrypoint === '.' ? manifest.name : `${manifest.name}${entrypoint.slice(1)}`
 
@@ -38,10 +41,7 @@ if (mode === 'exports') {
   }
 } else if (mode === 'error-identity') {
   const [{ OwnersFieldRequiredError }, { experimental_getRhinestoneInitData }] =
-    await Promise.all([
-      import(`${manifest.name}/errors`),
-      import(`${manifest.name}/utils`),
-    ])
+    await Promise.all([import(`${manifest.name}/errors`), import(evmSpecifier)])
 
   try {
     experimental_getRhinestoneInitData({ account: { type: 'safe' } })
@@ -58,10 +58,23 @@ if (mode === 'exports') {
       }),
     )
   }
+} else if (mode === 'sdk-version') {
+  let header
+  globalThis.fetch = async (_url, init) => {
+    header = new Headers(init.headers).get('x-sdk-version')
+    return new Response('{}', { status: 404 })
+  }
+  const { RhinestoneSDK } = await import(manifest.name)
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey', apiKey: 'version-probe' },
+  })
+  await sdk.getIntentStatus('version-probe').catch(() => {})
+  if (!header) throw new Error('SDK made no versioned request')
+  process.stdout.write(JSON.stringify(header))
 } else if (mode === 'compatibility-values') {
   const { privateKeyToAccount } = await import('viem/accounts')
   const { experimental_getModuleSetup, experimental_getRhinestoneInitData } =
-    await import(`${manifest.name}/utils`)
+    await import(evmSpecifier)
   const address = '0x0000000000000000000000000000000000000001'
   const addressOnlyInitData = experimental_getRhinestoneInitData({
     account: { type: 'safe' },

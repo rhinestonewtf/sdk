@@ -182,18 +182,15 @@ const permit2ClaimPolicy = {
 toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
+  // @ts-expect-error Raw claim policies are compiled metadata, not definition inputs.
   claimPolicies: [permit2ClaimPolicy],
 })
 
 toSession({
   chain: base,
   owners: { type: 'ecdsa', accounts: [accountA] },
-  claimPolicies: [
-    {
-      // @ts-expect-error public Permit2 claim policies use `permit2`.
-      type: 'permit2-claim',
-    },
-  ],
+  // @ts-expect-error Even empty raw claims are not accepted on definitions.
+  claimPolicies: [],
 })
 
 const signingContent = {

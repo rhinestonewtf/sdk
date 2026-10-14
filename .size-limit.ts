@@ -7,7 +7,16 @@ const limits = [
   {
     name: '@rhinestone/sdk',
     path: `${packageRoot}/index.js`,
-    limit: '77 kB',
+    // Offline Solana PDA derivation includes maintained base58 and Ed25519
+    // primitives; keep their browser cost visible in the root budget.
+    // Caucasus adds runtime narrowing at the signing trust boundary and the
+    // source-selection builder, which is where the last ~1 kB went.
+    // A standalone (Solana-only) managed account adds its own facade (~0.5 kB).
+    // EVM calls after a Solana-origin delivery add their request, signing and
+    // replay paths (~0.3 kB). Swig creation adds its request builder, route
+    // validation and error mapping (~1.5 kB).
+    // The settlement/session compiler adds ~19 kB to the 85.78 kB v3 baseline.
+    limit: '106 kB',
     import: '*',
     ignore: viem,
   },
@@ -82,15 +91,24 @@ const limits = [
     ignore: viem,
   },
   {
-    name: '@rhinestone/sdk/utils',
-    path: `${packageRoot}/utils/index.js`,
+    name: '@rhinestone/sdk/evm',
+    path: `${packageRoot}/evm/index.js`,
     limit: '25 kB',
+    import: '*',
+    ignore: viem,
+  },
+  {
+    name: '@rhinestone/sdk/solana',
+    path: `${packageRoot}/solana/index.js`,
+    // Address validation and Swig id derivation carry base58 and Ed25519.
+    limit: '12 kB',
     import: '*',
     ignore: viem,
   },
   {
     name: '@rhinestone/sdk/smart-sessions',
     path: `${packageRoot}/smart-sessions/index.js`,
+    // Full settlement policies and validation measure 32.14 kB (was 14.47 kB).
     limit: '33 kB',
     import: '*',
     ignore: viem,
@@ -98,7 +116,8 @@ const limits = [
   {
     name: '@rhinestone/sdk/jwt-server',
     path: `${packageRoot}/jwt-server/index.js`,
-    limit: '2 kB',
+    // Unchanged v3 baseline is 2.23 kB, including optional-peer diagnostics.
+    limit: '2.3 kB',
     import: '*',
     ignore: ['jose', 'jose/*', ...viem],
     modifyEsbuildConfig: (config: BuildOptions): BuildOptions => ({

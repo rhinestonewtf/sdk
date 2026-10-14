@@ -2,12 +2,7 @@ import type { Chain } from 'viem/chains'
 import { describe, test } from 'vitest'
 import { disableSession } from '../../../src/actions/smart-sessions'
 import { SimulationFailedError } from '../../../src/errors/index'
-import type {
-  RhinestoneAccount,
-  Session,
-  SignerSet,
-  Transaction,
-} from '../../../src/index'
+import type { RhinestoneAccount, Session, SignerSet } from '../../../src/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import {
@@ -31,10 +26,13 @@ import {
   expectNoFailedOperations,
   expectOutcome,
 } from '../framework/runner'
+import { getTokenAddress } from '../framework/tokens'
 
 type ChainMode = 'same' | 'cross'
 type Scope = 'unscoped' | 'scoped-single' | 'scoped-multi'
-type SessionTransaction = Transaction & {
+type SessionTransaction = Parameters<
+  RhinestoneAccount['prepareTransaction']
+>[0] & {
   signers: Extract<SignerSet, { session: Session }>
 }
 
@@ -172,9 +170,9 @@ async function expectScopedCallRejected(
     account,
     label: `ssx/${label}/reject`,
     transaction: await addEnableData(account, session, {
-      chain: sourceChain,
+      source: { token: getTokenAddress('USDC', sourceChain.id) },
+      destination: { chain: sourceChain, calls: [call] },
       sponsored: true,
-      calls: [call],
       signers: { type: 'session', session },
     }),
   })
@@ -189,8 +187,10 @@ async function expectScopedCallRejected(
 
 function createSessionAccount() {
   return createIntegrationSDK().createAccount({
-    owners: { type: 'ecdsa', accounts: [createOwner()] },
-    sessions: { enabled: true },
+    evm: {
+      owners: { type: 'ecdsa', accounts: [createOwner()] },
+      sessions: { enabled: true },
+    },
   })
 }
 
@@ -212,16 +212,22 @@ function createSessionTransaction(
   chainMode: ChainMode,
   { session }: { session: Session },
 ): SessionTransaction {
-  const base = {
-    sponsored: true,
-    calls: [createNoopCall()],
-    signers: { type: 'session' as const, session },
-  }
+  const signers = { type: 'session' as const, session }
 
   if (chainMode === 'cross') {
-    return { ...base, sourceChains: [sourceChain], targetChain }
+    return {
+      source: { token: getTokenAddress('USDC', targetChain.id) },
+      destination: { chain: targetChain, calls: [createNoopCall()] },
+      sponsored: true,
+      signers,
+    }
   }
-  return { ...base, chain: sourceChain }
+  return {
+    source: { token: getTokenAddress('USDC', sourceChain.id) },
+    destination: { chain: sourceChain, calls: [createNoopCall()] },
+    sponsored: true,
+    signers,
+  }
 }
 
 // Disable is local to the session's chain and owner-signed (no session
@@ -231,9 +237,11 @@ function createDisableTransaction(
   { session }: { session: Session },
 ) {
   return {
-    chain: getExecutionChain(chainMode),
+    destination: {
+      chain: getExecutionChain(chainMode),
+      calls: [disableSession(session, new Date(Date.now() + 60 * 60_000))],
+    },
     sponsored: true,
-    calls: [disableSession(session, new Date(Date.now() + 60 * 60_000))],
   }
 }
 

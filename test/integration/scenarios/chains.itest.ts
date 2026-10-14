@@ -16,7 +16,9 @@ describe.sequential('SDK integration chain modes', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, sourceChain)
@@ -25,9 +27,8 @@ describe.sequential('SDK integration chain modes', () => {
       account,
       label: 'chains/same-chain/fresh/sponsored',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 
@@ -44,7 +45,9 @@ describe.sequential('SDK integration chain modes', () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const account = await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [owner] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [owner] },
+      },
     })
 
     await expectNotDeployed(account, targetChain)
@@ -53,10 +56,8 @@ describe.sequential('SDK integration chain modes', () => {
       account,
       label: 'chains/cross-chain/fresh/sponsored',
       transaction: {
-        sourceChains: [sourceChain],
-        targetChain,
+        destination: { chain: targetChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
       },
     })
 

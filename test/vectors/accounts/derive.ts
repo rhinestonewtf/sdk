@@ -1,6 +1,9 @@
 import { type Address, type Hex, keccak256 } from 'viem'
-import { type RhinestoneAccountConfig, RhinestoneSDK } from '../../../src/index'
-import { experimental_getV0InitData } from '../../../src/utils/index'
+import {
+  type EvmAccountConfig,
+  experimental_getV0InitData,
+} from '../../../src/evm/index'
+import { RhinestoneSDK } from '../../../src/index'
 import { type VectorCase, vectorCaseById, vectorCases } from './matrix'
 
 export interface VectorRecord {
@@ -16,11 +19,13 @@ interface DerivedPlan {
   readonly factoryData?: Hex
 }
 
-const sdk = new RhinestoneSDK({ apiKey: 'vector-only' })
+const sdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'vector-only' },
+})
 
 async function resolveConfig(
   vectorCase: VectorCase,
-): Promise<RhinestoneAccountConfig> {
+): Promise<EvmAccountConfig> {
   if (!vectorCase.pinnedFrom) return vectorCase.config
   const base = await derivePlan(vectorCaseById(vectorCase.pinnedFrom))
   if (!base.factory || !base.factoryData) {
@@ -49,8 +54,8 @@ async function derivePlan(vectorCase: VectorCase): Promise<DerivedPlan> {
       factoryData: initData.factoryData,
     }
   }
-  const account = await sdk.createAccount(config)
-  const address = account.getAddress()
+  const account = await sdk.createAccount({ evm: config })
+  const address = account.getAddress('evm')
   if (vectorCase.pins === 'address') return { address }
   const initData = account.getInitData()
   return {

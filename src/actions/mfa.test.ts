@@ -73,12 +73,16 @@ async function resolveCallInputs(calls: readonly CallInput[], config: unknown) {
 }
 
 async function accountConfig() {
-  const sdk = new RhinestoneSDK({ apiKey: 'test' })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   return (
     await sdk.createAccount({
-      owners: { type: 'ecdsa', accounts: [accountA] },
+      evm: {
+        owners: { type: 'ecdsa', accounts: [accountA] },
+      },
     })
-  ).config
+  ).config.evm
 }
 
 const factor: OwnableValidatorConfig = {

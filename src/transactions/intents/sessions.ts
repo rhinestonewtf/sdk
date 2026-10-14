@@ -10,22 +10,16 @@ import {
   DUMMY_PRECLAIMOP_SELECTOR,
   DUMMY_PRECLAIMOP_TARGET,
 } from '../../modules/validators/smart-sessions/resolve'
-import type {
-  ResolvedSessionSignerSet,
-  Session,
-} from '../../modules/validators/smart-sessions/types'
+import type { ResolvedSessionSignerSet } from '../../modules/validators/smart-sessions/types'
 import type { IntentInput, IntentWorkflowContext } from './types'
 
 export interface PreparedIntentSessions {
   readonly signatureMode: number
   readonly byChain: Readonly<Record<number, ResolvedSessionSignerSet>>
   readonly mockSignatures: Readonly<Record<string, Hex>>
-  readonly preClaimCalls: Readonly<Record<number, readonly Call[]>>
-  // The destination's burn, when a one-time-use session executes there.
+  /** Session-enable pre-claim calls, run on the source chain before any others. */
+  readonly preClaimCalls: readonly Call[]
   readonly destinationBurn?: Call
-  // The destination is also a source with a one-time-use session, so its burn is
-  // spent by that source's pre-claim.
-  readonly destinationBurnsAsSource?: boolean
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -38,9 +32,8 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
 }): Promise<PreparedIntentSessions | undefined> {
   const selection = input.intent.signers
   if (!selection || selection.kind !== 'smart-session') return undefined
-  const chains = sessionChains(input.intent)
+  const chains = sessionChains(input.intent, input.runtime.identity.address)
   for (const chain of chains) {
-    // Only a defaulted address: an explicit one may sit on a chain the table lacks.
     const once = selection.byChain[chain.id]?.session.oneTimeUse
     if (once?.defaultPolicy)
       assertOneTimeUseIdPolicyDeployed(once.policy, chain.id)
@@ -65,8 +58,6 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       if (enabled?.kind !== 'session-enabled') {
         throw new Error(`Session state for chain ${chain.id} is missing`)
       }
-      // A one-time-use session always takes verify-execution mode (5): the policy
-      // burns the id only in checkAction and refuses ERC-1271 from the executor.
       const verifyExecutions =
         !enabled.enabled ||
         selected.session.hasExplicitPermissions ||
@@ -85,36 +76,33 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     }),
   )
   const byChain = Object.fromEntries(resolvedEntries)
-  // Burns ride the listed sources' pre-claim calls, so an unlisted source would
-  // settle without one (and the policy would refuse it).
-  if (
-    resolvedEntries.some(([, value]) => value.session.oneTimeUse) &&
-    !input.intent.sourceChains?.length
-  ) {
-    throw new Error(
-      'A oneTimeUse session needs the intent to list its sourceChains',
-    )
-  }
-  // An origin enable rides a pre-claim call, which such a claim may not carry.
-  const noPreClaimCalls = ({ session }: { session: Session }) =>
-    session.claimPolicies.some(({ originOps }) =>
-      originOps?.some(({ required }) => !required),
+  const forbidsPreClaim = (resolved: ResolvedSessionSignerSet) =>
+    resolved.session.claimPolicies.some(({ originOps }) =>
+      originOps?.some(
+        ({ chain, required }) =>
+          !required && chain.id === resolved.session.chain.id,
+      ),
     )
   if (
-    resolvedEntries.some(([, value]) => noPreClaimCalls(value)) &&
-    !input.intent.sourceChains?.length
+    !input.intent.source &&
+    resolvedEntries.some(
+      ([, resolved]) =>
+        resolved.session.oneTimeUse || forbidsPreClaim(resolved),
+    )
   ) {
     throw new Error(
-      'A session whose claim may not carry pre-claim calls needs the intent to list its sourceChains',
+      'This smart session requires an explicit source for its oneTimeUse burn or pre-claim restrictions',
     )
   }
-  for (const chain of input.intent.sourceChains ?? []) {
-    const resolved = byChain[chain.id]
-    if (resolved?.enableData && noPreClaimCalls(resolved)) {
-      throw new Error(
-        `The session's claim may not carry pre-claim calls, so enable it on chain ${chain.id} before its first intent: sign account.getSessionDetails([session]) with account.signEnableSession, then send enableSession from @rhinestone/sdk/actions/smart-sessions as an owner-signed transaction`,
-      )
-    }
+  const origin = input.intent.source && byChain[input.intent.source.chain.id]
+  if (
+    origin &&
+    forbidsPreClaim(origin) &&
+    (origin.enableData || input.intent.source?.calls?.length)
+  ) {
+    throw new Error(
+      'The session claim may not carry pre-claim calls: enable it first and omit source calls',
+    )
   }
   const mockSignatures = Object.fromEntries(
     resolvedEntries.map(([chainId, resolved]) => [
@@ -122,7 +110,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       buildSmartSessionMockSignature({
         session: resolved.session,
         environment: input.runtime.construction.sessions.environment,
-        chainCount: input.intent.sourceChains?.length ?? 1,
+        chainCount: 1,
         targetChainId: chainId,
         shape: !resolved.verifyExecutions
           ? 'erc1271'
@@ -132,83 +120,69 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       }),
     ]),
   )
-  const preClaimCalls = Object.fromEntries(
-    (input.intent.sourceChains ?? []).flatMap((chain) => {
-      const resolved = byChain[chain.id]
-      // The policy refuses any execution not preceded by the burn, so it rides
-      // first on every chain the session settles on (and replaces the dummy op).
-      const burn = resolved && oneTimeUseBurnCall(resolved.session)
-      if (burn) return [[chain.id, [burn]] as const]
-      return resolved?.verifyExecutions && resolved.enableData
-        ? [
-            [
-              chain.id,
-              [
-                {
-                  target: DUMMY_PRECLAIMOP_TARGET,
-                  value: 0n,
-                  data: DUMMY_PRECLAIMOP_SELECTOR,
-                },
-              ],
-            ] as const,
-          ]
-        : []
-    }),
-  )
+  // The source chain carries the enablement. A source-free intent has no
+  // pre-claim slot, so a destination session that still needs enabling is
+  // reported for the caller to refuse.
+  const enablingChain = input.intent.source?.chain ?? input.intent.destination
+  const enabling =
+    enablingChain.kind === 'evm' ? byChain[enablingChain.id] : undefined
+  const sourceBurn = origin && oneTimeUseBurnCall(origin)
+  const preClaimCalls: readonly Call[] = sourceBurn
+    ? [sourceBurn]
+    : enabling?.verifyExecutions && enabling.enableData
+      ? [
+          {
+            target: DUMMY_PRECLAIMOP_TARGET,
+            value: 0n,
+            data: DUMMY_PRECLAIMOP_SELECTOR,
+          },
+        ]
+      : []
   const destinationSession =
     input.intent.destination.kind === 'evm'
-      ? byChain[input.intent.destination.id]?.session
+      ? byChain[input.intent.destination.id]
       : undefined
-  // A destination that is also a source already burns there; a second burn in the
-  // same batch is refused.
-  const destinationBurnsAsSource =
-    input.intent.destination.kind === 'evm' &&
-    Boolean(preClaimCalls[input.intent.destination.id]?.length) &&
-    Boolean(destinationSession?.oneTimeUse)
   const destinationBurn =
     destinationSession &&
-    !destinationBurnsAsSource &&
-    oneTimeUseBurnCall(destinationSession)
+    input.intent.destination.kind === 'evm' &&
+    input.intent.source?.chain.id !== input.intent.destination.id
+      ? oneTimeUseBurnCall(destinationSession)
+      : undefined
   return {
+    ...(destinationBurn ? { destinationBurn } : {}),
     signatureMode: resolvedEntries.some(([, value]) => value.verifyExecutions)
       ? 5
       : 1,
     byChain,
     mockSignatures,
     preClaimCalls,
-    ...(destinationBurn && { destinationBurn }),
-    ...(destinationBurnsAsSource && { destinationBurnsAsSource }),
   }
 }
 
-// `consumeFor(id, 0)` settles either route: the orchestrator stamps the Permit2
-// nonce into it, and the executor route ignores the witness.
+// The orchestrator stamps the Permit2 witness; executor settlement ignores it.
 function oneTimeUseBurnCall(
-  session: ResolvedSessionSignerSet['session'],
+  resolved: ResolvedSessionSignerSet,
 ): Call | undefined {
-  if (!session.oneTimeUse) return undefined
-  const op = buildOneTimeUseBurnOp({ ...session.oneTimeUse, route: 'permit2' })
+  if (!resolved.session.oneTimeUse) return undefined
+  const op = buildOneTimeUseBurnOp({
+    ...resolved.session.oneTimeUse,
+    route: 'permit2',
+  })
   return { target: op.to, value: op.value, data: op.data }
 }
 
-// Chains a smart-session intent needs an enabled session on: every source, plus
-// the destination when the user's own account executes there.
-//
-// A HyperCore venue is excluded for the same reason it cannot host the account
-// runtime: it is EVM-ADDRESSED but virtual, so there is no account there to enable
-// a session on, and requiring one would demand a session on chain 1337001/1337002
-// that can never exist. Delivery is solver-mediated anyway — the orchestrator
-// builds the `depositFor` credit and the recipient never executes — so there is no
-// destination-side authorization for a session to grant (RHI-5510).
+// Virtual venues and other recipients do not host this account's session.
 function sessionChains<CompatibilityConfig>(
   intent: IntentInput<CompatibilityConfig>,
+  account: string,
 ): readonly EvmChainReference[] {
-  const chains = new Map(
-    (intent.sourceChains ?? []).map((chain) => [chain.id, chain]),
-  )
+  const chains = new Map<number, EvmChainReference>()
+  if (intent.source) chains.set(intent.source.chain.id, intent.source.chain)
   if (
     intent.destination.kind === 'evm' &&
-    !isHyperCoreWireId(intent.destination.id)
+    !isHyperCoreWireId(intent.destination.id) &&
+    (!intent.recipient ||
+      intent.recipient.address.toLowerCase() === account.toLowerCase())
   ) {
     chains.set(intent.destination.id, intent.destination)
   }

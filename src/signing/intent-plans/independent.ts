@@ -12,7 +12,11 @@ import type {
   ValidatorContributionInput,
 } from '../../modules/validators/types'
 import type { SigningContext } from '../context'
-import type { ArtifactAssemblyPlan } from '../types'
+import type {
+  ArtifactAssemblyPlan,
+  OwnerSignature,
+  OwnerSignatureData,
+} from '../types'
 import { assembleIntentValidatorArtifact } from './assemble'
 
 export interface IndependentOwnerDescriptor {
@@ -23,40 +27,14 @@ export interface IndependentOwnerDescriptor {
   readonly factorPublicId?: number | Hex
 }
 
-export type IndependentOwnerSignatureData =
-  | {
-      readonly kind: 'ecdsa'
-      readonly signer: Address
-      readonly origin: readonly Hex[]
-    }
-  | {
-      readonly kind: 'passkey'
-      readonly publicKey: Hex
-      readonly origin: readonly {
-        readonly webauthn: {
-          readonly authenticatorData: Hex
-          readonly challengeIndex?: number
-          readonly clientDataJSON: string
-          readonly typeIndex?: number
-          readonly userVerificationRequired?: boolean
-        }
-        readonly signature: Hex
-      }[]
-    }
+export type IndependentOwnerSignatureData = OwnerSignatureData
 
-export type IndependentOwnerSignature =
-  | ({ readonly intentId: string } & IndependentOwnerSignatureData)
-  | {
-      readonly intentId: string
-      readonly kind: 'multi-factor'
-      readonly validatorId: number | Hex
-      readonly signature: IndependentOwnerSignatureData
-    }
+export type IndependentOwnerSignature = OwnerSignature
 
 export function assembleIndependentIntentArtifact(input: {
   readonly intentId: string
-  readonly originIndex: number
-  readonly originCount: number
+  readonly slotIndex: number
+  readonly slotCount: number
   readonly signatures: readonly IndependentOwnerSignature[]
   readonly owners: readonly IndependentOwnerDescriptor[]
   readonly artifact: ArtifactAssemblyPlan
@@ -96,8 +74,8 @@ export function assembleIndependentIntentArtifact(input: {
 
 function importOwnerContributions(input: {
   readonly intentId: string
-  readonly originIndex: number
-  readonly originCount: number
+  readonly slotIndex: number
+  readonly slotCount: number
   readonly signatures: readonly IndependentOwnerSignature[]
   readonly owners: readonly IndependentOwnerDescriptor[]
 }): readonly {
@@ -112,9 +90,9 @@ function importOwnerContributions(input: {
       })
     }
     const signature = value.kind === 'multi-factor' ? value.signature : value
-    if (signature.origin.length !== input.originCount) {
+    if (signature.slots.length !== input.slotCount) {
       throw new MismatchedOwnerSignaturesError({
-        context: { expectedOriginCount: input.originCount },
+        context: { expectedSlotCount: input.slotCount },
       })
     }
     const identity =
@@ -171,24 +149,23 @@ function importOwnerContributions(input: {
         ? {
             kind: 'ecdsa',
             ownerId: owner.ownerId,
-            signature: signature.origin[input.originIndex],
+            signature: signature.slots[input.slotIndex],
             encoding: 'validator-contribution',
           }
         : {
             kind: 'webauthn',
             ownerId: owner.ownerId,
             publicKey: signature.publicKey,
-            signature: signature.origin[input.originIndex].signature,
+            signature: signature.slots[input.slotIndex].signature,
             authenticatorData:
-              signature.origin[input.originIndex].webauthn.authenticatorData,
+              signature.slots[input.slotIndex].webauthn.authenticatorData,
             clientDataJSON:
-              signature.origin[input.originIndex].webauthn.clientDataJSON,
+              signature.slots[input.slotIndex].webauthn.clientDataJSON,
             challengeIndex:
-              signature.origin[input.originIndex].webauthn.challengeIndex ?? 0,
-            typeIndex:
-              signature.origin[input.originIndex].webauthn.typeIndex ?? 0,
+              signature.slots[input.slotIndex].webauthn.challengeIndex ?? 0,
+            typeIndex: signature.slots[input.slotIndex].webauthn.typeIndex ?? 0,
             userVerificationRequired:
-              signature.origin[input.originIndex].webauthn
+              signature.slots[input.slotIndex].webauthn
                 .userVerificationRequired ?? false,
           }
     return {
