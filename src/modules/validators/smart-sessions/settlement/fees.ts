@@ -234,11 +234,12 @@ function addFeeBranch(
   }
 }
 
-/** Add the fee calls to a scoped session. */
+/** Add the fee calls to a scoped session; without `approve`, all but the paymaster approve. */
 export function withFeeActions(
   actions: readonly ScopedAction[],
   sourceTokens: readonly Address[],
   fees: ServedFees,
+  approve = true,
 ): ScopedAction[] {
   const out = [...actions]
   // Usage-limited rules go last: a passing limited rule counts even if its
@@ -250,7 +251,12 @@ export function withFeeActions(
       cap(),
     ])
     // approve(paymaster, 0) passes too: tokens like USDT need the reset.
-    addFeeBranch(out, token, APPROVE_SELECTOR, [pin(0n, fees.paymaster), cap()])
+    if (approve) {
+      addFeeBranch(out, token, APPROVE_SELECTOR, [
+        pin(0n, fees.paymaster),
+        cap(),
+      ])
+    }
   }
   // One cap rule after the OR, so every token draws on the same budget.
   addFeeBranch(

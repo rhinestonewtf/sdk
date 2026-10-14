@@ -135,6 +135,22 @@ export const SESSION_REFUSAL_CODES = {
 
 export type SessionRefusalCode = keyof typeof SESSION_REFUSAL_CODES
 
+/** Every stable code a session warning carries, with what it means. */
+export const SESSION_WARNING_CODES = {
+  FALLBACK_RECIPIENT_PIN_ACROSS_ONLY:
+    'a recipient pin on a `fallback` session, which holds only for intents settled by ACROSS',
+} as const
+
+export type SessionWarningCode = keyof typeof SESSION_WARNING_CODES
+
+/** Something `createSession` accepts but that does not hold as the definition may suggest. */
+export interface SessionWarning {
+  readonly code: SessionWarningCode
+  readonly message: string
+  /** The `crossChainPermits` entry it is about. */
+  readonly permitIndex?: number
+}
+
 /** One refusal `createSession` would throw for a session definition. */
 export interface SessionRefusal {
   readonly code: SessionRefusalCode
@@ -158,6 +174,8 @@ export interface SessionValidation {
   readonly access?: SessionAccess
   /** The created session's `settlementCoverage`; present only when nothing is refused and a permit is settlement-scoped. */
   readonly settlementCoverage?: SettlementCoverage
+  /** What the session accepts but does not enforce as it may read; present only when there is one. */
+  readonly warnings?: readonly SessionWarning[]
 }
 
 type RefusalContext = Omit<SessionRefusal, 'code' | 'message'>

@@ -112,7 +112,9 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
   // approve (RHI-8045); `account` named the now-refused ECO, so it names
   // SAME_CHAIN, and the omitted-layer claims admit only ACROSS. Every row now
   // sets fallback: 'intentExecution', which a reusable session without
-  // preClaimOps: 'none' needs.
+  // preClaimOps: 'none' needs. They moved again when a fallback session
+  // stopped carrying the Permit2 approve, which the wildcard admits; the two
+  // rows naming ACROSS are back to their pre-RHI-8045 values.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(
@@ -123,15 +125,15 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
       ),
     ).toEqual({
       otherWithOptOut:
-        '0x00cf8fe485e568b998942e7156a51d298ac69e568593d9c37a06e93f30bd1325',
+        '0x5c14b1be114bc8fd2e6fc2e8f3bbda18295318cb6c9312f50d69d2b0b7ce439a',
       anyWithOptOut:
-        '0x7413bacd261442f161995932868a25acae04beacf9020638ae5f484175e34378',
+        '0xaffd40a19c56633c09f299b24d8d6326e837f2857c8d3cb5a69fa19e5c65a38f',
       account:
-        '0x0b103d420cae0eef0e6208c6611aecb492a6fb221d1ebc25a70a7ac1a8338d9a',
+        '0xd211a58d5b9604cdd498386987d19089c518ca24c538bb2727e1062955c08185',
       noRecipient:
-        '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
+        '0x96bd6382888ab3db8290dfe1f55e47dc829788f9c4bd693aefe48223741ca139',
       otherWithoutAccount:
-        '0xf45704c50c724e547891bd64cccc45007673ca975e524056798a445c2e134288',
+        '0x04779655315c89122ded6a9327f176053fb94a07a0e0f83f40d737e8eb66a6d2',
     })
   })
 })
