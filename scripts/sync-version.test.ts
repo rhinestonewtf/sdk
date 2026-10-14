@@ -91,6 +91,27 @@ describe('package version synchronization', () => {
       join(directory, '.changeset/v3.md'),
       "---\n'@rhinestone/sdk': major\n---\nRelease v3.\n",
     )
+    // Changesets status needs a base ref even for a synthetic release plan.
+    execFileSync('git', ['init', '--initial-branch=main'], {
+      cwd: directory,
+      stdio: 'pipe',
+    })
+    execFileSync('git', ['add', '.'], { cwd: directory, stdio: 'pipe' })
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-m',
+        'test fixture',
+      ],
+      { cwd: directory, stdio: 'pipe' },
+    )
     const output = join(directory, 'plan.json')
     execFileSync(
       join(root, 'node_modules/.bin/changeset'),
