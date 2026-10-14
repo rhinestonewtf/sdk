@@ -151,7 +151,7 @@ describe('settlement-scoped crossChainPermits', () => {
 
   test('refuses an IntentExecutor-layer permit without served settlement addresses', () => {
     const message =
-      "IntentExecutor-layer permits need the orchestrator's settlement addresses"
+      "IntentExecutor layers and 'all' (the default) need options.settlement"
     expect(() => resolveBare(definition())).toThrow(message)
     expect(() => toSessionBare(definition())).toThrow(message)
     expect(() =>

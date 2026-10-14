@@ -142,13 +142,13 @@ describe('session access', () => {
     }
   })
 
-  test('a Permit2 permit naming no layer is scoped to ACROSS', () => {
+  test("a permit naming no layer is scoped as 'all' is", () => {
     expect(
-      toSession({
-        ...DEFINITIONS.across,
-        crossChainPermits: [{ ...permit(), preClaimOps: 'none' }],
-      }).access,
-    ).toEqual({ kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' })
+      toSession(
+        { ...DEFINITIONS.cctp, crossChainPermits: [permit()] },
+        { settlement: SETTLEMENT_CATALOG },
+      ).access,
+    ).toEqual({ kind: 'scoped', reason: 'settlement-scoped permit (CCTP)' })
   })
 
   test('pins the encoded session of each shape', () => {

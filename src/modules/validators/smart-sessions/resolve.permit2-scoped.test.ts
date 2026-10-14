@@ -500,8 +500,6 @@ describe('a scoped Permit2-route session', () => {
 
   test.each<[CrossChainPermissionInput['settlementLayers'], string[]]>([
     [['ACROSS'], ['ACROSS']],
-    [undefined, ['ACROSS']],
-    [[], ['ACROSS']],
   ])('naming %j settles through %j', (settlementLayers, layers) => {
     const built = toSession(session([permit({ settlementLayers })]), OPTIONS)
     expect(built.access).toEqual({
