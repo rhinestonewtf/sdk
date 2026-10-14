@@ -4,6 +4,7 @@ import {
   encodeFunctionData,
   type Hex,
   isAddress,
+  maxUint64,
   maxUint256,
   pad,
   size,
@@ -11,9 +12,11 @@ import {
   toHex,
 } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { scopeOft as frozenScopeOft } from '../../../../../test/utils/oft-frozen'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { OFT_SEND_SELECTOR, oftAbi, SEND, scopeOft } from './oft'
+import { SettlementLayerRefusal } from './served'
 
 const USDT0_ARB = SETTLEMENT_CATALOG[42161].oft!.token
 const USDT0_OP = SETTLEMENT_CATALOG[10].oft!.token
@@ -26,6 +29,7 @@ function send(
     eid: number
     to: Address
     amount: bigint
+    minAmount: bigint
     extraOptions: Hex
     composeMsg: Hex
     oftCmd: Hex
@@ -41,7 +45,7 @@ function send(
         dstEid: overrides.eid ?? 30383,
         to: pad(overrides.to ?? ACCOUNT),
         amountLD: overrides.amount ?? 100n,
-        minAmountLD: 99n,
+        minAmountLD: overrides.minAmount ?? 99n,
         extraOptions: overrides.extraOptions ?? '0x',
         composeMsg: overrides.composeMsg ?? '0x',
         oftCmd: overrides.oftCmd ?? '0x',
@@ -72,6 +76,7 @@ describe('OFT send offsets', () => {
       eid: 30383,
       to: OTHER,
       amount: 7n,
+      minAmount: 6n,
       refund: ACCOUNT,
       lzTokenFee: 9n,
     })
@@ -81,6 +86,7 @@ describe('OFT send offsets', () => {
     expect(word(calldata, SEND.dstEid)).toBe(30383n)
     expect(word(calldata, SEND.to)).toBe(BigInt(OTHER))
     expect(word(calldata, SEND.amountLD)).toBe(7n)
+    expect(word(calldata, SEND.minAmountLD)).toBe(6n)
     expect(word(calldata, SEND.extraOptionsPointer)).toBe(0xe0n)
     expect(word(calldata, SEND.composeMsgPointer)).toBe(0x100n)
     expect(word(calldata, SEND.oftCmdPointer)).toBe(0x120n)
@@ -268,4 +274,308 @@ describe('scopeOft', () => {
       expect(isAddress(oft.token)).toBe(true)
     }
   })
+})
+
+describe('scopeOft against the frozen builder', () => {
+  const contexts = {
+    'one leg, pinned recipient, capped': {
+      destinations: [
+        { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+      ],
+      cap: 100n,
+    },
+    'one leg, open recipient, uncapped': {
+      destinations: [{ chainId: 9745, token: USDT0_PLASMA }],
+    },
+    'two legs, capped': {
+      destinations: [
+        { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+        { chainId: 10, token: USDT0_OP, recipient: OTHER },
+      ],
+      cap: 100n,
+    },
+  } as const
+
+  const calls = [
+    ...[30383, 30111, 30110].flatMap((eid) =>
+      [ACCOUNT, OTHER].flatMap((to) =>
+        [0n, 1n, 60n, 100n, 101n].flatMap((amount) =>
+          [0n, 1n, 50n, 60n, 80n, 100n, 101n].map((minAmount) =>
+            send({ eid, to, amount, minAmount }),
+          ),
+        ),
+      ),
+    ),
+    send({ refund: OTHER }),
+    send({ lzTokenFee: 1n }),
+    send({ composeMsg: '0x01' }),
+  ]
+
+  test.each(Object.entries(contexts))(
+    '%s: unchanged without a floor',
+    (_, ctx) => {
+      const live = scopeOft({ ...base, ...ctx })
+      const frozen = frozenScopeOft({ ...base, ...ctx })
+      expect(live).toEqual(frozen)
+      // The matrix must reach both verdicts, or agreement proves nothing.
+      expect(calls.some((calldata) => holds(frozen, calldata))).toBe(true)
+      expect(calls.some((calldata) => !holds(frozen, calldata))).toBe(true)
+      for (const calldata of calls) {
+        for (const used of [0n, 1n]) {
+          expect(holds(live, calldata, used)).toBe(
+            holds(frozen, calldata, used),
+          )
+        }
+      }
+    },
+  )
+})
+
+describe('scopeOft with to.minAmount', () => {
+  const floored = scopeOft({
+    ...base,
+    destinations: [
+      {
+        chainId: 9745,
+        token: USDT0_PLASMA,
+        recipient: ACCOUNT,
+        minAmount: 60n,
+      },
+    ],
+    cap: 100n,
+  })
+
+  test('admits a send whose minAmountLD meets the floor', () => {
+    expect(holds(floored, send({ amount: 100n, minAmount: 99n }))).toBe(true)
+    expect(holds(floored, send({ amount: 60n, minAmount: 60n }))).toBe(true)
+  })
+
+  test('refuses a send whose minAmountLD is below the floor', () => {
+    // A key that zeroes minAmountLD accepts any fee or dust the OFT takes.
+    expect(holds(floored, send({ minAmount: 0n }))).toBe(false)
+    expect(holds(floored, send({ minAmount: 59n }))).toBe(false)
+  })
+
+  test('floors each leg on its own', () => {
+    const twoLegs = scopeOft({
+      ...base,
+      destinations: [
+        {
+          chainId: 9745,
+          token: USDT0_PLASMA,
+          recipient: ACCOUNT,
+          minAmount: 50n,
+        },
+        { chainId: 10, token: USDT0_OP, recipient: OTHER, minAmount: 80n },
+      ],
+    })
+    expect(holds(twoLegs, send({ eid: 30383, minAmount: 60n }))).toBe(true)
+    expect(
+      holds(twoLegs, send({ eid: 30111, to: OTHER, minAmount: 60n })),
+    ).toBe(false)
+    expect(
+      holds(twoLegs, send({ eid: 30111, to: OTHER, minAmount: 80n })),
+    ).toBe(true)
+  })
+
+  test.each([
+    ['a zero floor', 0n, 'must be positive'],
+    ['a floor above uint64', maxUint64 + 1n, 'above uint64'],
+  ])('refuses %s', (_, minAmount, message) => {
+    const scope = () =>
+      scopeOft({
+        ...base,
+        destinations: [
+          { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT, minAmount },
+        ],
+      })
+    expect(scope).toThrow(message)
+    expect(scope).toThrow(SettlementLayerRefusal)
+  })
+
+  describe('legs on one chain', () => {
+    const legs =
+      (
+        a: { recipient?: Address; minAmount?: bigint },
+        b: { recipient?: Address; minAmount?: bigint },
+      ) =>
+      () =>
+        scopeOft({
+          ...base,
+          destinations: [
+            { chainId: 9745, token: USDT0_PLASMA, ...a },
+            { chainId: 9745, token: USDT0_PLASMA, ...b },
+          ],
+        })
+
+    test.each([
+      [
+        'different floors',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { recipient: ACCOUNT, minAmount: 80n },
+      ],
+      [
+        'a floor beside none',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { recipient: ACCOUNT },
+      ],
+      [
+        'an open recipient beside a floored one',
+        { recipient: ACCOUNT, minAmount: 60n },
+        { minAmount: 50n },
+      ],
+    ] as const)('refuses two legs that admit one send with %s', (_, a, b) => {
+      // The key would pick the looser branch.
+      expect(legs(a, b)).toThrow('admit the same send but set different')
+    })
+
+    test('accepts legs whose sends cannot coincide, or whose floors agree', () => {
+      expect(
+        legs(
+          { recipient: ACCOUNT, minAmount: 60n },
+          { recipient: OTHER, minAmount: 80n },
+        ),
+      ).not.toThrow()
+      expect(
+        legs(
+          { recipient: ACCOUNT, minAmount: 60n },
+          { recipient: ACCOUNT, minAmount: 60n },
+        ),
+      ).not.toThrow()
+      // Another chain is another eid, so the sends differ.
+      expect(() =>
+        scopeOft({
+          ...base,
+          destinations: [
+            {
+              chainId: 9745,
+              token: USDT0_PLASMA,
+              recipient: ACCOUNT,
+              minAmount: 60n,
+            },
+            { chainId: 10, token: USDT0_OP, recipient: ACCOUNT },
+          ],
+        }),
+      ).not.toThrow()
+    })
+  })
+
+  describe('decimals', () => {
+    /** The catalog with each listed token's served decimals replaced, or dropped when undefined. */
+    const serving = (decimals: Record<number, number | undefined>) =>
+      Object.fromEntries(
+        Object.entries(SETTLEMENT_CATALOG).map(([id, chain]) => {
+          const chainId = Number(id)
+          if (!(chainId in decimals) || !chain.oft) return [id, chain]
+          const others = (chain.usdStablecoins ?? []).filter(
+            (t) => t.address !== chain.oft?.token,
+          )
+          const own = decimals[chainId]
+          return [
+            id,
+            {
+              ...chain,
+              usdStablecoins:
+                own === undefined
+                  ? others
+                  : [
+                      ...others,
+                      {
+                        address: chain.oft.token,
+                        symbol: 'USDT0',
+                        decimals: own,
+                      },
+                    ],
+            },
+          ]
+        }),
+      )
+    const floor = (settlement: ReturnType<typeof serving>) =>
+      scopeOft({
+        ...base,
+        settlement,
+        destinations: [
+          {
+            chainId: 9745,
+            token: USDT0_PLASMA,
+            recipient: ACCOUNT,
+            minAmount: 60n,
+          },
+        ],
+      })
+
+    test('accepts a floor when both tokens are served with equal decimals', () => {
+      expect(() => floor(serving({}))).not.toThrow()
+      expect(() => floor(serving({ 42161: 18, 9745: 18 }))).not.toThrow()
+    })
+
+    test.each([
+      ['more decimals on the destination', { 9745: 18 }],
+      ['more decimals on the source', { 42161: 18 }],
+      ['no served decimals for the destination', { 9745: undefined }],
+      ['no served decimals for the source', { 42161: undefined }],
+      [
+        'no served decimals for either token',
+        { 42161: undefined, 9745: undefined },
+      ],
+    ] as const)('refuses a floor with %s', (_, decimals) => {
+      expect(() => floor(serving(decimals))).toThrow(
+        'needs served, equal decimals',
+      )
+    })
+
+    test('an unfloored send needs no served decimals', () => {
+      expect(() =>
+        scopeOft({
+          ...base,
+          settlement: serving({ 42161: undefined, 9745: undefined }),
+          destinations: [
+            { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+          ],
+        }),
+      ).not.toThrow()
+    })
+  })
+
+  // Against the frozen builder a floor only narrows: it admits exactly the
+  // frozen admissions whose minAmountLD meets the leg's floor.
+  const floors: Record<number, bigint> = { 30383: 50n, 30111: 80n }
+  const contexts = {
+    'one leg': [{ chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT }],
+    'two legs': [
+      { chainId: 9745, token: USDT0_PLASMA, recipient: ACCOUNT },
+      { chainId: 10, token: USDT0_OP, recipient: OTHER },
+    ],
+  } as const
+  const eidOf = { 9745: 30383, 10: 30111 } as const
+
+  test.each(Object.entries(contexts))(
+    '%s: a strict narrowing of the frozen builder',
+    (_, legs) => {
+      const frozen = frozenScopeOft({ ...base, destinations: legs, cap: 100n })
+      const live = scopeOft({
+        ...base,
+        destinations: legs.map((leg) => ({
+          ...leg,
+          minAmount: floors[eidOf[leg.chainId]],
+        })),
+        cap: 100n,
+      })
+      let narrowed = 0
+      for (const eid of [30383, 30111, 30110]) {
+        for (const to of [ACCOUNT, OTHER]) {
+          for (const amount of [0n, 1n, 60n, 100n, 101n]) {
+            for (const minAmount of [0n, 1n, 49n, 50n, 79n, 80n, 100n]) {
+              const calldata = send({ eid, to, amount, minAmount })
+              const expected =
+                holds(frozen, calldata) && minAmount >= (floors[eid] ?? 0n)
+              expect(holds(live, calldata)).toBe(expected)
+              if (holds(frozen, calldata) && !expected) narrowed++
+            }
+          }
+        }
+      }
+      expect(narrowed).toBeGreaterThan(0)
+    },
+  )
 })

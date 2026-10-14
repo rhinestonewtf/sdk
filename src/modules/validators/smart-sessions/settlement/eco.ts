@@ -167,7 +167,7 @@ function stableDecimals(
 }
 
 /** The token's served decimals when `stableDecimals` would accept them. */
-function knownDecimals(
+export function knownDecimals(
   settlement: SettlementCatalog,
   chainId: number,
   token: Address,
@@ -290,6 +290,13 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       "crossChainPermits: ECO_IE needs validUntil at least 7 days ahead: Eco's reward deadline is ~7 days out and the session pins it",
     )
   }
+  // Each source chain's session floors its own capped reward with the same
+  // absolute amount, so it bounds the rate only where every cap is the same.
+  if (ctx.maxFeeBps === undefined && new Set(ctx.fromCaps ?? []).size > 1) {
+    throw new SettlementLayerRefusal(
+      'crossChainPermits: an ECO_IE `to.minAmount` floors every source chain alike, so `from` legs with different maxAmount need maxFeeBps, which scales with each cap',
+    )
+  }
   const cap = ctx.cap
   const maxFeeBps = ctx.maxFeeBps
   const rules: UniversalActionPolicyParamRule[] = [
@@ -335,24 +342,6 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
   }
   const legs = ctx.destinations.map((leg) => {
     requireServed(ctx.settlement, leg.chainId, leg.token, 'to')
-    // Every Eco token is a USD stablecoin, so a floor under half the cap is a
-    // units mistake: `to.minAmount` is in the `to` token's smallest units.
-    const fromKnown = knownDecimals(
-      ctx.settlement,
-      ctx.chainId,
-      ctx.sourceTokens[0],
-    )
-    const toKnown = knownDecimals(ctx.settlement, leg.chainId, leg.token)
-    if (
-      leg.minAmount !== undefined &&
-      fromKnown !== undefined &&
-      toKnown !== undefined &&
-      leg.minAmount < floorFor(cap, 1n, 2n, fromKnown, toKnown)
-    ) {
-      throw new SettlementLayerRefusal(
-        `crossChainPermits: ECO_IE \`to.minAmount\` ${leg.minAmount} on chain ${leg.chainId} is under half of maxAmount; give it in the \`to\` token's smallest units (${toKnown} decimals)`,
-      )
-    }
     // The cap less what the solver may keep, rescaled from the reward's
     // decimals to the delivery's; with `to.minAmount` too, the stricter wins.
     const feeFloor =
