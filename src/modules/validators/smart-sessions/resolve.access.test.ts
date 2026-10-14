@@ -1,6 +1,7 @@
 import { arbitrum, base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
 import { accountA } from '../../../../test/consts'
+import persistedClaims from '../../../../test/utils/persisted-claim-sessions.json'
 import { sessionFingerprint } from '../../../../test/utils/session-fingerprint'
 import { SETTLEMENT_CATALOG } from '../../../../test/utils/settlement-catalog'
 import {
@@ -18,9 +19,7 @@ const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 const USDT = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2' as const
 const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
-const ARBITER = '0x00000000000000000000000000000000000000ab' as const
 const APPROVE = { target: USDC, selector: '0x095ea7b3' } as const
-const claimPolicies = [{ type: 'permit2', spenders: [ARBITER] }] as const
 const owners = { type: 'ecdsa', accounts: [accountA] } as const
 const permit = (
   settlementLayers?: CrossChainPermissionInput['settlementLayers'],
@@ -33,13 +32,6 @@ const permit = (
 const DEFINITIONS = {
   plain: { chain: base, owners },
   actions: { chain: base, owners, actions: [APPROVE] },
-  claimPolicies: { chain: base, owners, claimPolicies },
-  claimPoliciesWithActions: {
-    chain: base,
-    owners,
-    claimPolicies,
-    actions: [APPROVE],
-  },
   across: {
     chain: base,
     owners,
@@ -85,8 +77,17 @@ const DEFINITIONS = {
   },
 } as unknown as Record<string, SessionDefinition>
 
-const session = (name: string): Session =>
-  toSession(DEFINITIONS[name], { settlement: SETTLEMENT_CATALOG })
+const session = (name: string): Session => {
+  if (name === 'claimPolicies' || name === 'claimPoliciesWithActions') {
+    return {
+      ...persistedClaims[name],
+      chain: base,
+      owners,
+    } as unknown as Session
+  }
+  return toSession(DEFINITIONS[name], { settlement: SETTLEMENT_CATALOG })
+}
+const names = [...Object.keys(DEFINITIONS), ...Object.keys(persistedClaims)]
 
 describe('session access', () => {
   test.each([
@@ -130,7 +131,7 @@ describe('session access', () => {
   })
 
   test("'open' is exactly a session holding the wildcard fallback", () => {
-    for (const name of Object.keys(DEFINITIONS)) {
+    for (const name of names) {
       const s = session(name)
       const hasFallback = s.actions.some(
         (action) =>
@@ -157,10 +158,7 @@ describe('session access', () => {
   test('pins the encoded session of each shape', () => {
     expect(
       Object.fromEntries(
-        Object.keys(DEFINITIONS).map((name) => [
-          name,
-          sessionFingerprint(session(name)),
-        ]),
+        names.map((name) => [name, sessionFingerprint(session(name))]),
       ),
     ).toEqual({
       plain:

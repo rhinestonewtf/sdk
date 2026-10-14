@@ -35,7 +35,6 @@ import {
   type SolanaCrossChainExecutionMetadata,
   type SolanaExecutionMetadata,
   type SolanaInstructionsExecutionMetadata,
-  type SolanaPasskeyPermission,
   type SolanaStandaloneAccount,
   type SolanaStandaloneAccountConfig,
   solanaAddress,
@@ -268,7 +267,10 @@ const implicitConfig: SolanaStandaloneAccountConfig = {
 void implicitConfig
 
 async function standaloneCapabilitySurface() {
-  const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'types' },
+    useDevContracts: true,
+  })
   const account = await sdk.createAccount({ solana: standaloneConfig })
 
   const wallet: typeof recipient = account.getAddress('solana')
@@ -387,7 +389,10 @@ async function standaloneCapabilitySurface() {
 }
 
 async function compositeCapabilitySurface() {
-  const sdk = new RhinestoneSDK({ apiKey: 'types', useDevContracts: true })
+  const sdk = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'types' },
+    useDevContracts: true,
+  })
   const account = await sdk.createAccount({
     evm: { owners: { type: 'ecdsa', accounts: [owner] } },
     solana: standaloneConfig,
@@ -625,7 +630,7 @@ const forbiddenDeliveryLookupTables: Transaction = {
 
 // A Swig passkey add or remove, built from a WebAuthn key or any P-256 encoding.
 const passkeyKey = `0x02${'11'.repeat(32)}` as Hex
-const permission: SolanaPasskeyPermission = 'allButManageAuthority'
+const permission: SolanaAuthorityPermission = 'allButManageAuthority'
 const authorityTransaction = {
   destination: {
     chain: solanaDevnet,
@@ -770,7 +775,7 @@ if (isSolanaAuthorityChangeRefused(refusal)) {
   const reason: SolanaAuthorityChangeRefusalReason | undefined = refusal.reason
   const roleId: number | undefined = refusal.roleId
   const roleIds: number[] | undefined = refusal.roleIds
-  const existing: SolanaPasskeyPermission | undefined = refusal.permission
+  const existing: SolanaAuthorityPermission | undefined = refusal.permission
   const swigAddress: string | undefined = refusal.swigAddress
   void reason
   void roleId

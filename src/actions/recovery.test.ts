@@ -138,7 +138,9 @@ async function ecdsaRecovery(
 }
 
 describe('Recovery Actions', () => {
-  const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+  const rhinestone = new RhinestoneSDK({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   const accountPromise = rhinestone.createAccount({
     evm: {
       owners: { type: 'ecdsa', accounts: [accountA] },

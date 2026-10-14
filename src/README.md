@@ -252,22 +252,22 @@ const session = toSession({
       },
     },
   ],
-  claimPolicies: [
+  crossChainPermits: [
     {
-      type: 'permit2',
-      spenders: [permit2Spender],
-      sourceTokens: [{ chain: base, address: usdc }],
-      destinationTokens: [{ chain: optimism, address: usdc }],
-      recipients: [{ chain: optimism, address: recipient }],
-      permitDeadline: { max: permitDeadline },
-      fillDeadline: [{ chain: optimism, max: fillDeadline }],
+      settlementLayers: ['ACROSS'],
+      from: { chain: base, token: usdc, maxAmount: 1000n },
+      to: { chain: optimism, token: usdc, recipient },
+      allowRecipientNotAccount: true,
+      validUntil: new Date(Date.now() + 60 * 60 * 1000),
     },
   ],
 })
 ```
 
-Smart Session ERC-1271 signing is unrestricted when `signing` is omitted. It
-can be disabled, time-boxed, or scoped to exact EIP-712 domains and schemas:
+Unrestricted sessions default to unrestricted ERC-1271 signing. Scoped action
+sessions default to disabled signing; cross-chain permits install their compiled
+claim gates instead. Signing can be disabled, time-boxed, or scoped to exact
+EIP-712 domains and schemas:
 
 ```ts
 const disabled = { mode: 'disabled' } as const

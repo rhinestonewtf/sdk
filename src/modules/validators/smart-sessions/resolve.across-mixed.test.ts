@@ -413,9 +413,10 @@ describe('a permit naming ACROSS beside IntentExecutor layers', () => {
       'claimPolicies',
       definition(
         { settlementLayers: ['ACROSS', 'CCTP'] },
+        // @ts-expect-error Removed input must also reject widened JavaScript objects.
         { claimPolicies: [{ type: 'permit2' }] },
       ),
-      'RESTRICTED_WITH_PERMIT2_GRANTS',
+      'REMOVED_CLAIM_POLICIES_INPUT',
     ],
     [
       "preClaimOps: 'none' with oneTimeUse",

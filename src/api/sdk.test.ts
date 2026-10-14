@@ -21,7 +21,9 @@ afterEach(() => {
 
 describe('RhinestoneSDK', () => {
   test('rejects missing owners asynchronously during account creation', async () => {
-    const result = new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
+    const result = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    }).createAccount({
       evm: { account: { type: 'safe' } },
     })
 
@@ -31,7 +33,7 @@ describe('RhinestoneSDK', () => {
 
   test('creates address-only receivers without management capabilities', async () => {
     const account = await new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
     }).createAccount({ solana: { address: receiver } })
 
     expect(account.getAddress('solana')).toBe(receiver)
@@ -49,7 +51,9 @@ describe('RhinestoneSDK', () => {
   })
 
   test('preserves EVM identity when a Solana receiver is added', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const evm = { account: { type: 'eoa' as const }, eoa: owner }
     const evmOnly = await sdk.createAccount({ evm })
     const combined = await sdk.createAccount({
@@ -63,7 +67,7 @@ describe('RhinestoneSDK', () => {
 
   test('rejects managed Solana before composing a partial EVM account', async () => {
     const sdk = new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       endpointUrl: 'https://orchestrator.example',
     })
     await expect(
@@ -96,7 +100,9 @@ describe('RhinestoneSDK', () => {
       }),
     )
     vi.stubGlobal('fetch', fetch)
-    const sdk = new RhinestoneSDK({ apiKey: 'test' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
 
     const lean = await sdk.getIntentStatus('intent-1')
     expect(fetch.mock.calls[0]?.[0]).not.toContain('full=true')
@@ -119,7 +125,9 @@ describe('RhinestoneSDK', () => {
     },
   ])('rejects malformed dynamic account input', async (config) => {
     await expect(
-      new RhinestoneSDK({ apiKey: 'offline' }).createAccount(config as never),
+      new RhinestoneSDK({
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+      }).createAccount(config as never),
     ).rejects.toThrow(InvalidAccountConfigError)
   })
 })

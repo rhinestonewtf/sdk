@@ -101,6 +101,8 @@ function environment(useDevContracts: boolean | undefined) {
 /**
  * Resolve a session offline from a definition and optional served catalog data.
  * No RPC bytecode checks or network reads are made. Persist the result before enabling it.
+ * Use `crossChainPermits`, not removed raw `claimPolicies` definition inputs.
+ * Restore an authorized `Session` directly for enable/sign methods; do not resolve it again.
  * @param definition The session's permissions and owners
  * @param options Catalog inputs and deployment environment
  * @returns The resolved session; throws the first coded refusal on invalid scope
@@ -146,7 +148,10 @@ interface SessionValidationOptions {
  * on each other are all reported. Within one settlement layer only its first
  * refusal is, as are refusals that leave nothing to check after them (e.g. a
  * missing `to`).
- * @param definition The session definition
+ * Removed `claimPolicies` inputs, including empty or undefined values, return a
+ * refusal. Compiled `Session.claimPolicies` remains metadata for enable/sign
+ * methods and must not be sent back through definition validation.
+ * @param definition The new session definition, not an already-resolved artifact
  * @param options What `createSession` would take from `/chains`
  * @returns The refusals, each with its stable `code`, and, when there are none, the session's `access` and `settlementCoverage`
  */

@@ -16,7 +16,9 @@ const first = privateKeyToAccount(`0x${'11'.repeat(32)}`)
 const second = privateKeyToAccount(`0x${'22'.repeat(32)}`)
 
 function account(owners: Parameters<typeof resolveAccountConfig>[1]['owners']) {
-  const sdk = resolveSdkConfig({ apiKey: 'test' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   return resolveAccountConfig(sdk, { account: { type: 'safe' }, owners })
 }
 

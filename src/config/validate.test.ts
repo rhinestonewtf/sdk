@@ -3,7 +3,9 @@ import { OwnersFieldRequiredError } from '../accounts/error'
 import { resolveAccountConfig, resolveSdkConfig } from './resolve'
 import { assertAccountOwnersConfigured } from './validate'
 
-const sdk = resolveSdkConfig({ apiKey: 'test' })
+const sdk = resolveSdkConfig({
+  auth: { mode: 'apiKey' as const, apiKey: 'test' },
+})
 
 describe('account construction validation', () => {
   test('uses the public missing-owners error for smart accounts', () => {

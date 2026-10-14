@@ -19,7 +19,9 @@ interface DerivedPlan {
   readonly factoryData?: Hex
 }
 
-const sdk = new RhinestoneSDK({ apiKey: 'vector-only' })
+const sdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'vector-only' },
+})
 
 async function resolveConfig(
   vectorCase: VectorCase,

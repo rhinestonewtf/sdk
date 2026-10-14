@@ -345,14 +345,6 @@ export interface SessionDefinition {
   chain: Chain
   owners: OwnerSet
   permissions?: Permission[]
-  /**
-   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
-   * adds a `maxAmount` spending limit (with `oneTimeUse`), takes `Date`s, defaults to
-   * bridge-to-self, and picks the enforcement surface per settlement layer — a
-   * claim policy does not bind an IntentExecutor route. Still the only way to
-   * pin `spenders` to an arbiter outside the SDK's bundled allow-set.
-   */
-  claimPolicies?: Permit2ClaimPolicy[]
   crossChainPermits?: CrossChainPermissionInput[]
   signing?: SessionSigning
   policyAddresses?: SessionPolicyAddresses
@@ -449,6 +441,7 @@ export interface Session {
   salt: Hex
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
+  /** Compiled claim metadata for settlement signing; retain it when restoring resolved sessions. Not a definition input. */
   claimPolicies: readonly Permit2ClaimPolicy[]
   /** The venue scope this session was built from, carried through resolution so
    *  a caller can derive the matching quoter pin at transact time. Metadata

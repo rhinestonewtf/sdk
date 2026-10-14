@@ -74,7 +74,9 @@ function quoteFor(request: OrchestratorIntentRequest) {
 }
 
 function fixture() {
-  const sdk = resolveSdkConfig({ apiKey: 'test' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'test' },
+  })
   const account = resolveAccountConfig(sdk, {
     account: { type: 'nexus', version: '1.2.0' },
     owners: { type: 'ecdsa', accounts: [owner] },
@@ -614,7 +616,7 @@ describe('internal core composition', () => {
 
     const second = fixture()
     const customSdk = resolveSdkConfig({
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       bundler: { type: 'custom', url: 'https://bundler.test' },
     })
     const customContext = {
@@ -844,7 +846,9 @@ describe('internal core composition', () => {
         }),
       },
     } satisfies CoreDependencies
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const context = {
       ...base.context,
       sdk,
@@ -880,7 +884,9 @@ describe('internal core composition', () => {
   })
 
   function missingModuleKernelContext(base: ReturnType<typeof fixture>) {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     return {
       ...base.context,
       sdk,

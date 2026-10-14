@@ -122,7 +122,9 @@ describe('ECDSA Actions', () => {
   // (the Nexus default validator) is not initialized at deploy, so `enable`
   // initializes it via `onInstall`.
   describe('Install Ownable Validator', async () => {
-    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestone = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const rhinestoneAccount = await rhinestone.createAccount({
       evm: {
         owners: {
@@ -201,7 +203,9 @@ describe('ECDSA Actions', () => {
   // so `enable` is redundant. This is detected from config without an on-chain
   // read, so it also holds for not-yet-deployed (counterfactual) accounts.
   describe('Enable on an account already configured with ECDSA', async () => {
-    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestone = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const rhinestoneAccount = await rhinestone.createAccount({
       evm: {
         owners: {
@@ -226,7 +230,9 @@ describe('ECDSA Actions', () => {
   })
 
   describe('Uninstall Ownable Validator', async () => {
-    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestone = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const rhinestoneAccount = await rhinestone.createAccount({
       evm: {
         owners: {

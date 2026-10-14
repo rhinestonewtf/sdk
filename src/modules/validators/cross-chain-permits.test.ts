@@ -145,10 +145,10 @@ describe('resolveCrossChainPermission', () => {
         validAfter: new Date('2030-01-01T00:00:00Z'),
         validUntil: new Date('2020-01-01T00:00:00Z'),
       }),
-    ).toThrow(/validAfter.*greater than validUntil/)
+    ).toThrow(/validAfter.*not earlier than validUntil/)
   })
 
-  test('validAfter == validUntil is allowed (single-instant window)', () => {
+  test('validAfter == validUntil rejects an empty window', () => {
     const instant = new Date('2030-01-01T00:00:00Z')
     expect(() =>
       resolveCrossChainPermission({
@@ -157,7 +157,7 @@ describe('resolveCrossChainPermission', () => {
         validAfter: instant,
         validUntil: instant,
       }),
-    ).not.toThrow()
+    ).toThrow(/validAfter.*not earlier than validUntil/)
   })
 
   test('maxAmount = 0n is preserved (not coerced away)', () => {

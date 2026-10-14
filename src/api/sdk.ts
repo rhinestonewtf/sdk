@@ -148,7 +148,10 @@ class RhinestoneSDK {
    * copies against the canonical bytecode. Store the resolved session rather than
    * rebuilding an authorized definition under changing catalog defaults.
    * For a fully offline build, use the standalone `toSession` and pass
-   * `wrappedNativeToken` yourself.
+   * `wrappedNativeToken` yourself. Use `crossChainPermits` for settlement scope;
+   * definition-input `claimPolicies` is rejected before any reads, even when empty
+   * or undefined. A stored `Session` is an artifact for enable/sign methods, not
+   * a new definition.
    * @param definition The session definition
    * @returns The resolved session
    */
@@ -160,7 +163,8 @@ class RhinestoneSDK {
    * Validate a session definition with the same reads as `createSession`.
    *
    * Reports stable refusal codes instead of throwing the first refusal. Network
-   * failures still throw. Successful validation includes access and settlement
+   * failures still throw. Removed definition-input `claimPolicies` returns a
+   * refusal without network reads. Successful validation includes access and settlement
    * coverage metadata; it does not enable or sign the session.
    * For a network-free check, use `validateSession` from `@rhinestone/sdk/smart-sessions`.
    * @param definition The session definition to resolve

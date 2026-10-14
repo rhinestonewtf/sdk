@@ -1,4 +1,5 @@
 import type { AccountConstructionInput, SdkConstructionInput } from './input'
+import { assertNoRemovedApiKey, assertSdkAuthInput } from './removed-inputs'
 
 export interface LegacySdkConfigSnapshot<AuthProvider> {
   readonly authProvider: AuthProvider
@@ -26,6 +27,7 @@ export function captureLegacySdkConfig<AuthProvider>(
   input: SdkConstructionInput,
   authProvider: AuthProvider,
 ): LegacySdkConfigSnapshot<AuthProvider> {
+  assertSdkAuthInput(input)
   return {
     authProvider,
     endpointUrl: input.endpointUrl,
@@ -42,6 +44,7 @@ export function createLegacyAccountConfig<AuthProvider>(
   input: AccountConstructionInput,
   sdk: LegacySdkConfigSnapshot<AuthProvider>,
 ): LegacyAccountConfig<AuthProvider> {
+  assertNoRemovedApiKey(input)
   return {
     ...input,
     _authProvider: sdk.authProvider,

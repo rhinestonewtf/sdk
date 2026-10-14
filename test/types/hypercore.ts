@@ -107,7 +107,7 @@ const configured: EvmAccountConfig & { hyperliquid?: unknown } = {
   owners: { type: 'ecdsa', accounts: [] },
 }
 const sdk = new RhinestoneSDK({
-  apiKey: 'test',
+  auth: { mode: 'apiKey' as const, apiKey: 'test' },
   hyperliquid: { apiUrl: 'https://api.hyperliquid-testnet.xyz' },
 })
 

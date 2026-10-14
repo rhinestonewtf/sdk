@@ -1061,7 +1061,7 @@ interface SwapScope<TChainId extends number = number> {
    * `settlement.usdStablecoins`, so create the session with
    * `sdk.createSession`), and the Rhinestone Swapper as the only venue — a
    * direct aggregator call would bypass the floor. It also refuses `signing`,
-   * `crossChainPermits`, `claimPolicies` and any other action on the sell
+   * `crossChainPermits` and any other action on the sell
    * token, Permit2 or the Swapper, and salts the session so it never shares a
    * permissionId with an unfloored one. An action on another contract that
    * already holds an allowance on the sell token is not checked.
@@ -1095,27 +1095,11 @@ interface SessionDefinition<
   chain: TChain
   /**
    * Venue-scoped swap permissions. See {@link SwapScope}. Implies
-   * `restrictToActions`, and is mutually exclusive with `claimPolicies` and
-   * `fallback`.
+   * `restrictToActions`, and is mutually exclusive with `fallback`.
    */
   swap?: SwapScope<TChain['id']>
   owners: OwnerSet
   permissions?: readonly [...PermissionsForAbis<TAbis>]
-  /**
-   * @deprecated Use {@link SessionDefinition.crossChainPermits} instead, which
-   * expands to this plus a `maxAmount` spending limit (with `oneTimeUse`), takes
-   * `Date`s rather than raw deadlines, and defaults to bridge-to-self
-   * (`allowRecipientNotAccount: false`) rather than leaving the recipient open.
-   *
-   * It also picks the enforcement surface per settlement layer: a Permit2
-   * arbiter layer compiles to this claim policy, while an IntentExecutor layer
-   * compiles to argument-pinned actions instead — a claim policy does not bind
-   * an IntentExecutor route at all.
-   *
-   * Still exported as a low-level escape hatch: it is the only way to pin
-   * `spenders` to an arbiter outside the SDK's bundled allow-set.
-   */
-  claimPolicies?: readonly Permit2ClaimPolicy[]
   /**
    * Cross-chain permits expanded by the SDK into matching
    * {@link Permit2ClaimPolicy} (claim-side) plus the scoped actions their
@@ -1137,8 +1121,7 @@ interface SessionDefinition<
    * Drop the wildcard intent-execution fallback so the session's explicit
    * permissions/actions are the ONLY ops it can run — any other (target,
    * selector) reverts. Requires at least one permission or action, and is
-   * mutually exclusive with `claimPolicies` (which rely on the fallback for
-   * their guardrails) and with `fallback`. A session with `crossChainPermits`
+   * mutually exclusive with `fallback`. A session with `crossChainPermits`
    * is already scoped unless it sets `fallback`.
    */
   restrictToActions?: boolean
@@ -1282,6 +1265,7 @@ interface Session {
   salt: Hex
   erc7739Policies: ResolvedERC7739Policies
   actions: readonly ResolvedAction[]
+  /** Compiled claim metadata used to sign settlements. Preserve it with resolved sessions; not a definition input. */
   claimPolicies: readonly Permit2ClaimPolicy[]
   /** The venue scope this session was built from. Metadata only — it lets the
    *  SDK derive the matching quoter pin when transacting with the session. */
@@ -1480,16 +1464,10 @@ interface RhinestoneSDKConfigBase {
   headers?: Record<string, string>
 }
 
-type RhinestoneSDKConfig = RhinestoneSDKConfigBase &
-  (
-    | {
-        /** @deprecated Use `auth` instead. Still supported for backward compatibility. */
-        apiKey: string
-      }
-    | {
-        auth: AuthConfig
-      }
-  )
+type RhinestoneSDKConfig = RhinestoneSDKConfigBase & {
+  /** Authentication for orchestrator requests. Top-level `apiKey` is not accepted. */
+  auth: AuthConfig
+}
 
 /** EVM invocation context used by existing call builders and helpers. */
 type RhinestoneConfig = EvmAccountConfig &
@@ -2042,12 +2020,6 @@ type SolanaAuthorityPermission =
   | 'manageAuthority'
 
 /**
- * What a Swig passkey role may do.
- * @deprecated Use `SolanaAuthorityPermission`, which covers every key kind.
- */
-type SolanaPasskeyPermission = SolanaAuthorityPermission
-
-/**
  * A key on a Swig role, named by its SEC1-compressed public key (33 bytes,
  * lowercase hex):
  *
@@ -2297,7 +2269,6 @@ export type {
   SolanaAuthorityStatus,
   SolanaManagedAccountConfig,
   SolanaOwner,
-  SolanaPasskeyPermission,
   SolanaReceiverAccountConfig,
   SolanaTransactionSource,
   SolanaStandaloneAccountConfig,

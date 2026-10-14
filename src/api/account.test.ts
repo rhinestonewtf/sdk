@@ -136,7 +136,9 @@ function accountRecipient(recipient: IntentRecipientProjection | undefined) {
 function invocationContext(): AccountInvocationContext<
   LegacyAccountConfig<unknown>
 > {
-  const sdk = resolveSdkConfig({ apiKey: 'offline' })
+  const sdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+  })
   return {
     method: 'prepare-intent',
     sdk,
@@ -149,7 +151,9 @@ function invocationContext(): AccountInvocationContext<
 
 describe('account instance surface', () => {
   test('exposes sendUserOperation and no sendTransaction convenience method', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const account = await sdk.createAccount({
       evm: {
         owners: {
@@ -164,7 +168,9 @@ describe('account instance surface', () => {
   })
 
   test('rejects guardians on the intent and ERC-1271 paths', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const account = await sdk.createAccount({
       evm: {
         owners: { type: 'ecdsa', accounts: [owner] },
@@ -202,7 +208,7 @@ describe('account instance surface', () => {
       sawRead = resolve
     })
     const sdk = new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       hyperliquid: {
         fetch: async (_url, init) => {
           sawRead(JSON.parse(String(init?.body ?? '{}')))
@@ -244,7 +250,7 @@ describe('managed Solana account construction', () => {
     vi.stubGlobal('fetch', fetch)
     try {
       const sdk = new RhinestoneSDK({
-        apiKey: 'offline',
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       })
@@ -269,7 +275,7 @@ describe('managed Solana account construction', () => {
 
   test('accepts a passkey owner on the same Swig and refuses malformed ones', async () => {
     const sdk = new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       endpointUrl: DEV_ORCHESTRATOR_URL,
       useDevContracts: true,
     })
@@ -318,7 +324,7 @@ describe('managed Solana account construction', () => {
     ['production on the prod endpoint/', `${PROD_ORCHESTRATOR_URL}/`, false],
   ])('accepts %s', async (_name, endpointUrl, useDevContracts) => {
     const account = await new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       ...(endpointUrl ? { endpointUrl } : {}),
       useDevContracts,
     }).createAccount({
@@ -339,7 +345,7 @@ describe('managed Solana account construction', () => {
     ['production on a custom endpoint', 'https://orchestrator.example', false],
   ])('refuses %s', async (_name, endpointUrl, useDevContracts) => {
     const sdk = new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       ...(endpointUrl ? { endpointUrl } : {}),
       useDevContracts,
     })
@@ -371,7 +377,7 @@ describe('managed Solana account construction', () => {
   test('rejects a managed account naming no Swig, and widened unsupported owners', async () => {
     await expect(
       new RhinestoneSDK({
-        apiKey: 'offline',
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       }).createAccount({
@@ -380,7 +386,7 @@ describe('managed Solana account construction', () => {
     ).rejects.toThrow(/requires `swig`/)
     await expect(
       new RhinestoneSDK({
-        apiKey: 'offline',
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         useDevContracts: true,
       }).createAccount({
         evm: { owners: { type: 'ecdsa', accounts: [owner] } },
@@ -396,7 +402,7 @@ describe('managed Solana account construction', () => {
     const ecdsaOwner = { type: 'ecdsa' as const, account: owner }
     const devSdk = () =>
       new RhinestoneSDK({
-        apiKey: 'offline',
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       })
@@ -609,7 +615,7 @@ describe('managed Solana account facade', () => {
       },
       {
         config: resolveSdkConfig({
-          apiKey: 'offline',
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
           endpointUrl: DEV_ORCHESTRATOR_URL,
           useDevContracts: true,
         }),
@@ -811,7 +817,7 @@ describe('managed Solana account facade', () => {
       },
       {
         config: resolveSdkConfig({
-          apiKey: 'offline',
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
           endpointUrl: DEV_ORCHESTRATOR_URL,
           useDevContracts: true,
         }),
@@ -1990,7 +1996,10 @@ describe('managed Solana cross-chain delivery facade', () => {
         },
       },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', ...endpoint }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+          ...endpoint,
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -2838,7 +2847,7 @@ describe('standalone managed Solana account facade', () => {
   const message = 'ab'.repeat(32)
   const location = locateSwig(asSwigNamespace('dev-v1'), guardian.address)
   const sdk = resolveSdkConfig({
-    apiKey: 'offline',
+    auth: { mode: 'apiKey' as const, apiKey: 'offline' },
     endpointUrl: DEV_ORCHESTRATOR_URL,
     useDevContracts: true,
   })
@@ -2900,7 +2909,9 @@ describe('standalone managed Solana account facade', () => {
     }
   }
 
-  const prodSdk = resolveSdkConfig({ apiKey: 'offline' })
+  const prodSdk = resolveSdkConfig({
+    auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+  })
 
   function fixture(
     evmRecipient?: typeof owner.address,
@@ -3250,7 +3261,7 @@ describe('standalone managed Solana account facade', () => {
         {
           captured: prodSdk,
           current: resolveSdkConfig({
-            apiKey: 'offline',
+            auth: { mode: 'apiKey' as const, apiKey: 'offline' },
             endpointUrl: 'https://orchestrator.example',
           }),
         },
@@ -3271,7 +3282,9 @@ describe('standalone managed Solana account facade', () => {
 
 describe('account config compatibility snapshot', () => {
   test('retains account-config keys, nested aliasing, and auth exposure', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const owners: EvmAccountConfig['owners'] = {
       type: 'ecdsa',
       accounts: [owner],
@@ -3331,7 +3344,7 @@ describe('account config compatibility snapshot', () => {
     vi.stubGlobal('fetch', fetch)
     try {
       const sdk = new RhinestoneSDK({
-        apiKey: 'offline',
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         provider: {
           type: 'custom',
           urls: { 1: 'https://provider-one.test' },
@@ -3651,7 +3664,9 @@ describe('EVM prepare against the orchestrator', () => {
   }
 
   function createAccount() {
-    return new RhinestoneSDK({ apiKey: 'offline' }).createAccount({
+    return new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    }).createAccount({
       evm: { owners: { type: 'ecdsa', accounts: [owner] } },
     })
   }
@@ -3782,7 +3797,9 @@ describe('EVM prepared artifacts from an earlier wire version', () => {
       compatibilityConfig,
       { evm: compatibilityConfig as EvmAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline' }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -3910,7 +3927,9 @@ describe('EVM → Solana delivery', () => {
         solana: { address: receiver },
       },
       {
-        config: resolveSdkConfig({ apiKey: 'offline' }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -4009,7 +4028,9 @@ describe('EVM → Solana delivery', () => {
 
 describe('account boundary adapters', () => {
   test('forwards signer and independent quote/factor selections', async () => {
-    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
@@ -4231,7 +4252,9 @@ describe('account boundary adapters', () => {
   })
 
   test('rejects an intent id that is not in the prepared transaction', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const account = await sdk.createAccount({
       evm: {
         owners: { type: 'ecdsa', accounts: [owner] },
@@ -4255,7 +4278,7 @@ describe('account boundary adapters', () => {
   // async — but it lands before any account state is read.
   test('rejects unsupported signing data asynchronously', async () => {
     const account = await new RhinestoneSDK({
-      apiKey: 'offline',
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
     }).createAccount({
       evm: { owners: { type: 'ecdsa', accounts: [owner] } },
     })
@@ -4289,7 +4312,9 @@ describe('account boundary adapters', () => {
   })
 
   test('preserves the selected quote when submitting uncached signed data', async () => {
-    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
@@ -4340,7 +4365,9 @@ describe('account boundary adapters', () => {
   })
 
   test('rebuilds UserOperations from current public data and live owners', async () => {
-    const sdk = resolveSdkConfig({ apiKey: 'offline' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+    })
     const compatibilityConfig: LegacyAccountConfig<unknown> = {
       owners: { type: 'ecdsa', accounts: [owner] },
     }
@@ -4626,7 +4653,9 @@ describe('account boundary adapters', () => {
       compatibilityConfig,
       { evm: compatibilityConfig as EvmAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline' }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -4827,7 +4856,9 @@ describe('account boundary adapters', () => {
       compatibilityConfig,
       { evm: compatibilityConfig as EvmAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline' }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -4868,7 +4899,9 @@ describe('account boundary adapters', () => {
       compatibilityConfig,
       { evm: compatibilityConfig as EvmAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline' }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
@@ -4920,7 +4953,7 @@ function quoteFixture(intentId: string): Quote {
 
 describe('managed Solana Swig creation', () => {
   const devSdk = resolveSdkConfig({
-    apiKey: 'offline',
+    auth: { mode: 'apiKey' as const, apiKey: 'offline' },
     endpointUrl: DEV_ORCHESTRATOR_URL,
     useDevContracts: true,
   })
@@ -5116,7 +5149,9 @@ describe('managed Solana Swig creation', () => {
 
   test('creates an independent Swig on a production account', async () => {
     const { facade, workflows } = standalone({
-      sdk: resolveSdkConfig({ apiKey: 'offline' }),
+      sdk: resolveSdkConfig({
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+      }),
       environment: 'production',
       endpoint: PROD_ORCHESTRATOR_URL,
     })
@@ -5133,7 +5168,14 @@ describe('managed Solana Swig creation', () => {
   })
 
   test.each([
-    ['a production SDK', { sdk: resolveSdkConfig({ apiKey: 'offline' }) }],
+    [
+      'a production SDK',
+      {
+        sdk: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        }),
+      },
+    ],
     [
       'a development SDK on a production account',
       {
@@ -5315,7 +5357,10 @@ describe('managed Solana Swig creation', () => {
           : {}),
       } as { evm: EvmAccountConfig; solana: SolanaManagedAccountConfig },
       {
-        config: resolveSdkConfig({ apiKey: 'offline', ...endpoint }),
+        config: resolveSdkConfig({
+          auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+          ...endpoint,
+        }),
         project: {} as never,
         createAccount: (context) => ({
           context,
