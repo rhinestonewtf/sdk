@@ -20,6 +20,7 @@ import {
   fn,
   lz,
   MC,
+  multiCallReverts,
   OTHER,
   PLASMA,
   SONEIUM,
@@ -51,7 +52,7 @@ const FREE: Record<string, readonly string[]> = {
   approve: ['amount'],
   transfer: ['amount'],
   send: ['amountLD', 'minAmountLD', 'nativeFee'],
-  depositForBurn: ['amount', 'maxFee', 'minFinalityThreshold'],
+  depositForBurn: ['amount', 'burnToken', 'maxFee', 'minFinalityThreshold'],
   sweep: [],
 }
 
@@ -90,6 +91,14 @@ function pinnedView(data: Hex) {
       args: blank(named, free),
     }
   })
+}
+
+const revertsOnChain = (data: Hex) => {
+  try {
+    return multiCallReverts(data, ACCOUNT)
+  } catch {
+    return false
+  }
 }
 
 const ARB_LEG = { chainId: ARB, token: USDC_ARB, recipient: ACCOUNT }
@@ -252,6 +261,8 @@ describe('scopeLz', () => {
           const mutated = toHex(flipped)
           if (!holds(action, mutated)) continue
           accepted++
+          // LZMultiCall reverts these on-chain, whatever the policy says.
+          if (revertsOnChain(mutated)) continue
           let view: ReturnType<typeof pinnedView>
           try {
             view = pinnedView(mutated)
@@ -339,10 +350,11 @@ describe('scopeLz', () => {
     ]
     expect(policy(all)).not.toThrow()
     // Each further recipient adds a branch, until it no longer fits.
-    const more = [0x20, 0x21, 0x22, 0x23].map((n) => ({
+    const more = Array.from({ length: 12 }, (_, n) => ({
       ...ARB_LEG,
-      recipient: `0x${n.toString(16).padStart(40, '0')}` as Address,
+      recipient: `0x${(0x20 + n).toString(16).padStart(40, '0')}` as Address,
     }))
+    expect(policy([...all, ...more.slice(0, 11)])).not.toThrow()
     expect(policy([...all, ...more])).toThrow(/max is 128/)
   })
 

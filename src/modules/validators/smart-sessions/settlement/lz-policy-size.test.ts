@@ -17,11 +17,14 @@ import {
   context,
   execute,
   lz,
+  multiCallReverts,
   OTHER,
   PLASMA,
   SONEIUM,
   stargate,
+  USDC_BASE,
   USDC_PLASMA,
+  withBurnToken,
 } from '../../../../../test/utils/lz-calldata'
 import { scopeLzV0 } from '../../../../../test/utils/lz-scope-v0'
 import {
@@ -276,11 +279,36 @@ describe.each(Object.entries(PERMITS))(
     )
     const buses = permit.to.flatMap((chainId) => bus(chainId, to))
 
-    /** The live verdict: the reference's, and never looser than the old one. */
+    /**
+     * The live verdict: the reference's, and never looser than the old one,
+     * except for a batch LZMultiCall reverts on-chain anyway.
+     */
     const expectDecided = (data: Hex, name: string) => {
       const now = holds(current, data)
-      expect(now, name).toBe(holds(reference, data))
-      if (now) expect(holds(old, data), name).toBe(true)
+      const reverts = () => {
+        try {
+          return multiCallReverts(data, ACCOUNT)
+        } catch {
+          return false
+        }
+      }
+      // Only the batch's burn token differs from one both admit. The pull and
+      // sweep stay pinned to USDC and the account, so a foreign burn token
+      // can only burn what someone else left in LZMultiCall.
+      const foreignBurn = () => {
+        const usdc = withBurnToken(data, USDC_BASE)
+        return (
+          usdc !== undefined &&
+          usdc !== data &&
+          holds(reference, usdc) &&
+          holds(old, usdc)
+        )
+      }
+      if (now && !(holds(reference, data) && holds(old, data))) {
+        expect(reverts() || foreignBurn(), `widened: ${name}`).toBe(true)
+      } else {
+        expect(now, name).toBe(holds(reference, data))
+      }
       return now
     }
 
@@ -393,9 +421,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
     {
       "all three layouts, base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 27104,
-          "nonZeroWords": 421,
-          "rules": 105,
+          "bytes": 23008,
+          "nonZeroWords": 367,
+          "rules": 89,
         },
         "old": {
           "rules": 129,
@@ -403,9 +431,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp and feeless cctp, base -> arbitrum + plasma": {
         "now": {
-          "bytes": 20192,
-          "nonZeroWords": 315,
-          "rules": 78,
+          "bytes": 16352,
+          "nonZeroWords": 264,
+          "rules": 63,
         },
         "old": {
           "bytes": 32736,
@@ -416,9 +444,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp only, base -> unichain": {
         "now": {
-          "bytes": 11232,
-          "nonZeroWords": 178,
-          "rules": 43,
+          "bytes": 9184,
+          "nonZeroWords": 151,
+          "rules": 35,
         },
         "old": {
           "bytes": 11232,
@@ -429,9 +457,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "cctp, base -> arbitrum": {
         "now": {
-          "bytes": 11232,
-          "nonZeroWords": 178,
-          "rules": 43,
+          "bytes": 9184,
+          "nonZeroWords": 151,
+          "rules": 35,
         },
         "old": {
           "bytes": 23776,
@@ -442,9 +470,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "feeless cctp, base -> plasma": {
         "now": {
-          "bytes": 9440,
-          "nonZeroWords": 148,
-          "rules": 36,
+          "bytes": 7648,
+          "nonZeroWords": 124,
+          "rules": 29,
         },
         "old": {
           "bytes": 9440,
@@ -455,9 +483,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "recipient 'any', base -> soneium + arbitrum + plasma": {
         "now": {
-          "bytes": 26336,
-          "nonZeroWords": 409,
-          "rules": 102,
+          "bytes": 22240,
+          "nonZeroWords": 355,
+          "rules": 86,
         },
         "old": {
           "bytes": 32224,
@@ -468,9 +496,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "stargate only, base -> soneium": {
         "now": {
-          "bytes": 11488,
-          "nonZeroWords": 179,
-          "rules": 44,
+          "bytes": 10208,
+          "nonZeroWords": 162,
+          "rules": 39,
         },
         "old": {
           "bytes": 13024,
@@ -481,9 +509,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "three destinations, base -> arbitrum + optimism + ethereum": {
         "now": {
-          "bytes": 12256,
-          "nonZeroWords": 193,
-          "rules": 47,
+          "bytes": 10208,
+          "nonZeroWords": 166,
+          "rules": 39,
         },
         "old": {
           "bytes": 25824,
@@ -494,9 +522,9 @@ test('rule counts, initData and the frozen policy compile as pinned', () => {
       },
       "uncapped, base -> soneium + arbitrum": {
         "now": {
-          "bytes": 21728,
-          "nonZeroWords": 332,
-          "rules": 84,
+          "bytes": 18400,
+          "nonZeroWords": 288,
+          "rules": 71,
         },
         "old": {
           "bytes": 23776,
