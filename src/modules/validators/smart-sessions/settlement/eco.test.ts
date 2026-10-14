@@ -1,7 +1,6 @@
 import {
   type Address,
   concat,
-  encodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
   type Hex,
@@ -12,125 +11,36 @@ import {
   toHex,
 } from 'viem'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
+import {
+  ECO_ACCOUNT as ACCOUNT,
+  ECO_PORTAL,
+  HYPER_PROVER,
+  publish,
+} from '../../../../../test/utils/eco-publish'
 import { satisfiesRules as holds } from '../../../../../test/utils/policy-rules'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
+import { cumulativeCap, pinValue } from '../swap/rules'
 import type {
   ArgPolicyExpression,
   UniversalActionPolicyParamRule,
 } from '../types'
 import {
   ECO_MIN_VALIDITY_SECONDS,
-  ecoPortalAbi,
   PUBLISH,
   PUBLISH_AND_FUND_SELECTOR,
+  sameRule,
   scopeEco,
 } from './eco'
 
 const stablecoins = (chainId: number) =>
   SETTLEMENT_CATALOG[chainId].eco!.stablecoins
-const ECO_PORTAL = SETTLEMENT_CATALOG[8453].eco!.portal
 const USDC_BASE = stablecoins(8453)[0]
 const USDC_ARB = stablecoins(42161)[0]
 const USDT0_ARB = stablecoins(42161)[1]
 const USDC_OP = stablecoins(10)[0]
-const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const OTHER = '0x2222222222222222222222222222222222222222' as Address
-const HYPER_PROVER = '0xec004Ab4870c4e177c66949329dCdb503CE41022' as Address
 const CCIP_PROVER = '0xceBB7cDDBA4734C7130BF114a37C2dA4C5f3c473' as Address
 const POLYMER_PROVER = '0xE3e4e6F284f1c8E17bafE4268EB98c36886B4d8B' as Address
-
-const routeAbi = [
-  {
-    type: 'tuple',
-    components: [
-      { name: 'salt', type: 'bytes32' },
-      { name: 'deadline', type: 'uint64' },
-      { name: 'portal', type: 'address' },
-      { name: 'nativeAmount', type: 'uint256' },
-      {
-        name: 'tokens',
-        type: 'tuple[]',
-        components: [
-          { name: 'token', type: 'address' },
-          { name: 'amount', type: 'uint256' },
-        ],
-      },
-      {
-        name: 'calls',
-        type: 'tuple[]',
-        components: [
-          { name: 'target', type: 'address' },
-          { name: 'data', type: 'bytes' },
-          { name: 'value', type: 'uint256' },
-        ],
-      },
-    ],
-  },
-] as const
-
-type Overrides = Partial<{
-  destination: bigint
-  portal: Address
-  routeNative: bigint
-  routeDeadline: bigint
-  routeToken: Address
-  delivered: bigint
-  callTarget: Address
-  callData: Hex
-  extraCall: boolean
-  prover: Address
-  creator: Address
-  rewardToken: Address
-  reward: bigint
-  rewardNative: bigint
-  deadline: bigint
-  allowPartial: boolean
-}>
-
-/** A publishAndFund call shaped exactly as the orchestrator forwards Eco's. */
-function publish(o: Overrides = {}): Hex {
-  const delivered = o.delivered ?? 99n
-  const token = o.routeToken ?? USDC_ARB
-  const call = {
-    target: o.callTarget ?? token,
-    data:
-      o.callData ??
-      encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'transfer',
-        args: [ACCOUNT, delivered],
-      }),
-    value: 0n,
-  }
-  const route = encodeAbiParameters(routeAbi, [
-    {
-      salt: pad('0x42'),
-      deadline: o.routeDeadline ?? 1_900_000_000n,
-      portal: o.portal ?? ECO_PORTAL,
-      nativeAmount: o.routeNative ?? 0n,
-      tokens: [{ token, amount: delivered }],
-      calls: o.extraCall ? [call, call] : [call],
-    },
-  ])
-  return encodeFunctionData({
-    abi: ecoPortalAbi,
-    functionName: 'publishAndFund',
-    args: [
-      o.destination ?? 42161n,
-      route,
-      {
-        deadline: o.deadline ?? 1_900_000_000n,
-        creator: o.creator ?? ACCOUNT,
-        prover: o.prover ?? HYPER_PROVER,
-        nativeAmount: o.rewardNative ?? 0n,
-        tokens: [
-          { token: o.rewardToken ?? USDC_BASE, amount: o.reward ?? 100n },
-        ],
-      },
-      o.allowPartial ?? false,
-    ],
-  })
-}
 
 const NOW = 1_800_000_000n
 
@@ -408,7 +318,7 @@ describe('scopeEco', () => {
     // Each equal rule must bind on its own: nudge its word and the publish
     // must fail, whichever pin it is.
     const pinned = rulesOf(expression).filter((r) => r.condition === 'equal')
-    expect(pinned.length).toBeGreaterThan(25)
+    expect(pinned.length).toBe(21)
     for (const rule of pinned) {
       const nudged = BigInt(rule.referenceValue) + 1n
       expect(
@@ -552,5 +462,17 @@ describe('scopeEco', () => {
       for (const prover of eco.provers) expect(isAddress(prover)).toBe(true)
       for (const token of eco.stablecoins) expect(isAddress(token)).toBe(true)
     }
+  })
+})
+
+describe('sameRule', () => {
+  test('matches the same check on the same word', () => {
+    expect(sameRule(pinValue(32n, 1n), pinValue(32n, 1n))).toBe(true)
+    expect(sameRule(pinValue(32n, 1n), pinValue(64n, 1n))).toBe(false)
+  })
+
+  test('never matches a usage-limited rule, so no cap leaves its leg', () => {
+    const cap = cumulativeCap(PUBLISH.rewardAmount, 100n)
+    expect(sameRule(cap, cap)).toBe(false)
   })
 })
