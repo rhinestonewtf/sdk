@@ -365,22 +365,16 @@ export interface SigningPlan {
       readonly cardinality: 'one' | 'per-origin'
       readonly shape: 'hex' | 'session-claims'
     }[]
-    readonly destination?:
-      | {
-          readonly mode: 'sign'
-          readonly artifactId: string
-          readonly payloadId: Hex
-        }
-      | {
-          readonly mode: 'reuse-origin'
-          readonly artifactId: string
-          readonly originArtifactId: string
-          readonly selection: 'whole' | 'pre-claim'
-        }
-    readonly target?: {
+    /**
+     * Slots satisfied by an earlier slot's signature rather than their own
+     * ceremony. Recorded so the route can be checked, not so the count of
+     * authorisations can shrink.
+     */
+    readonly reuses?: readonly {
       readonly artifactId: string
-      readonly payloadId: Hex
-    }
+      readonly sourceArtifactId: string
+      readonly selection: 'whole' | 'pre-claim'
+    }[]
   }
   readonly stages: readonly SigningStagePlan[]
   readonly publicOutputs: readonly {
@@ -411,8 +405,7 @@ export interface SigningTranscript {
   readonly stages: readonly SigningStageTranscript[]
 }
 
-// Public owner-signature types relocated verbatim from the legacy
-// `src/execution/utils.ts` so the published surface owns them.
+/** WebAuthn assertion for one signing request in a passkey owner's contribution. */
 export interface OwnerPasskeySignature {
   webauthn: {
     authenticatorData: Hex
@@ -424,18 +417,32 @@ export interface OwnerPasskeySignature {
   signature: Hex
 }
 
+/**
+ * One owner's signatures over a transaction quote.
+ *
+ * `slots` holds one entry per signing request this owner signs, in the quote's
+ * signing-request order. Positions are significant: do not reorder, filter, or
+ * deduplicate entries.
+ */
 export type OwnerSignatureData =
   | {
       kind: 'ecdsa'
       signer: Address
-      origin: Hex[]
+      slots: Hex[]
     }
   | {
       kind: 'passkey'
       publicKey: Hex
-      origin: OwnerPasskeySignature[]
+      slots: OwnerPasskeySignature[]
     }
 
+/**
+ * Detached owner contribution returned by `signTransaction(prepared, { owner })`.
+ *
+ * The value is JSON-serializable; pass it to `assembleTransaction` unchanged.
+ * A `multi-factor` contribution wraps one factor's signatures with that
+ * factor's `validatorId`.
+ */
 export type OwnerSignature =
   | ({ intentId: string } & OwnerSignatureData)
   | {

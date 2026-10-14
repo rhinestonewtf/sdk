@@ -85,11 +85,15 @@ const accountAddress = '0xc02C600Bd93e6C86aE2Ed1D418B87Fe225171E74'
 
 describe('Passkeys Actions', () => {
   describe('Install WebAuthn Validator', async () => {
-    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestone = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 
@@ -101,7 +105,7 @@ describe('Passkeys Actions', () => {
             authenticatorId: passkeyAccount.id,
           }),
         ],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )
@@ -116,18 +120,22 @@ describe('Passkeys Actions', () => {
   })
 
   describe('Uninstall WebAuthn Validator', async () => {
-    const rhinestone = new RhinestoneSDK({ apiKey: 'test' })
+    const rhinestone = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const rhinestoneAccount = await rhinestone.createAccount({
-      owners: {
-        type: 'ecdsa',
-        accounts: [accountA],
+      evm: {
+        owners: {
+          type: 'ecdsa',
+          accounts: [accountA],
+        },
       },
     })
 
     test('', async () => {
       const calls = await resolveCallInputs(
         [disablePasskeys()],
-        rhinestoneAccount.config,
+        rhinestoneAccount.config.evm,
         base,
         accountAddress,
       )

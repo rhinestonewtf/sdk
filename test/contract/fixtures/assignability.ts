@@ -2,73 +2,86 @@ import type {
   AccountProviderConfig as CurrentAccountProviderConfig,
   CallInput as CurrentCallInput,
   OwnerSignature as CurrentOwnerSignature,
-  PreparedTransactionData as CurrentPreparedTransactionData,
-  RhinestoneAccount as CurrentRhinestoneAccount,
-  RhinestoneAccountConfig as CurrentRhinestoneAccountConfig,
   SessionDefinition as CurrentSessionDefinition,
   Transaction as CurrentTransaction,
 } from '@rhinestone/sdk'
 import { tronMainnet as currentTronMainnet } from '@rhinestone/sdk'
+import type { EvmAccountConfig as CurrentEvmAccountConfig } from '@rhinestone/sdk/evm'
 import type {
   AccountProviderConfig as ReleaseAccountProviderConfig,
   CallInput as ReleaseCallInput,
   OwnerSignature as ReleaseOwnerSignature,
-  PreparedTransactionData as ReleasePreparedTransactionData,
-  RhinestoneAccount as ReleaseRhinestoneAccount,
-  RhinestoneAccountConfig as ReleaseRhinestoneAccountConfig,
   SessionDefinition as ReleaseSessionDefinition,
   Transaction as ReleaseTransaction,
 } from '@rhinestone/sdk-base'
 import { tronMainnet as releaseTronMainnet } from '@rhinestone/sdk-base'
+import type { EvmAccountConfig as ReleaseEvmAccountConfig } from '@rhinestone/sdk-base/evm'
 import { mainnet } from 'viem/chains'
+
+const usdcOnMainnet = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as const
 
 type Assignable<To, From extends To> = From
 
+// Solana unique-symbol brands have distinct identities in the two installations.
+// Full branded account/transaction types remain covered by the semantic report.
 type ReleaseToCurrent = [
   Assignable<CurrentAccountProviderConfig, ReleaseAccountProviderConfig>,
   Assignable<CurrentCallInput, ReleaseCallInput>,
   Assignable<CurrentOwnerSignature, ReleaseOwnerSignature>,
-  Assignable<CurrentPreparedTransactionData, ReleasePreparedTransactionData>,
-  Assignable<CurrentRhinestoneAccount, ReleaseRhinestoneAccount>,
-  Assignable<CurrentRhinestoneAccountConfig, ReleaseRhinestoneAccountConfig>,
+  Assignable<CurrentEvmAccountConfig, ReleaseEvmAccountConfig>,
   Assignable<CurrentSessionDefinition, ReleaseSessionDefinition>,
-  Assignable<CurrentTransaction, ReleaseTransaction>,
 ]
 
 type CurrentToRelease = [
   Assignable<ReleaseAccountProviderConfig, CurrentAccountProviderConfig>,
   Assignable<ReleaseCallInput, CurrentCallInput>,
   Assignable<ReleaseOwnerSignature, CurrentOwnerSignature>,
-  Assignable<ReleasePreparedTransactionData, CurrentPreparedTransactionData>,
-  Assignable<ReleaseRhinestoneAccount, CurrentRhinestoneAccount>,
-  Assignable<ReleaseRhinestoneAccountConfig, CurrentRhinestoneAccountConfig>,
+  Assignable<ReleaseEvmAccountConfig, CurrentEvmAccountConfig>,
   Assignable<ReleaseSessionDefinition, CurrentSessionDefinition>,
-  Assignable<ReleaseTransaction, CurrentTransaction>,
 ]
 
 const releaseAcceptedCrossChainLiteral = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: { chain: mainnet, token: usdcOnMainnet },
   customDeadline: 9_999_999_999,
 } as const satisfies ReleaseTransaction
 
 const currentAcceptedCrossChainLiteral = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: { chain: mainnet, token: usdcOnMainnet },
   customDeadline: 9_999_999_999,
 } as const satisfies CurrentTransaction
 
 const releaseAcceptedNonEvmLiteral = {
-  sourceChains: [mainnet],
-  targetChain: releaseTronMainnet,
-  customDeadline: 9_999_999_999,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: {
+    chain: releaseTronMainnet,
+    token: usdcOnMainnet,
+    recipient: usdcOnMainnet,
+  },
 } as const satisfies ReleaseTransaction
 
 const currentAcceptedNonEvmLiteral = {
-  sourceChains: [mainnet],
-  targetChain: currentTronMainnet,
-  customDeadline: 9_999_999_999,
+  source: { chain: mainnet, token: usdcOnMainnet },
+  destination: {
+    chain: currentTronMainnet,
+    token: usdcOnMainnet,
+    recipient: usdcOnMainnet,
+  },
 } as const satisfies CurrentTransaction
+
+const releaseLiteralAcceptedByCurrent =
+  releaseAcceptedCrossChainLiteral satisfies CurrentTransaction
+const currentLiteralAcceptedByRelease =
+  currentAcceptedCrossChainLiteral satisfies ReleaseTransaction
+const releaseNonEvmAcceptedByCurrent =
+  releaseAcceptedNonEvmLiteral satisfies CurrentTransaction
+const currentNonEvmAcceptedByRelease =
+  currentAcceptedNonEvmLiteral satisfies ReleaseTransaction
+void releaseLiteralAcceptedByCurrent
+void currentLiteralAcceptedByRelease
+void releaseNonEvmAcceptedByCurrent
+void currentNonEvmAcceptedByRelease
 
 declare const releaseToCurrent: ReleaseToCurrent
 declare const currentToRelease: CurrentToRelease

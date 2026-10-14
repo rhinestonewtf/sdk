@@ -97,6 +97,7 @@ function thrown(
 describe('refusal codes', () => {
   test('the published codes do not change', () => {
     expect(Object.keys(SESSION_REFUSAL_CODES)).toEqual([
+      'REMOVED_CLAIM_POLICIES_INPUT',
       'VALID_AFTER_EXCEEDS_VALID_UNTIL',
       'VALID_AFTER_INVALID',
       'VALID_UNTIL_NOT_IN_FUTURE',
@@ -595,7 +596,11 @@ describe('refusal code coverage', () => {
 
   test('every listed code is raised somewhere in src', () => {
     // A published code stays listed after it stops being raised.
-    const retired = ['SESSION_REFUSED', 'ALLOW_FEES_ONLY_INTENT_EXECUTOR']
+    const retired = [
+      'SESSION_REFUSED',
+      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
+      'RESTRICTED_WITH_PERMIT2_GRANTS',
+    ]
     const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
       (code) => !retired.includes(code),
     )

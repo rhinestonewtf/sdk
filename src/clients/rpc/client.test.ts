@@ -28,6 +28,48 @@ const context = {
 } as const
 
 describe('RPC reader', () => {
+  test('fails closed on an unreadable aggregate without separate-read fallback', async () => {
+    const fake = await createFakeRpc({
+      chainId: chain.id,
+      responses: { eth_call: '0x' },
+    })
+    try {
+      const rpc = createRpcReadPort(chain, {
+        kind: 'custom',
+        urls: { [chain.id]: fake.url },
+      })
+      const abi = [
+        {
+          type: 'function',
+          name: 'getNonce',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [{ type: 'uint256' }],
+        },
+      ] as const
+      const results = await rpc.multicall<
+        readonly { result?: unknown; error?: unknown }[]
+      >(context, [
+        { address: account, abi, functionName: 'getNonce' },
+        { address: owner, abi, functionName: 'getNonce' },
+      ])
+      expect(results).toHaveLength(2)
+      expect(
+        results.every(
+          (result) =>
+            result.result === undefined && result.error instanceof Error,
+        ),
+      ).toBe(true)
+      expect(fake.requests).toHaveLength(1)
+      expect(fake.requests[0]).toMatchObject({
+        method: 'eth_call',
+        params: [{ to: chain.contracts.multicall3.address }, 'latest'],
+      })
+    } finally {
+      await fake.close()
+    }
+  })
+
   test('materializes code and contract reads through an explicit provider', async () => {
     const fake = await createFakeRpc({
       chainId: chain.id,

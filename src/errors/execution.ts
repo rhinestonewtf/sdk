@@ -91,6 +91,28 @@ class QuoteNotInPreparedTransactionError extends ExecutionError {
   }
 }
 
+/** Thrown when a Solana quote's approximate signing deadline has passed. */
+class SolanaQuoteExpiredError extends ExecutionError {
+  constructor(intentId: string) {
+    super({
+      message: `Solana intent ${intentId} has expired. Re-prepare the transaction and sign the new quote; do not retry an uncertain prior submission without checking its status.`,
+      context: { intentId },
+      errorType: 'SolanaQuoteExpired',
+    })
+  }
+}
+
+/** Thrown when persisted Solana lifecycle data is incomplete or inconsistent. */
+class InvalidSolanaTransactionArtifactError extends ExecutionError {
+  constructor(message: string, context?: Readonly<Record<string, unknown>>) {
+    super({
+      message: `Invalid Solana transaction artifact: ${message}`,
+      context,
+      errorType: 'InvalidSolanaTransactionArtifact',
+    })
+  }
+}
+
 class InvalidSourceCallsError extends ExecutionError {
   constructor(params?: {
     chainId?: number
@@ -100,9 +122,7 @@ class InvalidSourceCallsError extends ExecutionError {
   }) {
     super({
       message:
-        params?.chainId !== undefined
-          ? `sourceCalls includes chainId ${params.chainId} which is not in sourceChains (or the target chain for same-chain transactions)`
-          : 'sourceCalls includes a chainId not in sourceChains (or the target chain for same-chain transactions)',
+        'A source call `provides` a token other than `source.token`. Source calls run on the source chain and can only make more of the source token available.',
       ...params,
     })
   }
@@ -212,22 +232,146 @@ class IndependentSigningNotSupportedError extends ExecutionError {
   }
 }
 
+class InvalidPreparedTransactionError extends ExecutionError {
+  constructor(params?: {
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        'This prepared transaction was created by an earlier SDK generation or orchestrator wire version and cannot be signed or submitted. Reconcile the original submission, then prepare the transaction again.',
+      ...params,
+    })
+  }
+}
+
+class UnsupportedSigningRequestError extends ExecutionError {
+  constructor(params: {
+    index: number
+    payloadKind: string
+    /** Replaces the default message when the request is refused for a reason other than its payload kind. */
+    reason?: string
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params.reason ??
+        `The quote asks for a \`${params.payloadKind}\` signature at request ${params.index}, which this SDK version cannot produce. Upgrade the SDK, or change the intent so the route does not require it.`,
+      context: {
+        requestIndex: params.index,
+        payloadKind: params.payloadKind,
+        ...params.context,
+      },
+      ...(params.errorType ? { errorType: params.errorType } : {}),
+      ...(params.traceId ? { traceId: params.traceId } : {}),
+    })
+  }
+}
+
+class IncompleteIntentProofsError extends ExecutionError {
+  constructor(params: {
+    intentId: string
+    missing: readonly number[]
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message: `Intent ${params.intentId} is missing proofs for signing request${
+        params.missing.length === 1 ? '' : 's'
+      } ${params.missing.join(', ')}. Every request in \`quote.signingRequests\` needs its own proof before the transaction can be submitted.`,
+      context: {
+        intentId: params.intentId,
+        missing: [...params.missing],
+        ...params.context,
+      },
+      ...(params.errorType ? { errorType: params.errorType } : {}),
+      ...(params.traceId ? { traceId: params.traceId } : {}),
+    })
+  }
+}
+
+class MismatchedIntentProofError extends ExecutionError {
+  constructor(params?: {
+    message?: string
+    context?: any
+    errorType?: string
+    traceId?: string
+  }) {
+    super({
+      message:
+        params?.message ??
+        'A supplied proof does not belong to this prepared transaction. Contributions are bound to the intent, the exact ordered request set, and the request index they answer.',
+      ...params,
+    })
+  }
+}
+
+/**
+ * Intent-scoped sponsorship cannot bind this request: the approval input the
+ * integrator would sign is not exactly what the orchestrator can recompute
+ * from the quote request. Thrown before `getIntentExtensionToken` runs and
+ * before anything is quoted.
+ */
+class UnsupportedSponsorshipApprovalError extends ExecutionError {
+  constructor(params: {
+    reason: 'unsupported' | 'mismatch'
+    /** Path of the first field that cannot be bound, e.g. `options.selectionStrategy`. */
+    field?: string
+  }) {
+    super({
+      message: `Intent-scoped sponsorship cannot bind this request${
+        params.field ? ` (${params.field})` : ''
+      }: its approval input does not exactly describe the quote request. Remove the unsupported option, or use project-wide sponsorship for this transaction.`,
+      context: {
+        reason: params.reason,
+        ...(params.field ? { field: params.field } : {}),
+      },
+      errorType: 'UnsupportedSponsorshipApproval',
+    })
+  }
+}
+
 function isExecutionError(error: Error): error is ExecutionError {
   return error instanceof ExecutionError
 }
 
+function isSolanaQuoteExpiredError(
+  error: unknown,
+): error is SolanaQuoteExpiredError {
+  return error instanceof SolanaQuoteExpiredError
+}
+
+function isInvalidSolanaTransactionArtifactError(
+  error: unknown,
+): error is InvalidSolanaTransactionArtifactError {
+  return error instanceof InvalidSolanaTransactionArtifactError
+}
+
 export {
   isExecutionError,
+  isInvalidSolanaTransactionArtifactError,
+  isSolanaQuoteExpiredError,
   ExecutionError,
   Eip7702InitSignatureRequiredError,
+  IncompleteIntentProofsError,
   IndependentSigningNotSupportedError,
   InsufficientOwnerSignaturesError,
   IntentFailedError,
   InvalidOwnerSigningOptionsError,
+  InvalidPreparedTransactionError,
+  InvalidSolanaTransactionArtifactError,
   InvalidSourceCallsError,
+  MismatchedIntentProofError,
   MismatchedOwnerSignaturesError,
   OrderPathRequiredForIntentsError,
   QuoteNotInPreparedTransactionError,
   SignerNotSupportedError,
+  SolanaQuoteExpiredError,
   UnknownOwnerError,
+  UnsupportedSigningRequestError,
+  UnsupportedSponsorshipApprovalError,
 }

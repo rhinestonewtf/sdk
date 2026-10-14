@@ -1,4 +1,6 @@
 import type { Address, Hex } from 'viem'
+import { chainIdFromCaip2 } from '../../chains/caip2'
+import type { SolanaAuthorityRolePermission } from './public'
 
 type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -118,6 +120,101 @@ class ValidationError extends OrchestratorError {
   }
 }
 
+/**
+ * The EVM-derived Solana account has not been created on the requested cluster.
+ * Create and authority-verify `swigAddress` before preparing another transfer.
+ *
+ * `chainId` is the SDK's numeric id for the cluster, and is absent when the
+ * response carries no usable chain id.
+ */
+class SolanaAccountNotCreatedError extends ValidationError {
+  readonly swigAddress: string
+  readonly chainId?: number
+
+  constructor(
+    params: BaseErrorParams & {
+      issues?: ValidationIssue[]
+      swigAddress: string
+      chainId?: number
+    },
+  ) {
+    super(params)
+    this.swigAddress = params.swigAddress
+    this.chainId = params.chainId
+  }
+}
+
+const SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS = [
+  'acting_permission',
+  'authority_exists',
+  'authority_not_found',
+  'authority_ambiguous',
+  'root_role',
+  'unsupported_authority',
+  'lockout',
+] as const
+
+/**
+ * Why the orchestrator refused a Swig authority change:
+ *
+ * - `acting_permission` — the configured owner's role holds neither `All` nor
+ *   `ManageAuthority`, so it cannot manage authorities.
+ * - `authority_exists` — the key to add is already on the Swig, on `roleId`,
+ *   with `permission` when readable.
+ * - `authority_not_found` — no role carries the key to remove.
+ * - `authority_ambiguous` — several roles (`roleIds`) carry the key to remove.
+ * - `root_role` — the key to remove is the root role, which is permanent.
+ * - `unsupported_authority` — the key to remove sits on a role that is not a
+ *   plain passkey or secp256k1 role, such as a session role.
+ * - `lockout` — the removal would leave no signable role holding `All` or
+ *   `ManageAuthority`.
+ */
+type SolanaAuthorityChangeRefusalReason =
+  (typeof SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS)[number]
+
+/**
+ * The orchestrator refused a Swig authority (passkey or secp256k1 key) add or
+ * remove against the Swig's current roles. Nothing was signed or submitted.
+ *
+ * After an uncertain outcome (a failed wait, a network error on submit), call
+ * `getAuthorityStatus` with the same change: it reads this refusal for you. An
+ * add refused with `authority_exists` and the same `permission` already
+ * landed, while a different or absent `permission` is a conflict to resolve; a
+ * remove refused with `authority_not_found` already landed.
+ *
+ * `reason` is absent when the orchestrator sent a reason this SDK version does
+ * not know; the raw context stays readable on `issues[].context`.
+ */
+class SolanaAuthorityChangeRefusedError extends ValidationError {
+  readonly reason?: SolanaAuthorityChangeRefusalReason
+  /** The Swig state account the change targeted. */
+  readonly swigAddress?: string
+  /** The role the refusal names: the existing, acting or target role. */
+  readonly roleId?: number
+  /** Every role carrying the key, on `authority_ambiguous`. */
+  readonly roleIds?: number[]
+  /** The existing role's permission, on `authority_exists` when readable. */
+  readonly permission?: SolanaAuthorityRolePermission
+
+  constructor(
+    params: BaseErrorParams & {
+      issues?: ValidationIssue[]
+      reason?: SolanaAuthorityChangeRefusalReason
+      swigAddress?: string
+      roleId?: number
+      roleIds?: number[]
+      permission?: SolanaAuthorityRolePermission
+    },
+  ) {
+    super(params)
+    if (params.reason !== undefined) this.reason = params.reason
+    if (params.swigAddress !== undefined) this.swigAddress = params.swigAddress
+    if (params.roleId !== undefined) this.roleId = params.roleId
+    if (params.roleIds !== undefined) this.roleIds = params.roleIds
+    if (params.permission !== undefined) this.permission = params.permission
+  }
+}
+
 class InsufficientLiquidityError extends OrchestratorError {
   readonly availableIntents: Record<string, bigint>[]
   readonly unfillable: Record<string, bigint>
@@ -179,8 +276,11 @@ class KeyScopeDeniedError extends ForbiddenError {
 }
 
 class ConflictError extends OrchestratorError {
-  constructor(params: BaseErrorParams) {
+  readonly details: ErrorDetail[]
+
+  constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
     super({ ...params, code: 'CONFLICT' })
+    this.details = params.details ?? []
   }
 }
 
@@ -190,6 +290,31 @@ class UnprocessableContentError extends OrchestratorError {
   constructor(params: BaseErrorParams & { details?: ErrorDetail[] }) {
     super({ ...params, code: 'UNPROCESSABLE_CONTENT' })
     this.details = params.details ?? []
+  }
+}
+
+/**
+ * The Swig a Solana account creation targets already exists on the requested
+ * cluster. Internal: `deploy('solana', …)` resolves `true` on it.
+ *
+ * Extends {@link UnprocessableContentError} and keeps its `code`. `chainId` is
+ * the SDK's numeric id for the cluster, and is absent when the response carries
+ * no usable chain id.
+ */
+class SolanaAccountAlreadyCreatedError extends UnprocessableContentError {
+  readonly swigAddress: string
+  readonly chainId?: number
+
+  constructor(
+    params: BaseErrorParams & {
+      details?: ErrorDetail[]
+      swigAddress: string
+      chainId?: number
+    },
+  ) {
+    super(params)
+    this.swigAddress = params.swigAddress
+    this.chainId = params.chainId
   }
 }
 
@@ -560,6 +685,114 @@ function parseSponsorError(
   }
 }
 
+/**
+ * Normalize `context.chainId` to the SDK's numeric chain ids. The error
+ * boundary lowers it to CAIP-2 (`solana:EtWTRAB…`); older orchestrators send a
+ * number. Anything else — including a chain this SDK version has no id for —
+ * yields `undefined`, which drops the chain hint without losing the error
+ * identity; the raw value stays readable on `issues[].context`.
+ */
+function parseContextChainId(value: unknown): number | undefined {
+  if (typeof value === 'string') {
+    return chainIdFromCaip2(value)
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return value
+  }
+  return undefined
+}
+
+function parseSolanaAccountNotCreatedError(
+  base: BaseErrorParams,
+  issues: ValidationIssue[],
+): SolanaAccountNotCreatedError | undefined {
+  const context = issues.find(
+    (issue) => issue.context?.code === 'SOLANA_ACCOUNT_NOT_CREATED',
+  )?.context
+  if (
+    !context ||
+    typeof context.swigAddress !== 'string' ||
+    context.swigAddress.length === 0
+  ) {
+    return undefined
+  }
+
+  const chainId = parseContextChainId(context.chainId)
+
+  return new SolanaAccountNotCreatedError({
+    ...base,
+    issues,
+    swigAddress: context.swigAddress,
+    ...(chainId === undefined ? {} : { chainId }),
+  })
+}
+
+function roleIdValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function parseSolanaAuthorityChangeRefusedError(
+  base: BaseErrorParams,
+  issues: ValidationIssue[],
+): SolanaAuthorityChangeRefusedError | undefined {
+  const context = issues.find(
+    (issue) => issue.context?.code === 'SWIG_AUTHORITY_CHANGE_REFUSED',
+  )?.context
+  if (!context) {
+    return undefined
+  }
+  const reason = oneOf(context.reason, SOLANA_AUTHORITY_CHANGE_REFUSAL_REASONS)
+  const swigAddress = stringValue(context.swig)
+  const roleId = roleIdValue(context.roleId)
+  const roleIds = Array.isArray(context.roleIds)
+    ? context.roleIds.map(roleIdValue)
+    : undefined
+  const permission = oneOf(context.permission, [
+    'all',
+    'allButManageAuthority',
+    'manageAuthority',
+  ] as const)
+  return new SolanaAuthorityChangeRefusedError({
+    ...base,
+    issues,
+    ...(reason === undefined ? {} : { reason }),
+    ...(swigAddress ? { swigAddress } : {}),
+    ...(roleId === undefined ? {} : { roleId }),
+    ...(roleIds?.every((id) => id !== undefined)
+      ? { roleIds: roleIds as number[] }
+      : {}),
+    ...(permission === undefined ? {} : { permission }),
+  })
+}
+
+// `ACCOUNT_ALREADY_DEPLOYED` is shared with EVM setup-only intents; only a
+// refusal naming a Swig is the Solana one.
+function parseSolanaAccountAlreadyCreatedError(
+  base: BaseErrorParams,
+  details: ErrorDetail[],
+): SolanaAccountAlreadyCreatedError | undefined {
+  const context = details.find(
+    (detail) =>
+      detail.context?.code === 'ACCOUNT_ALREADY_DEPLOYED' &&
+      typeof detail.context.swig === 'string' &&
+      detail.context.swig.length > 0,
+  )?.context
+  if (!context) {
+    return undefined
+  }
+
+  const chainId = parseContextChainId(context.destinationChainId)
+
+  return new SolanaAccountAlreadyCreatedError({
+    ...base,
+    details,
+    swigAddress: context.swig as string,
+    ...(chainId === undefined ? {} : { chainId }),
+  })
+}
+
 function parseErrorEnvelope(
   envelope: ErrorEnvelope,
   statusCode: number,
@@ -573,10 +806,12 @@ function parseErrorEnvelope(
 
   switch (envelope.code) {
     case 'VALIDATION_ERROR': {
-      const issues = Array.isArray(envelope.details)
-        ? (envelope.details as ValidationIssue[])
-        : []
-      return new ValidationError({ ...base, issues })
+      const issues = parseErrorDetails(envelope.details)
+      return (
+        parseSolanaAuthorityChangeRefusedError(base, issues) ??
+        parseSolanaAccountNotCreatedError(base, issues) ??
+        new ValidationError({ ...base, issues })
+      )
     }
     case 'INSUFFICIENT_LIQUIDITY': {
       const details = (envelope.details ?? {}) as {
@@ -614,11 +849,15 @@ function parseErrorEnvelope(
       })
     }
     case 'CONFLICT':
-      return new ConflictError(base)
+      return new ConflictError({
+        ...base,
+        details: parseErrorDetails(envelope.details),
+      })
     case 'UNPROCESSABLE_CONTENT': {
       const details = parseErrorDetails(envelope.details)
       return (
         parseSponsorError(base, details) ??
+        parseSolanaAccountAlreadyCreatedError(base, details) ??
         new UnprocessableContentError({ ...base, details })
       )
     }
@@ -654,6 +893,25 @@ function isRateLimited(error: unknown): error is RateLimitedError {
 
 function isValidationError(error: unknown): error is ValidationError {
   return error instanceof ValidationError
+}
+
+function isSolanaAccountNotCreated(
+  error: unknown,
+): error is SolanaAccountNotCreatedError {
+  return error instanceof SolanaAccountNotCreatedError
+}
+
+/** Whether `error` is the orchestrator refusing a Swig authority add or remove. */
+function isSolanaAuthorityChangeRefused(
+  error: unknown,
+): error is SolanaAuthorityChangeRefusedError {
+  return error instanceof SolanaAuthorityChangeRefusedError
+}
+
+function isSolanaAccountAlreadyCreated(
+  error: unknown,
+): error is SolanaAccountAlreadyCreatedError {
+  return error instanceof SolanaAccountAlreadyCreatedError
 }
 
 function isAuthError(
@@ -775,6 +1033,7 @@ export type {
   SimulationFailureDetails,
   SimulationFailureSimulation,
   SimulationRetryHint,
+  SolanaAuthorityChangeRefusalReason,
   SponsorLimitKey,
   ValidationIssue,
 }
@@ -785,6 +1044,9 @@ export {
   isConnectionError,
   isAuthError,
   isValidationError,
+  isSolanaAccountNotCreated,
+  isSolanaAccountAlreadyCreated,
+  isSolanaAuthorityChangeRefused,
   isRateLimited,
   isSimulationFailed,
   isSponsorLimitExceeded,
@@ -792,6 +1054,9 @@ export {
   isSponsorError,
   OrchestratorError,
   ValidationError,
+  SolanaAccountNotCreatedError,
+  SolanaAccountAlreadyCreatedError,
+  SolanaAuthorityChangeRefusedError,
   InsufficientLiquidityError,
   SponsorLimitExceededError,
   InsufficientSponsorBalanceError,

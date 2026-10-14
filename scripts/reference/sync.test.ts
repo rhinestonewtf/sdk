@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   classifyRegistryVersion,
@@ -13,6 +13,10 @@ import {
 } from './sync'
 
 const temporaryDirectories: string[] = []
+const scratchRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../.scratch',
+)
 
 function releasePayload(
   overrides: Partial<ReleasePayload> = {},
@@ -25,7 +29,7 @@ function releasePayload(
       author: { id: RELEASE_APP_ID, login: 'rhinestone-automations[bot]' },
       draft: false,
       prerelease: false,
-      tag_name: '@rhinestone/sdk@2.16.2',
+      tag_name: '@rhinestone/sdk@3.0.0',
       target_commitish: 'main',
     },
     ...overrides,
@@ -37,9 +41,11 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function createDocsRepository(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'sdk-reference-sync-'))
+  mkdirSync(scratchRoot, { recursive: true })
+  const directory = mkdtempSync(join(scratchRoot, 'sdk-reference-sync-'))
   temporaryDirectories.push(directory)
   git(directory, 'init', '-b', 'main')
+  git(directory, 'config', 'commit.gpgsign', 'false')
   git(directory, 'config', 'user.name', 'Test')
   git(directory, 'config', 'user.email', 'test@example.com')
   mkdirSync(join(directory, 'wallets/custom-signer/sdk-reference'), {
@@ -63,19 +69,30 @@ afterEach(() => {
 })
 
 describe('release qualification', () => {
-  it('accepts the automated stable v2 release even when target_commitish is main', () => {
-    expect(qualifyReleaseEvent(releasePayload())).toEqual({
-      kind: 'qualified',
-      tag: '@rhinestone/sdk@2.16.2',
-      version: '2.16.2',
-    })
-  })
+  it.each(['3.0.0', '3.1.0', '3.10.2'])(
+    'accepts the automated stable v3 release %s',
+    (version) => {
+      const tag = `@rhinestone/sdk@${version}`
+      expect(
+        qualifyReleaseEvent(
+          releasePayload({
+            release: { ...releasePayload().release, tag_name: tag },
+          }),
+        ),
+      ).toEqual({ kind: 'qualified', tag, version })
+    },
+  )
 
   it.each([
-    ['wrong package', '@rhinestone/other@2.16.2'],
+    ['wrong package', '@rhinestone/other@3.0.0'],
     ['v1', '@rhinestone/sdk@1.9.0'],
-    ['prerelease suffix', '@rhinestone/sdk@2.16.2-dev.1'],
-    ['build suffix', '@rhinestone/sdk@2.16.2+build'],
+    ['v2', '@rhinestone/sdk@2.17.1'],
+    ['future major', '@rhinestone/sdk@4.0.0'],
+    ['snapshot', '@rhinestone/sdk@3.0.0-dev-20261014000000-abc1234'],
+    ['release candidate', '@rhinestone/sdk@3.0.0-rc.0'],
+    ['prerelease suffix', '@rhinestone/sdk@3.0.0-dev.1'],
+    ['build suffix', '@rhinestone/sdk@3.0.0+build'],
+    ['noncanonical version', '@rhinestone/sdk@3.00.0'],
   ])('skips %s tags', (_, tag_name) => {
     expect(
       qualifyReleaseEvent(
@@ -85,7 +102,7 @@ describe('release qualification', () => {
       ),
     ).toEqual({
       kind: 'skip',
-      reason: 'not a stable @rhinestone/sdk v2 tag',
+      reason: 'not a stable @rhinestone/sdk v3 tag',
     })
   })
 
@@ -102,7 +119,7 @@ describe('release qualification', () => {
     ).toEqual({ kind: 'skip', reason: 'draft or prerelease event' })
   })
 
-  it('rejects non-publication events and the wrong repository', () => {
+  it('rejects non-publication events, wrong repositories, and forged app identities', () => {
     expect(() =>
       qualifyReleaseEvent(releasePayload({ action: 'created' })),
     ).toThrow('published release event')
@@ -111,19 +128,13 @@ describe('release qualification', () => {
         releasePayload({ repository: { full_name: 'rhinestonewtf/docs' } }),
       ),
     ).toThrow('unexpected repository')
-  })
-
-  it('requires both the event sender and release author to be the release app', () => {
     expect(() =>
       qualifyReleaseEvent(releasePayload({ sender: { id: 1 } })),
     ).toThrow('rhinestone-automations')
     expect(() =>
       qualifyReleaseEvent(
         releasePayload({
-          release: {
-            ...releasePayload().release,
-            author: { id: 1 },
-          },
+          release: { ...releasePayload().release, author: { id: 1 } },
         }),
       ),
     ).toThrow('rhinestone-automations')
@@ -133,36 +144,42 @@ describe('release qualification', () => {
 describe('published source selection', () => {
   const facts = {
     eventSha: 'abc',
+    releaseVersion: '3.0.0',
     packageName: '@rhinestone/sdk',
-    packageVersion: '2.16.2',
+    packageVersion: '3.0.0',
     tagCommit: 'abc',
     isReleaseAncestor: true,
   }
 
-  it('accepts matching package, tag commit, and release ancestry', () => {
+  it('accepts matching package, version, tag commit, and release ancestry', () => {
     expect(() => verifySourceFacts(facts)).not.toThrow()
   })
 
   it.each([
     ['package', { packageName: '@rhinestone/other' }],
-    ['version', { packageVersion: '2.16.2-dev.1' }],
-    ['tag', { tagCommit: 'def' }],
-    ['ancestry', { isReleaseAncestor: false }],
-  ])('rejects a %s mismatch', (_, override) => {
+    ['v1 manifest', { packageVersion: '1.9.0' }],
+    ['v2 manifest', { packageVersion: '2.17.1' }],
+    ['future-major manifest', { packageVersion: '4.0.0' }],
+    ['snapshot manifest', { packageVersion: '3.0.0-dev.1' }],
+    ['release candidate manifest', { packageVersion: '3.0.0-rc.0' }],
+    ['package/tag version', { packageVersion: '3.0.1' }],
+    ['tag commit', { tagCommit: 'def' }],
+    ['release ancestry', { isReleaseAncestor: false }],
+  ])('rejects forged %s facts', (_, override) => {
     expect(() => verifySourceFacts({ ...facts, ...override })).toThrow()
   })
 
   it('distinguishes current, superseded, and not-yet-propagated versions', () => {
-    expect(classifyRegistryVersion('2.16.2', '2.16.2')).toEqual({
+    expect(classifyRegistryVersion('3.0.0', '3.0.0')).toEqual({
       kind: 'current',
     })
-    expect(classifyRegistryVersion('2.16.2', '2.17.0')).toEqual({
+    expect(classifyRegistryVersion('3.0.0', '3.1.0')).toEqual({
       kind: 'superseded',
-      latest: '2.17.0',
+      latest: '3.1.0',
     })
-    expect(classifyRegistryVersion('2.17.0', '2.16.2')).toEqual({
+    expect(classifyRegistryVersion('3.1.0', '3.0.0')).toEqual({
       kind: 'pending',
-      latest: '2.16.2',
+      latest: '3.0.0',
     })
   })
 })
@@ -211,18 +228,5 @@ describe('docs staging', () => {
     writeFileSync(join(repository, 'unrelated.mdx'), 'staged\n')
     git(repository, 'add', 'unrelated.mdx')
     expect(() => stageManagedDocs(repository)).toThrow('already staged')
-  })
-
-  it('does not require or recreate retired inventories', () => {
-    const repository = createDocsRepository()
-    writeFileSync(
-      join(repository, 'wallets/custom-signer/sdk-reference/new.mdx'),
-      'new\n',
-    )
-    stageManagedDocs(repository)
-    expect(git(repository, 'ls-files')).not.toContain('unified-docs')
-    expect(git(repository, 'ls-files')).not.toContain(
-      'scripts/fixtures/sdk-reference-paths.json',
-    )
   })
 })

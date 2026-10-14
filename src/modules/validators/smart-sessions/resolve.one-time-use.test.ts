@@ -38,7 +38,8 @@ describe('resolveSessionData — one-time-use session', () => {
     return resolveSessionData({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
       oneTimeUse: { id: 42n },
       policyAddresses: { oneTimeUseId: POLICY },
     })
@@ -67,7 +68,8 @@ describe('resolveSessionData — one-time-use session', () => {
     const data = resolveSessionData({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
       // 1_900_000_000 s = 2030-03-17T17:46:40Z
       oneTimeUse: { id: 42n, validUntil: new Date('2030-03-17T17:46:40.999Z') },
       policyAddresses: { oneTimeUseId: POLICY },
@@ -132,7 +134,10 @@ describe('resolveSessionData — one-time-use session', () => {
     ['unrestricted', {}],
     [
       'permit',
-      { claimPolicies: [{ type: 'permit2' as const, spenders: [ARBITER] }] },
+      {
+        crossChainPermits: [{ settlementLayers: ['ACROSS' as const] }],
+        fallback: 'intentExecution' as const,
+      },
     ],
     [
       'restricted, two actions',
@@ -201,12 +206,16 @@ describe('resolveSessionData — one-time-use session', () => {
     toSession({
       chain: base,
       owners,
-      claimPolicies: [
+      crossChainPermits: [
         {
-          type: 'permit2',
-          spenders: extra.spenders ?? [ARBITER],
+          settlementLayers: ['ACROSS'],
+          from: (extra.spenders ?? [ARBITER]).map((token) => ({
+            chain: base,
+            token,
+          })),
         },
       ],
+      fallback: 'intentExecution',
       ...(oneTimeUse && { oneTimeUse }),
       ...(extra.saltMode && { saltMode: extra.saltMode }),
       policyAddresses: { oneTimeUseId: POLICY },
@@ -274,7 +283,8 @@ describe('resolveSessionData — one-time-use session', () => {
         resolveSessionData({
           chain: base,
           owners,
-          claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+          crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+          fallback: 'intentExecution',
           oneTimeUse: { id: 42n },
           signing,
           policyAddresses: { oneTimeUseId: POLICY },
@@ -292,7 +302,8 @@ describe('resolveSessionData — one-time-use session', () => {
       const policies = resolveSessionData({
         chain: base,
         owners,
-        claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+        crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+        fallback: 'intentExecution',
         oneTimeUse: { id: 42n },
         signing,
         policyAddresses: { oneTimeUseId: POLICY },
@@ -315,7 +326,8 @@ describe('resolveSessionData — one-time-use session', () => {
       const policies = resolveSessionData({
         chain: base,
         owners,
-        claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+        crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+        fallback: 'intentExecution',
         oneTimeUse: { id: 42n },
         signing,
         policyAddresses: { oneTimeUseId: POLICY },
@@ -328,16 +340,17 @@ describe('resolveSessionData — one-time-use session', () => {
     },
   )
 
-  test('rejects a claim policy that does not pin its spender (the Permit2 arbiter)', () => {
+  test('rejects raw unpinned claims instead of silently accepting them', () => {
     expect(() =>
       resolveSessionData({
         chain: base,
         owners,
+        // @ts-expect-error Removed raw definition input.
         claimPolicies: [{ type: 'permit2' }],
         oneTimeUse: { id: 42n },
         policyAddresses: { oneTimeUseId: POLICY },
       }),
-    ).toThrow(/must pin their spenders/)
+    ).toThrow(/claimPolicies.*was removed/)
   })
 
   test('rejects a user action on the policy, which would share the burn action id', () => {
@@ -382,7 +395,8 @@ describe('resolveSessionData — one-time-use session', () => {
     const session = toSession({
       chain: base,
       owners,
-      claimPolicies: [{ type: 'permit2', spenders: [ARBITER] }],
+      crossChainPermits: [{ settlementLayers: ['ACROSS'] }],
+      fallback: 'intentExecution',
       oneTimeUse: { id: 42n },
       policyAddresses: { oneTimeUseId: POLICY },
     })
@@ -401,12 +415,12 @@ describe('resolveSessionData — one-time-use session', () => {
 })
 
 describe('resolveSessionData — default OneTimeUseIdPolicy address', () => {
-  const ARBITER = '0x00000000000000000000000000000000000000ab' as const
   const owners = { type: 'ecdsa' as const, accounts: [accountA] }
   const definition = {
     chain: base,
     owners,
-    claimPolicies: [{ type: 'permit2' as const, spenders: [ARBITER] }],
+    crossChainPermits: [{ settlementLayers: ['ACROSS' as const] }],
+    fallback: 'intentExecution' as const,
     oneTimeUse: { id: 42n },
   }
 

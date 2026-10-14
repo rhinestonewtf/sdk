@@ -25,7 +25,7 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - Language: TypeScript (strict mode)
 - Testing: Vitest
 - Linting: Biome
-- Dependencies: viem (peer), jose (optional peer for `jwt-server`); the published package has no runtime dependencies
+- Dependencies: viem (peer), @noble/curves and @scure/base (runtime), jose (optional peer for `jwt-server`)
 
 ## Structure
 
@@ -40,7 +40,8 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/clients` - Ports and adapters for the orchestrator, RPC, bundler, and paymaster
 - `/src/actions` - Atomic account actions (ECDSA, passkeys, smart-sessions)
 - `/src/hypercore` - HyperCore order builders and Hyperliquid market reads (`@rhinestone/sdk/hypercore`)
-- `/src/errors`, `/src/utils`, `/src/smart-sessions` - Published compatibility barrels
+- `/src/solana`, `/src/evm` - VM-specific published barrels (`@rhinestone/sdk/solana`, `@rhinestone/sdk/evm`)
+- `/src/errors`, `/src/smart-sessions` - Published compatibility barrels
 - `/src/jwt-server` - Server-side JWT signer (Express-compatible middleware + Web handlers)
 - `/test` - Unit helpers, type tests, and live integration tests
 
@@ -50,30 +51,34 @@ See [docs/architecture.md](docs/architecture.md) for how these fit together and 
 
 - [Architecture](docs/architecture.md) — layering and transaction flow
 - [Testing](docs/testing.md) — unit, type, and live integration tests
+- [Session migration](docs/session-migration.md) — removed inputs, compiler defaults, and persisted grants
 - [Code generation](docs/codegen.md) — SDK Reference and orchestrator wire types
+- [Caucasus migration](docs/caucasus-migration.md) — what the `2026-09.caucasus` API version changed for consumers
+- [Sponsorship approval](docs/sponsorship-approval.md) — how an intent-scoped sponsorship grant binds the quote request, with golden vectors
 
 Keep these in sync with the code — update the relevant doc in the same PR as any change it covers.
 
 ## Branching
 
-The SDK uses three release branches and one experimental branch:
+The SDK uses the following development and maintenance branches:
 
-- `main` — dev releases for **v2** SDK (snapshots published under the `@dev` tag)
-- `release` — prod releases for **v2** SDK (published to `@latest`)
-- `v1` — prod releases for the legacy **v1** SDK
-- `solana` — experimental **v3 / Solana / Caucasus** development; no automatic publishing
+- `main` — **v3** development; snapshots publish under `@dev`
+- `release` — stable **v3** releases; publishes to `@latest`
+- `v2` — **v2** maintenance; its publishing and release normalization are owned by RHI-8326
+- `v1` — production releases for the legacy **v1** SDK
+- `solana` — frozen historical v3/Solana/Caucasus branch; it must not publish
 
 Where to open PRs:
 
-- **v2 changes** (features and fixes) → target `main`
+- **v3 changes** (including Solana and Caucasus) → target `main`
+- **v2 maintenance** → target `v2`
 - **v1 fixes** → target `v1`
-- **v3 / Solana / Caucasus changes** → target `solana`
 
-Test experimental work from an explicit local checkout or a pinned snapshot version, not the moving `@dev` tag (which follows v2 `main`). Carry relevant v2 fixes to `solana` deliberately. Reintegration must explicitly undo the v3 rollback before incorporating later experimental changes: merging `solana` alone does not restore reverted commits already in `main`'s ancestry.
+Only `main` publishes `@dev` snapshots. Pin the exact snapshot version or use an explicit local checkout when a specific SDK generation is required. The checked-in local candidate identity is `3.0.0-rc.0`; ordinary Changesets versioning consumes the pending release notes once and produces exactly `3.0.0` for stable publication.
 
-After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
+After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR. Before starting a v3 release, freeze/lock the historical `solana` branch and reconcile every queued or in-flight publisher so it cannot race the `main` snapshot. Pushes to `release` and `v1` run their production release workflows.
 
-Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, and merging THAT publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
+Merging the promotion PR publishes nothing. It opens a Changesets `Release` PR, and merging that PR publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
 
 ## Patterns
 
@@ -81,7 +86,7 @@ Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, 
 - Ordering and case conversion must never depend on the host locale — sort hex values with `compareHexValues` and use the default `.sort()` comparator or `toLowerCase`/`toUpperCase` elsewhere; `check:architecture` rejects `localeCompare`, `toLocale*Case`, and `Intl.Collator` in `src/`
 - Placement of a new public method — `RhinestoneSDK` vs `RhinestoneAccount`: put it on **`RhinestoneSDK`** when its data is scoped to the API key's project/integrator and needs no account (auth-only orchestrator reads, e.g. `getIntentStatus`, `splitIntents`, `getAppFeeBalances`); put it on **`RhinestoneAccount`** only when it is genuinely account-scoped (needs the account address / owners / on-chain state, e.g. `getPortfolio`, signing). Exposing project-scoped data as an account method misleads callers into reading it as account-scoped.
 - Account implementations live in `/src/accounts/adapters/*.ts`
-- Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.
+- Public API is the union of the explicit exports from `src/index.ts` and the subpath exports in `src/package.json` (`/actions`, `/errors`, `/evm`, `/solana`, `/jwt-server`, `/smart-sessions`, etc.) — adding, renaming, or removing exports is a breaking change. Determine root exports from export declarations or the packed package; a symbol imported into `src/index.ts` only for use in a public signature is not itself a named export.
 - When changing the public surface (types, exports, account/action APIs, config, errors, defaults), use the `dx` skill to keep it safe and ergonomic to integrate
 - When writing or editing JSDoc on public symbols (it generates the published SDK Reference), use the `jsdoc` skill
 - The project uses `changeset` to manage releases. Create a changeset file for each fix or feature, and use the `changesets` skill when adding, editing, or reviewing SDK changelog wording. Any change that adds a public export, including a publicly thrown error, requires a minor changeset because patch changesets must preserve the exact export surface.
@@ -92,4 +97,4 @@ Unit tests live next to source as `*.test.ts`; run a single file with `bun run t
 
 ## Code generation
 
-The SDK Reference (from JSDoc) and the orchestrator wire types (from the OpenAPI spec) are both generated — don't hand-edit. Regenerate with `bun run generate:reference` and `bun run generate:wire`. See [docs/codegen.md](docs/codegen.md). When writing the JSDoc that feeds the reference, use the `jsdoc` skill.
+The SDK Reference (from JSDoc) and the orchestrator wire types (from the OpenAPI document) are both generated — don't hand-edit. Regenerate with `bun run generate:reference` and `bun run generate:wire`. The orchestrator document is vendored at `scripts/openapi/` with a provenance manifest; change the snapshot and its hash together. See [docs/codegen.md](docs/codegen.md). When writing the JSDoc that feeds the reference, use the `jsdoc` skill.

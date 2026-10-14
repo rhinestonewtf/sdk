@@ -43,11 +43,9 @@ interface SdkConstructionInputBase {
   hyperliquid?: HyperliquidConfig
 }
 
-export type SdkConstructionInput = SdkConstructionInputBase &
-  (
-    | { apiKey: string; auth?: SdkAuthInput }
-    | { auth: SdkAuthInput; apiKey?: string }
-  )
+export type SdkConstructionInput = SdkConstructionInputBase & {
+  auth: SdkAuthInput
+}
 
 export interface RecoveryInput {
   guardians: Account[]

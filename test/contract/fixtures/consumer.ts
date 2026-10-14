@@ -1,9 +1,7 @@
 import {
   type AccountProviderConfig,
   type CallInput,
-  type RhinestoneAccountConfig,
   RhinestoneSDK,
-  type Transaction,
 } from '@rhinestone/sdk'
 import * as actions from '@rhinestone/sdk/actions'
 import * as ecdsaActions from '@rhinestone/sdk/actions/ecdsa'
@@ -14,15 +12,10 @@ import * as errors from '@rhinestone/sdk/errors'
 import * as jwtServer from '@rhinestone/sdk/jwt-server'
 import * as passkeySigning from '@rhinestone/sdk/signing/passkeys'
 import * as smartSessions from '@rhinestone/sdk/smart-sessions'
-import * as utils from '@rhinestone/sdk/utils'
-import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet } from 'viem/chains'
 
-const owner = privateKeyToAccount(
-  '0x0000000000000000000000000000000000000000000000000000000000000001',
-)
-
-const legacySdk = new RhinestoneSDK({ apiKey: 'legacy-api-key' })
+const legacySdk = new RhinestoneSDK({
+  auth: { mode: 'apiKey' as const, apiKey: 'legacy-api-key' },
+})
 const apiKeySdk = new RhinestoneSDK({
   auth: { mode: 'apiKey', apiKey: 'api-key' },
 })
@@ -39,19 +32,8 @@ const accountProviders: AccountProviderConfig[] = [
   { type: 'eoa' },
 ]
 
-const accountConfig: RhinestoneAccountConfig = {
-  account: accountProviders[0],
-  owners: { type: 'ecdsa', accounts: [owner] },
-}
-
-const registryFreeMfaConfig: RhinestoneAccountConfig = {
-  owners: {
-    type: 'multi-factor',
-    module: '0x0000007261E4E2F1a892A58fd0708c9321e76020',
-    validators: [{ type: 'ecdsa', accounts: [owner] }],
-  },
-}
-
+// `Transaction` differs between base and current, so it is exercised in
+// legacy-consumer.ts and current-consumer.ts rather than here.
 const lazyCall: CallInput = {
   async resolve({ accountAddress, chain, config }) {
     void accountAddress
@@ -60,18 +42,12 @@ const lazyCall: CallInput = {
     return []
   },
 }
+void lazyCall
 
-const transaction: Transaction = {
-  sourceChains: [mainnet],
-  targetChain: mainnet,
-  calls: [lazyCall],
-}
-
-void legacySdk.createAccount(accountConfig)
-void apiKeySdk.createAccount(accountConfig)
-void jwtSdk.createAccount(accountConfig)
-void transaction
-void registryFreeMfaConfig
+void accountProviders
+void legacySdk
+void apiKeySdk
+void jwtSdk
 void actions
 void ecdsaActions
 void mfaActions
@@ -81,7 +57,6 @@ void errors
 void jwtServer
 void passkeySigning
 void smartSessions
-void utils
 
 // @ts-expect-error api-key auth requires an api key
 new RhinestoneSDK({ auth: { mode: 'apiKey' } })

@@ -444,7 +444,7 @@ describe('stableFloor — side doors', () => {
   test('refuses claim policies', () => {
     expect(
       session({ claimPolicies: [{ policy: ATTACKER, initData: '0x' }] }),
-    ).toThrow(/cannot be combined with `crossChainPermits` or `claimPolicies`/)
+    ).toThrow(/claimPolicies.*was removed/)
   })
 
   test('allows an unrelated user permission', () => {

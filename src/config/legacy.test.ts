@@ -12,15 +12,10 @@ describe('legacy account config compatibility', () => {
     const owners = { type: 'ecdsa' as const, accounts: [accountA] }
     const modules: NonNullable<AccountConstructionInput['modules']> = []
     const sessions = { enabled: true }
-    const accountInput = {
-      owners,
-      modules,
-      sessions: sessions,
-    }
+    const accountInput = { owners, modules, sessions }
     const provider = { type: 'custom' as const, urls: { 1: 'https://rpc' } }
     const headers = { 'x-test': 'value' }
     const sdkInput = {
-      apiKey: 'legacy-secret',
       auth: { mode: 'apiKey' as const, apiKey: 'current-secret' },
       endpointUrl: 'https://orchestrator.test',
       provider,
@@ -29,15 +24,14 @@ describe('legacy account config compatibility', () => {
     }
 
     const sdk = new RhinestoneSDK(sdkInput)
-    const publicAccount = await sdk.createAccount(accountInput)
-    const publicConfig = publicAccount.config
+    const publicAccount = await sdk.createAccount({ evm: accountInput })
+    const publicConfig = publicAccount.config.evm
     const authProvider = Reflect.get(publicConfig, '_authProvider')
     expect(authProvider).toBeDefined()
 
-    const capturedSdk = captureLegacySdkConfig(sdkInput, authProvider)
     const compatibilityConfig = createLegacyAccountConfig(
       accountInput,
-      capturedSdk,
+      captureLegacySdkConfig(sdkInput, authProvider),
     )
 
     expect(Object.keys(compatibilityConfig)).toEqual(Object.keys(publicConfig))
@@ -53,13 +47,16 @@ describe('legacy account config compatibility', () => {
   })
 
   test('retains undefined SDK fields as enumerable compatibility keys', async () => {
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const accountInput = {
       owners: { type: 'ecdsa' as const, accounts: [accountA] },
     }
     const sdk = new RhinestoneSDK(sdkInput)
-    const publicAccount = await sdk.createAccount(accountInput)
-    const authProvider = Reflect.get(publicAccount.config, '_authProvider')
+    const publicAccount = await sdk.createAccount({ evm: accountInput })
+    const publicConfig = publicAccount.config.evm
+    const authProvider = Reflect.get(publicConfig, '_authProvider')
     const compatibilityConfig = createLegacyAccountConfig(
       accountInput,
       captureLegacySdkConfig(sdkInput, authProvider),
@@ -76,9 +73,7 @@ describe('legacy account config compatibility', () => {
       'headers',
       'hyperliquid',
     ])
-    expect(Object.keys(compatibilityConfig)).toEqual(
-      Object.keys(publicAccount.config),
-    )
+    expect(Object.keys(compatibilityConfig)).toEqual(Object.keys(publicConfig))
   })
 
   test('keeps nested aliases live but detaches top-level input replacement', () => {
@@ -110,7 +105,7 @@ describe('legacy account config compatibility', () => {
     const urls = { 1: 'https://initial.test' }
     const initialProvider = { type: 'custom' as const, urls }
     const sdkInput: SdkConstructionInput = {
-      apiKey: 'test',
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
       provider: initialProvider,
     }
     const captured = captureLegacySdkConfig(sdkInput, {})
@@ -128,7 +123,9 @@ describe('legacy account config compatibility', () => {
   })
 
   test('shares one auth provider without sharing account compatibility objects', () => {
-    const sdkInput = { apiKey: 'test' } satisfies SdkConstructionInput
+    const sdkInput = {
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    } satisfies SdkConstructionInput
     const authProvider = {}
     const captured = captureLegacySdkConfig(sdkInput, authProvider)
     const first = createLegacyAccountConfig(
@@ -148,20 +145,30 @@ describe('legacy account config compatibility', () => {
   })
 
   test('public methods retain the captured config after property reassignment', async () => {
-    const sdk = new RhinestoneSDK({ apiKey: 'test' })
-    const account = await sdk.createAccount({
-      account: { type: 'eoa' },
-      eoa: accountA,
+    const sdk = new RhinestoneSDK({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
     })
+    const owners = { type: 'ecdsa' as const, accounts: [accountA] }
+    const input = { evm: { owners } }
+    const account = await sdk.createAccount(input)
     const captured = account.config
 
-    account.config = {
-      account: { type: 'eoa' },
-      eoa: accountB,
+    ;(account as unknown as { config: unknown }).config = {
+      evm: {
+        account: { type: 'eoa' },
+        eoa: accountB,
+      },
     }
-    expect(account.getAddress()).toBe(accountA.address)
+    const original = account.getAddress('evm')
 
-    captured.eoa = accountB
-    expect(account.getAddress()).toBe(accountB.address)
+    owners.accounts[0] = accountB
+    expect(captured.evm.owners.accounts[0]).toBe(accountB)
+    expect(account.getAddress('evm')).not.toBe(original)
+
+    ;(captured.evm as AccountConstructionInput).owners = {
+      type: 'ecdsa',
+      accounts: [accountA],
+    }
+    expect(account.getAddress('evm')).toBe(original)
   })
 })

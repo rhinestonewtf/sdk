@@ -135,6 +135,33 @@ test('drops a fees block with a bad checksum or a missing address', () => {
   })
 })
 
+test('preserves CAIP/native-VM facts without treating them as EVM settlements', () => {
+  const settlement = { cctp: { domain: 6, tokenMessenger: A, usdc: B } }
+  const wrappedNativeToken = { address: 'native', symbol: 'SOL', decimals: 9 }
+  const catalog = new ChainCatalog(
+    parse({
+      'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': {
+        ...chain(settlement),
+        name: 'Solana',
+        wrappedNativeToken,
+      },
+      '792703810': { ...chain(settlement), testnet: true },
+      'hypercore:spot': chain(settlement),
+      'eip155:8453': chain(settlement),
+      '10': chain(settlement),
+      'invalid:chain': chain(settlement),
+    }),
+  )
+  expect(catalog.getChainInfo(792703809)?.name).toBe('Solana')
+  expect(catalog.getWrappedNativeToken(792703809)).toEqual(wrappedNativeToken)
+  expect(catalog.isTestnet(792703810)).toBe(true)
+  expect(catalog.isSupported(1337001)).toBe(true)
+  expect(catalog.getSettlementCatalog()).toEqual({
+    10: settlement,
+    8453: settlement,
+  })
+})
+
 describe('ChainCatalog.getSettlementCatalog', () => {
   test('keys served blocks by chain id and omits chains without one', () => {
     const catalog = new ChainCatalog(

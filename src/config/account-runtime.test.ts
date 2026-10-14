@@ -10,7 +10,9 @@ const fallbackAddress = `0x${'33'.repeat(20)}` as const
 
 describe('account runtime', () => {
   test('preserves all explicitly resolved construction material', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const resolved = resolveAccountConfig(sdk, {
       account: { type: 'safe' },
       owners: { type: 'ecdsa', accounts: [owner] },
@@ -38,7 +40,9 @@ describe('account runtime', () => {
   })
 
   test('omits absent optional construction material and default addresses', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const resolved = resolveAccountConfig(sdk, {
       account: { type: 'eoa' },
       eoa: owner,
@@ -56,7 +60,9 @@ describe('account runtime', () => {
   })
 
   test('creates a chain-bound runtime from resolved configuration', () => {
-    const sdk = resolveSdkConfig({ apiKey: 'test' })
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey' as const, apiKey: 'test' },
+    })
     const resolved = resolveAccountConfig(sdk, {
       account: { type: 'eoa' },
       eoa: owner,

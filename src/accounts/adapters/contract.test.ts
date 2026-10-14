@@ -435,9 +435,9 @@ describe('account adapter contract', () => {
         },
       }).address,
     ).toBe(accountB.address)
-    expect(startaleEip712Domain(accountA.address, 1, '1.0.0')).toEqual({
+    expect(startaleEip712Domain(accountA.address, 1, '1.0.1')).toEqual({
       name: 'Startale',
-      version: '1.0.0',
+      version: '1.0.1',
       chainId: 1,
       verifyingContract: accountA.address,
       salt: zeroHash,
@@ -487,23 +487,40 @@ describe('account adapter contract', () => {
     })
 
     // Persisted factory material pins its version by the factory, so a 1.0.0
-    // account keeps its address and domain without an explicit version.
-    const reconstructed = {
-      ...current,
-      initData: {
-        address: previousPlan.address,
-        factory: previousPlan.factory as `0x${string}`,
-        factoryData: previousPlan.factoryData as `0x${string}`,
-        intentExecutorInstalled: true,
-      },
-    } satisfies AccountConstruction
-    const reconstructedAdapter = createStartaleAdapter(reconstructed)
-    expect(reconstructedAdapter.getIdentity(reconstructed).address).toBe(
-      previousPlan.address,
-    )
-    expect(reconstructedAdapter.capabilities.signatureEnvelope).toMatchObject({
-      version: '1.0.0',
-    })
+    // account keeps its address and domain without an explicit version, and a
+    // conflicting explicit version is ignored.
+    const restore = (input: AccountConstruction, factory: `0x${string}`) => {
+      const restored = {
+        ...input,
+        initData: {
+          address: previousPlan.address,
+          factory,
+          factoryData: previousPlan.factoryData as `0x${string}`,
+          intentExecutorInstalled: true,
+        },
+      } satisfies AccountConstruction
+      const adapter = createStartaleAdapter(restored)
+      return {
+        address: adapter.getIdentity(restored).address,
+        envelope: adapter.capabilities.signatureEnvelope,
+      }
+    }
+    for (const input of [current, explicit, previous]) {
+      for (const factory of [
+        '0x0000003b3e7b530b4f981ae80d9350392defef90',
+        '0x0000003B3E7b530b4f981aE80d9350392Defef90',
+      ] as const) {
+        const restored = restore(input, factory)
+        expect(restored.address).toBe(previousPlan.address)
+        expect(restored.envelope).toMatchObject({ version: '1.0.0' })
+      }
+      const restoredCurrent = restore(
+        input,
+        currentPlan.factory as `0x${string}`,
+      )
+      expect(restoredCurrent.address).toBe(currentPlan.address)
+      expect(restoredCurrent.envelope).toMatchObject({ version: '1.0.1' })
+    }
 
     // Address-only material carries no factory, so the configured version
     // selects the domain.
@@ -513,6 +530,7 @@ describe('account adapter contract', () => {
         initData: { address: previousPlan.address },
       }).capabilities.signatureEnvelope
     expect(addressOnly(current)).toMatchObject({ version: '1.0.1' })
+    expect(addressOnly(explicit)).toMatchObject({ version: '1.0.1' })
     expect(addressOnly(previous)).toMatchObject({ version: '1.0.0' })
   })
 

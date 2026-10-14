@@ -145,11 +145,10 @@ describe('resolveCrossChainPermission', () => {
         validAfter: new Date('2030-01-01T00:00:00Z'),
         validUntil: new Date('2020-01-01T00:00:00Z'),
       }),
-    ).toThrow('a validAfter not earlier than validUntil')
+    ).toThrow(/validAfter.*not earlier than validUntil/)
   })
 
-  // TimeFramePolicy passes no second of an empty window.
-  test('validAfter == validUntil throws at build time', () => {
+  test('validAfter == validUntil rejects an empty window', () => {
     const instant = new Date('2030-01-01T00:00:00Z')
     expect(() =>
       resolveCrossChainPermission({
@@ -158,7 +157,7 @@ describe('resolveCrossChainPermission', () => {
         validAfter: instant,
         validUntil: instant,
       }),
-    ).toThrow('a validAfter not earlier than validUntil')
+    ).toThrow(/validAfter.*not earlier than validUntil/)
   })
 
   test('maxAmount = 0n is preserved (not coerced away)', () => {
@@ -210,21 +209,11 @@ describe('toCrossChainPermissionInput', () => {
   test('round-trips a resolved permit back to input that re-resolves identically', () => {
     const resolved = resolveCrossChainPermission({
       from: { chain: mainnet, token: TOKEN_A, maxAmount: 1000n },
-      to: {
-        chain: arbitrum,
-        token: TOKEN_B,
-        recipient: RECIPIENT,
-        minAmount: 995n,
-      },
+      to: { chain: arbitrum, token: TOKEN_B, recipient: RECIPIENT },
       validAfter: new Date('2025-01-01T00:00:00Z'),
       validUntil: new Date('2030-01-01T00:00:00Z'),
       settlementLayers: ['ECO'],
-      maxFeeBps: 50,
-      allowFees: true,
     })
-    expect(resolved.maxFeeBps).toBe(50)
-    expect(resolved.allowFees).toBe(true)
-    expect(resolved.to?.[0].minAmount).toBe(995n)
     expect(
       resolveCrossChainPermission(toCrossChainPermissionInput(resolved)),
     ).toEqual(resolved)

@@ -12,9 +12,11 @@ describe.sequential('SDK integration eip7702', () => {
     const owner = createOwner()
     const eoa = createOwner()
     const account = await sdk.createAccount({
-      account: { type: 'nexus' },
-      owners: { type: 'ecdsa', accounts: [owner] },
-      eoa,
+      evm: {
+        account: { type: 'nexus' },
+        owners: { type: 'ecdsa', accounts: [owner] },
+        eoa,
+      },
     })
     const eip7702InitSignature = await account.signEip7702InitData()
 
@@ -22,9 +24,8 @@ describe.sequential('SDK integration eip7702', () => {
       account,
       label: 'eip7702/missing-authorization/submit-error',
       transaction: {
-        chain: sourceChain,
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
-        calls: [createNoopCall()],
         eip7702InitSignature,
       },
       signAuthorizations: false,

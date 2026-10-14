@@ -421,12 +421,20 @@ describe('Permit2 claim policy placement', () => {
   const definition: SessionDefinition = {
     chain: base,
     owners: { type: 'ecdsa', accounts: [accountA] },
-    claimPolicies: [
+    crossChainPermits: [
       {
-        type: 'permit2',
-        recipients: [{ chain: base, address: accountA.address }],
+        settlementLayers: ['ACROSS'],
+        to: [
+          {
+            chain: base,
+            token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            recipient: accountA.address,
+          },
+        ],
+        allowRecipientNotAccount: true,
       },
     ],
+    fallback: 'intentExecution',
   }
 
   test('enforces declared claim policies from the ERC-1271 slot', () => {

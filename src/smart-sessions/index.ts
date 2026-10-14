@@ -83,10 +83,13 @@ import type {
   ChainDigest,
   Session as DomainSession,
   SessionDefinition as DomainSessionDefinition,
+  DroppedSettlementLayer,
   FyndVenue,
   RhinestoneSwapVenue,
+  SessionAccess,
   SessionDetails,
   SessionDetailsOptions,
+  SettlementCoverage,
   SwapVenue,
   ZeroExVenue,
 } from '../modules/validators/smart-sessions/types'
@@ -95,6 +98,15 @@ function environment(useDevContracts: boolean | undefined) {
   return useDevContracts === true ? 'development' : 'production'
 }
 
+/**
+ * Resolve a session offline from a definition and optional served catalog data.
+ * No RPC bytecode checks or network reads are made. Persist the result before enabling it.
+ * Use `crossChainPermits`, not removed raw `claimPolicies` definition inputs.
+ * Restore an authorized `Session` directly for enable/sign methods; do not resolve it again.
+ * @param definition The session's permissions and owners
+ * @param options Catalog inputs and deployment environment
+ * @returns The resolved session; throws the first coded refusal on invalid scope
+ */
 function toSession<
   const TAbis extends readonly Abi[],
   const TChain extends Chain,
@@ -136,7 +148,10 @@ interface SessionValidationOptions {
  * on each other are all reported. Within one settlement layer only its first
  * refusal is, as are refusals that leave nothing to check after them (e.g. a
  * missing `to`).
- * @param definition The session definition
+ * Removed `claimPolicies` inputs, including empty or undefined values, return a
+ * refusal. Compiled `Session.claimPolicies` remains metadata for enable/sign
+ * methods and must not be sent back through definition validation.
+ * @param definition The new session definition, not an already-resolved artifact
  * @param options What `createSession` would take from `/chains`
  * @returns The refusals, each with its stable `code`, and, when there are none, the session's `access` and `settlementCoverage`
  */
@@ -156,6 +171,16 @@ function validateSession<
   })
 }
 
+/**
+ * Build the typed data needed to enable persisted sessions on an account.
+ * Already-enabled lifetime-budget sessions require explicit reset consent.
+ * @param account The account enabling these sessions
+ * @param sessions Resolved sessions, not definitions to rebuild
+ * @param provider RPC provider used for nonce and coherent enabled-state reads
+ * @param useDevContracts Select development deployments
+ * @param options Explicit consent to reset an already-enabled lifetime budget
+ * @returns Enable details to sign; failed coherent reads are never retried as separate reads
+ */
 async function getSessionDetails(
   account: Address,
   sessions: Session[],
@@ -211,6 +236,9 @@ async function isSessionEnabled(
 
 export type {
   ChainDigest,
+  SessionAccess,
+  SettlementCoverage,
+  DroppedSettlementLayer,
   SessionRefusal,
   SessionRefusalCode,
   SessionValidation,
