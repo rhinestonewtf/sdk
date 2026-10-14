@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { scopeCctp } from './cctp'
 import { scopeEco } from './eco'
+import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -256,6 +257,9 @@ export function resolveSettlementScope(
       'crossChainPermits: `to.minAmount` applies only to a SAME_CHAIN_IE swap',
     )
   }
+  const fees = permit.allowFees
+    ? servedFees(options.settlement, options.chainId, sourceTokens)
+    : undefined
   if (layer === 'SAME_CHAIN_IE') {
     const sameChain = scopeSameChain({
       chainId: options.chainId,
@@ -272,7 +276,18 @@ export function resolveSettlementScope(
         ? {}
         : { validUntil: permit.validUntil }),
     })
-    return { ...sameChain, settlementLayers }
+    if (fees === undefined) return { ...sameChain, settlementLayers }
+    // A swap's approve is a permission; as a raw action the paymaster approve can
+    // join it. Only the swap shape has permissions.
+    const actions = [
+      ...sameChain.actions,
+      ...swapApprovesAsActions(sameChain.permissions, cap),
+    ]
+    return {
+      actions: withFeeActions(actions, sourceTokens, fees, timeFrame),
+      permissions: [],
+      settlementLayers,
+    }
   }
   // No bundled fallback: the orchestrator is the one source for these addresses.
   // SAME_CHAIN_IE pins none of them, so only the layers below need it.
@@ -302,9 +317,8 @@ export function resolveSettlementScope(
       : { validUntil: permit.validUntil }),
   })
 
-  // Only the layer's own approve: an unsponsored intent (paymaster approve and
-  // callbackAllowMaxAmount) or one carrying an app fee (carve transfer) adds
-  // calls this session does not authorise, so it cannot settle through it (v1).
+  // Without allowFees, only the layer's own approve: an unsponsored intent or one
+  // carrying an app fee adds calls this session does not authorise.
   const approveActions = sourceTokens.map((token) =>
     withTimeFrame(
       swapAction(token, APPROVE_SELECTOR, [
@@ -315,8 +329,12 @@ export function resolveSettlementScope(
       ]),
     ),
   )
+  const actions = [layerAction, ...approveActions]
   return {
-    actions: [layerAction, ...approveActions],
+    actions:
+      fees === undefined
+        ? actions
+        : withFeeActions(actions, sourceTokens, fees, timeFrame),
     permissions: [],
     settlementLayers,
   }
