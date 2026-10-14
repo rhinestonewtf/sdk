@@ -73,6 +73,26 @@ describe('parseChains settlement', () => {
     })
   })
 
+  test('keeps the USD stablecoins only when every entry is well-formed', () => {
+    const usdStablecoins = [
+      { address: A, symbol: 'USDC', decimals: 6 },
+      { address: B, symbol: 'USDT', decimals: 18 },
+    ]
+    const served = (list: unknown) =>
+      parse({ 'eip155:8453': chain({ usdStablecoins: list }) })[8453].settlement
+        ?.usdStablecoins
+    expect(served(usdStablecoins)).toEqual(usdStablecoins)
+    expect(
+      served([...usdStablecoins, { address: A, symbol: 'USDC', decimals: -1 }]),
+    ).toBeUndefined()
+    expect(
+      served([
+        ...usdStablecoins,
+        { address: 'nope', symbol: 'USDC', decimals: 6 },
+      ]),
+    ).toBeUndefined()
+  })
+
   test.each([
     ['absent', undefined],
     ['not an object', 'x'],

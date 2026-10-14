@@ -8,6 +8,7 @@ import type {
 import { FYND_CHAIN_IDS, FYND_ROUTERS, type FyndChainId } from './fynd'
 import type { VenueContext, VenueScoping } from './rules'
 import {
+  atLeast,
   cumulativeCap,
   pin,
   pinValue,
@@ -346,6 +347,8 @@ export function scopeRhinestone(
   const rulesFor = (
     offsets: Record<string, bigint>,
     sellAmountParam: string,
+    outputParam: string,
+    direction: 'exactIn' | 'exactOut',
   ): UniversalActionPolicyParamRule[] => {
     const rules = [
       // With one token the pin stays here, which is what keeps the rule order,
@@ -357,6 +360,11 @@ export function scopeRhinestone(
       pin(offsets.tokenOut, ctx.buyToken),
       pin(offsets.recipient, ctx.recipient),
     ]
+    // Before the cap: usage-limited rules go last so the order stays safe if
+    // these rules ever land in an ArgPolicy AND branch.
+    if (ctx.minOut !== undefined) {
+      rules.push(atLeast(offsets[outputParam], ctx.minOut[direction]))
+    }
     if (ctx.cap !== undefined) {
       rules.push(cumulativeCap(offsets[sellAmountParam], ctx.cap))
     }
@@ -428,13 +436,13 @@ export function scopeRhinestone(
       swapAction(
         swapper,
         SWAP_EXACT_IN_SELECTOR,
-        rulesFor(EXACT_IN, 'amountIn'),
+        rulesFor(EXACT_IN, 'amountIn', 'minAmountOut', 'exactIn'),
         assertSellTokenPinned(alternativesFor(EXACT_IN)),
       ),
       swapAction(
         swapper,
         SWAP_EXACT_OUT_SELECTOR,
-        rulesFor(EXACT_OUT, 'amountInMax'),
+        rulesFor(EXACT_OUT, 'amountInMax', 'amountOut', 'exactOut'),
         assertSellTokenPinned(alternativesFor(EXACT_OUT)),
       ),
     ],

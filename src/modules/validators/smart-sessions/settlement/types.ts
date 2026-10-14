@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import type { SessionPolicy } from '../types'
+import type { ServedStablecoin, SessionPolicy } from '../types'
 
 /**
  * The per-chain addresses a settlement-scoped session pins, as the
@@ -42,6 +42,8 @@ export interface SettlementAddresses {
     readonly appFeeCollector: Address
     readonly paymaster: Address
   }
+  /** The USD stablecoins a `swap.stableFloor` session may treat as 1:1. */
+  readonly usdStablecoins?: readonly ServedStablecoin[]
 }
 
 /** Served settlement addresses by chain id. */
