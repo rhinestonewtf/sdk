@@ -5,8 +5,26 @@ import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
   '0x000000000033212E272655D8a22402Db819477A6'
+/**
+ * The TimeFramePolicy every window installs by default: it holds its window on
+ * actions and ERC-1271 checks. Same address on every chain.
+ */
 export const TIME_FRAME_POLICY_ADDRESS: Address =
+  '0xEAAb79CA50a37514E3Bd2538Aa80ee8cB0eCe9d3'
+/** The previous TimeFramePolicy, which holds its window on ERC-1271 checks only. */
+export const PREVIOUS_TIME_FRAME_POLICY_ADDRESS: Address =
   '0x0000000000D30f611fA3bf652ac6879428586930'
+// Chains where TIME_FRAME_POLICY_ADDRESS has code, checked with eth_getCode.
+// The one list to extend as it is deployed.
+const TIME_FRAME_POLICY_CHAINS: readonly number[] = [
+  1, 10, 56, 100, 130, 137, 143, 146, 196, 480, 999, 1868, 2020, 4663, 5042,
+  8453, 9745, 9746, 42161, 57073, 84532, 421614, 747474, 11155420,
+]
+
+/** Whether TIME_FRAME_POLICY_ADDRESS is deployed on a chain. */
+export function timeFramePolicyDeployed(chainId: number): boolean {
+  return TIME_FRAME_POLICY_CHAINS.includes(chainId)
+}
 export const SUDO_POLICY_ADDRESS: Address =
   '0x0000000000FEEc8D74e3143fBaBbca515358d869'
 export const UNIVERSAL_ACTION_POLICY_ADDRESS: Address =

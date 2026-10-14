@@ -285,10 +285,9 @@ export function scopeEco(ctx: SettlementContext): ScopedAction {
       { code: 'MAX_FEE_BPS_OUT_OF_RANGE' },
     )
   }
-  // `validUntil` is the session's earliest deadline. Both deadlines stay
-  // unpinned only when the session has no deadline at all (no validUntil on the
-  // permit and none on the session): an unfilled reward then has no refund
-  // deadline.
+  // `validUntil` is the earlier of the permit's and oneTimeUse's. Both
+  // deadlines stay unpinned only when neither is set: an unfilled reward then
+  // has no refund deadline.
   const validUntil = ctx.validUntil
   const now = BigInt(Math.floor(Date.now() / 1000))
   if (validUntil !== undefined && validUntil < now + ECO_MIN_VALIDITY_SECONDS) {

@@ -5,7 +5,7 @@ import {
   isAddressEqual,
 } from 'viem'
 import { arbitrum, base, plasma } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
 import { TIME_FRAME_POLICY_ADDRESS } from '../policies/addresses'
@@ -17,10 +17,15 @@ import type {
 } from '../types'
 import type { SettlementCatalog } from './types'
 
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('../policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
+
 /**
- * A settlement-scoped session is bounded in time by OneTimeUseIdPolicy's
- * deadline (`deadline != 0 && t > deadline`), which every action must carry
- * with the same config; a separate time-frame policy would be redundant.
+ * A settlement-scoped permit's window is a time-frame policy on each action the
+ * permit contributes. The once-policy deadline is `oneTimeUse.validUntil` alone.
  */
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address
@@ -43,6 +48,8 @@ const WITH_FEES: SettlementCatalog = {
 
 const UNTIL = 2_000_000_000n
 const AFTER = 1_900_000_000n
+// Year 2100: an open validUntil.
+const FAR_FUTURE = 4_102_444_800n
 const date = (seconds: bigint) => new Date(Number(seconds) * 1000)
 
 interface Shape {
@@ -184,10 +191,18 @@ function resolve(shape: Shape, window: Window, once?: bigint) {
   }).actions
 }
 
-const hasTimeFrame = (action: ResolvedAction) =>
-  action.actionPolicies.some((p) =>
+const timeFrameOf = (action: ResolvedAction) => {
+  const initData = action.actionPolicies.find((p) =>
     isAddressEqual(p.policy, TIME_FRAME_POLICY_ADDRESS),
-  )
+  )?.initData
+  // encodePacked(uint48 validUntil, uint48 validAfter)
+  return initData === undefined
+    ? undefined
+    : {
+        validUntil: BigInt(`0x${initData.slice(2, 14)}`),
+        validAfter: BigInt(`0x${initData.slice(14, 26)}`),
+      }
+}
 
 const onceInitData = (action: ResolvedAction) =>
   action.actionPolicies.find((p) => isAddressEqual(p.policy, ONE_TIME_USE))
@@ -203,42 +218,72 @@ function deadlineOf(action: ResolvedAction) {
   )[1]
 }
 
+const isBurn = (action: ResolvedAction) =>
+  isAddressEqual(action.actionTarget, ONE_TIME_USE)
+
+const WINDOWS: Record<string, Window> = {
+  validUntil: { validUntil: UNTIL },
+  validAfter: { validAfter: AFTER },
+  'validAfter and validUntil': { validAfter: AFTER, validUntil: UNTIL },
+}
+
 const ONCE_DEADLINES: Record<string, bigint | undefined> = {
   'no once-deadline': undefined,
   'earlier once-deadline': UNTIL - 1000n,
   'later once-deadline': UNTIL + 1000n,
 }
 
-const otuShapes = Object.entries(SHAPES).filter(([, s]) => s.oneTimeUse)
-const nonOtuShapes = Object.entries(SHAPES).filter(([, s]) => !s.oneTimeUse)
-
-describe('with oneTimeUse, the permit validUntil is the once-policy deadline', () => {
-  const cases = otuShapes.flatMap(([shapeName, shape]) =>
-    Object.entries(ONCE_DEADLINES).map(
-      ([onceName, once]) => [`${shapeName}, ${onceName}`, shape, once] as const,
+describe("a permit's window is a time-frame policy on each action it contributes", () => {
+  const cases = Object.entries(SHAPES).flatMap(([shapeName, shape]) =>
+    Object.entries(WINDOWS).flatMap(([windowName, window]) =>
+      Object.entries(shape.oneTimeUse ? ONCE_DEADLINES : { '': undefined }).map(
+        ([onceName, once]) =>
+          [
+            [shapeName, windowName, onceName].filter(Boolean).join(', '),
+            shape,
+            window,
+            once,
+          ] as const,
+      ),
     ),
   )
 
-  test.each(cases)('%s', (_, shape, once) => {
-    const actions = resolve(shape, { validUntil: UNTIL }, once)
-    const expected = once !== undefined && once < UNTIL ? once : UNTIL
-    // The burns are actions like any other; the burn enables the session, so
-    // there is no dummy pre-claim action.
-    expect(
-      actions.some((a) => isAddressEqual(a.actionTarget, ONE_TIME_USE)),
-    ).toBe(true)
-    expect(
-      actions.some((a) =>
-        isAddressEqual(a.actionTarget, DUMMY_PRECLAIMOP_TARGET),
-      ),
-    ).toBe(false)
-    for (const action of actions) {
-      expect(hasTimeFrame(action)).toBe(false)
-      expect(deadlineOf(action)).toBe(expected)
+  test.each(cases)('%s', (_, shape, window, once) => {
+    const actions = resolve(shape, window, once)
+    const scoped = actions.filter((a) => !isBurn(a))
+    expect(scoped.length).toBeGreaterThan(0)
+    for (const action of scoped) {
+      expect(timeFrameOf(action)).toEqual({
+        validUntil: window.validUntil ?? FAR_FUTURE,
+        validAfter: window.validAfter ?? 0n,
+      })
     }
+    // The pre-claim action of a session without oneTimeUse carries it too.
+    if (!shape.oneTimeUse) {
+      expect(
+        scoped.some((a) =>
+          isAddressEqual(a.actionTarget, DUMMY_PRECLAIMOP_TARGET),
+        ),
+      ).toBe(true)
+    }
+    for (const action of actions.filter(isBurn)) {
+      expect(timeFrameOf(action)).toBeUndefined()
+    }
+    if (!shape.oneTimeUse) return
+    // The window is not folded into the once-policy deadline.
+    for (const action of actions) expect(deadlineOf(action)).toBe(once ?? 0n)
     // OneTimeUseIdPolicy requires one config across the session's actions.
     expect(new Set(actions.map(onceInitData)).size).toBe(1)
   })
+
+  test.each(Object.entries(SHAPES))(
+    '%s without a window has none',
+    (_, shape) => {
+      for (const action of resolve(shape, {})) {
+        expect(timeFrameOf(action)).toBeUndefined()
+      }
+    },
+  )
 })
 
 describe('an IntentExecutor-layer permit validUntil must be in the future', () => {
@@ -266,39 +311,15 @@ describe('an IntentExecutor-layer permit validUntil must be in the future', () =
     ]
     expect(() =>
       resolveSessionData(definition, { settlement: SETTLEMENT_CATALOG }),
-    ).toThrow(
-      'crossChainPermits: an IntentExecutor-layer permit validUntil must be a valid Date in the future',
-    )
+    ).toThrow('crossChainPermits[0]: a validUntil that is not a future Date')
   })
 })
 
-// The once-policy deadline is the session's time bound, so a window it cannot
-// carry is refused.
-describe('a validAfter or a validUntil without oneTimeUse is refused at resolve', () => {
-  const cases = [
-    ...Object.entries(SHAPES).flatMap(([name, shape]) => [
-      [
-        `${name}: validAfter with validUntil`,
-        shape,
-        { validAfter: AFTER, validUntil: UNTIL },
-      ] as const,
-      [`${name}: validAfter`, shape, { validAfter: AFTER }] as const,
-    ]),
-    ...nonOtuShapes.map(
-      ([name, shape]) =>
-        [`${name}: validUntil`, shape, { validUntil: UNTIL }] as const,
-    ),
-  ]
-
-  test.each(cases)('%s', (_, shape, window) => {
-    expect(() => resolve(shape, window)).toThrow(
-      'crossChainPermits[0]: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)',
-    )
-  })
-
-  test.each(nonOtuShapes)('%s resolves without a window', (_, shape) => {
-    for (const action of resolve(shape, {})) {
-      expect(hasTimeFrame(action)).toBe(false)
-    }
-  })
-})
+test.each([UNTIL + 1n, UNTIL])(
+  'a validAfter of %s with validUntil 2000000000 is refused',
+  (validAfter) => {
+    expect(() =>
+      resolve(SHAPES.CCTP, { validAfter, validUntil: UNTIL }),
+    ).toThrow('crossChainPermits: a validAfter not earlier than validUntil')
+  },
+)

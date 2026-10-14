@@ -57,9 +57,10 @@ describe('Smart Sessions claim policies', () => {
     ])
 
     const untilOnly = expandCrossChainPermit({ validUntil: 200n }, 'production')
+    // The window ends before 200; Permit2 still accepts a deadline of 200 at 200.
     expect(untilOnly.claim.permitDeadline).toEqual({
       min: undefined,
-      max: 200n,
+      max: 199n,
     })
     expect(untilOnly.fallbackPolicies).toEqual([])
     expect(expandCrossChainPermit({}, 'production').fallbackPolicies).toEqual(

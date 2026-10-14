@@ -262,7 +262,7 @@ export function encodeSessionPolicy(
           ['uint48', 'uint48'],
           [
             Math.floor(policy.validUntil / 1000),
-            Math.floor(policy.validAfter / 1000),
+            Math.ceil(policy.validAfter / 1000),
           ],
         ),
       }

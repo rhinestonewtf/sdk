@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { encodePacked, size, zeroHash } from 'viem'
 import { base } from 'viem/chains'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../test/consts'
 import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../policies/claim/permit2'
 import { encodeDisableSessionCall, encodeEnableSessionCall } from './calls'
@@ -18,6 +18,12 @@ import {
   toSession,
 } from './resolve'
 import type { SessionDefinition, SessionPolicy } from './types'
+
+// These tests assume the TimeFramePolicy is deployed on their chains.
+vi.mock('./policies/addresses', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./policies/addresses')>()),
+  timeFramePolicyDeployed: () => true,
+}))
 
 describe('Smart Sessions core', () => {
   test('matches the exact sudo session vector', () => {

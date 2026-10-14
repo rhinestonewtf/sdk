@@ -37,11 +37,6 @@ export const CONSUME_FOR_SELECTOR = toFunctionSelector(
   'function consumeFor(uint256,uint256)',
 )
 
-/** The refusal for a session time window the one-time-use deadline cannot carry. */
-export function sessionWindowRefusal(field: string): string {
-  return `${field}: a session time window requires oneTimeUse; set oneTimeUse with validUntil to bound the session (validAfter is not supported)`
-}
-
 // Which burn call a settlement route needs. `permit2` (Across/Eco via the arbiter)
 // proves the burn with a witness; `executor` (IntentExecutor) needs none.
 export type OneTimeUseSettlementRoute = 'permit2' | 'executor'

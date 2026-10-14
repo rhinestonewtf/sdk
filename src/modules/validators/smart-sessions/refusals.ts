@@ -9,10 +9,11 @@ import type {
  * Codes never change once published; the messages beside them may.
  */
 export const SESSION_REFUSAL_CODES = {
-  VALID_AFTER_EXCEEDS_VALID_UNTIL: 'validAfter is later than validUntil',
-  SESSION_WINDOW_REQUIRES_ONE_TIME_USE:
-    'a validAfter, or a validUntil without oneTimeUse',
+  VALID_AFTER_EXCEEDS_VALID_UNTIL: 'a validAfter not earlier than validUntil',
+  VALID_AFTER_INVALID: 'a validAfter that is not a Date within uint48 seconds',
   VALID_UNTIL_NOT_IN_FUTURE: 'a validUntil that is not a future Date',
+  TIME_FRAME_POLICY_UNAVAILABLE:
+    'an action window on a chain without the TimeFramePolicy',
   PERMIT2_MAX_AMOUNT_REQUIRES_ONE_TIME_USE:
     'maxAmount on a Permit2-layer permit without oneTimeUse',
   SETTLEMENT_SCOPED_SALT_V1:
