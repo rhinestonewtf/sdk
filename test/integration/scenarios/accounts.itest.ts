@@ -1,4 +1,4 @@
-import { describe, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
 import { expectDeployed, expectNotDeployed } from '../framework/assertions'
@@ -63,7 +63,6 @@ describe.sequential('SDK integration account kinds', () => {
     const execution = await executeIntent({
       account,
       label: 'accounts/nexus-7702/same-chain/fresh',
-      signAuthorizations: true,
       transaction: {
         destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
@@ -74,7 +73,11 @@ describe.sequential('SDK integration account kinds', () => {
     expectOutcome(execution, { kind: 'success' })
     if (execution.phase !== 'success') return
 
+    expect(
+      execution.signed.proofs.some((proof) => proof.kind === 'eip7702'),
+    ).toBe(true)
     expectNoFailedOperations(execution.status)
     expectCompletedOperation(execution.status, sourceChain.id)
+    await expectDeployed(account, sourceChain)
   })
 })

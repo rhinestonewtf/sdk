@@ -28,8 +28,8 @@ import { getTokenAddress } from '../framework/tokens'
 
 describe.sequential('SDK integration preclaim-ops', () => {
   // A fresh session needs enabling, so the SDK injects the dummy enable op as
-  // the first source-chain preclaim op; user source calls must follow it (the
-  // filler runs the enable op before the user's calls).
+  // the first source-chain preclaim op; user source calls must follow it.
+  // Tokenless execution needs a same-chain route to carry these source calls.
   test('injects the session-enable op before user source calls', async () => {
     const sdk = createIntegrationSDK()
     const account = await sdk.createAccount({
@@ -53,7 +53,7 @@ describe.sequential('SDK integration preclaim-ops', () => {
           token: getTokenAddress('USDC', sourceChain.id),
           calls: [createNoopCall()],
         },
-        destination: { chain: targetChain, calls: [createNoopCall()] },
+        destination: { chain: sourceChain, calls: [createNoopCall()] },
         sponsored: true,
         signers: { type: 'session' as const, session },
       }),
@@ -68,8 +68,10 @@ describe.sequential('SDK integration preclaim-ops', () => {
       DUMMY_PRECLAIMOP_TARGET.toLowerCase(),
     )
     expect(ops?.[0].data).toBe(DUMMY_PRECLAIMOP_SELECTOR)
+    expect(ops?.[0].value).toBe('0')
     expect(ops?.[1].to.toLowerCase()).toBe(noopTarget.toLowerCase())
     expect(ops?.[1].data).toBe(noopSelector)
+    expect(ops?.[1].value).toBe('0')
   })
 
   // A plain owner intent has no session to enable and no source calls, so no
