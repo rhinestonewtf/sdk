@@ -258,7 +258,7 @@ describe('resolveSessionData — one-time-use session', () => {
       validUntil: new Date('2030-01-01'),
     },
   ] as const)(
-    'rejects a signing validity window with claim policies, whose replaced 1271 list would drop it',
+    'rejects any explicit signing with claim policies, whose replaced 1271 list would drop it',
     (signing) => {
       expect(() =>
         resolveSessionData({
@@ -269,7 +269,7 @@ describe('resolveSessionData — one-time-use session', () => {
           signing,
           policyAddresses: { oneTimeUseId: POLICY },
         }),
-      ).toThrow(/signing validity window/)
+      ).toThrow(/cannot also be configured/)
     },
   )
 
@@ -277,7 +277,7 @@ describe('resolveSessionData — one-time-use session', () => {
     { mode: 'unrestricted' },
     { mode: 'unrestricted', validUntil: undefined },
   ] as const)(
-    'accepts a signing mode without a validity window, with claim policies (%o)',
+    'rejects a signing mode even without a validity window, with claim policies (%o)',
     (signing) => {
       expect(() =>
         resolveSessionData({
@@ -288,7 +288,7 @@ describe('resolveSessionData — one-time-use session', () => {
           signing,
           policyAddresses: { oneTimeUseId: POLICY },
         }),
-      ).not.toThrow()
+      ).toThrow(/cannot also be configured/)
     },
   )
 
@@ -351,7 +351,6 @@ describe('resolveSessionData — one-time-use session', () => {
     // Populated so claimPolicyData() can build the permit2 settlement calldata
     // that the erc1271-resident Permit2ClaimPolicy reads (RHI-5798).
     expect(session.claimPolicies).toHaveLength(1)
-    expect(session.claimPoliciesEnforcedVia1271).toBe(true)
     // Drives prepareIntentSessions: the burn it injects and the verify-execution mode.
     expect(session.oneTimeUse).toEqual({ id: 42n, policy: POLICY })
     // ...but the on-chain claim (lockTag) surface stays empty — the policy is

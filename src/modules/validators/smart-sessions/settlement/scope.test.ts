@@ -103,7 +103,7 @@ describe('settlement-scoped crossChainPermits', () => {
         (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
       ),
     ).toBe(false)
-    expect(data.claimPolicies).toEqual([])
+    expect(data.erc7739Policies.erc1271Policies).toEqual([])
   })
 
   test('uses the testnet TokenMessenger on a testnet chain', () => {
@@ -313,7 +313,7 @@ describe('settlement-scoped crossChainPermits', () => {
           (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,
         ),
       ).toBe(false)
-      expect(data.claimPolicies).toEqual([])
+      expect(data.erc7739Policies.erc1271Policies).toEqual([])
     })
 
     test('a swap permit compiles through the swap scope, one params policy per action', () => {
@@ -408,7 +408,7 @@ describe('settlement-scoped crossChainPermits', () => {
         [ECO_PORTAL, PUBLISH_AND_FUND_SELECTOR],
         [USDC, APPROVE],
       ])
-      expect(data.claimPolicies).toEqual([])
+      expect(data.erc7739Policies.erc1271Policies).toEqual([])
       expect(toSession(eco()).settlementLayers).toEqual(['ECO_IE'])
     })
 
@@ -498,7 +498,7 @@ describe('settlement-scoped crossChainPermits', () => {
     (layer) => {
       const permit = definition({ settlementLayers: [layer] })
       const data = resolveSessionData(permit)
-      expect(data.claimPolicies).toHaveLength(1)
+      expect(data.erc7739Policies.erc1271Policies).toHaveLength(1)
       expect(
         data.actions.some(
           (a) => a.actionTarget === SMART_SESSIONS_FALLBACK_TARGET_FLAG,

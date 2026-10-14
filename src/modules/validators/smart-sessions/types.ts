@@ -408,11 +408,6 @@ export interface Session {
   /** The IntentExecutor layers the session's permit was scoped to, so a caller
    *  can restrict an intent to them. Metadata only, like `swap`. */
   settlementLayers?: readonly IntentExecutorSettlementLayer[]
-  // When true, `claimPolicies` are enforced via the ERC-1271 surface (already
-  // encoded into `erc7739Policies.erc1271Policies`) and must NOT be re-encoded
-  // onto the on-chain claim (lockTag) surface. They stay on the high-level
-  // session so the permit2 settlement signature can still build their calldata.
-  claimPoliciesEnforcedVia1271?: boolean
   // A one-time-use session (RHI-5798): its id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).
   oneTimeUse?: { readonly id: bigint; readonly policy: Address }
