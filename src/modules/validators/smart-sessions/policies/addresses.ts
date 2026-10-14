@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import { PERMIT2_CLAIM_POLICY_ADDRESS } from '../../policies/claim/permit2'
 import type { SessionPolicyAddresses } from '../types'
 
 export const SPENDING_LIMITS_POLICY_ADDRESS: Address =
@@ -23,6 +24,8 @@ export const INTENT_EXECUTION_POLICY_ADDRESS_DEV: Address =
 export interface ResolvedPolicyAddresses {
   readonly sudo: Address
   readonly universalAction: Address
+  // Only present when configured: no copy has a canonical deployment yet.
+  readonly universalActionCopies?: readonly Address[]
   readonly argPolicy: Address
   readonly spendingLimits: Address
   readonly timeFrame: Address
@@ -45,7 +48,7 @@ export const DEFAULT_POLICY_ADDRESSES: ResolvedPolicyAddresses = Object.freeze({
 export function resolvePolicyAddresses(
   overrides?: SessionPolicyAddresses,
 ): ResolvedPolicyAddresses {
-  return {
+  const resolved: ResolvedPolicyAddresses = {
     sudo: overrides?.sudo ?? DEFAULT_POLICY_ADDRESSES.sudo,
     universalAction:
       overrides?.universalAction ?? DEFAULT_POLICY_ADDRESSES.universalAction,
@@ -59,4 +62,34 @@ export function resolvePolicyAddresses(
       ? { oneTimeUseId: overrides.oneTimeUseId }
       : {}),
   }
+  const copies = overrides?.universalActionCopies ?? []
+  if (!copies.length) return resolved
+  // A copy receives UniversalActionPolicy initData, so any other policy there
+  // would install the rules as something else.
+  const others = new Map<string, string>()
+  for (const [name, address] of [
+    ...Object.entries(DEFAULT_POLICY_ADDRESSES),
+    ...Object.entries(resolved),
+    ['intent-execution', INTENT_EXECUTION_POLICY_ADDRESS],
+    ['intent-execution (dev)', INTENT_EXECUTION_POLICY_ADDRESS_DEV],
+    ['Permit2 claim', PERMIT2_CLAIM_POLICY_ADDRESS],
+  ] as [string, Address][]) {
+    if (name !== 'universalAction') others.set(address.toLowerCase(), name)
+  }
+  const seen = new Set([resolved.universalAction.toLowerCase()])
+  for (const copy of copies) {
+    const other = others.get(copy.toLowerCase())
+    if (other) {
+      throw new Error(
+        `universalActionCopies: ${copy} is the ${other} policy, not a UniversalActionPolicy deployment`,
+      )
+    }
+    if (seen.has(copy.toLowerCase())) {
+      throw new Error(
+        `universalActionCopies must be distinct from universalAction and from each other; ${copy} repeats`,
+      )
+    }
+    seen.add(copy.toLowerCase())
+  }
+  return { ...resolved, universalActionCopies: copies }
 }

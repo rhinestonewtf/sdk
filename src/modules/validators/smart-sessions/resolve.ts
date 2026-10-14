@@ -30,7 +30,7 @@ import {
   expandCrossChainPermit,
   resolvePermit2ClaimPolicy,
 } from './policies/claim'
-import { encodeSessionPolicy } from './policies/encode'
+import { encodeActionPolicies } from './policies/encode'
 import {
   isSettlementScopedPermit,
   resolveSettlementScope,
@@ -325,6 +325,14 @@ function resolveSession(
       )
     }
   }
+  if (
+    definition.saltMode === 'v1' &&
+    definition.policyAddresses?.universalActionCopies?.length
+  ) {
+    throw new Error(
+      "universalActionCopies cannot use saltMode 'v1': a 1.x session has no split policies to reproduce",
+    )
+  }
   const validUntil = definition.oneTimeUse?.validUntil
   // A deadline that rounds to 0 would read as "never expires"; a past one only
   // fails at enable, as an opaque signature error.
@@ -493,9 +501,9 @@ function resolveSession(
               'target' in action
                 ? action.target
                 : SMART_SESSIONS_FALLBACK_TARGET_FLAG,
-            actionPolicies: action.policies?.map((policy) =>
-              encodeSessionPolicy(policy, environment, addresses),
-            ) ?? [{ policy: addresses.sudo, initData: '0x' }],
+            actionPolicies: action.policies
+              ? encodeActionPolicies(action.policies, environment, addresses)
+              : [{ policy: addresses.sudo, initData: '0x' }],
           }),
         )
       : [sudoAction]
