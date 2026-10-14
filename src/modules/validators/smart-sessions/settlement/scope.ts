@@ -1,4 +1,4 @@
-import { type Address, isAddressEqual, toFunctionSelector } from 'viem'
+import { type Address, isAddressEqual } from 'viem'
 import { recipientNotAllowed } from '../cross-chain-permits'
 import { sessionWindowRefusal } from '../one-time-use'
 import {
@@ -19,7 +19,12 @@ import type {
 } from '../types'
 import { scopeCctp } from './cctp'
 import { scopeEco } from './eco'
-import { servedFees, swapApprovesAsActions, withFeeActions } from './fees'
+import {
+  APPROVE_SELECTOR,
+  servedFees,
+  swapApprovesAsActions,
+  withFeeActions,
+} from './fees'
 import { requireFloorsWithinCaps } from './floor'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
@@ -113,8 +118,6 @@ export function isSettlementScopedPermit(
     (permit.settlementLayers?.some(isIntentExecutorLayer) ?? false)
   )
 }
-
-const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
 
 export interface SettlementScopeOptions {
   readonly chainId: number

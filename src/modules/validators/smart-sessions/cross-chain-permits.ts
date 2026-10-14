@@ -78,6 +78,7 @@ export function resolveCrossChainPermission(
       : {}),
     ...(input.maxFeeBps === undefined ? {} : { maxFeeBps: input.maxFeeBps }),
     ...(input.allowFees === undefined ? {} : { allowFees: input.allowFees }),
+    ...(input.preClaimOps && { preClaimOps: input.preClaimOps }),
   }
 }
 
@@ -111,5 +112,6 @@ export function toCrossChainPermissionInput(
       : {}),
     ...(permit.maxFeeBps === undefined ? {} : { maxFeeBps: permit.maxFeeBps }),
     ...(permit.allowFees === undefined ? {} : { allowFees: permit.allowFees }),
+    ...(permit.preClaimOps && { preClaimOps: permit.preClaimOps }),
   }
 }

@@ -126,7 +126,7 @@ export function stableFloorAmount(
   )
 }
 
-const PERMIT2: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+export const PERMIT2: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 
 /**
  * Refuse a stableFloor session that grants a way to move the sell token around

@@ -40,16 +40,13 @@ describe('Smart Sessions claim policies', () => {
         to: [{ chain: arbitrum, token: destination, recipient }],
         validAfter: 100n,
         recipientIsAccount: true,
-        settlementLayers: ['ECO'],
+        settlementLayers: ['SAME_CHAIN'],
       },
       'development',
     )
     expect(afterOnly.claim).toMatchObject({
       // source: shared-configs generated development address book
-      spenders: [
-        '0x1BeBAfb3D05d84A5Bfd94800c88d1342f755d8AB',
-        '0x8A061029AE4c5Cf69b5368119B3b0C80B31F55fE',
-      ],
+      spenders: ['0x8fA7720Eee299223f25De8DC03C68A28541dCD10'],
       sourceTokens: [{ chain: base, address: source }],
       destinationTokens: [{ chain: arbitrum, address: destination }],
       recipients: [{ chain: arbitrum, address: recipient }],
@@ -80,11 +77,33 @@ describe('Smart Sessions claim policies', () => {
     ).toEqual({ min: undefined, max: 150n })
   })
 
+  test('refuses the retired Permit2 ECO arbiter, alone or beside others', () => {
+    for (const settlementLayers of [['ECO'], ['ACROSS', 'ECO']] as const) {
+      expect(() =>
+        expandCrossChainPermit(
+          { settlementLayers: [...settlementLayers] },
+          'production',
+        ),
+      ).toThrow(expect.objectContaining({ code: 'RETIRED_PERMIT2_LAYER' }))
+    }
+  })
+
+  test('admits only ACROSS when no layer is named', () => {
+    for (const settlementLayers of [undefined, []]) {
+      expect(
+        expandCrossChainPermit(
+          settlementLayers ? { settlementLayers } : {},
+          'production',
+        ).claim.spenders,
+      ).toEqual([
+        '0x28a4D41776968c1201A807ec51fFB405362B8882',
+        '0xA162fabb9a0EeF2736485A587aAAB3d015e14224',
+      ])
+    }
+  })
+
   test('keeps solver-network ECO blocked instead of authorizing the generic IntentExecutor adapter', () => {
-    const { claim } = expandCrossChainPermit(
-      { settlementLayers: ['ECO'] },
-      'production',
-    )
+    const { claim } = expandCrossChainPermit({}, 'production')
     // source: shared-configs generated production address book
     const intentExecutorAdapter =
       '0xa5DAC04a6cCF0eb19cE091b6B400Fc4FCD13Da1e' as const

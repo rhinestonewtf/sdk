@@ -34,6 +34,9 @@ const session = (
   owners: { type: 'ecdsa', accounts: [accountA] },
   ...(account ? { account } : {}),
   crossChainPermits: [crossChainPermit],
+  // The recipient guard holds on every Permit2 session; a fallback lets every
+  // layer list here resolve.
+  fallback: 'intentExecution',
 })
 
 function thrown(definition: SessionDefinition): unknown {
@@ -47,7 +50,6 @@ function thrown(definition: SessionDefinition): unknown {
 
 const LAYERS: [string, CrossChainSettlementLayer[] | undefined][] = [
   ['ACROSS', ['ACROSS']],
-  ['ECO', ['ECO']],
   ['SAME_CHAIN', ['SAME_CHAIN']],
   ['omitted layers', undefined],
 ]
@@ -98,7 +100,7 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
   const sessions: Record<string, SessionDefinition> = {
     otherWithOptOut: session(permit(OTHER, ['ACROSS'], optOut)),
     anyWithOptOut: session(permit('any', undefined, optOut)),
-    account: session(permit(ACCOUNT, ['ECO'])),
+    account: session(permit(ACCOUNT, ['SAME_CHAIN'])),
     noRecipient: session({
       from: { chain: base, token: USDC },
       to: { chain: arbitrum, token: USDC_ARB },
@@ -106,6 +108,11 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
     otherWithoutAccount: session(permit(OTHER, ['ACROSS']), null),
   }
 
+  // Moved when Permit2-route sessions became scoped and gained their Permit2
+  // approve (RHI-8045); `account` named the now-refused ECO, so it names
+  // SAME_CHAIN, and the omitted-layer claims admit only ACROSS. Every row now
+  // sets fallback: 'intentExecution', which a reusable session without
+  // preClaimOps: 'none' needs.
   test('fingerprints match the ones taken before the guard', () => {
     expect(
       Object.fromEntries(
@@ -116,15 +123,15 @@ describe('Permit2-route session data is unchanged where it was valid', () => {
       ),
     ).toEqual({
       otherWithOptOut:
-        '0x5c14b1be114bc8fd2e6fc2e8f3bbda18295318cb6c9312f50d69d2b0b7ce439a',
+        '0x00cf8fe485e568b998942e7156a51d298ac69e568593d9c37a06e93f30bd1325',
       anyWithOptOut:
-        '0xc009acd7a36aa2982810dc6b340efc0dfb4e9fa92525f4ee26cd5ff2a6d90812',
+        '0x7413bacd261442f161995932868a25acae04beacf9020638ae5f484175e34378',
       account:
-        '0x39b4d2e3063332903469b7cff28d622681e386136083f7f2b86e45da05fca988',
+        '0x0b103d420cae0eef0e6208c6611aecb492a6fb221d1ebc25a70a7ac1a8338d9a',
       noRecipient:
-        '0xe6512d4da3c112e3171cac65ebf40c4c322aa06687c5edc2e1675b13aabc7c2d',
+        '0xef6198463f47dc1c6d9bae7d60149ab24570562d64f1813022f3f7f776b44b72',
       otherWithoutAccount:
-        '0x04779655315c89122ded6a9327f176053fb94a07a0e0f83f40d737e8eb66a6d2',
+        '0xf45704c50c724e547891bd64cccc45007673ca975e524056798a445c2e134288',
     })
   })
 })

@@ -51,7 +51,7 @@ export function settlementFeeCap(chainId: number, decimals: number): bigint {
 }
 
 const TRANSFER_SELECTOR = toFunctionSelector('transfer(address,uint256)')
-const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
+export const APPROVE_SELECTOR = toFunctionSelector('approve(address,uint256)')
 export const CALLBACK_ALLOW_MAX_AMOUNT_SELECTOR = toFunctionSelector(
   'callbackAllowMaxAmount(address,uint256)',
 )

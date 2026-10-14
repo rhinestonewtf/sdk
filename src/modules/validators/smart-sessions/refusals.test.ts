@@ -50,6 +50,7 @@ const permit2 = (
   from: { chain: base, token: USDC },
   to: { chain: arbitrum, token: USDC_ARB },
   settlementLayers: ['ACROSS'],
+  preClaimOps: 'none',
   ...permit,
 })
 
@@ -149,6 +150,15 @@ describe('refusal codes', () => {
       'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
       'SIGNING_WITH_INTENT_EXECUTOR_PERMIT',
       'RESTRICTED_WITH_PERMIT2_GRANTS',
+      'PERMIT2_ROUTE_NEEDS_FROM',
+      'RETIRED_PERMIT2_LAYER',
+      'PERMIT2_APPROVE_CONFLICT',
+      'FALLBACK_NOT_APPLICABLE',
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+      'PERMIT2_ROUTE_ACROSS_ONLY',
+      'PRE_CLAIM_OPS_NOT_APPLICABLE',
+      'NATIVE_DESTINATION_UNSUPPORTED',
+      'WRAPPED_NATIVE_ZERO_CAP',
       'WRAPPED_NATIVE_TOKEN_UNSERVED',
       'CLAIM_POLICIES_SIGNING_MODE',
       'CLAIM_POLICIES_SIGNING_WINDOW_CLOSED',
@@ -272,7 +282,7 @@ describe('collectSessionRefusals', () => {
       session(
         [
           permit2({ maxFeeBps: 10 }),
-          permit2({ allowFees: true }),
+          permit2({ allowFees: true, preClaimOps: undefined }),
           permit2({ to: { chain: arbitrum, token: USDC_ARB, minAmount: 1n } }),
         ],
         { restrictToActions: true } as Partial<SessionDefinition>,
@@ -282,9 +292,10 @@ describe('collectSessionRefusals', () => {
     expect(
       refusals.map(({ code, permitIndex }) => [code, permitIndex]),
     ).toEqual([
-      ['RESTRICTED_WITH_PERMIT2_GRANTS', undefined],
+      // allowFees now scopes the fee calls, which base's catalog does not serve;
+      // restrictToActions beside a Permit2 permit is no longer refused.
+      ['FEES_NOT_SERVED', 1],
       ['MAX_FEE_BPS_ONLY_ECO_IE', 0],
-      ['ALLOW_FEES_ONLY_INTENT_EXECUTOR', 1],
       ['MIN_AMOUNT_ON_PERMIT2_LAYER', 2],
     ])
   })
@@ -467,8 +478,29 @@ describe('collectSessionRefusals', () => {
     ],
     ['MAX_FEE_BPS_ONLY_ECO_IE', session([cctp({ maxFeeBps: 10 })])],
     [
-      'ALLOW_FEES_ONLY_INTENT_EXECUTOR',
-      session([permit2({ allowFees: true })]),
+      'FEES_NOT_SERVED',
+      session(
+        [permit2({ allowFees: true, preClaimOps: undefined })],
+        oneTimeUse,
+      ),
+    ],
+    ['PERMIT2_ROUTE_NEEDS_FROM', session([permit2({ from: undefined })])],
+    [
+      'PERMIT2_ROUTE_NEEDS_BOUND',
+      session([permit2({ preClaimOps: undefined })]),
+    ],
+    [
+      'PERMIT2_ROUTE_ACROSS_ONLY',
+      session([permit2({ settlementLayers: ['ACROSS', 'SAME_CHAIN'] })]),
+    ],
+    ['PRE_CLAIM_OPS_NOT_APPLICABLE', session([permit2()], oneTimeUse)],
+    [
+      'RETIRED_PERMIT2_LAYER',
+      session([permit2({ settlementLayers: ['ECO'] })]),
+    ],
+    [
+      'FALLBACK_NOT_APPLICABLE',
+      session([cctp()], { fallback: 'sudo' } as Partial<SessionDefinition>),
     ],
     ['DUPLICATE_ERC1271_POLICY', session([permit2(), permit2()])],
     [
@@ -566,8 +598,10 @@ describe('refusal code coverage', () => {
   )
 
   test('every listed code is raised somewhere in src', () => {
+    // A published code stays listed after it stops being raised.
+    const retired = ['SESSION_REFUSED', 'ALLOW_FEES_ONLY_INTENT_EXECUTOR']
     const listed = Object.keys(SESSION_REFUSAL_CODES).filter(
-      (code) => code !== 'SESSION_REFUSED',
+      (code) => !retired.includes(code),
     )
     expect(listed.filter((code) => !used.has(code))).toEqual([])
   })
@@ -670,11 +704,12 @@ describe('validateSessionDefinition access', () => {
     [
       'a Permit2 permit',
       session([permit2()]),
-      {
-        kind: 'open',
-        reason:
-          'Permit2-route permit (ACROSS) keeps the intent-execution fallback',
-      },
+      { kind: 'scoped', reason: 'Permit2-route permit (ACROSS)' },
+    ],
+    [
+      'a Permit2 permit with fallback: sudo',
+      session([permit2()], { fallback: 'sudo' } as Partial<SessionDefinition>),
+      { kind: 'open', reason: 'fallback: sudo' },
     ],
     [
       'a settlement-scoped permit',
