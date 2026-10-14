@@ -2,6 +2,7 @@ import {
   type Address,
   type Hex,
   isAddressEqual,
+  maxUint64,
   maxUint256,
   pad,
   toFunctionSelector,
@@ -9,6 +10,7 @@ import {
 import {
   allOf,
   anyOf,
+  atLeast,
   cumulativeCap,
   pin,
   pinValue,
@@ -39,6 +41,12 @@ import type { SettlementContext } from './types'
  *   into a leg no CCTP route reaches. Where both exist CCTP is cheaper and
  *   faster, and the orchestrator must not plan Stargate. BUS, which the
  *   orchestrator does not plan, is refused.
+ *
+ * A Stargate send names its own `minAmountLD`, the least the pool may deliver
+ * after its fee before it reverts. The session pins it only against a floor the
+ * owner gives as `to.minAmount`: the batch sends a variable amount, and a policy
+ * compares a word with a constant, so no floor relative to `amountLD` fits.
+ * Without one, a send accepts whatever fee the pool charges.
  */
 
 /**
@@ -218,6 +226,54 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     const dst = servedLz(leg)?.cctp
     return cctpLinks(leg) && !!dst && isAddressEqual(leg.token, dst.token)
   }
+  const decimals = (chainId: number, address: Address) =>
+    ctx.settlement[chainId]?.usdStablecoins?.find((t) =>
+      isAddressEqual(t.address, address),
+    )?.decimals
+  // The floor is a constant in `minAmountLD`, so it must reach the pool as the
+  // owner meant it: on a Stargate send, in units both legs share.
+  const requireStargateFloor = (
+    leg: Leg,
+    minAmount: bigint,
+    reached: readonly Leg[],
+  ) => {
+    if (minAmount <= 0n) {
+      throw new SettlementLayerRefusal(
+        'crossChainPermits: an LZ `to.minAmount` must be positive',
+      )
+    }
+    // Stargate casts `minAmountLD` in shared decimals to uint64; a larger floor
+    // would revert every send.
+    if (minAmount > maxUint64) {
+      throw new SettlementLayerRefusal(
+        'crossChainPermits: an LZ `to.minAmount` above uint64 cannot be met by any Stargate send',
+      )
+    }
+    // Legs are ORed, so a second leg into the chain would admit the send
+    // without this floor.
+    if (
+      reached.some((other) => other !== leg && other.chainId === leg.chainId)
+    ) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: a floored LZ leg must be the only \`to\` leg on chain ${leg.chainId}; give one \`to\` leg per chain`,
+      )
+    }
+    // depositForBurn takes a maxFee, not a minimum out, so no word carries it.
+    if (cctpReaches(leg)) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: LZ pins \`to.minAmount\` only on a Stargate send, and chain ${leg.chainId} is reached over CCTP`,
+      )
+    }
+    // Stargate reads `minAmountLD` in source units and pays out in destination
+    // units; only equal decimals keep the floor in the `to` token's units.
+    const from = decimals(ctx.chainId, token)
+    const to = decimals(leg.chainId, leg.token)
+    if (from === undefined || to === undefined || from !== to) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: an LZ \`to.minAmount\` needs the \`from\` and \`to\` tokens served with equal decimals; chain ${ctx.chainId} serves ${from ?? 'none'}, chain ${leg.chainId} ${to ?? 'none'}`,
+      )
+    }
+  }
   const stargate = source.stargateUsdc
   if (stargate !== undefined && isAddressEqual(token, stargate.token)) {
     const send: NestedCall = {
@@ -267,6 +323,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         return [
           pinValue(s(SEND.dstEid), BigInt(dst.eid)),
           ...recipient(s(SEND.to), leg),
+          ...(leg.minAmount === undefined
+            ? []
+            : [atLeast(s(SEND.minAmountLD), leg.minAmount)]),
         ]
       },
       limits: cap(args[0](96n)),
@@ -343,6 +402,8 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         `crossChainPermits: LZ delivers only USDC; the \`to\` token on chain ${leg.chainId} is ${leg.token}`,
       )
     }
+    if (leg.minAmount !== undefined)
+      requireStargateFloor(leg, leg.minAmount, legs)
   }
   const branches = routes.flatMap((route) => {
     const pinned = legs.flatMap((leg) => {

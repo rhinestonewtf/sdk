@@ -290,6 +290,13 @@ export const SETTLEMENT_CATALOG: SettlementCatalog = {
         eid: 30340,
       },
     },
+    usdStablecoins: [
+      {
+        address: '0xba9986d2381edf1da03b0b9c1f8b00dc4aacc369',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+    ],
   },
   2020: {
     eco: {

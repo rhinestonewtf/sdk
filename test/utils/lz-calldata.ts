@@ -63,7 +63,12 @@ export const execute = (calls: Call[], quoteId = QUOTE_ID) =>
 /** The API's Stargate calls, as quoted for base -> arbitrum (10 USDC, taxi). */
 export function stargate(
   mode: 'taxi' | 'bus',
-  o: Partial<{ eid: number; to: Address; amount: bigint }> = {},
+  o: Partial<{
+    eid: number
+    to: Address
+    amount: bigint
+    minAmount: bigint
+  }> = {},
 ): Call[] {
   const amount = o.amount ?? CAP
   return [
@@ -76,7 +81,7 @@ export function stargate(
           dstEid: o.eid ?? 30110,
           to: pad(o.to ?? ACCOUNT),
           amountLD: amount,
-          minAmountLD: 9_899_009n,
+          minAmountLD: o.minAmount ?? 9_899_009n,
           extraOptions: mode === 'taxi' ? '0x0003' : '0x',
           composeMsg: '0x',
           oftCmd: mode === 'taxi' ? '0x' : '0x01',
