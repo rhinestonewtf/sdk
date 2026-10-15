@@ -10,6 +10,7 @@ import {
   parseAbi,
   size,
   zeroAddress,
+  zeroHash,
 } from 'viem'
 import { OWNABLE_VALIDATOR_ADDRESS } from '../../modules/validators/ownable'
 import type { AccountAdapter } from '../adapter'
@@ -38,6 +39,18 @@ export const NEXUS_IMPLEMENTATION_1_2_1 =
   '0x000000000d41c0bf0063dba53343389cdb2c9c78' as const
 export const NEXUS_FACTORY_1_2_1 =
   '0x0000000099d5576c73a3b190dabeeaa0f128ce6b' as const
+
+// Both implementations report version 1.2.0 from `eip712Domain()`.
+export function nexusEip712Domain(account: Address, chainId: number) {
+  return {
+    name: 'Nexus',
+    version: '1.2.0',
+    chainId,
+    verifyingContract: account,
+    salt: zeroHash,
+  } as const
+}
+
 const NEXUS_BOOTSTRAP_ADDRESS =
   '0x00000000006efb61d8c9546ff1b500de3f244ea7' as const
 const NEXUS_CREATION_CODE =
