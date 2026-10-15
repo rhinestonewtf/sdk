@@ -1010,6 +1010,57 @@ describe('internal core composition', () => {
     }
   })
 
+  describe('cross-chain Smart Session destination routing', () => {
+    const destination = toEvmChainReference(arbitrum.id)
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: {
+        1: {
+          session: toSession({
+            chain: { id: 1 } as never,
+            owners: { type: 'ecdsa', accounts: [owner] },
+          }),
+        },
+        [arbitrum.id]: {
+          session: toSession({
+            chain: arbitrum,
+            owners: {
+              type: 'ecdsa',
+              accounts: [
+                privateKeyToAccount(
+                  '0x0000000000000000000000000000000000000000000000000000000000000002',
+                ),
+              ],
+            },
+          }),
+        },
+      },
+    }
+    test('restoring a prepared intent validates the destination slot on the destination chain', async () => {
+      const { composition, context } = fixture()
+      const workflows = composition.createAccount(context).workflows
+      const account = workflows.getAddress(context, chain)
+      const routed = quoteFor({
+        account: { evm: { address: account } },
+      } as never)
+
+      const prepared = await workflows.reconstructPreparedIntent(context, {
+        traceId: 'trace-restore',
+        quote: routed,
+        quotes: [routed],
+        request: {} as never,
+        approvalInput: {} as never,
+        intentInput: { destination, calls: [], signers },
+      })
+
+      const slot = prepared.signing.requests[1]
+      if (slot?.kind !== 'eip712') throw new Error('Expected EIP-712')
+      expect(slot.payload.chain.id).toBe(1)
+      expect(slot.validationChain.id).toBe(arbitrum.id)
+      expect(slot.reuse).toBeUndefined()
+    })
+  })
+
   describe('resolving a Solana-origin delivery’s destination calls', () => {
     const destination = toEvmChainReference(baseChain.id)
     const call = { target, value: 0n, data: '0xabcdef' as Hex }

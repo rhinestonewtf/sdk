@@ -27,8 +27,8 @@ export interface IntentSigningPayload {
 /**
  * Reuse of an earlier slot's signature.
  *
- * Permitted only where the payload, the account and the authority are
- * genuinely identical — a repeated destination payload is still its own
+ * Permitted only where the payload, the account, the authority and the
+ * validating chain are genuinely identical — a repeated destination payload is still its own
  * authorisation slot, it just happens to be satisfiable by the same bytes.
  * `pre-claim` picks that half out of a session claim pair.
  */
@@ -52,6 +52,12 @@ export type IntentSigningRequest =
       readonly artifactId: string
       readonly signatureFormat: 'secp256k1' | 'account'
       readonly payload: IntentSigningPayload
+      /**
+       * The chain whose account validates this proof's envelope. Equals
+       * `payload.chain` (the signing domain) except for a destination
+       * authorization signed under the destination chain's smart session.
+       */
+      readonly validationChain: EvmChainReference
       readonly shape: 'hex' | 'session-claims'
       readonly reuse?: IntentSignatureReuse
       readonly exposedForIndependentSigning: boolean

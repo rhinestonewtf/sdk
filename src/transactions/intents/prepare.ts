@@ -105,6 +105,7 @@ export async function prepareIntent<CompatibilityConfig>(
       runtime,
       quote,
       sessions?.byChain,
+      input.destination.kind === 'evm' ? input.destination : undefined,
       ownerSelection?.validator,
       ownerSelection?.signerIds,
     ),
@@ -213,11 +214,13 @@ const PURPOSE_USAGE = {
 function classifyRequests(
   requests: readonly SigningRequest[],
   sessions: PreparedIntent['resolvedSessions'],
+  destination: EvmChainReference | undefined,
   binding: SigningRequestBinding,
 ): readonly IntentSigningRequest[] {
   const signed: {
     readonly digest: Hex
     readonly identity: string
+    readonly validationChainId: number
     readonly artifactId: string
     readonly shape: 'hex' | 'session-claims'
   }[] = []
@@ -231,20 +234,39 @@ function classifyRequests(
         const digest = hashTypedData(typedData)
         const identity = signerIdentity(request)
         const artifactId = `request-${index}`
-        const session = sessions?.[chain.id]
+        // A destination authorization repeats an origin's Permit2 message, so
+        // its signing domain is the source chain, yet the destination account
+        // validates it. A smart session envelope is chain-local, so it must
+        // come from the destination's session.
+        const validationChain =
+          purpose === 'destinationAuthorization' &&
+          destination &&
+          sessions?.[destination.id]
+            ? destination
+            : chain
+        const session = sessions?.[validationChain.id]
         const shape =
           purpose === 'originAuthorization' && session?.verifyExecutions
             ? ('session-claims' as const)
             : ('hex' as const)
         // Reuse is decided by what is actually being authorised, never by role:
         // the same account signing the same payload under the same authority
-        // produces the same bytes, and anything else is a distinct ceremony.
+        // for the same validating chain produces the same bytes, and anything
+        // else is a distinct ceremony.
         const match = signed.find(
           (candidate) =>
-            candidate.digest === digest && candidate.identity === identity,
+            candidate.digest === digest &&
+            candidate.identity === identity &&
+            candidate.validationChainId === validationChain.id,
         )
         if (!match) {
-          signed.push({ digest, identity, artifactId, shape })
+          signed.push({
+            digest,
+            identity,
+            validationChainId: validationChain.id,
+            artifactId,
+            shape,
+          })
         }
         return {
           kind: 'eip712',
@@ -258,6 +280,7 @@ function classifyRequests(
             typedData,
             usage: PURPOSE_USAGE[purpose],
           },
+          validationChain,
           shape: match ? 'hex' : shape,
           ...(match
             ? {
@@ -435,6 +458,7 @@ export function buildIntentSigningInput(
   runtime: AccountRuntime,
   quote: PreparedIntent['quote'],
   sessions?: PreparedIntent['resolvedSessions'],
+  destination?: EvmChainReference,
   ownerValidator?: import('../../modules/validators/types').ResolvedValidatorDefinition,
   selectedSignerIds?: readonly string[],
 ): IntentSigningInput {
@@ -442,6 +466,7 @@ export function buildIntentSigningInput(
   const requests = classifyRequests(
     quote.signingRequests,
     sessions,
+    destination,
     signingRequestBinding(runtime),
   )
   const sessionTopology = sessions

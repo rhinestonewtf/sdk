@@ -1296,6 +1296,7 @@ describe('intent workflow', () => {
               typedData: typedData(source.id),
               usage: 'intent-origin',
             },
+            validationChain: source,
             shape: 'hex',
             exposedForIndependentSigning: false,
           },
@@ -1311,6 +1312,7 @@ describe('intent workflow', () => {
               typedData: typedData(destination.id),
               usage: 'intent-destination',
             },
+            validationChain: destination,
             shape: 'hex',
             exposedForIndependentSigning: false,
           },
@@ -1339,6 +1341,285 @@ describe('intent workflow', () => {
     ).toBe(true)
     expect(destinationStage?.checkpoint).toMatchObject({
       chain: { id: destination.id },
+    })
+  })
+
+  describe('cross-chain Smart Session destination authorization', () => {
+    const destination = toEvmChainReference(arbitrum.id)
+    // Both slots repeat the one Permit2 message, whose domain is the source.
+    const crossChainQuote = () =>
+      quote({ signingRequests: [originRequest(1), destinationRequest(1)] })
+    const oneTimeSession = (
+      sessionChain: typeof mainnet | typeof arbitrum,
+      owner: typeof account,
+    ) => ({
+      ...toSession({
+        chain: sessionChain,
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+      oneTimeUse: { id: 17n, policy: address },
+    })
+    const sourceSession = oneTimeSession(mainnet, account)
+    const destinationSession = oneTimeSession(arbitrum, secondAccount)
+    const destinationEnableData: SessionEnableData = {
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+        {
+          chainId: BigInt(arbitrum.id),
+          sessionDigest: `0x${'33'.repeat(32)}`,
+        },
+      ],
+      sessionToEnableIndex: 1,
+    }
+    const crossChainWorkflow = (destinationEnabled: boolean) => {
+      const read = vi.fn(
+        async (checkpoint: { id: string; chain?: { id: number } }) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled:
+              checkpoint.chain?.id === arbitrum.id ? destinationEnabled : true,
+          },
+        ],
+      )
+      const workflow = context({
+        checkpoints: { read },
+        quoteClient: {
+          createQuote: vi.fn(async () => ({
+            traceId: 'trace-1',
+            routes: [crossChainQuote()],
+          })),
+        },
+      })
+      return { read, workflow }
+    }
+    const prepareCrossChain = (
+      workflow: IntentWorkflowContext<{ marker: boolean }>,
+      calls: IntentInput<{ marker: boolean }>['calls'] = input.calls,
+    ) =>
+      prepareIntent(workflow, {
+        ...input,
+        destination,
+        calls,
+        signers: {
+          kind: 'smart-session',
+          byChain: {
+            1: { session: sourceSession },
+            [arbitrum.id]: {
+              session: destinationSession,
+              enableData: destinationEnableData,
+            },
+          },
+        },
+      })
+    const permissionPrefix = (mode: '00' | '01', permissionId: Hex) =>
+      new RegExp(`^0x${mode}${permissionId.slice(2)}`, 'u')
+
+    test('validates the destination slot on the destination chain instead of reusing the origin', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareCrossChain(workflow)
+
+      const origin = eip712Slot(prepared.signing, 0)
+      const destinationSlot = eip712Slot(prepared.signing, 1)
+      expect(origin.validationChain.id).toBe(1)
+      expect(origin.shape).toBe('session-claims')
+      expect(destinationSlot.payload.id).toBe(origin.payload.id)
+      expect(destinationSlot.payload.chain.id).toBe(1)
+      expect(destinationSlot.validationChain.id).toBe(arbitrum.id)
+      expect(destinationSlot.reuse).toBeUndefined()
+      expect(destinationSlot.exposedForIndependentSigning).toBe(false)
+    })
+
+    test('signs a pre-enabled destination with the destination permission', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareCrossChain(workflow)
+      const signed = await signIntent(workflow, prepared)
+
+      expect(signed.proofs).toHaveLength(2)
+      const originPreClaim = claimPairProof(signed.proofs[0]).preClaim
+      expect(originPreClaim).toMatch(
+        permissionPrefix('00', sourceSession.permissionId),
+      )
+      const destinationProof = hexProof(signed.proofs[1])
+      expect(destinationProof).toMatch(
+        permissionPrefix('00', destinationSession.permissionId),
+      )
+      expect(destinationProof).not.toBe(originPreClaim)
+    })
+
+    test('enables a fresh destination with its own enable data and checkpoint', async () => {
+      const { read, workflow } = crossChainWorkflow(false)
+      const prepared = await prepareCrossChain(workflow)
+      const plan = buildSessionIntentPlanInput(
+        prepared,
+        createAccountSigningContext({
+          runtime: runtime(),
+          purpose: 'intent',
+          signerInvoker: { invoke: vi.fn() },
+        }),
+      )
+      const stage = plan.stages.find(({ id }) => id === 'request-1')
+      expect(stage?.checkpoint).toMatchObject({
+        kind: 'session-enabled',
+        chain: { id: arbitrum.id },
+        permissionId: destinationSession.permissionId,
+      })
+      expect(stage?.tasks.every((task) => task.chain?.id === arbitrum.id)).toBe(
+        true,
+      )
+      // A destination proof is never notarized here, so no companion is built.
+      expect(stage?.artifacts.map(({ id }) => id)).toEqual(['request-1'])
+      const codec = stage?.artifacts[0]?.validatorCodec
+      if (codec?.kind !== 'smart-session-state') {
+        throw new Error('Expected a session-state codec')
+      }
+      expect(codec.whenDisabled.permissionId).toBe(
+        destinationSession.permissionId,
+      )
+      expect(codec.whenDisabled.enableData?.sessionToEnableIndex).toBe(1)
+      expect(codec.whenDisabled.enableData?.hashesAndChainIds[1]?.chainId).toBe(
+        BigInt(arbitrum.id),
+      )
+
+      read.mockClear()
+      const signed = await signIntent(workflow, prepared)
+      expect(read).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chain: expect.objectContaining({ id: arbitrum.id }),
+          permissionId: destinationSession.permissionId,
+        }),
+      )
+      const destinationProof = hexProof(signed.proofs[1])
+      expect(destinationProof).toMatch(/^0x01/u)
+      expect(destinationProof).not.toBe(
+        claimPairProof(signed.proofs[0]).preClaim,
+      )
+    })
+
+    test('signs the destination separately when it carries no calls', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareCrossChain(workflow, [])
+      const signed = await signIntent(workflow, prepared)
+
+      expect(eip712Slot(prepared.signing, 1).reuse).toBeUndefined()
+      expect(signed.proofs.map((proof) => proof.kind)).toEqual([
+        'eip712',
+        'eip712',
+      ])
+      expect(hexProof(signed.proofs[1])).toMatch(
+        permissionPrefix('00', destinationSession.permissionId),
+      )
+    })
+
+    test('reuses the origin signature for an owner-signed cross-chain intent', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        destination,
+      })
+      const destinationSlot = eip712Slot(prepared.signing, 1)
+      expect(destinationSlot.validationChain.id).toBe(1)
+      expect(destinationSlot.reuse).toEqual({
+        artifactId: 'request-0',
+        selection: 'whole',
+      })
+      expect(
+        prepared.signing.artifacts
+          .filter(({ exposedForIndependentSigning }) =>
+            Boolean(exposedForIndependentSigning),
+          )
+          .map(({ id }) => id),
+      ).toEqual(['request-0'])
+    })
+
+    test('reuses the origin when the destination has no session of its own', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        destination,
+        calls: [],
+        recipient: {
+          kind: 'bare',
+          address: '0x0000000000000000000000000000000000000099',
+        },
+        signers: {
+          kind: 'smart-session',
+          byChain: { 1: { session: sourceSession } },
+        },
+      })
+      const destinationSlot = eip712Slot(prepared.signing, 1)
+      expect(destinationSlot.validationChain.id).toBe(1)
+      expect(destinationSlot.reuse).toEqual({
+        artifactId: 'request-0',
+        selection: 'pre-claim',
+      })
+    })
+
+    test('does not evaluate the destination claim policy against the source message', () => {
+      // A destination grant that forbids optional pre-claim ops on its own
+      // chain, facing a source message that carries origin ops.
+      const guarded = {
+        kind: 'smart-session' as const,
+        session: {
+          ...destinationSession,
+          claimPolicies: [
+            {
+              type: 'permit2' as const,
+              originOps: [{ chain: arbitrum, required: false }],
+            },
+          ],
+        },
+        verifyExecutions: true,
+      }
+      const typedData = {
+        domain: { chainId: 1, verifyingContract: address },
+        types: {},
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        message: {
+          mandate: {
+            originOps: {
+              vt: `0x${'00'.repeat(32)}`,
+              ops: [{ to: address, value: 0n, data: '0x12' }],
+            },
+          },
+        },
+      }
+      const prepared = {
+        signing: {
+          requests: [
+            {
+              kind: 'eip712',
+              index: 0,
+              purpose: 'destinationAuthorization',
+              artifactId: 'request-0',
+              signatureFormat: 'account',
+              payload: {
+                id: `0x${'44'.repeat(32)}`,
+                chain,
+                typedData,
+                usage: 'intent-destination',
+              },
+              validationChain: destination,
+              shape: 'hex',
+              exposedForIndependentSigning: false,
+            },
+          ],
+        },
+        resolvedSessions: { [arbitrum.id]: guarded },
+        sessionEnvironment: 'production',
+      } as never
+      const plan = buildSessionIntentPlanInput(
+        prepared,
+        createAccountSigningContext({
+          runtime: runtime(),
+          purpose: 'intent',
+          signerInvoker: { invoke: vi.fn() },
+        }),
+      )
+      expect(plan.stages[0]?.artifacts.map(({ id }) => id)).toEqual([
+        'request-0',
+      ])
     })
   })
 

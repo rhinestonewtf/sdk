@@ -973,6 +973,9 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     runtime,
     input.quote,
     resolvedSessions,
+    input.intentInput.destination.kind === 'evm'
+      ? input.intentInput.destination
+      : undefined,
     input.intentInput.signers?.kind === 'owner'
       ? input.intentInput.signers.validator
       : undefined,
@@ -1034,6 +1037,7 @@ async function signIntentFromRequests<CompatibilityConfig>(
     runtime,
     quote,
     resolvedSessions,
+    input.targetChain.kind === 'evm' ? input.targetChain : undefined,
     input.signers?.kind === 'owner' ? input.signers.validator : undefined,
     input.signers?.kind === 'owner' ? input.signers.signerIds : undefined,
   )
