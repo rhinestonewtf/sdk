@@ -56,24 +56,19 @@ Keep these in sync with the code — update the relevant doc in the same PR as a
 
 ## Branching
 
-The SDK uses three release branches and one experimental branch:
+- `main` — **v3** development; snapshots publish under `@dev`
+- `release` — stable **v3** releases; publishes to `@latest`
+- `v2` — **v2** maintenance; publishes to `@v2-latest`
+- `v1` — **v1** maintenance; publishes to `@v1-latest`
+- `solana` — frozen historical v3/Solana/Caucasus branch; it must not publish
 
-- `main` — dev releases for **v2** SDK (snapshots published under the `@dev` tag)
-- `release` — prod releases for **v2** SDK (published to `@latest`)
-- `v1` — prod releases for the legacy **v1** SDK
-- `solana` — experimental **v3 / Solana / Caucasus** development; no automatic publishing
+Target `main` for v3 changes, `v2` for v2 maintenance, and `v1` for v1 fixes. Carry applicable fixes between generations deliberately.
 
-Where to open PRs:
+On `v2`, include a changeset with each consumer-facing change. Pushes run unit tests, build, and publint, then Changesets opens or updates a `Release` PR. Merging that PR publishes the versioned package under `v2-latest`; it must never move `latest` or `dev`. The manifest, changelog, and default SDK version header start from the already-published `2.17.1`, so the next patch is `2.17.2`.
 
-- **v2 changes** (features and fixes) → target `main`
-- **v1 fixes** → target `v1`
-- **v3 / Solana / Caucasus changes** → target `solana`
+Maintenance releases use the existing npm OIDC trusted publisher for `.github/workflows/release.yaml` and the release-bot GitHub App. They do not promote to `release` or regenerate the current v3 reference. Install the maintenance line with `@rhinestone/sdk@v2-latest` after its first publication, or pin an exact v2 version until then.
 
-Test experimental work from an explicit local checkout or a pinned snapshot version, not the moving `@dev` tag (which follows v2 `main`). Carry relevant v2 fixes to `solana` deliberately. Reintegration must explicitly undo the v3 rollback before incorporating later experimental changes: merging `solana` alone does not restore reverted commits already in `main`'s ancestry.
-
-After a changeset reaches `main`, a successful `@dev` publish opens one `main` → `release` promotion PR; pushes to `release` and `v1` run their production release workflows.
-
-Merging the promotion PR publishes nothing. It opens a changesets `Release` PR, and merging THAT publishes `@latest`, which cannot be undone. Use the `release-promotion` skill.
+Only `main` publishes `@dev` snapshots and opens `main` → `release` promotion PRs. Use the `release-promotion` skill for v3 releases; merging the Changesets `Release` PR publishes `@latest`, which cannot be undone.
 
 ## Patterns
 
