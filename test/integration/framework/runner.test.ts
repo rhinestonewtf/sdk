@@ -1,18 +1,107 @@
-import { describe, expect, it } from 'vitest'
+import { baseSepolia } from 'viem/chains'
+import { describe, expect, it, vi } from 'vitest'
+import { ValidationError } from '../../../src/errors/index'
 import type {
   IntentOperationGroup,
   PreparedTransactionData,
+  RhinestoneAccount,
   SignedTransactionData,
   TransactionReference,
 } from '../../../src/index'
 import type { TransactionStatus } from '../../../src/transactions/intents/types'
 import {
+  executeIntent,
   expectCompletedOperation,
   expectNoFailedOperations,
   expectNoOperationOnChain,
+  expectOutcome,
   formatIntentDiagnostics,
   getOperations,
 } from './runner'
+
+describe('integration execution runner', () => {
+  function fixture() {
+    const prepared = {} as PreparedTransactionData
+    const signed = {
+      proofs: [
+        { kind: 'eip712', signature: '0x1234' },
+        {
+          kind: 'eip7702',
+          nonce: 0,
+          signature: {
+            r: `0x${'11'.repeat(32)}`,
+            s: `0x${'22'.repeat(32)}`,
+            yParity: 0,
+          },
+        },
+      ],
+    } as SignedTransactionData
+    const result = { type: 'intent', intentId: 'intent-1' }
+    const account = {
+      prepareTransaction: vi.fn(async () => prepared),
+      signTransaction: vi.fn(async () => signed),
+      signAuthorizations: vi.fn(async () => {
+        throw new Error('The runner must not sign delegations separately')
+      }),
+      submitTransaction: vi.fn(async () => result),
+      waitForExecution: vi.fn(async () => completed),
+    }
+    const transaction = {
+      destination: { chain: baseSepolia, calls: [] },
+      sponsored: true,
+    }
+    return { account, prepared, signed, result, transaction }
+  }
+
+  it.each(['sign', 'dryRun', 'execute'] as const)(
+    'uses the SDK proof vector in %s mode without separate authorization signing',
+    async (mode) => {
+      const { account, prepared, signed, result, transaction } = fixture()
+      const execution = await executeIntent({
+        account: account as unknown as RhinestoneAccount,
+        transaction,
+        mode,
+      })
+      expectOutcome(execution, { kind: 'success' })
+      expect(account.signTransaction).toHaveBeenCalledWith(prepared)
+      expect(account.signAuthorizations).not.toHaveBeenCalled()
+      if (mode === 'sign') {
+        expect(account.submitTransaction).not.toHaveBeenCalled()
+      } else {
+        expect(account.submitTransaction).toHaveBeenCalledWith(
+          signed,
+          mode === 'dryRun' ? { internal_dryRun: true } : {},
+        )
+      }
+      if (mode === 'execute') {
+        expect(account.waitForExecution).toHaveBeenCalledWith(result)
+      } else {
+        expect(account.waitForExecution).not.toHaveBeenCalled()
+      }
+    },
+  )
+
+  it('submits a transformed proof vector and preserves a submission refusal', async () => {
+    const { account, transaction } = fixture()
+    const error = new ValidationError({ message: 'Missing delegation proof' })
+    account.submitTransaction.mockRejectedValueOnce(error)
+    const execution = await executeIntent({
+      account: account as unknown as RhinestoneAccount,
+      transaction,
+      transformSigned: (signed) => ({
+        ...signed,
+        proofs: signed.proofs.filter((proof) => proof.kind !== 'eip7702'),
+      }),
+    })
+    expectOutcome(execution, { kind: 'submit-error', error: ValidationError })
+    expect(execution.signed?.proofs).toEqual([
+      { kind: 'eip712', signature: '0x1234' },
+    ])
+    expect(account.submitTransaction).toHaveBeenCalledWith(execution.signed, {})
+    expect(account.signAuthorizations).not.toHaveBeenCalled()
+    expect(account.waitForExecution).not.toHaveBeenCalled()
+  })
+})
 
 const txHash = `0x${'ab'.repeat(32)}` as const
 

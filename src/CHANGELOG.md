@@ -1,5 +1,233 @@
 # @rhinestone/sdk
 
+## 3.0.0
+
+### Major Changes
+
+- 2166816: Speak orchestrator API version `2026-09.caucasus`. Accounts, recipients, sources and destinations are now expressed in their own VM's terms, a quote states the authorizations it needs as an ordered list, and status reports every operation rather than one per chain. There is no compatibility mode: a prepared or signed transaction produced by an earlier release cannot be signed or submitted by this one, and refuses explicitly rather than being reinterpreted. Reconcile any in-flight submission first, then prepare it again.
+
+  Transaction inputs move to one `source` and one `destination` (see the singular source and destination entry). Everything the orchestrator hands back changed too.
+
+  ### Signing is an ordered list, not a set of roles
+
+  `quote.signData` is replaced by `quote.signingRequests` — an ordered array. Each entry says which account it authorizes for, which authority must produce it, what it permits, how long it stays valid, and the payload to sign. `signTransaction` returns `proofs`, one per request, in the same order; `submitTransaction` sends exactly that.
+
+  Position is the identity of an authorization. Two requests can carry byte-identical payloads and still be two slots, so proofs are never filtered, sorted, deduplicated or inferred from their kind.
+
+  - `getTransactionMessages(prepared)` now returns `SigningRequest[]` instead of `{ origin, destination?, targetExecution? }`.
+  - `SignedTransactionData.originSignatures` / `destinationSignature` / `targetExecutionSignature` are replaced by `proofs: SigningProof[]`.
+  - `signIntent(signingRequests, targetChain, signers?)` takes the ordered requests and returns `{ proofs }`.
+  - Independent owner signatures (`OwnerSignature`, `OwnerSignatureData`) carry `slots` instead of `origin`.
+  - A smart-session origin still yields **one** proof containing both `preClaim` and `notarizedClaim`; it is never split across two slots.
+  - Removed: `SignData`, `OriginSignData`, `Eip712OriginSignData`, `PersonalSignOriginSignData`, `OriginSignature`. New: `SigningRequest`, `SigningProof` and the types they are built from.
+
+  ### EIP-7702 delegations are signed automatically
+
+  A quote asks for the delegations it needs as `delegationAuthorization` requests, and `signTransaction` produces them as part of the proof vector. Normal consumers no longer call anything extra, and `submitTransaction` no longer accepts an `authorizations` option.
+
+  `signAuthorizations(prepared)` remains for the advanced case where a different party signs the delegation. It now returns `IndexedProofContribution[]` — each bound to the intent, the exact ordered request set, and the slot it answers — which `assembleTransaction(prepared, ownerSignatures, { proofs })` folds in. A contribution from a different quote, a re-quote, or the wrong slot is refused, and an incomplete vector throws instead of submitting.
+
+  ### Chains are CAIP-2
+
+  Quote costs, plans, requirements, signing context, bridge fills and status evidence carry CAIP-2 strings (`eip155:8453`, `solana:…`, `hypercore:perp`) rather than numbers, so a chain the SDK has no number for stays readable. Numeric chain ids remain in viem chain objects, `TransactionResult`, and inside signed EIP-712 and EIP-7702 payloads.
+
+  The one exception is deliberate: an intent recorded before the chain registry knew a chain keeps a numeric `chainId` and a `vm: 'unknown'` transaction reference. That is an honest gap in an old record, not a chain identity to invent.
+
+  ### Status reports every operation
+
+  `operations` is now grouped by chain, with every item inside: `{ chainId, items }`. A chain carrying both a claim and a fill reports both, and the item that debited the account is marked.
+
+  - Transaction references are tagged by VM — `{ vm: 'evm', txHash }`, `{ vm: 'svm', signature }`, `{ vm: 'tvm', txId }` — instead of everything being `txHash`.
+  - The fabricated zero `accountAddress` is gone. `accounts` lists the real per-VM, per-chain accounts, and is absent when the record does not identify them.
+  - `ChainOperation` is replaced by `IntentOperationGroup` and the `IntentOperationItem` union.
+  - The top-level `hyperCore` result is gone. A HyperCore outcome is an `{ type: 'EXECUTION', status, result }` item inside `operations`, alongside — not instead of — the settlement transaction it rides with.
+  - `refunds` entries are `{ transaction }`. An empty array means none were observed, which is still not proof none occurred.
+  - `getIntentStatus(intentId, { full: true })` returns the recorded detail block: legs, executions, deployments and economics as they happened. Polling stays lean by default, and `waitForExecution` is unchanged.
+
+  ### Quotes disclose the plan
+
+  `quote.plan` states where the route sources from, where it delivers and what it deploys. `quote.requirements` lists unresolved prerequisites — an approval or a wrap — which are disclosed and never performed on your behalf; preparing a transaction still spends and deploys nothing. `quote.tokenRequirements` is replaced by `requirements`, and `TokenRequirements`, `ApprovalRequired` and `WrapRequired` are removed.
+
+  ### Prepared transactions carry their request
+
+  `PreparedTransactionData` gains a `request` field carrying the versioned wire request; treat it as opaque and persist it with the rest. The sponsorship approval input changed; see the singular source and destination entry.
+
+  ### Not in this release
+
+  Creating the Swig inside the first spend and automatic re-quote flows are still unavailable; a missing spending Swig still refuses with `SOLANA_ACCOUNT_NOT_CREATED`, so create it first with `deploy('solana', chain)`. There are no new estimate or intent-list methods. WebAuthn signing requests outside a passkey-owned Solana account, and cross-VM destination execution other than EVM calls after a Solana → EVM delivery, are represented on the wire but not supported — a quote asking for one fails with an actionable error rather than being signed as something else.
+
+  See [docs/caucasus-migration.md](https://github.com/rhinestonewtf/sdk/blob/main/docs/caucasus-migration.md) for the type-by-type inventory.
+
+- aeabb0d: Replace the flat EVM account API with a capability-aware cross-VM account foundation.
+
+  - Wrap existing EVM configuration in `createAccount({ evm: config })` and select addresses with `account.getAddress('evm')`.
+  - Configure address-only Solana destinations with `{ solana: { address: solanaAddress(value) } }`; use a managed Solana account for Solana-origin execution.
+  - Restrict explicit delivery recipients to token delivery. Omit `destination.recipient` when destination calls should execute through the invoking managed EVM account.
+
+- 5750254: Change `SigningScope.hyperCore` on EVM signing requests from a single HyperCore agent registration to a non-empty list of `{ action, nonce, agent, slot }` in slot order: one on a per-leg request, every registration on an aggregate request. Read `scope.hyperCore[0]` where you read `scope.hyperCore` before, or iterate the list.
+- 5d71fb7: Require every managed Solana account to name its existing Swig state account explicitly; the SDK derives its wallet PDA.
+
+  Managed Solana wallets can now be used alone, with an address-only EVM receiver, or with an independently configured managed EVM account. Plain Solana operations always use the selected Swig and its private-key or passkey authority; their sponsorship identity is the derived Swig wallet rather than an unused EVM account. Solana-to-EVM destination calls remain limited to explicit Swigs compatible with the managed EVM account; unrelated pairs can still make plain deliveries.
+
+- 1ae3e1b: Add managed Solana accounts and same-chain SPL intent execution.
+
+  - Pair an ECDSA-owned Solana branch with a managed EVM account to derive its Swig wallet.
+  - Prepare, sign, and submit one same-chain SPL transfer on Solana mainnet or devnet with tagged `personalSign` payloads.
+  - Expose Solana execution metadata, native transaction references, lifecycle errors, and the `solanaDevnet` descriptor.
+  - Make destination signing data and signatures optional for routes that do not require them.
+
+- a56e0ec: Make `IntentAccountView.authority` optional for Swig account summaries because historical intent records may not contain authority evidence. Guard `authority` before discriminating its `secp256k1` or `secp256r1` kind; signing requests and caller-supplied authorization remain required.
+
+  Remove the obsolete `sponsored.swapValue` option. Use `sponsored.swaps` for swap sponsorship; eligible par-swap value sponsorship is now controlled by the orchestrator under that category.
+
+- 7191872: `/jwt-server`'s `shouldSponsor` and `SponsorshipFilter` no longer accept `sdk-caucasus-singular-2026-09-v1`, the interim approval input of earlier v3 snapshots. They refuse it like any other unknown `contractVersion`, and the orchestrator no longer binds grants under it. Upgrade clients still on an earlier v3 snapshot, and update any sponsorship policy or signer that matches on `sdk-caucasus-singular-2026-09-v1` to match `sdk-3.0.0-caucasus`.
+- 627e338: Remove deprecated inputs and apply stricter Smart Session defaults.
+
+  - Replace top-level SDK `apiKey` with `auth: { mode: 'apiKey', apiKey }`. Empty or undefined removed keys also reject; nested API-key/JWT auth and service credentials remain supported.
+  - Replace `SolanaPasskeyPermission` with `SolanaAuthorityPermission` from `@rhinestone/sdk/solana`.
+  - Replace definition-input `claimPolicies` with standard `crossChainPermits`. Arbitrary custom-spender definitions are no longer supported. Preserve compiled `Session.claimPolicies` when restoring authorized sessions; do not rebuild persisted grants through definition resolution.
+  - Omitted or empty settlement layers now select all enforceable served layers; inspect dropped coverage. Explicit lists must be fully enforceable. Open fallback is opt-in and retains its ACROSS default.
+  - Permit2 permits default to scoped actions. Reusable scoped `maxAmount` is a lifetime budget on counted approval/value paths, not existing allowances or arbitrary actions. Re-enabling an already-enabled budgeted session requires `allowBudgetReset: true`.
+  - Action windows and default deployed policies can change permissionId and enable digests. Persist resolved sessions; new definitions do not upgrade installed grants. Once sessions allow at most one settlement transaction per participating chain, not one operation.
+
+- be6e9bb: Replace the flat transaction input with one `source` and one `destination`: `{ source?: { chain?, token, maxAmount?, auxiliaryFunds?, calls? }, destination: { chain, token?, amount?, recipient?, calls?, gasLimit?, … } }`. The SDK spends exactly the source you name and no longer discovers source chains or tokens.
+
+  - `chain`, `targetChain`, `sourceChains`, `sourceAssets`, `tokenRequests`, `recipient`, `calls`, `gasLimit`, `sourceCalls`, `auxiliaryFunds`, `hyperCore`, `instructions`, `addressLookupTables` and `authority` are refused by name, pointing at their replacement. Omit `source.chain` to spend on the destination chain; a cross-chain transaction names it.
+  - `destination.token` with `amount` is exact output, `token` alone is max output, and neither delivers nothing. A delivery needs a `source`, and so does any execution that is not gas-sponsored; only a gas-sponsored execution that delivers nothing may omit it.
+  - Several source chains or tokens, and several delivered tokens, have no equivalent. `source.calls` run on the source chain and a call's `provides` must name `source.token`; source calls that were silently dropped now run or are refused.
+  - A source-free transaction whose smart session still needs enabling is refused before quoting; name a `source`. `customDeadline` on a cross-chain transaction, and `hyperCore` on a destination that is not HyperCore, are refused instead of dropped.
+  - An unsponsored intent-path `deploy('evm', chain, { source: { token } })` and intent-path `setup(chain, { source: { token } })` pay in a named same-chain token and refuse without one. Sponsored deployment is unchanged.
+  - Solana authority changes are `{ destination: { chain, authority } }`, including for `getAuthorityStatus`. Instruction executions are source-free when sponsored and name their fee token as `source.token` otherwise.
+  - `PreparedTransactionData.intentInput` and the `getIntentExtensionToken` argument are the versioned `sdk-3.0.0-caucasus` approval input: the quote request itself, with CAIP-2 chain ids. Review sponsorship policies that read the old field names. `/jwt-server`'s `shouldSponsor` reads both the new input and the one older SDKs send.
+  - Prepared transactions from earlier SDK generations fail with `InvalidPreparedTransactionError`; reconcile, then prepare again.
+  - Remove `TokenRequest`, `NonEvmTokenRequest`, `NonEvmTokenRequests`, `AuxiliaryFunds` and `SolanaSourceAsset`. Add `TransactionSource`, `TransactionDestination`, `EvmDeployOptions`, `EvmSetupOptions` and `SolanaTransactionSource`.
+
+- bfa2ff4: Name the source of a Solana-origin transaction with `source`, as on EVM, and cap what the Swig wallet may debit. Managed Solana now also runs on production.
+
+  - A Solana → EVM delivery takes `source: { chain, token, maxAmount? }` instead of `sourceTokens: [{ address }]`. A leftover `sourceTokens` is refused with a pointer to `source.token`.
+  - `maxAmount` is a ceiling on the source debit, not the delivered amount. With a destination amount the route must fit under it; without one it spends the smaller of the balance and the ceiling. A quote whose source input exceeds it is refused before signing. Omit it for no cap.
+  - A same-chain SPL transfer takes the same `source`, naming the mint it sends, with a `maxAmount` no smaller than the amount sent. Instruction executions take no `maxAmount`.
+  - Managed Solana accounts are accepted on production with the default endpoint (`https://v1.orchestrator.rhinestone.dev`) as well as on development with `https://dev.v1.orchestrator.rhinestone.dev`; any other environment/endpoint pair throws `ManagedSolanaAccountNotSupportedError`. Both environments support the same operations. On production the Swig derived from a managed EVM account uses the `prod-v1` namespace, so it differs from the development Swig of the same EVM account, and execution metadata carries `namespace: 'prod-v1'`.
+
+- 48be55a: `deploy` now names its VM first, and a managed Solana account can create its Swig with it.
+
+  - Deploy an EVM account with `account.deploy('evm', chain, { sponsored })`. `account.deploy(chain, …)` no longer compiles.
+  - Create a managed Solana account's Swig with `account.deploy('solana', solanaChain, { swigId })`: a sponsored deployment intent that installs the configured owner as the Swig's root and resolves `true` once the Swig exists, including when it already did. `swigId` is required without managed EVM; on a composite account the Swig derived from the EVM account needs none.
+  - Add `createSolanaSwigId()`, which mints an independent Swig id with the Swig and wallet addresses it derives.
+  - Widen `purpose` on intent statuses to `'execution' | 'deployment'`.
+
+- 8101de5: Name the sponsorship approval input `contractVersion: 'sdk-3.0.0-caucasus'`. Earlier v3 snapshots sent `sdk-caucasus-singular-2026-09-v1`; the projection and digest rule are unchanged, so only the identifier, and therefore the digest, differs.
+
+  - `/jwt-server`'s `shouldSponsor` and `SponsorshipFilter` accept `sdk-3.0.0-caucasus` and the legacy input of v2 clients. Any other `contractVersion` is still refused.
+  - Deploy the updated helpers, or a signer that accepts `sdk-3.0.0-caucasus`, on your backend before your clients send the new identifier. Older helpers refuse it and the prepare fails.
+  - `SerializedIntentInput['contractVersion']` is now `'sdk-3.0.0-caucasus'`.
+  - A Solana transaction prepared under the interim identifier fails restore with `InvalidSolanaTransactionArtifactError`; prepare it again.
+
+- 6249a56: Startale now defaults to v1.0.1, which deploys a new implementation and factory, changes the default counterfactual account address, and signs typed data against the v1.0.1 EIP-712 domain. Existing v1.0.0 accounts opt back in with `account: { type: 'startale', version: '1.0.0' }` to keep their address and domain — including accounts passed as address-only `initData`, whose typed-data signatures would otherwise target the v1.0.1 domain. Accounts restored from `initData` with a `factory` keep their version automatically.
+- 8041006: Move VM-specific exports into dedicated `@rhinestone/sdk/solana` and `@rhinestone/sdk/evm` entry points. The package root keeps only VM-neutral surface, and the moved symbols have no root aliases.
+
+  - Import `solanaAddress`, `createSolanaSwigId`, `solanaMainnet`, `solanaDevnet` and every `Solana*`-named type (for example `SolanaAddress`, `SolanaChain`, `SolanaAccountConfig`, `SolanaStandaloneAccount`, `SolanaDeployOptions`, `SameChainSolanaTransaction`, `CrossChainSolanaOriginTransaction`, `SolanaExecutionMetadata`) from `@rhinestone/sdk/solana`.
+  - `@rhinestone/sdk/utils` is removed. Import its helpers (`experimental_getV0InitData`, `experimental_getRhinestoneInitData`, `experimental_getModuleSetup`, `toViewOnlyAccount`, `walletClientToAccount`, `wrapParaAccount`) from `@rhinestone/sdk/evm`.
+  - Import the validator address constants (`OWNABLE_VALIDATOR_ADDRESS`, `WEBAUTHN_VALIDATOR_ADDRESS`, `MULTI_FACTOR_VALIDATOR_ADDRESS`, `MULTI_FACTOR_VALIDATOR_V2_ADDRESS`, `SMART_SESSION_EMISSARY_ADDRESS`) and the `EvmAccountConfig`, `EvmAccountEntry`, `EvmReceiverAccountConfig` and `ManagedEvmAccount` types from `@rhinestone/sdk/evm`.
+  - Errors, including the Solana errors and guards, stay in `@rhinestone/sdk/errors`.
+
+### Minor Changes
+
+- bdc154d: Support EVM → Solana token delivery: fund an intent from managed EVM sources and deliver SPL tokens to a Solana wallet.
+
+  - Set `destination.chain` to `solanaMainnet` or `solanaDevnet` with a base58 `destination.token`, funded from an EVM `source`; the delivery recipient is the explicit `destination.recipient`, otherwise the configured Solana receiver, otherwise the account's own Solana wallet.
+  - Read the delivering provider's own destination chain id from `quote.bridgeFill` on ECO routes, the id that resolves a Solana fill against that provider's status API.
+
+- 43df7e3: Drop the optional `express` peer dependency. `createExpressRouter` from `@rhinestone/sdk/jwt-server` now returns a plain middleware function instead of an Express router object, so the SDK no longer needs `express` installed. Mount it exactly as before — `app.use(path, express.json(), createExpressRouter(config))` — on Express 4 or 5; it now also type-checks against `@types/express`. If you added routes to the returned router, mount your own router alongside it instead.
+- 7cd7e16: Fix the `OwnerSignature` and `OwnerSignatureData` declarations to describe `slots`, the ordered per-request signatures that `signTransaction(prepared, { owner })` returns and `assembleTransaction` accepts, instead of the obsolete `origin`.
+- edab078: In JWT auth mode, request intent-scoped sponsorship approval when a sponsored transaction is quoted, not when it is submitted. This covers EVM transactions, Solana-origin transfers, instructions and deliveries, and `deploy('solana', …)`.
+
+  - `getIntentExtensionToken` runs once per sponsored `prepareTransaction` (or Swig creation), before the quote. It runs even for quotes that are never submitted. `submitTransaction` never calls it, including for restored prepared transactions.
+  - A denied or failing `getIntentExtensionToken` now rejects `prepareTransaction` with nothing quoted, instead of failing at submission.
+  - Add `UnsupportedSponsorshipApprovalError` (exported from `@rhinestone/sdk/errors`). It is thrown before `getIntentExtensionToken` runs when the quote request falls outside the approval contract. Use project-wide sponsorship for such a request.
+  - The `intentInput` a grant commits to is the versioned `sdk-3.0.0-caucasus` input (see the singular source and destination entry). A Solana input names the paying Swig as `account.svm`: its wallet, its authority and, for plain operations, its state account; a Swig creation's input also includes the installed root and the Swig id.
+  - A Swig creation now requests `sponsorship: { gas: true, bridgeFees: false, swapFees: false }` so the request matches its approval input.
+
+- 627e338: Add settlement-scoped Smart Sessions and validation tools.
+
+  - Support ACROSS, CCTP, OFT, ECO_IE, SAME_CHAIN_IE and LZ where enforceable, with served addresses, recipient/delivery floors and optional settlement fees. Retired ECO is refused, SAME_CHAIN_IE is exclusive and excluded from `all`, and OFT and LZ cannot be combined.
+  - Add `sdk.validateSession` and offline `/smart-sessions` `validateSession`, stable refusal/warning codes, access metadata and dropped-layer coverage. Offline resolution accepts caller-supplied settlement catalog and wrapped-native data without network reads.
+  - Add one-time-use policy/burn helpers, chain-aware policy defaults, deployed UniversalActionPolicy-copy verification on online create/validate, and coherent budget-reset checks through `SessionDetailsOptions`.
+  - Add opt-in `swap.stableFloor` and independent permission/permit/swap windows. Fee and floor coverage applies only to the paths each policy enforces.
+
+- 5229e07: Run EVM calls after a Solana → EVM delivery: pass `destination.calls`, and optionally `destination.gasLimit`, on a `CrossChainSolanaOriginTransaction`, and the account's EVM account runs them on `destination.chain` once the tokens land.
+
+  - The calls need the account's EVM entry and land the delivery on its EVM address, so they are refused with an explicit `destination.recipient` and on an account with no EVM entry.
+  - An EVM account not yet deployed on `destination.chain` is deployed before the calls run. An EIP-7702 account passes `eip7702InitSignature` from `signEip7702InitData()`, as on an EVM transaction.
+  - The quote asks for the Swig spend first, then the EVM account's EIP-712 authorization of the calls, then any EIP-7702 delegation. `signTransaction` signs the EVM requests before the spend, whose slot window is the short one, and returns one proof per request in that order; `submitTransaction` sends them all.
+  - Without `calls`, the request and the proofs are unchanged.
+
+- 9951410: Add and remove secp256k1 (ECDSA) keys on a managed Solana account's Swig, and check whether an authority change is already in place. Pass `{ destination: { chain, authority: addEcdsaKey(key, { permission }) } }` or `{ destination: { chain, authority: removeEcdsaKey(key) } }` to `prepareTransaction`, then sign, submit and wait as usual.
+
+  - `addEcdsaKey` and `removeEcdsaKey` come from `@rhinestone/sdk/solana`. They take a viem local account or a secp256k1 public key (33-byte compressed, 65-byte uncompressed or 64-byte x‖y), and compress it. An uncompressed key must lie on secp256k1. An EVM address, a WebAuthn account, or an account without a `publicKey` is refused with `UnsupportedAccountCapabilityError`.
+  - Every key kind takes every Swig permission, always explicit: `all`, `allButManageAuthority` or the new `manageAuthority`. `addPasskey` accepts `manageAuthority` too. `manageAuthority` adds and removes non-root authorities, including granting `all`, so it is takeover power; it never spends or runs instructions.
+  - An account configured with a manage-only key as its `{ type: 'ecdsa', account }` owner, including an external viem `toAccount` signer, can add and remove authorities. The orchestrator refuses its spends.
+  - `account.getAuthorityStatus({ destination: { chain, authority } })` returns `applied`, `notApplied` or `conflict` without signing or submitting. It quotes the change and reads the orchestrator's refusal, so it needs a configured owner able to manage authorities. Under JWT auth, it mints one sponsorship grant that is never used. Settle an in-flight intent before trusting `notApplied`. Available on standalone and composite accounts with a managed Solana entry.
+  - Widened types: `SolanaAuthorityKey` is now a `passkey` | `ecdsa` union; `SolanaAuthorityPermission` replaces the removed `SolanaPasskeyPermission`; import it from `@rhinestone/sdk/solana`; `SolanaAuthorityExecutionMetadata` gains `keyType`; and `SolanaAuthorityChangeRefusedError.permission` and `SolanaAuthorityDisclosure` (`key.kind`, `permission`) cover the new key kind and permission. Exhaustive switches over them need the new cases.
+  - New public types: `SolanaAuthorityPermission` and `SolanaAuthorityStatus`.
+  - Needs an orchestrator that accepts secp256k1 keys and `manageAuthority` (dev today). An older orchestrator refuses them with a `ValidationError` before anything is signed.
+
+- ea4fa75: Run Solana instructions on a same-chain intent from a managed Solana account. No orchestrator route serves them yet, so a well-formed request is refused with `UNSUPPORTED_DESTINATION_INSTRUCTIONS` until one ships; the SDK surfaces that reason unchanged.
+
+  - Pass `{ destination: { chain, instructions, addressLookupTables? }, sponsored }`, or name the fee token as `source: { token }` when unsponsored. The instructions run out of the account's own Solana wallet, so the destination names no token and no recipient — the payee is encoded inside the instructions. Mixing them with a destination token, recipient, EVM calls or fees is rejected in the types and before the quote.
+  - Instructions are accepted both as the JSON Jupiter's `/swap-instructions` returns and as `@solana/web3.js` instruction objects, and are normalized to the wire shape. No Solana runtime dependency is added. `@solana/kit` instructions are not accepted; convert them first.
+  - Order, account metadata, signer flags and data bytes are preserved verbatim. The published request limits — 32 instructions, 64 accounts each, 1232 bytes of data in total, 8 address lookup tables — are checked locally, so an oversized request fails before a round trip.
+  - `PreparedTransactionData.execution` gains a third arm: narrow on `kind === 'solana-instructions'`.
+  - New public types: `SameChainSolanaInstructionsTransaction`, `SolanaInstruction`, `SolanaAccountMeta`, `SolanaProgramInstruction`, `SolanaInstructionInput`, `SolanaInstructionsExecutionMetadata`.
+
+- 164b593: Support native SOL as the source asset of a Solana → EVM delivery: `source: { chain, token: '11111111111111111111111111111111', maxAmount? }`, capped or uncapped, behaves exactly as an SPL mint. The wallet's rent-exempt reserve is never spendable, so spending the whole balance or a cap takes at most the lamports above it. Same-chain transfers still refuse native SOL, now before quoting with `UnsupportedAccountCapabilityError`.
+- 4c4e2d2: Add and remove passkeys on a managed Solana account's Swig. Pass `{ destination: { chain, authority: addPasskey(passkey, { permission }) } }` or `{ destination: { chain, authority: removePasskey(passkey) } }` to `prepareTransaction`, then sign, submit and wait as usual.
+
+  - `addPasskey` and `removePasskey` come from `@rhinestone/sdk/solana`. They take a viem `WebAuthnAccount` or a P-256 public key in any encoding, and compress it. `permission` is `'all'`, `'allButManageAuthority'`, or `'manageAuthority'`; it is required on an add and rejected on a remove.
+  - The configured owner, ECDSA or passkey, signs the change with one prompt. Available on standalone and composite accounts with a managed Solana entry; address-only receivers can't use it.
+  - Always gas-sponsored and billed to the integrator's sponsorship, like `deploy('solana', …)`. An authority change can't take fees, tokens, a recipient or instructions.
+  - The quote is checked before signing: one `manageAuthority` signing request, and a plan disclosing the same action, key, permission, role id and rent.
+  - The orchestrator's refusals throw `SolanaAuthorityChangeRefusedError` from `@rhinestone/sdk/errors`, with `reason`, `swigAddress`, `roleId`, `roleIds` and `permission`. Detect it with `isSolanaAuthorityChangeRefused`. After an uncertain outcome, prepare the same change again: `authority_exists` with the same permission, or `authority_not_found` on a remove, means the change already landed.
+  - New public types: `SameChainSolanaAuthorityTransaction`, `SolanaAuthorityChange`, `SolanaAuthorityKey`, `SolanaAuthorityPermission`, `SolanaAuthorityDisclosure`, `SolanaAuthorityExecutionMetadata` (execution `kind: 'solana-authority'`) and `SolanaAuthorityChangeRefusalReason`. Replace the removed `SolanaPasskeyPermission` with `SolanaAuthorityPermission` from `@rhinestone/sdk/solana`. `SigningScope` and `PlanExecution` gain the Solana authority-change variants.
+  - Every other Solana transaction type now declares `authority?: never`.
+
+- d626fc6: Let a passkey own a managed Solana account: configure `solana: { owner: { type: 'passkey', account } }` with a viem `WebAuthnAccount`, beside the existing ECDSA owner.
+
+  - The orchestrator receives the passkey's compressed P-256 public key as the Swig authority.
+  - `signTransaction` signs the quote's WebAuthn challenge with the passkey and returns a `webauthn` proof, which `submitTransaction` sends. The assertion's challenge, `webauthn.get` type and signature length are checked before it leaves the SDK; the orchestrator verifies the signature itself.
+  - A Swig role in `SigningAuthority`, and the Swig account in a plan, can now name a `secp256r1` authority. For a passkey owner, `PreparedTransactionData.execution.authority` is the compressed public key.
+
+- 509d536: Ask for sponsorship on a Solana-origin transaction — the same-chain transfer, the same-chain instruction execution and the Solana → EVM delivery all take `sponsored` in the shape an EVM transaction takes it, with the same translation.
+
+  - The SDK states the intent and the orchestrator decides. A served request comes back as a quote whose fee breakdown marks the sponsored categories; one it cannot bill is refused with its named categories intact.
+  - Today the orchestrator serves `gas` and, where the integrator set a rate, `protocolFees` on a Solana origin. The `sponsored: true` shorthand asks for all four categories and is refused on every Solana route until the orchestrator widens what it bills — the SDK does not narrow it on your behalf.
+  - `sponsored.bridging` on a Solana → EVM delivery restricts the route set, so a corridor no such route serves comes back as a refusal rather than a quote.
+  - A JWT-authenticated integrator approves a sponsored Solana intent the same way as an EVM one: `getIntentExtensionToken` runs when the quote is requested, and the grant is charged the same way on both VMs.
+  - Omitting `sponsored` is unchanged: the request and the submission are byte-for-byte what they are today.
+
+- c30cb1e: Let a managed Solana account stand alone, with no EVM account: configure `solana: { owner, swig: stateAddress }` (`SolanaStandaloneAccountConfig`) naming an existing Swig state account. `createAccount` derives its asset-holding wallet PDA and returns a `SolanaStandaloneAccount`, which exposes only prepare, messages, sign, submit and wait. `getAddress('solana')` returns the derived wallet, and a Solana → EVM delivery from the account must name its `destination.recipient`. Persisted Solana execution metadata carries the wallet as `accountAddress` for such an account, and no `accountType`.
+- 2efb1c3: Support Solana → EVM token delivery: spend a managed Solana account's SPL balance and receive a token on an EVM chain.
+
+  - Pass `source: { chain: solanaDevnet, token: mint }` and an EVM `destination: { chain, token, amount? }`. Omit the delivery amount to spend the whole balance of that mint, and omit `destination.recipient` to deliver to the account's own EVM address.
+  - Authorization is the existing Solana model: one `personalSign` origin payload, no destination signature, and the same short validity window. Costs keep each leg in its own namespace — base58 on the Solana input, hex on the EVM output.
+  - `PreparedTransactionData.execution` is now a union. Narrow on `kind` — `'solana'` for a same-chain transfer, `'solana-cross-chain'` for a delivery, which carries `destinationChain`, `destinationToken` and a hex `recipient`.
+  - Unsupported shapes are refused before a quote is requested: destination instructions, HyperCore actions, more than one source or destination token, mixed-VM sources, and a non-EVM destination.
+
+### Patch Changes
+
+- 2fc5ece: Align internal Caucasus types with the validated contract without changing public APIs or requiring consumer migration.
+- 57b779d: Fix v3 reference examples and API guidance for authentication, transaction funding, signing overloads, proof assembly, and execution results.
+- 627e338: Fix Smart Session settlement execution and catalog freshness.
+
+  - Enforce claims from the ERC-1271 policy list while retaining compiled claim metadata for signing; reject duplicate policy addresses that would overwrite installed guards.
+  - Preserve verify-execution mode for scoped, fallback and once sessions, reject origin operations for `preClaimOps: 'none'`, and insert enable/burn calls in settlement order without duplicate same-chain burns.
+  - Intersect session scope with the explicit source token, amount and route before quoting, preserving ordered signing requests and sponsorship binding.
+  - Refresh served chain data after ten minutes and retry failed fetches without evicting newer in-flight entries.
+  - Update fynd TychoRouter V3 calldata handling and reduce settlement policy encodings while retaining enforced constraints.
+
+- 1287cc7: Recognize CAIP-2 chain ids in `SOLANA_ACCOUNT_NOT_CREATED` refusals, so `isSolanaAccountNotCreated` holds for live responses and `chainId` still resolves to the SDK's numeric id. An unusable chain id no longer degrades the error to a generic `ValidationError`.
+- Keep the default `x-sdk-version` header synchronized with the package manifest in local builds, so it reports the exact installed SDK version.
+
 ## 2.17.1
 
 ### Patch Changes

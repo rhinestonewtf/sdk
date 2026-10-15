@@ -1,4 +1,4 @@
-import { describe, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { ValidationError } from '../../../src/errors/index'
 import { sourceChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
@@ -7,7 +7,7 @@ import { createNoopCall, createOwner } from '../framework/fixtures'
 import { executeIntent, expectOutcome } from '../framework/runner'
 
 describe.sequential('SDK integration eip7702', () => {
-  test('fails at submit when authorizations are not signed', async () => {
+  test('rejects a missing delegation proof without deploying the account', async () => {
     const sdk = createIntegrationSDK()
     const owner = createOwner()
     const eoa = createOwner()
@@ -18,6 +18,7 @@ describe.sequential('SDK integration eip7702', () => {
         eoa,
       },
     })
+    await expectNotDeployed(account, sourceChain)
     const eip7702InitSignature = await account.signEip7702InitData()
 
     const execution = await executeIntent({
@@ -28,13 +29,34 @@ describe.sequential('SDK integration eip7702', () => {
         sponsored: true,
         eip7702InitSignature,
       },
-      signAuthorizations: false,
+      transformSigned: (signed) => {
+        expect(signed.proofs.some((proof) => proof.kind === 'eip7702')).toBe(
+          true,
+        )
+        return {
+          ...signed,
+          proofs: signed.proofs.filter((proof) => proof.kind !== 'eip7702'),
+        }
+      },
     })
 
     expectOutcome(execution, {
       kind: 'submit-error',
       error: ValidationError,
+      code: 'VALIDATION_ERROR',
     })
+    if (
+      execution.phase === 'submit' &&
+      execution.error instanceof ValidationError
+    ) {
+      expect(execution.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            context: expect.objectContaining({ code: 'PROOF_COUNT_MISMATCH' }),
+          }),
+        ]),
+      )
+    }
     await expectNotDeployed(account, sourceChain)
   })
 })

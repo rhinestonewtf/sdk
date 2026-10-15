@@ -8,7 +8,7 @@ import type {
 } from '../../../src/index'
 import type { TransactionStatus } from '../../../src/transactions/intents/types'
 
-type ErrorPhase = 'prepare' | 'sign' | 'authorize' | 'submit' | 'execution'
+type ErrorPhase = 'prepare' | 'sign' | 'submit' | 'execution'
 type ErrorClass = (new (...args: any[]) => Error) & { name: string }
 
 type SuccessfulIntent = {
@@ -53,14 +53,12 @@ export async function executeIntent({
   account,
   transaction,
   label,
-  signAuthorizations = false,
   mode = 'execute',
   transformSigned,
 }: {
   account: RhinestoneAccount
   transaction: Parameters<RhinestoneAccount['prepareTransaction']>[0]
   label?: string
-  signAuthorizations?: boolean
   mode?: ExecutionMode
   // Mutate the signed payload before submit, e.g. to tamper with signature
   // bytes and assert the orchestrator rejects them.
@@ -86,25 +84,6 @@ export async function executeIntent({
     return { phase: 'sign', label, durationMs: elapsed(), error, prepared }
   }
 
-  let authorizations:
-    | Awaited<ReturnType<RhinestoneAccount['signAuthorizations']>>
-    | undefined
-
-  try {
-    authorizations = signAuthorizations
-      ? await account.signAuthorizations(prepared)
-      : undefined
-  } catch (error) {
-    return {
-      phase: 'authorize',
-      label,
-      durationMs: elapsed(),
-      error,
-      prepared,
-      signed,
-    }
-  }
-
   if (mode === 'sign') {
     return {
       phase: 'success',
@@ -117,7 +96,6 @@ export async function executeIntent({
 
   try {
     result = await account.submitTransaction(signed, {
-      ...(authorizations ? { authorizations } : {}),
       ...(mode === 'dryRun' ? { internal_dryRun: true } : {}),
     })
   } catch (error) {
