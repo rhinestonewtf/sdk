@@ -11,6 +11,7 @@ on:
         options:
           - smoke
           - all
+          - solana
       target:
         description: "Orchestrator environment to run against"
         required: true
@@ -62,6 +63,7 @@ jobs:
             TARGET="prod"
           fi
           echo "SUITE=$SUITE" >> "$GITHUB_ENV"
+          echo "INTEGRATION_SOLANA_TARGET=$TARGET" >> "$GITHUB_ENV"
 
           if [ "$TARGET" = "dev" ]; then
             if [ -z "$DEV_API_KEY" ]; then
@@ -94,3 +96,19 @@ jobs:
       - name: Run all integration tests
         if: env.SUITE == 'all'
         run: bun run test:integration -- --run
+
+      - name: Run Solana integration tests
+        if: env.SUITE == 'solana'
+        timeout-minutes: 25
+        env:
+          INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY }}
+        run: bun run test:integration:solana -- --run
+
+      - name: Upload sanitized Solana report
+        if: always() && env.SUITE == 'solana'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: solana-integration-report
+          path: .scratch/rhi-7365/solana-report.json
+          if-no-files-found: warn
+          retention-days: 7
