@@ -41,7 +41,11 @@ import {
   webauthnSignerId,
 } from '../../modules/validators/signer-id'
 import { buildSmartSessionMockSignature } from '../../modules/validators/smart-sessions/mock-signature'
-import { toSession } from '../../modules/validators/smart-sessions/resolve'
+import {
+  DUMMY_PRECLAIMOP_SELECTOR,
+  DUMMY_PRECLAIMOP_TARGET,
+  toSession,
+} from '../../modules/validators/smart-sessions/resolve'
 import type { SessionEnableData } from '../../modules/validators/smart-sessions/types'
 import type { ResolvedValidatorDefinition } from '../../modules/validators/types'
 import { createAccountSigningContext } from '../../signing/context'
@@ -310,45 +314,65 @@ describe('intent workflow', () => {
     })
   })
 
-  test('runs the session-enable pre-claim call before the user source calls', async () => {
-    const session = toSession({
-      chain: mainnet,
-      owners: { type: 'ecdsa', accounts: [account] },
-    })
-    const read = vi.fn(async (checkpoint: { id: string }) => [
-      { kind: 'session-enabled' as const, id: checkpoint.id, enabled: false },
-    ])
-    const workflow = context({ checkpoints: { read } })
+  test.each([false, true])(
+    'preserves source call ordering with session enabled=%s',
+    async (enabled) => {
+      const session = toSession({
+        chain: mainnet,
+        owners: { type: 'ecdsa', accounts: [account] },
+      })
+      const read = vi.fn(async (checkpoint: { id: string }) => [
+        { kind: 'session-enabled' as const, id: checkpoint.id, enabled },
+      ])
+      const workflow = context({ checkpoints: { read } })
 
-    const prepared = await prepareIntent(workflow, {
-      ...input,
-      source: {
-        chain,
-        token: address,
-        calls: [{ call: { target: address, value: 9n, data: '0x99' } }],
-      },
-      signers: {
-        kind: 'smart-session',
-        byChain: {
-          1: {
-            session,
-            enableData: {
-              userSignature: signature,
-              hashesAndChainIds: [
-                { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
-              ],
-              sessionToEnableIndex: 0,
+      const prepared = await prepareIntent(workflow, {
+        ...input,
+        source: {
+          chain,
+          token: address,
+          calls: [{ call: { target: address, value: 9n, data: '0x99' } }],
+        },
+        signers: {
+          kind: 'smart-session',
+          byChain: {
+            1: {
+              session,
+              enableData: {
+                userSignature: signature,
+                hashesAndChainIds: [
+                  { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` },
+                ],
+                sessionToEnableIndex: 0,
+              },
             },
           },
         },
-      },
-    })
+      })
 
-    expect(prepared.request.source?.execution?.calls).toMatchObject([
-      { data: expect.stringMatching(/^0x/u) },
-      { value: 9n, data: '0x99' },
-    ])
-  })
+      const sourceCalls = [
+        ...(enabled
+          ? []
+          : [
+              {
+                to: DUMMY_PRECLAIMOP_TARGET,
+                value: 0n,
+                data: DUMMY_PRECLAIMOP_SELECTOR,
+              },
+            ]),
+        { to: address, value: 9n, data: '0x99' },
+      ]
+      expect(prepared.request.source?.execution?.calls).toEqual(sourceCalls)
+      expect(prepared.intentInput.source?.execution?.calls).toEqual(
+        sourceCalls.map((call) => ({ ...call, value: call.value.toString() })),
+      )
+      expect(prepared.request.source).not.toHaveProperty('executions')
+      expect(prepared.intentInput.source).not.toHaveProperty('executions')
+      expect(prepared.request.destination).toMatchObject({
+        execution: { calls: [{ to: address, value: 1n, data: '0x' }] },
+      })
+    },
+  )
 
   test.each([false, true])(
     'fallback stays in verify-execution mode with enabled=%s',
