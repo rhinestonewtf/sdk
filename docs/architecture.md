@@ -375,12 +375,10 @@ resulting details to `signEnableSession`; do not rebuild an authorized session.
 Intent preparation narrows the one explicit source and routing filters before
 quoting and binding sponsorship. Once sessions burn before user calls, at most
 once per participating EVM chain; own destination execution burns separately
-unless it is the same chain. A destination authorization for the account's own
-execution on another chain is signed with that chain's session — its
-permission, enablement and enable data — even when its message repeats an
-origin's: Smart Session envelopes are chain-local, so one signature answers
-several slots only when payload, account, authority and validating chain all
-match. Session-specific EVM behavior does not broaden managed/standalone Solana
+unless it is the same chain. Session envelopes are chain-local, so a
+destination authorization for the account's own execution on another chain is
+signed with that chain's session even when its message repeats an origin's.
+Session-specific EVM behavior does not broaden managed/standalone Solana
 capabilities.
 
 ## Execution paths

@@ -28,8 +28,9 @@ export interface IntentSigningPayload {
  * Reuse of an earlier slot's signature.
  *
  * Permitted only where the payload, the account, the authority and the
- * validating chain are genuinely identical — a repeated destination payload is still its own
- * authorisation slot, it just happens to be satisfiable by the same bytes.
+ * validating chain are genuinely identical — a repeated destination payload is
+ * still its own authorisation slot, it just happens to be satisfiable by the
+ * same bytes.
  * `pre-claim` picks that half out of a session claim pair.
  */
 export interface IntentSignatureReuse {

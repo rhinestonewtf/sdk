@@ -234,10 +234,9 @@ function classifyRequests(
         const digest = hashTypedData(typedData)
         const identity = signerIdentity(request)
         const artifactId = `request-${index}`
-        // A destination authorization repeats an origin's Permit2 message, so
-        // its signing domain is the source chain, yet the destination account
-        // validates it. A smart session envelope is chain-local, so it must
-        // come from the destination's session.
+        // A destination authorization repeats the origin's source-domain
+        // message but is validated on the destination, and session envelopes
+        // are chain-local.
         const validationChain =
           purpose === 'destinationAuthorization' &&
           destination &&
