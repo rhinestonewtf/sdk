@@ -297,9 +297,10 @@ const scoped = {
 } as const
 ```
 
-A scoped entry constrains its domain and schema, not message values. Scoped
-configuration can be enabled on-chain, but this SDK intentionally rejects
-scoped direct signing until safe ERC-7739 signature emission is available.
+A scoped entry constrains its domain and schema, not message values. A scoped
+session signs allowed typed data with `signTypedData` as an ERC-7739
+signature, which Nexus and Startale accounts verify. It cannot sign plain
+messages or typed data outside its scope.
 
 For a complete walkthrough, see the [Quickstart guide](https://docs.rhinestone.dev/smart-wallet/quickstart).
 
