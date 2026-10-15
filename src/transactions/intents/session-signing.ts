@@ -134,7 +134,7 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         'Cannot sign a chain-agnostic intent payload with a smart session: a session is enabled per chain, so the signature would validate only on the leg it was resolved against',
       )
     }
-    const session = requireSession(prepared, request.payload.chain.id)
+    const session = requireSession(prepared, request.validationChain.id)
     // The encoding a session signature needs depends on what it authorises:
     // a claim is notarized (paired with its pre-claim form when executions are
     // verified), while a fill or target execution is authorised pre-claim.
@@ -155,16 +155,12 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         usage: request.payload.usage,
         typedData: request.payload.typedData,
         payloadId: request.payload.id,
-        chain: request.payload.chain,
+        chain: request.validationChain,
         session,
         environment: requireSessionEnvironment(prepared),
         context,
         payloads,
         output,
-        ...(request.purpose === 'destinationAuthorization' &&
-        session.verifyExecutions
-          ? { includeNotarized: true }
-          : {}),
       }),
     )
   }
@@ -183,7 +179,6 @@ function buildSessionStage(input: {
   readonly context: SigningContext
   readonly payloads: Record<Hex, SigningPayloadRegistry[Hex]>
   readonly output: 'pair' | 'pre-claim' | 'notarized'
-  readonly includeNotarized?: boolean
 }): IntentSigningPlanCreationInput['stages'][number] {
   const signing = sessionOwnerSigning(
     input.session,
@@ -203,11 +198,7 @@ function buildSessionStage(input: {
       }
     : { kind: 'none' as const, id: `${input.id}:none` }
   const notarizedId = `${input.id}:notarized`
-  if (
-    input.output === 'pair' ||
-    input.output === 'notarized' ||
-    input.includeNotarized
-  ) {
+  if (input.output === 'pair' || input.output === 'notarized') {
     const payloadId = notarizedPayload(
       input.context.account.address,
       input.payloadId,
