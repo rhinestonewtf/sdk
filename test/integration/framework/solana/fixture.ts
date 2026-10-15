@@ -210,18 +210,8 @@ export async function deployAndVerifySolanaFixture(fixture: SolanaFixture) {
   )
   await verifySolanaFixtureAuthority(fixture)
   const snapshot = JSON.stringify(fixture.deploymentEvidence)
-  const submissions = fixture.deploymentEvidence.reduce(
-    (sum, item) => sum + item.submissions,
-    0,
-  )
   await fixture.account.deploy('solana', solanaDevnet)
-  if (
-    JSON.stringify(fixture.deploymentEvidence) !== snapshot ||
-    fixture.deploymentEvidence.reduce(
-      (sum, item) => sum + item.submissions,
-      0,
-    ) !== submissions
-  )
+  if (JSON.stringify(fixture.deploymentEvidence) !== snapshot)
     throw new Error('Idempotent deployment submitted a second intent')
   return { evidence, status }
 }

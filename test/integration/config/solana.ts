@@ -10,7 +10,6 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia } from 'viem/chains'
 import type { RhinestoneSDKConfig } from '../../../src/config/account'
-import { RhinestoneSDK } from '../../../src/index'
 import {
   type SolanaDiagnostic,
   safeSolanaDiagnostic,
@@ -138,12 +137,6 @@ export type SolanaIntegrationConfig = ReturnType<
   typeof getSolanaIntegrationConfig
 >
 
-export function createSolanaIntegrationSDK(
-  config = getSolanaIntegrationConfig(),
-) {
-  return new RhinestoneSDK(config.sdkConfig)
-}
-
 // Read-only preflight must complete before fixture creation, signing or funding.
 export async function assertSolanaIntegrationNetworks(
   solana: { getGenesisHash(): Promise<string> },
@@ -203,9 +196,6 @@ export function createSolanaReport(path = SOLANA_REPORT_PATH) {
   return {
     record(input: SolanaDiagnostic) {
       entries.push(safeSolanaDiagnostic(input))
-    },
-    snapshot() {
-      return entries.map((entry) => ({ ...entry }))
     },
     async write() {
       await mkdir(dirname(path), { recursive: true })

@@ -197,7 +197,7 @@ describe('read-only network preflight', () => {
 })
 
 describe('sanitized report API', () => {
-  it('persists only safe evidence and returns independent snapshots', async () => {
+  it('persists only safe evidence', async () => {
     await mkdir('.scratch/rhi-7365', { recursive: true })
     const root = await mkdtemp('.scratch/rhi-7365/report-')
     try {
@@ -214,7 +214,6 @@ describe('sanitized report API', () => {
           headers: { authorization: 'sensitive' },
         },
       })
-      report.snapshot()[0].intentId = 'mutated'
       await report.write()
       expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
         entries: [
