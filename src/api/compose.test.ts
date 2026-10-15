@@ -12,6 +12,7 @@ import {
   recoverMessageAddress,
   slice,
   type TypedDataDefinition,
+  zeroAddress,
   zeroHash,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -748,6 +749,57 @@ describe('internal core composition', () => {
         `Scoped Smart Session signing is not available for ${name} accounts`,
       )
       expect(invoke).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    { account: { type: 'safe' as const }, name: 'safe' },
+    { account: { type: 'kernel' as const }, name: 'kernel' },
+  ])(
+    'falls back to direct mode on $name accounts when the session also allows it',
+    async ({ account }) => {
+      const { context, workflows, session } = sessionSigning(
+        scopedSigning,
+        account,
+        false,
+      )
+      const scopedAndDirect = {
+        ...session,
+        erc7739Policies: {
+          ...session.erc7739Policies,
+          allowedERC7739Content: [
+            ...session.erc7739Policies.allowedERC7739Content,
+            { appDomainSeparator: zeroHash, contentNames: [''] },
+          ],
+        },
+      }
+
+      const { signature } = await workflows.signTypedData(context, {
+        typedData: sessionTypedData,
+        chain,
+        signers: {
+          kind: 'smart-session',
+          byChain: { 1: { session: scopedAndDirect } },
+        },
+      })
+
+      // The ERC-7739 tail depends only on the typed data, so its absence means
+      // direct mode was used.
+      const tail = encodeErc7739ContentTail(
+        prepareSmartSessionErc7739Signing({
+          typedData: sessionTypedData,
+          verifierDomain: {
+            name: '',
+            version: '',
+            chainId: chain.id,
+            verifyingContract: zeroAddress,
+            salt: zeroHash,
+          },
+        }),
+      )
+      expect(
+        parseErc6492Signature(signature).signature.toLowerCase(),
+      ).not.toContain(tail.slice(2).toLowerCase())
     },
   )
 

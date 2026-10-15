@@ -136,9 +136,12 @@ export async function signRuntimeTypedData(
       checkpoints: input.checkpoints,
       chain: input.chain,
       session: input.session,
-      payload: allowsSessionTypedContent(input.session, input.typedData)
-        ? { kind: 'erc7739', typedData: input.typedData }
-        : { kind: 'direct', contentHash },
+      payload:
+        allowsSessionTypedContent(input.session, input.typedData) &&
+        (supportsSessionErc7739(input.runtime) ||
+          !allowsDirectSessionSigning(input.session))
+          ? { kind: 'erc7739', typedData: input.typedData }
+          : { kind: 'direct', contentHash },
       nominalMessage: { raw: contentHash },
     })
   }
@@ -339,6 +342,11 @@ function assertDirectSessionSigning(session: ResolvedSessionSignerSet): void {
   throw new Error(
     'This Smart Session signs only the typed data it allows; sign it with signTypedData',
   )
+}
+
+function supportsSessionErc7739(runtime: AccountRuntime): boolean {
+  const { kind } = runtime.adapter.capabilities.signatureEnvelope
+  return kind === 'nexus' || kind === 'startale'
 }
 
 // The domain the emissary reads from the account's `eip712Domain()`. Only
