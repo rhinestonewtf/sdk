@@ -100,6 +100,7 @@ describe('Solana live suite remains opt-in', () => {
     )
     expect(upload).toContain("if: always() && env.SUITE == 'solana'")
     expect(upload).toContain('path: .scratch/rhi-7365/solana-report.json')
+    expect(upload).toContain('include-hidden-files: true')
     expect(upload).toContain('retention-days: 7')
     expect(upload).not.toContain('INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY')
   })

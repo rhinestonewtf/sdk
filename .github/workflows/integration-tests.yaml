@@ -110,5 +110,6 @@ jobs:
         with:
           name: solana-integration-report
           path: .scratch/rhi-7365/solana-report.json
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
