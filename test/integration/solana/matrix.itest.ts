@@ -436,24 +436,21 @@ describe.sequential('Solana Devnet / Base Sepolia fresh live matrix', () => {
         config.funder,
         undefined,
         () => safety.assertActive(),
+        (signature) => record({ chain: solChain, transaction: signature }),
       )
       safety.assertActive()
-      const ataSignature = await funding.setupTokenAccounts()
-      if (ataSignature)
-        await record({ chain: solChain, transaction: ataSignature })
+      await funding.setupTokenAccounts()
       // One bounded provision for all cells; never refill a failing/negative case.
       const reserve = BigInt(
         await runtime.connection.getMinimumBalanceForRentExemption(0),
       )
       safety.assertActive()
-      const solanaFunding = await funding.fundShortfall({
+      await funding.fundShortfall({
         usdc: 4_000_000n,
         lamports: reserve + 20_000_000n,
       })
-      if (solanaFunding.signature)
-        await record({ chain: solChain, transaction: solanaFunding.signature })
       safety.assertActive()
-      const baseFunding = await fundBaseSepoliaShortfall({
+      await fundBaseSepoliaShortfall({
         fixture,
         publicClient: runtime.evmClient,
         walletClient: createWalletClient({
@@ -466,10 +463,10 @@ describe.sequential('Solana Devnet / Base Sepolia fresh live matrix', () => {
         }),
         budget: funding.budget,
         assertActive: () => safety.assertActive(),
+        persistTransaction: (hash) =>
+          record({ chain: baseChain, transaction: hash }),
         target: { usdc: 1_000_000n, wei: 1_000_000_000_000_000n },
       })
-      for (const hash of baseFunding.hashes)
-        await record({ chain: baseChain, transaction: hash })
       for (const [asset, spent] of Object.entries(funding.budget.snapshot()))
         await record({
           stage: `funded-${asset}`,

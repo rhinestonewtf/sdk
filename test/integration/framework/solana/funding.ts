@@ -1,3 +1,4 @@
+import { base58 } from '@scure/base'
 import {
   ACCOUNT_SIZE,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -105,6 +106,9 @@ export class SolanaFundingHarness {
     private readonly funder: Keypair,
     readonly budget = new SolanaFundingBudget(),
     private readonly assertActive: () => void = () => {},
+    private readonly persistTransaction: (
+      signature: string,
+    ) => Promise<void> = async () => {},
   ) {}
   private async guarded<T>(run: () => Promise<T>) {
     if (this.busy || this.unresolved)
@@ -146,10 +150,14 @@ export class SolanaFundingHarness {
       throw new Error('Insufficient Solana funder SOL (rent/fee headroom)')
     this.budget.reserve({ solLamports: required, solUsdc: usdc })
     tx.sign(this.funder)
+    if (!tx.signature) throw new Error('Missing Solana funding signature')
+    const signature = base58.encode(tx.signature)
     this.unresolved = true
-    // A failed/unknown write remains blocked, including a timeout before the RPC returns its signature.
+    // Persist the signed reference even if broadcast times out ambiguously.
     this.assertActive()
-    const signature = await connection.sendRawTransaction(tx.serialize(), {
+    await this.persistTransaction(signature)
+    this.assertActive()
+    await connection.sendRawTransaction(tx.serialize(), {
       skipPreflight: false,
       maxRetries: 0,
     })
@@ -304,6 +312,7 @@ async function fundBaseSepoliaShortfallInner({
   budget,
   target,
   assertActive = () => {},
+  persistTransaction = async () => {},
 }: {
   fixture: SolanaFixture
   publicClient: PublicClient
@@ -311,6 +320,7 @@ async function fundBaseSepoliaShortfallInner({
   budget: SolanaFundingBudget
   target: { usdc: bigint; wei: bigint }
   assertActive?: () => void
+  persistTransaction?: (hash: string) => Promise<void>
 }) {
   assertVerifiedSolanaFixture(fixture)
   await assertSolanaTestNetworks(fixture.connection, publicClient)
@@ -402,6 +412,7 @@ async function fundBaseSepoliaShortfallInner({
       gasPrice,
       type: 'legacy',
     })
+    await persistTransaction(hash)
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
       timeout: 60_000,

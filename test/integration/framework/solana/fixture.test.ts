@@ -1,5 +1,11 @@
+import { base58 } from '@scure/base'
 import { getAccount } from '@solana/spl-token'
-import { type Connection, Keypair, SystemProgram } from '@solana/web3.js'
+import {
+  type Connection,
+  Keypair,
+  SystemProgram,
+  Transaction,
+} from '@solana/web3.js'
 import {
   Actions,
   fetchSwig,
@@ -297,6 +303,94 @@ describe('verified fixture gates and bounded funding', () => {
   })
 })
 
+describe('funding evidence persistence', () => {
+  test.each(['receipt failure', 'receipt timeout', 'broadcast timeout'])(
+    'persists the signed Solana reference before %s',
+    async (failure) => {
+      const { fixture, connection } = fixtureForTest()
+      await verifySolanaFixtureAuthority(fixture)
+      const funder = Keypair.generate()
+      connection.getBalance.mockImplementation(async (address) =>
+        address.equals(funder.publicKey) ? 10_000_000 : 0,
+      )
+      const persisted: string[] = []
+      const persist = vi.fn(async (signature: string) => {
+        await Promise.resolve()
+        persisted.push(signature)
+      })
+      connection.sendRawTransaction.mockImplementation(async (raw) => {
+        const signature = Transaction.from(raw).signature
+        expect(signature).not.toBeNull()
+        expect(persisted).toEqual([base58.encode(signature!)])
+        if (failure === 'broadcast timeout')
+          throw new Error('broadcast timeout')
+        return persisted[0]
+      })
+      connection.getTransaction.mockImplementation(async (signature) => {
+        expect(persisted).toEqual([signature])
+        return failure === 'receipt timeout'
+          ? null
+          : { meta: { err: { InstructionError: [0, 'failed'] } } }
+      })
+      const funding = new SolanaFundingHarness(
+        fixture,
+        funder,
+        undefined,
+        undefined,
+        persist,
+      )
+      vi.useFakeTimers()
+      try {
+        const rejected = expect(
+          funding.fundShortfall({ usdc: 0n, lamports: 100n }),
+        ).rejects.toThrow(
+          failure === 'receipt failure' ? 'receipt failed' : 'timeout',
+        )
+        await vi.advanceTimersByTimeAsync(60_001)
+        await rejected
+        expect(persist).toHaveBeenCalledTimes(1)
+        expect(persisted).toHaveLength(1)
+        await expect(
+          funding.fundShortfall({ usdc: 0n, lamports: 100n }),
+        ).rejects.toThrow('unresolved')
+        expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1)
+        expect(funding.budget.snapshot().solLamports).toBe(5100n)
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
+  test.each(['fund', 'setup'])(
+    'failed persistence prevents Solana %s broadcast',
+    async (operation) => {
+      const { fixture, connection } = fixtureForTest()
+      await verifySolanaFixtureAuthority(fixture)
+      const funder = Keypair.generate()
+      connection.getBalance.mockImplementation(async (address) =>
+        address.equals(funder.publicKey) ? 10_000_000 : 0,
+      )
+      const funding = new SolanaFundingHarness(
+        fixture,
+        funder,
+        undefined,
+        undefined,
+        async () => {
+          throw new Error('evidence unavailable')
+        },
+      )
+      await expect(
+        operation === 'fund'
+          ? funding.fundShortfall({ usdc: 0n, lamports: 100n })
+          : funding.setupTokenAccounts(),
+      ).rejects.toThrow('evidence unavailable')
+      expect(connection.sendRawTransaction).not.toHaveBeenCalled()
+      expect(connection.getTransaction).not.toHaveBeenCalled()
+      await expect(funding.setupTokenAccounts()).rejects.toThrow('unresolved')
+    },
+  )
+})
+
 describe('funding deadlines and OP Stack fees', () => {
   test.each(['fund', 'setup'])(
     'expired deadline after fee await blocks Solana %s write',
@@ -369,6 +463,67 @@ describe('funding deadlines and OP Stack fees', () => {
     }
     return { input, publicClient, walletClient, budget }
   }
+
+  test.each([
+    'receipt failure',
+    'receipt timeout',
+    'later write',
+    'persistence',
+  ])(
+    'retains Base evidence and blocks further spending after %s failure',
+    async (failure) => {
+      const { input, publicClient, walletClient, budget } = await baseSetup()
+      input.target.usdc = 100n
+      const persisted: string[] = []
+      const persistTransaction = vi.fn(async (hash: string) => {
+        await Promise.resolve()
+        if (failure === 'persistence') throw new Error('evidence unavailable')
+        persisted.push(hash)
+      })
+      publicClient.waitForTransactionReceipt.mockImplementation(
+        async ({ hash }) => {
+          expect(persisted).toEqual([hash])
+          if (failure === 'receipt timeout') throw new Error('receipt timeout')
+          return {
+            status: failure === 'receipt failure' ? 'reverted' : 'success',
+          }
+        },
+      )
+      if (failure === 'later write')
+        walletClient.sendTransaction
+          .mockImplementationOnce(async () => '0x1234')
+          .mockImplementationOnce(async () => {
+            expect(persisted).toEqual(['0x1234'])
+            throw new Error('later write failed')
+          })
+      await expect(
+        fundBaseSepoliaShortfall({ ...input, persistTransaction }),
+      ).rejects.toThrow(
+        failure === 'persistence'
+          ? 'evidence unavailable'
+          : failure === 'later write'
+            ? 'later write failed'
+            : failure === 'receipt timeout'
+              ? 'receipt timeout'
+              : 'receipt failed',
+      )
+      expect(persistTransaction).toHaveBeenCalledExactlyOnceWith('0x1234')
+      expect(persisted).toEqual(failure === 'persistence' ? [] : ['0x1234'])
+      expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledTimes(
+        failure === 'persistence' ? 0 : 1,
+      )
+      await expect(fundBaseSepoliaShortfall(input)).rejects.toThrow(
+        'unresolved',
+      )
+      expect(walletClient.sendTransaction).toHaveBeenCalledTimes(
+        failure === 'later write' ? 2 : 1,
+      )
+      expect(budget.snapshot()).toMatchObject({
+        baseWei: 120_100n,
+        baseUsdc: 100n,
+      })
+    },
+  )
 
   test('reserves bounded L1-inclusive fees for native and token writes, and no fees for no-op', async () => {
     const { input, walletClient, budget } = await baseSetup()
