@@ -1020,8 +1020,11 @@ async function signIntentFromRequests<CompatibilityConfig>(
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
   if (input.signers?.kind === 'smart-session') {
     const preparedSessions = await prepareIntentSessions<CompatibilityConfig>({
+      // The origin requests validate on the account chain, so its session must
+      // resolve alongside the target's; the token is irrelevant to resolution.
       intent: {
         destination: input.targetChain,
+        source: { chain: accountChain, token: zeroAddress },
         calls: [],
         signers: input.signers,
       },

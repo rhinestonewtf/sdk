@@ -1059,6 +1059,25 @@ describe('internal core composition', () => {
       expect(slot.validationChain.id).toBe(arbitrum.id)
       expect(slot.reuse).toBeUndefined()
     })
+
+    test('headless signIntent signs both slots of a cross-chain session pair', async () => {
+      const { composition, context } = fixture()
+      const workflows = composition.createAccount(context).workflows
+      const account = workflows.getAddress(context, chain)
+      const routed = quoteFor({
+        account: { evm: { address: account } },
+      } as never)
+
+      const signed = await workflows.signIntentFromRequests(context, {
+        signingRequests: routed.signingRequests,
+        targetChain: destination,
+        signers,
+      })
+
+      expect(signed.proofs).toHaveLength(2)
+      const [origin, destinationProof] = signed.proofs
+      expect(destinationProof).not.toEqual(origin)
+    })
   })
 
   describe('resolving a Solana-origin delivery’s destination calls', () => {
