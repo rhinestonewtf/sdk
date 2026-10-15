@@ -13,14 +13,47 @@ const syncWorkflow = readFileSync(
   'utf8',
 )
 
-describe('SDK release workflow', () => {
-  it('preserves package release branches and gates without docs operations', () => {
-    expect(releaseWorkflow).toContain(
-      'branches:\n      - main\n      - release\n      - v1',
-    )
+describe('SDK v2 maintenance release workflow', () => {
+  it('publishes only from v2 after build, unit tests, and package lint', () => {
+    expect(releaseWorkflow).toContain('branches:\n      - v2\n')
+    expect(releaseWorkflow).toContain("if: github.ref == 'refs/heads/v2'")
+    expect(releaseWorkflow).toContain('needs: [build-and-test]')
+    expect(releaseWorkflow).toContain('run: bun run test')
+    expect(releaseWorkflow).toContain('run: bun run build')
+    expect(releaseWorkflow).toContain('run: bunx publint')
+    expect(releaseWorkflow).not.toContain('always()')
+    expect(releaseWorkflow).not.toContain('refs/heads/main')
+    expect(releaseWorkflow).not.toContain('refs/heads/release')
+    expect(releaseWorkflow).not.toContain('snapshot')
+  })
+
+  it('retains OIDC publishing and release-bot Changesets PRs', () => {
+    expect(releaseWorkflow).toContain('id-token: write')
+    expect(releaseWorkflow).toContain('actions/create-github-app-token@')
+    expect(releaseWorkflow).toContain('sudo npm install -g npm@11')
     expect(releaseWorkflow).toContain('Create Release Pull Request or Publish')
-    expect(releaseWorkflow).toContain('needs.build-and-test.result')
-    expect(releaseWorkflow).toContain('needs.integration-tests.result')
+    expect(releaseWorkflow).toContain('publish: bun run changeset:release')
+    expect(releaseWorkflow).toContain('version: bun run changeset:version')
+    expect(releaseWorkflow).toContain('Label release PR')
+  })
+
+  it('isolates the maintenance dist-tag and Changesets base', () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    )
+    const config = JSON.parse(
+      readFileSync(resolve(root, '.changeset/config.json'), 'utf8'),
+    )
+    expect(manifest.scripts['changeset:release']).toBe(
+      'bun run build && changeset publish --tag v2-latest',
+    )
+    expect(config.baseBranch).toBe('v2')
+    expect(releaseWorkflow).toContain('Verify maintenance release version')
+    expect(releaseWorkflow).toContain('/^2\\.\\d+\\.\\d+$/')
+  })
+
+  it('does not promote releases or update the current SDK reference', () => {
+    expect(releaseWorkflow).not.toContain('promotion')
     expect(releaseWorkflow).not.toContain('docs-repo')
     expect(releaseWorkflow).not.toContain('generate:reference')
     expect(releaseWorkflow).not.toContain('SDK_REFERENCE_DOCS_')
