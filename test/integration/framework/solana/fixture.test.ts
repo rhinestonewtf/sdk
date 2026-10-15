@@ -12,7 +12,7 @@ import {
   getSwigWalletAddress,
   Secp256k1Authority,
 } from '@swig-wallet/classic'
-import type { PublicClient, WalletClient } from 'viem'
+import { keccak256, type PublicClient, type WalletClient } from 'viem'
 import { estimateTotalFee } from 'viem/op-stack'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { solanaDevnet } from '../../../../src/solana/index'
@@ -446,11 +446,19 @@ describe('funding deadlines and OP Stack fees', () => {
         .mockResolvedValue({ status: 'success' }),
     }
     const walletClient = {
-      account: { address: '0x0000000000000000000000000000000000000001' },
+      account: {
+        address: '0x0000000000000000000000000000000000000001',
+        type: 'local',
+      },
       getChainId: vi.fn().mockResolvedValue(84532),
-      sendTransaction: vi.fn().mockImplementation(async () => {
+      prepareTransactionRequest: vi.fn(async (request) => request),
+      signTransaction: vi
+        .fn()
+        .mockResolvedValueOnce('0x1234')
+        .mockResolvedValue('0x5678'),
+      sendRawTransaction: vi.fn().mockImplementation(async () => {
         writes++
-        return '0x1234'
+        return keccak256(writes === 1 ? '0x1234' : '0x5678')
       }),
     }
     const budget = new SolanaFundingBudget()
@@ -467,6 +475,7 @@ describe('funding deadlines and OP Stack fees', () => {
   test.each([
     'receipt failure',
     'receipt timeout',
+    'broadcast timeout',
     'later write',
     'persistence',
   ])(
@@ -489,13 +498,17 @@ describe('funding deadlines and OP Stack fees', () => {
           }
         },
       )
-      if (failure === 'later write')
-        walletClient.sendTransaction
-          .mockImplementationOnce(async () => '0x1234')
-          .mockImplementationOnce(async () => {
-            expect(persisted).toEqual(['0x1234'])
+      walletClient.sendRawTransaction.mockImplementation(
+        async ({ serializedTransaction }) => {
+          const hash = keccak256(serializedTransaction)
+          expect(persisted.at(-1)).toBe(hash)
+          if (failure === 'broadcast timeout')
+            throw new Error('broadcast timeout')
+          if (failure === 'later write' && persisted.length === 2)
             throw new Error('later write failed')
-          })
+          return hash
+        },
+      )
       await expect(
         fundBaseSepoliaShortfall({ ...input, persistTransaction }),
       ).rejects.toThrow(
@@ -505,18 +518,29 @@ describe('funding deadlines and OP Stack fees', () => {
             ? 'later write failed'
             : failure === 'receipt timeout'
               ? 'receipt timeout'
-              : 'receipt failed',
+              : failure === 'broadcast timeout'
+                ? 'broadcast timeout'
+                : 'receipt failed',
       )
-      expect(persistTransaction).toHaveBeenCalledExactlyOnceWith('0x1234')
-      expect(persisted).toEqual(failure === 'persistence' ? [] : ['0x1234'])
+      expect(persistTransaction).toHaveBeenNthCalledWith(1, keccak256('0x1234'))
+      expect(persistTransaction).toHaveBeenCalledTimes(
+        failure === 'later write' ? 2 : 1,
+      )
+      expect(persisted).toEqual(
+        failure === 'persistence'
+          ? []
+          : failure === 'later write'
+            ? [keccak256('0x1234'), keccak256('0x5678')]
+            : [keccak256('0x1234')],
+      )
       expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledTimes(
-        failure === 'persistence' ? 0 : 1,
+        failure === 'persistence' || failure === 'broadcast timeout' ? 0 : 1,
       )
       await expect(fundBaseSepoliaShortfall(input)).rejects.toThrow(
         'unresolved',
       )
-      expect(walletClient.sendTransaction).toHaveBeenCalledTimes(
-        failure === 'later write' ? 2 : 1,
+      expect(walletClient.sendRawTransaction).toHaveBeenCalledTimes(
+        failure === 'persistence' ? 0 : failure === 'later write' ? 2 : 1,
       )
       expect(budget.snapshot()).toMatchObject({
         baseWei: 120_100n,
@@ -542,7 +566,7 @@ describe('funding deadlines and OP Stack fees', () => {
       baseUsdc: 100n,
     })
     await fundBaseSepoliaShortfall(input)
-    expect(walletClient.sendTransaction).toHaveBeenCalledTimes(2)
+    expect(walletClient.sendRawTransaction).toHaveBeenCalledTimes(2)
     expect(estimateTotalFee).toHaveBeenCalledTimes(2)
   })
 
@@ -565,11 +589,22 @@ describe('funding deadlines and OP Stack fees', () => {
           address === evmAddress ? 0n : 30_000n,
         )
       await expect(fundBaseSepoliaShortfall(input)).rejects.toThrow()
-      expect(walletClient.sendTransaction).not.toHaveBeenCalled()
+      expect(walletClient.sendRawTransaction).not.toHaveBeenCalled()
     },
   )
 
-  test.each(['estimate', 'receipt'])(
+  test('rejects non-local Base signers before signing or broadcasting', async () => {
+    const { input, walletClient } = await baseSetup()
+    walletClient.account.type = 'json-rpc'
+    await expect(fundBaseSepoliaShortfall(input)).rejects.toThrow(
+      'local signer',
+    )
+    expect(walletClient.prepareTransactionRequest).not.toHaveBeenCalled()
+    expect(walletClient.signTransaction).not.toHaveBeenCalled()
+    expect(walletClient.sendRawTransaction).not.toHaveBeenCalled()
+  })
+
+  test.each(['estimate', 'receipt', 'persistence'])(
     'deadline expiring during %s blocks the next Base write',
     async (stage) => {
       const { input, publicClient, walletClient } = await baseSetup()
@@ -581,7 +616,7 @@ describe('funding deadlines and OP Stack fees', () => {
       }
       if (stage === 'estimate')
         vi.mocked(estimateTotalFee).mockImplementationOnce(expire)
-      else
+      else if (stage === 'receipt')
         publicClient.waitForTransactionReceipt.mockImplementationOnce(
           async () => {
             active = false
@@ -591,13 +626,16 @@ describe('funding deadlines and OP Stack fees', () => {
       await expect(
         fundBaseSepoliaShortfall({
           ...input,
+          persistTransaction: async () => {
+            if (stage === 'persistence') active = false
+          },
           assertActive: () => {
             if (!active) throw new Error('deadline expired')
           },
         }),
       ).rejects.toThrow('deadline expired')
-      expect(walletClient.sendTransaction).toHaveBeenCalledTimes(
-        stage === 'estimate' ? 0 : 1,
+      expect(walletClient.sendRawTransaction).toHaveBeenCalledTimes(
+        stage === 'receipt' ? 1 : 0,
       )
     },
   )

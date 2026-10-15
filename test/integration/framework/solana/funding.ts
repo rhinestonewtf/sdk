@@ -16,6 +16,7 @@ import {
   type Address,
   encodeFunctionData,
   erc20Abi,
+  keccak256,
   type PublicClient,
   type WalletClient,
 } from 'viem'
@@ -327,8 +328,12 @@ async function fundBaseSepoliaShortfallInner({
   if (unresolvedBaseBudgets.has(budget))
     throw new Error('Base funding blocked: unresolved or concurrent submission')
   const account = walletClient.account
-  if (!account || (await walletClient.getChainId()) !== 84532)
-    throw new Error('Base Sepolia funding signer/network missing')
+  if (
+    !account ||
+    account.type !== 'local' ||
+    (await walletClient.getChainId()) !== 84532
+  )
+    throw new Error('Base Sepolia funding local signer/network missing')
   if (account.address.toLowerCase() === fixture.evmAddress.toLowerCase())
     throw new Error('Funder must differ from fixture')
   const recipient = fixture.evmAddress as Address
@@ -405,14 +410,18 @@ async function fundBaseSepoliaShortfallInner({
   const hashes = []
   for (const call of prepared) {
     assertActive()
-    const hash = await walletClient.sendTransaction({
+    const request = await walletClient.prepareTransactionRequest({
       account,
       chain: baseSepolia,
       ...call,
       gasPrice,
       type: 'legacy',
     })
+    const serializedTransaction = await walletClient.signTransaction(request)
+    const hash = keccak256(serializedTransaction)
     await persistTransaction(hash)
+    assertActive()
+    await walletClient.sendRawTransaction({ serializedTransaction })
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
       timeout: 60_000,
