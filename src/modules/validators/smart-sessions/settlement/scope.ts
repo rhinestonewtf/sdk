@@ -44,6 +44,9 @@ import type { SettlementCatalog, SettlementContext } from './types'
  * ERC-1271 list.
  */
 
+const defined = (tokens: (Address | undefined)[]) =>
+  tokens.filter((token): token is Address => token !== undefined)
+
 /** Each layer's settlement contract on a chain and the scoped call it makes. */
 // SAME_CHAIN_IE has no fixed target: it transfers the token itself or reuses the
 // swap scope, so it is resolved before this table.
@@ -57,6 +60,11 @@ const LAYERS: Record<
       chainId: number,
     ) => Address
     readonly scope: (ctx: SettlementContext) => ScopedAction
+    /** The tokens the layer moves on a chain, as served; empty where it is not. */
+    readonly tokens: (
+      settlement: SettlementCatalog,
+      chainId: number,
+    ) => Address[]
     /**
      * Each call costs the account a native messaging fee no pin can bound, so
      * a reusable session could repeat dust sends until the balance is gone.
@@ -71,16 +79,21 @@ const LAYERS: Record<
     target: (settlement, chainId) =>
       served(settlement, chainId, 'cctp').tokenMessenger,
     scope: scopeCctp,
+    tokens: (settlement, chainId) => defined([settlement[chainId]?.cctp?.usdc]),
   },
   OFT: {
     target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
+    tokens: (settlement, chainId) => defined([settlement[chainId]?.oft?.token]),
     requiresOneTimeUse: true,
     floorsDelivery: true,
   },
   ECO_IE: {
     target: (settlement, chainId) => served(settlement, chainId, 'eco').portal,
     scope: scopeEco,
+    tokens: (settlement, chainId) => [
+      ...(settlement[chainId]?.eco?.stablecoins ?? []),
+    ],
     floorsDelivery: true,
   },
   LZ: {
@@ -89,6 +102,11 @@ const LAYERS: Record<
     spender: (settlement, chainId) =>
       served(settlement, chainId, 'lz').transferDelegate,
     scope: scopeLz,
+    tokens: (settlement, chainId) =>
+      defined([
+        settlement[chainId]?.lz?.stargateUsdc?.token,
+        settlement[chainId]?.lz?.cctp?.token,
+      ]),
     requiresOneTimeUse: true,
     floorsDelivery: true,
   },
@@ -377,13 +395,33 @@ function scopePermit(
     const target = LAYERS[layer].target(settlement, options.chainId)
     const spender =
       LAYERS[layer].spender?.(settlement, options.chainId) ?? target
+    // Each layer is offered only the tokens it moves, so its one pinned token
+    // is chosen here and no action ORs two tokens. With none left, the layer
+    // refuses the permit's tokens as before.
+    const moves = (chainId: number, token: Address) =>
+      LAYERS[layer]
+        .tokens(settlement, chainId)
+        .some((moved) => isAddressEqual(moved, token))
+    const tokens = sourceTokens.filter((token) => moves(options.chainId, token))
+    if (tokens.length === 0 && sourceTokens.length > 1) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} moves none of the \`from\` tokens on chain ${options.chainId}`,
+        { code: 'TOKEN_NOT_ROUTED', chainId: options.chainId, leg: 'from' },
+      )
+    }
+    // A leg on a chain the layer does not serve stays, so the layer refuses it.
+    const legs = destinations.filter(
+      (leg) =>
+        LAYERS[layer].tokens(settlement, leg.chainId).length === 0 ||
+        moves(leg.chainId, leg.token),
+    )
     const action = LAYERS[layer].scope({
       chainId: options.chainId,
       settlement,
       target,
       account: options.account,
-      sourceTokens,
-      destinations,
+      sourceTokens: tokens.length ? tokens : sourceTokens,
+      destinations: legs.length ? legs : destinations,
       cap,
       fromCaps,
       ...(permit.maxFeeBps === undefined
@@ -391,7 +429,7 @@ function scopePermit(
         : { maxFeeBps: permit.maxFeeBps }),
       ...(validUntil === undefined ? {} : { validUntil }),
     })
-    return { layer, spender, action }
+    return { layer, spender, action, tokens, legs }
   }
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
   // only the layers that can; any other error still throws. A fixed order keeps
@@ -399,9 +437,10 @@ function scopePermit(
   const skipped = new Map<DroppedSettlementLayer['layer'], string>(
     options.across?.dropped ? [['ACROSS', options.across.dropped]] : [],
   )
-  const scopedLayers = CROSS_CHAIN_LAYERS.filter((layer) =>
+  const bridges = CROSS_CHAIN_LAYERS.filter((layer) =>
     requested.includes(layer),
-  ).flatMap((layer) => {
+  )
+  const scopedLayers = bridges.flatMap((layer) => {
     if (!all) {
       const scopedLayer = recover(
         (error) => refuse(error, { layer }),
@@ -453,18 +492,56 @@ function scopePermit(
       ),
     )
   }
+  // An explicit list is strict about tokens too: one no named layer moves
+  // would sit in the permit unusable. A dry run that refused a layer has
+  // said why already.
+  if (!all && !across && scopedLayers.length === bridges.length) {
+    const token = sourceTokens.find(
+      (token) =>
+        !scopedLayers.some(({ tokens }) =>
+          tokens.some((moved) => isAddressEqual(moved, token)),
+        ),
+    )
+    if (token) {
+      refuse(
+        refusal(
+          'TOKEN_NOT_ROUTED',
+          `crossChainPermits: no named layer moves the \`from\` token ${token} on chain ${options.chainId}`,
+          { chainId: options.chainId, leg: 'from' },
+        ),
+      )
+    }
+    const leg = destinations.find(
+      (leg) => !scopedLayers.some(({ legs }) => legs.includes(leg)),
+    )
+    if (leg) {
+      refuse(
+        refusal(
+          'TOKEN_NOT_ROUTED',
+          `crossChainPermits: no named layer delivers the \`to\` token ${leg.token} on chain ${leg.chainId}`,
+          { chainId: leg.chainId, leg: 'to' },
+        ),
+      )
+    }
+  }
   const settlementLayers: CrossChainSettlementLayer[] = [
     ...(across ? (['ACROSS'] as const) : []),
     ...scopedLayers.map(({ layer }) => layer),
   ]
-  // Permit2 joins the one approve, so ACROSS draws on the same maxAmount.
-  const spenders = [
-    ...scopedLayers.map(({ spender }) => spender),
-    ...(across ? [PERMIT2] : []),
-  ].filter(
-    (spender, i, list) =>
-      list.findIndex((other) => isAddressEqual(other, spender)) === i,
-  )
+  // Permit2 joins the one approve, so ACROSS draws on the same maxAmount. A
+  // token is approved only to the layers that move it.
+  const spendersOf = (token: Address) =>
+    [
+      ...scopedLayers
+        .filter(({ tokens }) =>
+          tokens.some((moved) => isAddressEqual(moved, token)),
+        )
+        .map(({ spender }) => spender),
+      ...(across ? [PERMIT2] : []),
+    ].filter(
+      (spender, i, list) =>
+        list.findIndex((other) => isAddressEqual(other, spender)) === i,
+    )
 
   // Without allowFees, only the layers' own approves: an unsponsored intent or
   // one carrying an app fee adds calls this session does not authorise.
@@ -473,9 +550,11 @@ function scopePermit(
   // repeated approves grant the cap many times. Each layer call keeps its own
   // counter; this one is what bounds them together, for the session's life.
   const capRules = cap === undefined ? [] : [cumulativeCap(32n, cap)]
-  const spenderPins = anyOf(spenders.map((s) => allOf([pin(0n, s)])))
-  const approveActions = sourceTokens.map(
-    (token): ScopedAction =>
+  const approveActions = sourceTokens.flatMap((token): ScopedAction[] => {
+    const spenders = spendersOf(token)
+    if (spenders.length === 0) return []
+    const spenderPins = anyOf(spenders.map((s) => allOf([pin(0n, s)])))
+    return [
       spenders.length === 1
         ? swapAction(token, APPROVE_SELECTOR, [
             pin(0n, spenders[0]),
@@ -501,7 +580,8 @@ function scopePermit(
               },
             ],
           },
-  )
+    ]
+  })
   const actions = [
     ...scopedLayers.map(({ action }) => action),
     ...approveActions,

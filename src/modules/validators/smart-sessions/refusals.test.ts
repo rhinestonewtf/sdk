@@ -387,7 +387,7 @@ describe('collectSessionRefusals', () => {
     )
   })
 
-  test('a second cap and each layer refusing the extra token are reported', () => {
+  test('a second cap and each layer judged on the token it moves are reported', () => {
     const refusals = validateRefusals(
       session(
         [
@@ -408,8 +408,8 @@ describe('collectSessionRefusals', () => {
       refusals.map(({ code, layer, chainId }) => [code, layer, chainId]),
     ).toEqual([
       ['MULTIPLE_MAX_AMOUNTS', undefined, arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'OFT', arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'LZ', arbitrum.id],
+      // OFT takes USDT0 alone, which has no route to Base; LZ takes USDC.
+      ['LAYER_NOT_SERVED', 'OFT', base.id],
     ])
   })
 
