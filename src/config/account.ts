@@ -389,7 +389,12 @@ interface CrossChainPermit {
    * `maxAmount` with `fallback` requires `oneTimeUse`, and a native token
    * is refused.
    */
-  from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
+  from?: {
+    chain: Chain
+    token: Address
+    maxAmount?: bigint
+    maxNativeFee?: bigint
+  }[]
   /**
    * Allowed destination legs: chain + token (+ optional recipient pin).
    * Omit for no destination-token restriction. Note `recipientIsAccount`
@@ -458,6 +463,14 @@ interface FromLeg {
    * refuses it.
    */
   maxAmount?: bigint
+  /**
+   * `LZ` and `OFT` only: the most native value, in wei of this chain's native
+   * token, the session may send with those layers' calls on this chain to pay
+   * LayerZero messaging fees. A lifetime total like `maxAmount`, counted on
+   * what each call sends (refunds are not credited back). Required for those
+   * layers without `oneTimeUse`; with it, it caps that one settlement.
+   */
+  maxNativeFee?: bigint
 }
 
 interface ToLeg {
@@ -1300,9 +1313,10 @@ interface Session {
    *  permission id. Absent on sessions stored before this field existed. */
   access?: SessionAccess
   /** Set on a session without `oneTimeUse` whose `crossChainPermits` entry
-   *  sets `maxAmount` on its chain, making it a lifetime budget. Enabling
-   *  the session again resets that budget, so `getSessionDetails` refuses one
-   *  that is already enabled unless you pass `allowBudgetReset`; it finds the
+   *  sets `maxAmount` or `maxNativeFee` on its chain, making it a lifetime
+   *  budget. Enabling the session again resets that budget, so
+   *  `getSessionDetails` refuses one that is already enabled unless you pass
+   *  `allowBudgetReset`; it finds the
    *  budget in the session's actions too, so a stored session without this
    *  field is still checked, as is a hand-written rule of the same cap shape.
    *  Metadata only — it does not change the

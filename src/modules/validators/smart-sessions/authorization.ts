@@ -11,11 +11,16 @@ import {
 import { getSessionData } from './digest'
 import { getSmartSessionEmissaryAddress } from './module'
 import { CONSUME_SELECTOR } from './one-time-use'
-import { defaultOneTimeUseIdPolicy } from './policies/addresses'
+import {
+  defaultOneTimeUseIdPolicy,
+  VALUE_LIMIT_POLICY_ADDRESS,
+} from './policies/addresses'
 import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
 } from './resolve'
+import { LZ_EXECUTE_SELECTOR } from './settlement/lz'
+import { OFT_SEND_SELECTOR } from './settlement/oft'
 import type { Session, SessionData, SessionDetails } from './types'
 
 export const SESSION_LOCK_TAG = '0x000000000000000000000000' as const
@@ -180,8 +185,14 @@ export function hasLifetimeBudget(
     const amountWord =
       actionTargetSelector === '0x095ea7b3' ||
       actionTargetSelector === '0xa9059cbb'
-    return actionPolicies.some(({ initData }) =>
-      hasCapRule(initData, amountWord),
+    // A maxNativeFee: ValueLimitPolicy on the LZ or OFT call.
+    const nativeFee =
+      actionTargetSelector === LZ_EXECUTE_SELECTOR ||
+      actionTargetSelector === OFT_SEND_SELECTOR
+    return actionPolicies.some(
+      ({ policy, initData }) =>
+        hasCapRule(initData, amountWord) ||
+        (nativeFee && isAddressEqual(policy, VALUE_LIMIT_POLICY_ADDRESS)),
     )
   })
 }

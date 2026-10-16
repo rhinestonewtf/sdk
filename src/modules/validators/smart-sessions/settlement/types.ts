@@ -85,4 +85,9 @@ export interface SettlementContext {
    * seconds; without either `ECO_IE` pins no deadline.
    */
   readonly validUntil?: bigint
+  /**
+   * Set without oneTimeUse: the layer's call may run any number of times, so
+   * a layer that relies on running once must bound it otherwise.
+   */
+  readonly reusable?: true
 }
