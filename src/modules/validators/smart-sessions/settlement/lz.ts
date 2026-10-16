@@ -47,7 +47,8 @@ const LZ_CCTP_TOKEN_MESSENGER: Address =
 
 /**
  * The most relay fee the key may send LayerZero's receiver, in USDC units:
- * ~10x the live fee into Ethereum, the dearest destination.
+ * ~10x the live fee into Ethereum, the dearest destination. A cumulative
+ * ceiling: on a reusable session it bounds every relay fee the session pays.
  */
 export const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
 
@@ -376,7 +377,9 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
         pull: args[0](96n),
         limits: [
           // The fee goes to LayerZero's receiver, so the key cannot keep it;
-          // the ceiling bounds how much of the pull it can waste there.
+          // the ceiling bounds how much of the pull it can waste there. On a
+          // reusable session it is a lifetime total (about 10 sends into
+          // Ethereum), after which the fee route is refused.
           ...(feeless ? [] : [cumulativeCap(args[1](32n), maxFee)]),
         ],
       })
