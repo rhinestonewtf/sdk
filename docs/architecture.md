@@ -244,8 +244,8 @@ checking which role the owner holds.
 The destination hosts no account runtime, so preparation runs the ordinary EVM
 cross-chain path with the account hosted on `source.chain`. The
 destination authorization is its own signing request; where its payload,
-account and authority match an earlier slot exactly, the same bytes satisfy
-both — but it stays a distinct slot with its own proof. Whether the destination wallet
+account, authority and validating chain match an earlier slot exactly, the same
+bytes satisfy both — but it stays a distinct slot with its own proof. Whether the destination wallet
 and its token account exist is an operator prerequisite — the SDK does not probe
 it, and a settlement layer can refuse a route that would have to create one.
 Where the delivering provider names the destination chain differently from us,
@@ -375,8 +375,11 @@ resulting details to `signEnableSession`; do not rebuild an authorized session.
 Intent preparation narrows the one explicit source and routing filters before
 quoting and binding sponsorship. Once sessions burn before user calls, at most
 once per participating EVM chain; own destination execution burns separately
-unless it is the same chain. Session-specific EVM behavior does not broaden
-managed/standalone Solana capabilities.
+unless it is the same chain. Session envelopes are chain-local, so a
+destination authorization for the account's own execution on another chain is
+signed with that chain's session even when its message repeats an origin's.
+Session-specific EVM behavior does not broaden managed/standalone Solana
+capabilities.
 
 ## Execution paths
 

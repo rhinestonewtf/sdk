@@ -20,6 +20,7 @@ const requests: IntentSigningRequest[] = [
       typedData: {} as never,
       usage: 'intent-origin',
     },
+    validationChain: { kind: 'evm', id: 1, caip2: 'eip155:1' },
     shape: 'hex',
     exposedForIndependentSigning: true,
   },

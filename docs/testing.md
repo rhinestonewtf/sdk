@@ -52,8 +52,9 @@ deployment-route checks (purpose, Swig, wallet, authority, chain, costs, expiry)
 before a `proofs: []` submission, Swig id resolution and every pre-network
 refusal on the standalone and composite facades, VM routing of `deploy`, an
 existing Swig resolving `true` without a submission, and the
-`ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. Live Swig creation is not covered
-offline. Swig authority changes (passkeys and secp256k1 keys) run through the
+`ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. The bundled
+live Solana suite covers fresh Swig deployment; offline coverage remains
+deterministic. Swig authority changes (passkeys and secp256k1 keys) run through the
 real Solana workflow against a fake orchestrator with software signers: exact
 requests, a refusal per quote mutation including curve and permission swaps,
 cross-instance tampering, signing and expiry, an external `toAccount` manager
@@ -260,25 +261,28 @@ requires the staged environment.
 
 ## Integration tests
 
-Integration tests exercise Base Sepolia as the source chain and Arbitrum
-Sepolia as the target chain. Unless `INTEGRATION_ORCHESTRATOR_URL` is set, they
+Integration tests exercise EVM scenarios on Base Sepolia and Arbitrum
+Sepolia, plus Solana Devnet same-chain and Base Sepolia cross-VM flows. Unless `INTEGRATION_ORCHESTRATOR_URL` is set, they
 use the SDK's built-in production orchestrator URL and production contract
 addresses. They run through `vitest.config.integration.ts`, with file parallelism disabled
-and five-minute test and hook timeouts. CI retries a failed test up to twice;
-local runs fail on the first attempt.
+and five-minute test and hook timeouts. CI retries failed EVM tests up to twice;
+Solana's suite-level `retry: 0` overrides that default. Local runs never retry.
 
 The smoke suite validates an unfunded sponsored flow. The full suite covers the
 account adapters, supported-chain queries, EIP-7702, failure behavior,
 pre-claim operations, signature modes, Smart Sessions, and session policies.
 Some full-suite scenarios move testnet native tokens or USDC and therefore need
-the funder key.
+the funder key. The full bundle also includes five Solana flows and requires
+the Solana funder key; missing credentials fail rather than skip coverage.
+Smoke remains EVM-only and requires no Solana credentials.
 
 ### Environment
 
 | Variable                         | Purpose                                              | Required          |
 | -------------------------------- | ---------------------------------------------------- | ----------------- |
 | `INTEGRATION_RHINESTONE_API_KEY` | Orchestrator API key                                 | Always            |
-| `INTEGRATION_FUNDER_PRIVATE_KEY` | Testnet funder holding native tokens and USDC        | Funded scenarios  |
+| `INTEGRATION_FUNDER_PRIVATE_KEY` | Testnet funder holding native tokens and USDC        | Full suite        |
+| `INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY` | Devnet funder JSON64 keypair                   | Full suite        |
 | `INTEGRATION_ORCHESTRATOR_URL`   | Orchestrator endpoint override                       | No                |
 | `INTEGRATION_USE_DEV_CONTRACTS`  | Use development contract addresses when `true`       | No                |
 | `INTEGRATION_RPC_URL_<CHAIN_ID>` | Per-chain RPC override for funding operations        | No                |
@@ -349,3 +353,110 @@ bun run test:integration:smoke -- --run
 ```
 
 `.env.example` lists the required variables.
+
+## Solana live coverage
+
+The default full bundle (`test:integration`, manual `suite=all`, and production
+release CI) includes Solana Devnet and Base Sepolia. There is no separate Solana
+flag or target. The `@dev` smoke gate remains EVM-only. A passing offline run
+does not establish live settlement coverage.
+
+### Matrix and refusals
+
+Exactly five live tests run, one per row. Sponsored rows use gas-only sponsorship
+`{ gas: true, bridging: false, swaps: false }`; quotes must report
+`gas.sponsored: true` even at zero gas cost. Unsponsored requests may still
+receive provider subsidies. A shared `beforeAll` verifies a fresh account,
+deploys it, checks repeated deployment, and funds measured shortfalls.
+
+| Row | Live action | Sponsorship |
+| --- | --- | --- |
+| SC-D | Devnet USDC → Devnet USDC delivery | Unsponsored |
+| SC-I-USDC | Devnet SPL-USDC instruction | Unsponsored |
+| SC-I-SOL | Devnet System Program native-SOL instruction | Gas-only sponsored |
+| IN-D | Base Sepolia USDC → Devnet USDC delivery | Gas-only sponsored |
+| OUT-C | Devnet USDC → managed Base Sepolia account, then ERC-20 transfer call | Gas-only sponsored |
+
+Deterministic offline tests cover negative validation: same-chain native-SOL delivery-only, EVM→Solana
+instructions/calls, unsponsored instructions without a fee source, instruction
+source caps, invalid caps or mint pairs, invalid deployment IDs, and a request
+above the fixture's spendable USDC. These inputs are refused before signing,
+submission, funding, or balance effects.
+
+Native SOL is `11111111111111111111111111111111`, not WSOL. Native-SOL
+cross-chain shapes are SDK-supported but excluded from live acceptance while
+Devnet has no suitable provider route; this is a coverage gap, not an invalid
+native-delivery test. Inbound Solana instructions/calls are invalid SDK inputs.
+
+### Configuration and fixture safety
+
+| Variable | Purpose |
+| --- | --- |
+| `INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY` | Required Devnet funder: a consistent JSON array of exactly 64 integer bytes (`0`–`255`) from a standard ed25519 Solana keypair. |
+| `INTEGRATION_SOLANA_RPC_URL` | Optional Solana RPC override; it must be Devnet. |
+| `INTEGRATION_RPC_URL_84532` | Optional Base Sepolia RPC override. |
+| `INTEGRATION_RHINESTONE_API_KEY` | API key for the selected service target. |
+| `INTEGRATION_FUNDER_PRIVATE_KEY` | Existing Base Sepolia EVM funder for cross-VM rows. |
+
+Do not put key values in commands, source, reports, or chat. Use a secure
+launcher that reads a permission-restricted environment file and exports values
+only to its child test process. A fresh ECDSA Swig owner is generated in memory
+per run; its key is never persisted or uploaded and cannot be recovered later.
+Fresh fixtures can leave Devnet rent/dust.
+
+The shared default is the production endpoint and contracts. Setting
+`INTEGRATION_ORCHESTRATOR_URL=https://dev.v1.orchestrator.rhinestone.dev`
+selects dev and enables dev contracts, as for EVM. Only the known production
+and dev endpoints are accepted. Endpoint/contract mismatches fail explicitly;
+like EVM, any nonempty endpoint override implies dev contracts, even if
+`INTEGRATION_USE_DEV_CONTRACTS=false`. Solana rejects that contradictory
+setting and rejects an explicit production URL override that implies dev contracts. Both targets remain pinned to
+Solana Devnet (genesis
+`EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`) and Base Sepolia (chain ID
+`84532`); mainnet RPCs are refused before deployment, signing, or funding.
+
+Funds belong to the derived Swig **wallet**, not its public state account or
+ECDSA authority. Before any funding, the suite verifies the state/program,
+derived wallet, role-0 ECDSA authority, and its permissions. It creates the
+wallet and recipient USDC ATAs, then funds measured shortfalls only.
+
+### Limits, execution, and evidence
+
+Funding ceilings are 5 USDC on each chain, 0.1 SOL including ATA rent/fees, and
+0.002 Base Sepolia ETH. The current fixture targets are 2 USDC plus rent and
+10,000,000 lamports on Solana, and 0.5 USDC without an ETH top-up on Base Sepolia; a
+shortfall may be lower. Cross-chain source caps are 0.5 USDC. The suite stops
+on a limit or balance failure; it never automatically raises limits or refills.
+
+The full integration runner is sequential and stops after the first failed
+scenario. Solana tests have five-minute test/hook timeouts and zero automatic
+test retries. Solana RPC calls are paced; only allowlisted reads retry transient
+HTTP 429/502/503/504 responses (at most twice, honoring `Retry-After`, within a
+30-second total deadline). Writes and ambiguous transport failures are never
+retried. RPC failures record only method, status and category, not response
+bodies or credential-bearing URLs. Balance reads decode the fetched token
+account once, and final residue reporting retains successful reads even when
+another account cannot be read. SDK deployment calls have a separate 60-second deadline that
+revokes the fixture transport on failure; execution uses bounded status polling
+without first entering the SDK's deadline-free wait. These failures reach the
+suite guard to record evidence and halt later writes. It records a sanitized
+intent ID before submission. An interrupted or timed-out submission halts
+further spending until its intent and native receipts are reconciled. Diagnostics are sanitized and written to
+`.scratch/integration/solana-report.json`. Manual `suite=all` and production
+release runs upload this sanitized report on success or failure, retained for
+seven days. The funder secret is injected only into the full-suite step.
+
+### Running
+
+Supply the required credentials through the ignored `.env` file or a secure
+launcher; never put values in commands or logs:
+
+```bash
+bun run test:integration -- --run
+
+gh workflow run integration-tests.yaml --ref <ref> -f suite=all -f target=prod
+```
+
+For the development service, select manual `target=dev` or set the shared
+endpoint locally. Both services still use Solana Devnet and Base Sepolia.
+All live workflows share the `live-integration-tests` concurrency group.

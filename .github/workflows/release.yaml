@@ -91,7 +91,19 @@ jobs:
 
       - name: Run all integration tests
         if: github.ref == 'refs/heads/release'
+        env:
+          INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY: ${{ secrets.INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY }}
         run: bun run test:integration -- --run
+
+      - name: Upload sanitized Solana report
+        if: always() && github.ref == 'refs/heads/release'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: solana-integration-report
+          path: .scratch/integration/solana-report.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
   release:
     name: Release
