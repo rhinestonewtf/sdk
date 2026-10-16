@@ -360,7 +360,9 @@ publication. A passing offline run does not establish live settlement coverage.
 ### Matrix and refusals
 
 Each row runs twice: `sponsored: false`, then gas-only sponsorship
-`{ gas: true, bridging: false, swaps: false }`.
+`{ gas: true, bridging: false, swaps: false }`. Gas-only quotes must report
+`gas.sponsored: true` even at zero gas cost. Unsponsored requests may still
+receive provider subsidies.
 
 | Row | Live action | Sponsorship |
 | --- | --- | --- |
@@ -420,10 +422,13 @@ Funding ceilings are 5 USDC on each chain, 0.1 SOL including ATA rent/fees, and
 shortfall may be lower. Cross-chain source caps are 0.5 USDC. The suite stops
 on a limit or balance failure; it never automatically raises limits or refills.
 
-The runner is sequential, has bounded five-minute test/hook timeouts, and has
-zero automatic retries. It records a sanitized intent ID before submission. An
-interrupted or timed-out submission halts further spending until its intent and
-native receipts are reconciled. Diagnostics are sanitized and written to
+The runner is sequential, has five-minute test/hook timeouts, and has zero
+automatic retries. SDK deployment calls have a separate 60-second deadline that
+revokes the fixture transport on failure; execution uses bounded status polling
+without first entering the SDK's deadline-free wait. These failures reach the
+suite guard to record evidence and halt later writes. It records a sanitized
+intent ID before submission. An interrupted or timed-out submission halts
+further spending until its intent and native receipts are reconciled. Diagnostics are sanitized and written to
 `.scratch/rhi-7365/solana-report.json`. Manual `suite=solana` runs upload only
 this sanitized report (including on failure), retained for seven days.
 

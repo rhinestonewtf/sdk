@@ -61,8 +61,10 @@ export function observeDeploymentFetch(
   fetcher: typeof fetch,
   evidence: DeploymentEvidence[],
   onEvidence?: (evidence: DeploymentEvidence) => void | Promise<void>,
+  assertActive: () => void = () => {},
 ): typeof fetch {
   return (async (input, init) => {
+    assertActive()
     const url =
       typeof input === 'string'
         ? input
@@ -84,6 +86,7 @@ export function observeDeploymentFetch(
       if (item) {
         item.submissions++
         await onEvidence?.({ ...item, quotedAmounts: [...item.quotedAmounts] })
+        assertActive()
       }
     }
     const response = await fetcher(input, init)
@@ -104,6 +107,7 @@ export function observeDeploymentFetch(
         const records: unknown[] =
           isQuote && Array.isArray(record.routes) ? record.routes : [record]
         for (const candidate of records) {
+          assertActive()
           if (!candidate || typeof candidate !== 'object') continue
           const route = candidate as Record<string, unknown>
           if (isQuote && route.purpose !== 'deployment') continue
@@ -129,11 +133,13 @@ export function observeDeploymentFetch(
                 item.quotedAmounts.push(amount)
             }
           }
-          if (isQuote)
+          if (isQuote) {
             await onEvidence?.({
               ...item,
               quotedAmounts: [...item.quotedAmounts],
             })
+            assertActive()
+          }
         }
       }
     }

@@ -1,7 +1,7 @@
 import type { PublicKey } from '@solana/web3.js'
 import { type Address, encodeFunctionData, erc20Abi } from 'viem'
 import { baseSepolia } from 'viem/chains'
-import type { Transaction } from '../../../src/index'
+import type { SignedTransactionData, Transaction } from '../../../src/index'
 import { solanaAddress, solanaDevnet } from '../../../src/solana/index'
 import {
   BASE_SEPOLIA_USDC,
@@ -129,6 +129,21 @@ export function matrixTransaction(
 export class SolanaSuiteSafety {
   private failure: string | undefined
   private deadline: number | undefined
+  async guard(
+    caseId: string,
+    run: () => Promise<void>,
+    onFailure: (error: unknown) => Promise<void>,
+  ) {
+    this.begin()
+    try {
+      await run()
+      this.complete()
+    } catch (error) {
+      this.halt(caseId)
+      await onFailure(error)
+      throw error
+    }
+  }
   assertReady() {
     if (this.failure || this.deadline !== undefined)
       throw new Error(
@@ -156,6 +171,16 @@ export class SolanaSuiteSafety {
   halt(caseId: string) {
     this.failure ??= caseId
   }
+}
+
+export function assertGasSponsorship(
+  cell: SolanaCell,
+  fees: SignedTransactionData['quote']['cost']['fees'],
+) {
+  // Requested gas coverage is mandatory even when its quoted cost is zero.
+  // Unsponsored cells may still receive provider subsidies in any category.
+  if (cell.gasSponsored && fees.breakdown.gas.sponsored !== true)
+    throw new Error('Gas-only quote must sponsor gas')
 }
 
 export function assertUserDebit(

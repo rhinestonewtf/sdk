@@ -43,6 +43,7 @@ import {
   waitForTerminalIntent,
 } from '../framework/solana'
 import {
+  assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
   matrixTransaction,
@@ -100,31 +101,32 @@ async function record(fields: Parameters<typeof report.record>[0] = {}) {
   await report.write()
 }
 async function guarded(caseId: string, run: () => Promise<void>) {
-  safety.begin()
-  currentCase = caseId
-  stage = 'start'
-  try {
-    await record()
-    await run()
-    stage = 'verified'
-    await record()
-    safety.complete()
-  } catch (error) {
-    safety.halt(caseId)
-    const errorCode =
-      error instanceof OrchestratorError
-        ? error.code
-        : error instanceof Error
-          ? error.name
-          : 'UNKNOWN'
-    await record({ errorCode })
-    // Do not let Vitest serialize SDK error causes/artifacts into CI logs.
-    throw new Error(
-      stage === 'config' && error instanceof Error
-        ? error.message
-        : `${caseId} failed at ${stage} (${errorCode}); inspect sanitized report and reconcile before rerunning`,
-    )
-  }
+  return safety.guard(
+    caseId,
+    async () => {
+      currentCase = caseId
+      stage = 'start'
+      await record()
+      await run()
+      stage = 'verified'
+      await record()
+    },
+    async (error) => {
+      const errorCode =
+        error instanceof OrchestratorError
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : 'UNKNOWN'
+      await record({ errorCode })
+      // Do not let Vitest serialize SDK error causes/artifacts into CI logs.
+      throw new Error(
+        stage === 'config' && error instanceof Error
+          ? error.message
+          : `${caseId} failed at ${stage} (${errorCode}); inspect sanitized report and reconcile before rerunning`,
+      )
+    },
+  )
 }
 function ready() {
   if (!fixture || !runtime)
@@ -178,10 +180,7 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
     expect(Number.isFinite(category.usd)).toBe(true)
     expect(category.usd).toBeGreaterThanOrEqual(0)
   }
-  // Coverage flags describe actual coverage, not a copy of the request:
-  // provider subsidies and zero-cost categories can differ between routes.
-  if (cell.gasSponsored && fee.breakdown.gas.usd > 0)
-    expect(fee.breakdown.gas.sponsored).toBe(true)
+  assertGasSponsorship(cell, fee)
   const inbound = cell.row === 'IN-D'
   const sourceChain = inbound ? baseChain : solChain
   const destinationChain = cell.row.startsWith('OUT-') ? baseChain : solChain
@@ -735,7 +734,6 @@ describe.sequential('Solana Devnet / Base Sepolia fresh live matrix', () => {
         expect(result.id).toBe(quote.intentId)
         stage = 'settlement'
         await record({ intentId: result.id, traceId: result.traceId })
-        await f.account.waitForExecution(result)
         const status = await waitForTerminalIntent(
           f.sdk,
           result.id,

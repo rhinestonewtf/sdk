@@ -14,8 +14,10 @@ import {
 } from '@swig-wallet/classic'
 import { keccak256, type PublicClient, type WalletClient } from 'viem'
 import { estimateTotalFee } from 'viem/op-stack'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { solanaDevnet } from '../../../../src/solana/index'
+import { SolanaSuiteSafety } from '../solana-matrix'
+import { SolanaRequestScope } from './deadline'
 import {
   assertVerifiedSolanaFixture,
   deployAndVerifySolanaFixture,
@@ -74,6 +76,7 @@ function fixtureForTest() {
   }
   const fixture = {
     ...derived,
+    requests: new SolanaRequestScope(),
     evmAddress,
     owner: { address: evmAddress },
     recipient: Keypair.generate(),
@@ -104,6 +107,7 @@ function fixtureForTest() {
   } as Awaited<ReturnType<typeof getAccount>>)
   return { fixture, connection, swig, root }
 }
+afterEach(() => vi.useRealTimers())
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(estimateTotalFee).mockResolvedValue(30_000n)
@@ -675,6 +679,62 @@ describe('deployment quote selection and idempotency', () => {
     connection.getAccountInfo.mockResolvedValueOnce(null)
     return { fixture, deploy }
   }
+  test('pending deployment rejects inside the guard, preserves evidence and revokes late writes', async () => {
+    vi.useFakeTimers()
+    const { fixture, deploy } = deploymentSetup()
+    const safety = new SolanaSuiteSafety()
+    const failures: unknown[] = []
+    const network = vi.fn(async () => Response.json({ status: 'PENDING' }))
+    const fetcher = fixture.requests.fetch(network as unknown as typeof fetch)
+    deploy.mockImplementationOnce(async () => {
+      // Model the SDK's deadline-free PENDING status loop.
+      for (;;) {
+        const response = await fetcher('https://example.test/intents/selected')
+        if ((await response.json()).status !== 'PENDING') return
+        await new Promise((resolve) => setTimeout(resolve, 500))
+      }
+    })
+    const run = safety.guard(
+      'setup',
+      async () => {
+        await deployAndVerifySolanaFixture(fixture)
+      },
+      async (error) => {
+        failures.push({
+          stage: 'deploy-and-verify',
+          error,
+          evidence: structuredClone(fixture.deploymentEvidence),
+        })
+        expect(() => safety.assertActive()).toThrow()
+      },
+    )
+    const rejected = expect(run).rejects.toThrow('RPC timeout')
+    await vi.advanceTimersByTimeAsync(60_000)
+    await rejected
+    expect(failures).toEqual([
+      expect.objectContaining({
+        stage: 'deploy-and-verify',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            intentId: 'selected',
+            submissions: 1,
+            quotedAmounts: ['200'],
+          }),
+        ]),
+      }),
+    ])
+    expect(deploy).toHaveBeenCalledTimes(1)
+    expect(fixture.sdk.getIntentStatus).not.toHaveBeenCalled()
+    expect(() => safety.begin()).toThrow('setup')
+    const reads = network.mock.calls.length
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(network).toHaveBeenCalledTimes(reads)
+    await expect(
+      fetcher('https://example.test/intents', { method: 'POST' }),
+    ).rejects.toThrow('revoked')
+    expect(network).toHaveBeenCalledTimes(reads)
+  })
+
   test('accepts multiple valid quotes but verifies only the submitted intent', async () => {
     const { fixture, deploy } = deploymentSetup()
     const result = await deployAndVerifySolanaFixture(fixture)

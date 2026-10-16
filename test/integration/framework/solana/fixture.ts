@@ -16,6 +16,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { RhinestoneSDKConfig } from '../../../../src/config/account'
 import { RhinestoneSDK } from '../../../../src/index'
 import { solanaAddress, solanaDevnet } from '../../../../src/solana/index'
+import { SolanaRequestScope } from './deadline'
 import { type DeploymentEvidence, observeDeploymentFetch } from './evidence'
 import {
   assertSolanaTestNetworks,
@@ -51,6 +52,7 @@ function observedSdk(
   config: RhinestoneSDKConfig,
   evidence: DeploymentEvidence[],
   fetcher: typeof fetch,
+  requests: SolanaRequestScope,
   onDeploymentEvidence?: (evidence: DeploymentEvidence) => void | Promise<void>,
 ) {
   const previous = globalThis.fetch
@@ -59,6 +61,7 @@ function observedSdk(
       fetcher,
       evidence,
       onDeploymentEvidence,
+      () => requests.assertActive(),
     )
     return new RhinestoneSDK(config)
   } finally {
@@ -90,10 +93,12 @@ export async function createSolanaFixture({
   )
     throw new Error('Swig environment and endpoint mismatch')
   const deploymentEvidence: DeploymentEvidence[] = []
+  const requests = new SolanaRequestScope()
   const sdk = observedSdk(
     sdkConfig,
     deploymentEvidence,
-    fetcher,
+    requests.fetch(fetcher),
+    requests,
     onDeploymentEvidence,
   )
   const owner = privateKeyToAccount(generatePrivateKey())
@@ -126,6 +131,7 @@ export async function createSolanaFixture({
     connection,
     evmClient,
     deploymentEvidence,
+    requests,
     ...derived,
   }
 }
@@ -172,11 +178,17 @@ export async function verifySolanaFixtureAuthority(fixture: SolanaFixture) {
     throw new Error('Swig root identity/permissions mismatch')
   verifiedFixtures.add(fixture)
 }
-export async function deployAndVerifySolanaFixture(fixture: SolanaFixture) {
+export async function deployAndVerifySolanaFixture(
+  fixture: SolanaFixture,
+  timeoutMs = 60_000,
+) {
   await assertSolanaTestNetworks(fixture.connection, fixture.evmClient)
   if (await fixture.connection.getAccountInfo(fixture.swig, 'confirmed'))
     throw new Error('Fresh fixture state already exists')
-  await fixture.account.deploy('solana', solanaDevnet)
+  await fixture.requests.wait(
+    () => fixture.account.deploy('solana', solanaDevnet),
+    timeoutMs,
+  )
   const submitted = fixture.deploymentEvidence.filter(
     (item) => item.submissions > 0,
   )
@@ -210,7 +222,10 @@ export async function deployAndVerifySolanaFixture(fixture: SolanaFixture) {
   )
   await verifySolanaFixtureAuthority(fixture)
   const snapshot = JSON.stringify(fixture.deploymentEvidence)
-  await fixture.account.deploy('solana', solanaDevnet)
+  await fixture.requests.wait(
+    () => fixture.account.deploy('solana', solanaDevnet),
+    timeoutMs,
+  )
   if (JSON.stringify(fixture.deploymentEvidence) !== snapshot)
     throw new Error('Idempotent deployment submitted a second intent')
   return { evidence, status }

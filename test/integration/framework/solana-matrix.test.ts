@@ -8,8 +8,10 @@ import {
   SOLANA_AMOUNTS,
   solTransferInstruction,
   usdcTransferInstruction,
+  waitForTerminalIntent,
 } from './solana'
 import {
+  assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
   matrixTransaction,
@@ -134,7 +136,87 @@ describe('Solana acceptance matrix', () => {
   }
 })
 
+describe('gas sponsorship validation', () => {
+  it.each([0, 0.01])('requires gas coverage at quoted gas cost %s', (usd) => {
+    const fees = {
+      total: { usd },
+      breakdown: {
+        gas: { usd, sponsored: false },
+        bridge: { usd: 0, sponsored: true },
+        swap: { usd: 0, sponsored: true },
+        app: { usd: 0, sponsored: true },
+        protocol: { usd: 0, sponsored: true },
+        sponsorSurcharge: { usd: 0, sponsored: false },
+      },
+    }
+    for (const cell of SOLANA_MATRIX) {
+      if (cell.gasSponsored)
+        expect(() => assertGasSponsorship(cell, fees)).toThrow(
+          'must sponsor gas',
+        )
+      else expect(() => assertGasSponsorship(cell, fees)).not.toThrow()
+      fees.breakdown.gas.sponsored = true
+      expect(() => assertGasSponsorship(cell, fees)).not.toThrow()
+      fees.breakdown.gas.sponsored = false
+    }
+  })
+})
+
 describe('fail-closed suite safety', () => {
+  it('records pending execution failure before the test deadline and blocks the next cell', async () => {
+    vi.useFakeTimers()
+    const safety = new SolanaSuiteSafety()
+    const pending = {
+      status: 'PENDING',
+      purpose: 'execution',
+      operations: [],
+    } as const
+    const sdk = { getIntentStatus: vi.fn().mockResolvedValue(pending) }
+    const record = vi.fn(async (_entry: unknown) => {})
+    const nextWrite = vi.fn()
+    const run = safety.guard(
+      'SC-D-gas-only',
+      async () => {
+        await record({
+          stage: 'settlement',
+          intentId: 'execution-id',
+          traceId: 'trace-id',
+        })
+        await waitForTerminalIntent(sdk, 'execution-id', 'execution', {
+          timeoutMs: 60_000,
+        })
+        nextWrite()
+      },
+      async (error) => {
+        expect(() => safety.assertActive()).toThrow()
+        await record({
+          stage: 'settlement',
+          errorCode: error instanceof Error ? error.name : 'UNKNOWN',
+        })
+      },
+    )
+    const rejected = expect(run).rejects.toThrow('visibility timeout')
+    await vi.advanceTimersByTimeAsync(60_000)
+    await rejected
+    expect(record.mock.calls.map(([entry]) => entry)).toEqual([
+      { stage: 'settlement', intentId: 'execution-id', traceId: 'trace-id' },
+      { stage: 'settlement', errorCode: 'Error' },
+    ])
+    expect(nextWrite).not.toHaveBeenCalled()
+    await expect(
+      safety.guard(
+        'next',
+        async () => {
+          nextWrite()
+        },
+        record,
+      ),
+    ).rejects.toThrow('SC-D-gas-only')
+    expect(nextWrite).not.toHaveBeenCalled()
+    const reads = sdk.getIntentStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(300_000)
+    expect(sdk.getIntentStatus).toHaveBeenCalledTimes(reads)
+  })
   it('allows sequential confirmed cells only', () => {
     const safety = new SolanaSuiteSafety()
     safety.begin()
