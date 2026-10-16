@@ -52,8 +52,9 @@ deployment-route checks (purpose, Swig, wallet, authority, chain, costs, expiry)
 before a `proofs: []` submission, Swig id resolution and every pre-network
 refusal on the standalone and composite facades, VM routing of `deploy`, an
 existing Swig resolving `true` without a submission, and the
-`ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. Live Swig creation is not covered
-offline. Swig authority changes (passkeys and secp256k1 keys) run through the
+`ACCOUNT_ALREADY_DEPLOYED` mapping that keeps EVM refusals generic. The opt-in
+live Solana suite covers fresh Swig deployment; offline coverage remains
+deterministic. Swig authority changes (passkeys and secp256k1 keys) run through the
 real Solana workflow against a fake orchestrator with software signers: exact
 requests, a refusal per quote mutation including curve and permission swaps,
 cross-instance tampering, signing and expiry, an external `toAccount` manager
@@ -349,3 +350,106 @@ bun run test:integration:smoke -- --run
 ```
 
 `.env.example` lists the required variables.
+
+## Opt-in Solana live suite
+
+This separate manual suite exercises a fresh Solana Devnet fixture and Base
+Sepolia. It is not part of smoke, `test:integration`, `all`, or release
+publication. A passing offline run does not establish live settlement coverage.
+
+### Matrix and refusals
+
+Each row runs twice: `sponsored: false`, then gas-only sponsorship
+`{ gas: true, bridging: false, swaps: false }`. Gas-only quotes must report
+`gas.sponsored: true` even at zero gas cost. Unsponsored requests may still
+receive provider subsidies.
+
+| Row | Live action | Sponsorship |
+| --- | --- | --- |
+| SC-D | Devnet USDC → Devnet USDC delivery | Unsponsored; gas-only |
+| SC-I-USDC | Devnet SPL-USDC instruction | Unsponsored; gas-only |
+| SC-I-SOL | Devnet System Program native-SOL instruction | Unsponsored; gas-only |
+| IN-D | Base Sepolia USDC → Devnet USDC delivery | Unsponsored; gas-only |
+| OUT-D | Devnet USDC → Base Sepolia USDC delivery | Unsponsored; gas-only |
+| OUT-C | Devnet USDC → managed Base Sepolia account, then ERC-20 transfer call | Unsponsored; gas-only |
+
+The suite also refuses same-chain native-SOL delivery-only, EVM→Solana
+instructions/calls, unsponsored instructions without a fee source, instruction
+source caps, invalid caps or mint pairs, invalid deployment IDs, and a request
+above the fixture's spendable USDC. Refusals must occur before signing,
+submission, funding, or balance effects.
+
+Native SOL is `11111111111111111111111111111111`, not WSOL. Native-SOL
+cross-chain shapes are SDK-supported but excluded from live acceptance while
+Devnet has no suitable provider route; this is a coverage gap, not an invalid
+native-delivery test. Inbound Solana instructions/calls are invalid SDK inputs.
+
+### Configuration and fixture safety
+
+| Variable | Purpose |
+| --- | --- |
+| `INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY` | Required Devnet funder: a consistent JSON array of exactly 64 integer bytes (`0`–`255`) from a standard ed25519 Solana keypair. |
+| `INTEGRATION_SOLANA_TARGET` | `dev` (default) or explicit `prod` service target. |
+| `INTEGRATION_SOLANA_RPC_URL` | Optional Solana RPC override; it must be Devnet. |
+| `INTEGRATION_RPC_URL_84532` | Optional Base Sepolia RPC override. |
+| `INTEGRATION_RHINESTONE_API_KEY` | API key for the selected service target. |
+| `INTEGRATION_FUNDER_PRIVATE_KEY` | Existing Base Sepolia EVM funder for cross-VM rows. |
+
+Do not put key values in commands, source, reports, or chat. Use a secure
+launcher that reads a permission-restricted environment file and exports values
+only to its child test process. A fresh ECDSA Swig owner is generated in memory
+per run; its key is never persisted or uploaded and cannot be recovered later.
+Fresh fixtures can leave Devnet rent/dust.
+
+The default target is `dev`: `https://dev.v1.orchestrator.rhinestone.dev` with
+dev contracts. `prod` is explicit and uses the production endpoint/contracts.
+Conflicting `INTEGRATION_ORCHESTRATOR_URL` or `INTEGRATION_USE_DEV_CONTRACTS`
+overrides fail rather than retargeting the suite. Both targets remain pinned to
+Solana Devnet (genesis
+`EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`) and Base Sepolia (chain ID
+`84532`); mainnet RPCs are refused before deployment, signing, or funding.
+
+Funds belong to the derived Swig **wallet**, not its public state account or
+ECDSA authority. Before any funding, the suite verifies the state/program,
+derived wallet, role-0 ECDSA authority, and its permissions. It creates the
+wallet and recipient USDC ATAs, then funds measured shortfalls only.
+
+### Limits, execution, and evidence
+
+Funding ceilings are 5 USDC on each chain, 0.1 SOL including ATA rent/fees, and
+0.002 Base Sepolia ETH. The current fixture targets are 4 USDC plus rent and
+20,000,000 lamports on Solana, and 1 USDC plus 0.001 ETH on Base Sepolia; a
+shortfall may be lower. Cross-chain source caps are 0.5 USDC. The suite stops
+on a limit or balance failure; it never automatically raises limits or refills.
+
+The runner is sequential, has five-minute test/hook timeouts, and has zero
+automatic retries. SDK deployment calls have a separate 60-second deadline that
+revokes the fixture transport on failure; execution uses bounded status polling
+without first entering the SDK's deadline-free wait. These failures reach the
+suite guard to record evidence and halt later writes. It records a sanitized
+intent ID before submission. An interrupted or timed-out submission halts
+further spending until its intent and native receipts are reconciled. Diagnostics are sanitized and written to
+`.scratch/rhi-7365/solana-report.json`. Manual `suite=solana` runs upload only
+this sanitized report (including on failure), retained for seven days.
+
+### Running
+
+Run against dev first after a secure launcher has supplied the environment;
+the commands themselves contain no values:
+
+```bash
+bun run test:integration:solana -- --run
+
+gh workflow run integration-tests.yaml --ref <ref> -f suite=solana -f target=dev
+```
+
+Production orchestrator testing is optional and must be selected explicitly;
+it still uses Solana Devnet and Base Sepolia:
+
+```bash
+gh workflow run integration-tests.yaml --ref <ref> -f suite=solana -f target=prod
+```
+
+The manual workflow serializes this suite with other live runs and injects the
+Solana funder secret only for the Solana step. Ordinary smoke, all-integration,
+and release commands/workflows remain unchanged and never require that secret.
