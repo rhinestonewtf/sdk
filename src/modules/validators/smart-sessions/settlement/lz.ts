@@ -455,7 +455,7 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
   // every route only when they share a shape.
   if (reusable && ctx.cap !== undefined && groups.length > 1) {
     throw new SettlementLayerRefusal(
-      `crossChainPermits: an LZ permit without oneTimeUse caps one batch shape, and the \`to\` legs from chain ${ctx.chainId} need ${groups.length}; give them separate permits, or set oneTimeUse`,
+      `crossChainPermits: an LZ permit without oneTimeUse caps one batch shape, and the \`to\` legs from chain ${ctx.chainId} need ${groups.length}; give them separate sessions, or set oneTimeUse`,
       { code: 'LZ_REUSABLE_ROUTES_SPLIT', chainId: ctx.chainId },
     )
   }

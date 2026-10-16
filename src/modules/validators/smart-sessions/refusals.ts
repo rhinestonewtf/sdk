@@ -138,7 +138,7 @@ export const SESSION_REFUSAL_CODES = {
   MULTIPLE_MAX_NATIVE_FEES:
     'maxNativeFee on more than one `from` token per chain',
   LZ_REUSABLE_ROUTES_SPLIT:
-    'an LZ permit without oneTimeUse whose capped `to` legs need batches of different shapes, which no one counter can cap',
+    'an LZ permit without oneTimeUse whose capped `to` legs need batches of different shapes, which no one counter can cap; give them separate sessions',
   SESSION_REFUSED:
     'the session is refused for a reason with no code of its own; see message',
 } as const
