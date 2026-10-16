@@ -458,6 +458,7 @@ describe.sequential(
           const reserve = BigInt(
             await r.connection.getMinimumBalanceForRentExemption(0),
           )
+          expect(SOLANA_AMOUNTS.solTransfer).toBeGreaterThanOrEqual(reserve)
           safety.assertActive()
           // Provision once for three Solana USDC debits and one native transfer; never refill.
           await funding.fundShortfall({
