@@ -178,10 +178,16 @@ export async function waitForTerminalIntent(
   sdk: { getIntentStatus(id: string): Promise<TransactionStatus> },
   intentId: string,
   purpose: 'deployment' | 'execution',
-  options?: PollOptions,
+  options?: PollOptions & {
+    onStatus?: (status: TransactionStatus) => Promise<void>
+  },
 ) {
   const status = await pollSolana(
-    () => sdk.getIntentStatus(intentId),
+    async () => {
+      const status = await sdk.getIntentStatus(intentId)
+      await options?.onStatus?.(status)
+      return status
+    },
     (value) => value.status !== 'PENDING',
     options,
   )

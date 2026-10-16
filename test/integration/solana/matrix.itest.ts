@@ -503,7 +503,7 @@ describe.sequential(
 
     for (const cell of SOLANA_MATRIX) {
       it(cell.id, { retry: 0 }, async () =>
-        guarded(cell.id, async () => {
+        guarded(cell.row, async () => {
           const { fixture: f, runtime: r } = ready()
           stage = 'snapshot'
           const before = await balances()
@@ -553,11 +553,40 @@ describe.sequential(
           expect(result.id).toBe(quote.intentId)
           stage = 'settlement'
           await record({ intentId: result.id, traceId: result.traceId })
+          const observedOperations = new Set<string>()
           const status = await waitForTerminalIntent(
             f.sdk,
             result.id,
             'execution',
-            { timeoutMs: 60_000 },
+            {
+              timeoutMs: 60_000,
+              onStatus: async (status) => {
+                for (const group of status.operations) {
+                  for (const operation of group.items) {
+                    const ref =
+                      'transaction' in operation
+                        ? operation.transaction
+                        : undefined
+                    const transaction =
+                      ref?.vm === 'svm'
+                        ? ref.signature
+                        : ref?.vm === 'evm'
+                          ? ref.txHash
+                          : undefined
+                    const key = `${status.status}-${group.chainId}-${operation.type}-${operation.status}-${transaction}`
+                    if (observedOperations.has(key)) continue
+                    observedOperations.add(key)
+                    await record({
+                      stage: `status-${status.status}-${operation.type}-${operation.status}`,
+                      chain: String(group.chainId),
+                      intentId: result.id,
+                      traceId: status.traceId,
+                      transaction,
+                    })
+                  }
+                }
+              },
+            },
           )
           stage = 'receipts'
           const refs = await verifyIntentReceipts(
