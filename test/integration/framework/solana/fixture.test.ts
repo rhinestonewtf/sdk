@@ -1,5 +1,5 @@
 import { base58 } from '@scure/base'
-import { getAccount } from '@solana/spl-token'
+import { AccountLayout, getAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import {
   type Connection,
   Keypair,
@@ -57,13 +57,46 @@ vi.mock('@solana/spl-token', async (importOriginal) => {
 const evmAddress = '0x1234567890123456789012345678901234567890'
 function fixtureForTest() {
   const derived = deriveCompatibleSwig(evmAddress, 'dev')
+  const recipient = Keypair.generate()
+  const tokenAccountInfo = (owner: typeof derived.wallet) => {
+    const data = Buffer.alloc(AccountLayout.span)
+    AccountLayout.encode(
+      {
+        mint: DEVNET_USDC,
+        owner,
+        amount: 100_000n,
+        delegateOption: 0,
+        delegate: SystemProgram.programId,
+        state: 1,
+        isNativeOption: 0,
+        isNative: 0n,
+        delegatedAmount: 0n,
+        closeAuthorityOption: 0,
+        closeAuthority: SystemProgram.programId,
+      },
+      data,
+    )
+    return {
+      data,
+      owner: TOKEN_PROGRAM_ID,
+      executable: false,
+      lamports: 2_039_280,
+      rentEpoch: 0,
+    }
+  }
   const connection = {
     getGenesisHash: vi.fn().mockResolvedValue(DEVNET_GENESIS),
-    getAccountInfo: vi.fn().mockImplementation(async (address) => ({
-      owner: address.equals(derived.swig)
-        ? SWIG_PROGRAM
-        : SystemProgram.programId,
-    })),
+    getAccountInfo: vi.fn().mockImplementation(async (address) => {
+      if (address.equals(usdcAta(derived.wallet)))
+        return tokenAccountInfo(derived.wallet)
+      if (address.equals(usdcAta(recipient.publicKey)))
+        return tokenAccountInfo(recipient.publicKey)
+      return {
+        owner: address.equals(derived.swig)
+          ? SWIG_PROGRAM
+          : SystemProgram.programId,
+      }
+    }),
     getBalance: vi.fn().mockResolvedValue(10_000_000),
     getLatestBlockhash: vi.fn().mockResolvedValue({
       blockhash: Keypair.generate().publicKey.toBase58(),
@@ -81,7 +114,7 @@ function fixtureForTest() {
       fixture.requests.wait(run, timeoutMs),
     evmAddress,
     owner: { address: evmAddress },
-    recipient: Keypair.generate(),
+    recipient,
     connection: connection as unknown as Connection,
     evmClient: {
       getChainId: vi.fn().mockResolvedValue(84532),

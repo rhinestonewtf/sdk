@@ -14,6 +14,10 @@ import {
   type SolanaDiagnostic,
   safeSolanaDiagnostic,
 } from '../framework/solana/evidence'
+import {
+  createSolanaRpcFetch,
+  type SolanaRpcError,
+} from '../framework/solana/transport'
 
 export const SOLANA_DEVNET_RPC_URL = 'https://api.devnet.solana.com'
 export const SOLANA_DEVNET_GENESIS =
@@ -164,6 +168,7 @@ export async function assertSolanaIntegrationNetworks(
 
 export async function preflightSolanaIntegration(
   config = getSolanaIntegrationConfig(),
+  onRpcError?: (error: SolanaRpcError) => void | Promise<void>,
 ): Promise<{
   config: SolanaIntegrationConfig
   connection: Connection
@@ -172,11 +177,7 @@ export async function preflightSolanaIntegration(
   const connection = new Connection(config.solanaRpcUrl, {
     commitment: 'confirmed',
     disableRetryOnRateLimit: true,
-    fetch: ((input, init) =>
-      fetch(input, {
-        ...init,
-        signal: AbortSignal.timeout(30_000),
-      })) as typeof fetch,
+    fetch: createSolanaRpcFetch({ onError: onRpcError }) as typeof fetch,
   })
   const evmClient = createPublicClient({
     chain: baseSepolia,
@@ -193,15 +194,19 @@ export const SOLANA_REPORT_PATH = '.scratch/integration/solana-report.json'
 
 export function createSolanaReport(path = SOLANA_REPORT_PATH) {
   const entries: SolanaDiagnostic[] = []
+  let writes = Promise.resolve()
   return {
     record(input: SolanaDiagnostic) {
       entries.push(safeSolanaDiagnostic(input))
     },
-    async write() {
-      await mkdir(dirname(path), { recursive: true })
-      await writeFile(path, `${JSON.stringify({ entries }, null, 2)}\n`, {
-        mode: 0o600,
+    write() {
+      writes = writes.then(async () => {
+        await mkdir(dirname(path), { recursive: true })
+        await writeFile(path, `${JSON.stringify({ entries }, null, 2)}\n`, {
+          mode: 0o600,
+        })
       })
+      return writes
     },
   }
 }

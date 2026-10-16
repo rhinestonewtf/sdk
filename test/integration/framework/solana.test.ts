@@ -179,10 +179,24 @@ describe('Solana independent harness guards', () => {
         },
       ],
     } as unknown as TransactionStatus
-    const sdk = { getIntentStatus: vi.fn().mockResolvedValue(completed) }
-    await expect(waitForTerminalIntent(sdk, 'id', 'deployment')).resolves.toBe(
-      completed,
-    )
+    const pending = { ...completed, status: 'PENDING' }
+    const sdk = {
+      getIntentStatus: vi
+        .fn()
+        .mockResolvedValueOnce(pending)
+        .mockResolvedValue(completed),
+    }
+    const onStatus = vi.fn(async (_status: TransactionStatus) => {})
+    await expect(
+      waitForTerminalIntent(sdk, 'id', 'deployment', {
+        intervalMs: 1,
+        onStatus,
+      }),
+    ).resolves.toBe(completed)
+    expect(onStatus.mock.calls.map(([status]) => status.status)).toEqual([
+      'PENDING',
+      'COMPLETED',
+    ])
     sdk.getIntentStatus.mockResolvedValue({ ...completed, operations: [] })
     await expect(
       waitForTerminalIntent(sdk, 'id', 'deployment'),

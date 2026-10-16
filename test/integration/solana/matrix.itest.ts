@@ -34,9 +34,11 @@ import {
   waitForTerminalIntent,
 } from '../framework/solana'
 import {
+  assertEvmCallExecution,
   assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
+  isEvmCallAuthorization,
   matrixTransaction,
   NATIVE_SOL,
   SOLANA_MATRIX,
@@ -49,7 +51,12 @@ async function liveRuntime() {
   stage = 'config'
   const config = getSolanaIntegrationConfig()
   stage = 'network-preflight'
-  const preflight = await preflightSolanaIntegration(config)
+  const preflight = await preflightSolanaIntegration(config, async (error) => {
+    await record({
+      stage: `${stage}-rpc-${error.rpcMethod ?? 'write-or-unknown'}-${error.httpStatus ?? error.category}`,
+      errorCode: `SOLANA_RPC_${error.category.toUpperCase()}`,
+    })
+  })
   return {
     ...preflight,
     evmClient: createPublicClient({
@@ -265,25 +272,16 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
   }
   if (cell.row === 'OUT-C') {
     const { fixture: f } = ready()
-    const execution = quote.plan.destination.execution
-    expect(execution?.vm).toBe('evm')
-    if (execution?.vm !== 'evm')
-      throw new Error('Missing EVM destination execution')
-    expect(execution.executedBy?.kind).toBe('account')
-    expect(execution.executedBy?.address.toLowerCase()).toBe(
-      f.evmAddress.toLowerCase(),
-    )
+    expect(quote.plan.destination.vm).toBe('evm')
+    assertEvmCallExecution(quote.plan.destination.execution, f.evmAddress)
     expect(
       quote.signingRequests.some(
         (r) => r.account.vm === 'svm' && r.purpose === 'originAuthorization',
       ),
     ).toBe(true)
     expect(
-      quote.signingRequests.some(
-        (r) =>
-          r.account.vm === 'evm' &&
-          (r.purpose === 'destinationAuthorization' ||
-            r.purpose === 'targetExecutionAuthorization'),
+      quote.signingRequests.some((r) =>
+        isEvmCallAuthorization(r, f.evmAddress, baseChain),
       ),
     ).toBe(true)
   }
@@ -437,7 +435,7 @@ describe.sequential(
                   chain: operation.transaction.chainId,
                   transaction: operation.transaction.signature,
                 })
-          stage = 'ata-and-funding'
+          stage = 'setup-token-accounts'
           await record({
             chain: solChain,
             wallet: r.config.funder.publicKey.toBase58(),
@@ -461,11 +459,13 @@ describe.sequential(
           expect(SOLANA_AMOUNTS.solTransfer).toBeGreaterThanOrEqual(reserve)
           safety.assertActive()
           // Provision once for three Solana USDC debits and one native transfer; never refill.
+          stage = 'fund-solana'
           await funding.fundShortfall({
             usdc: 2_000_000n,
             lamports: reserve + 10_000_000n,
           })
           safety.assertActive()
+          stage = 'fund-base-sepolia'
           await fundBaseSepoliaShortfall({
             fixture: f,
             publicClient: r.evmClient,
@@ -496,7 +496,7 @@ describe.sequential(
 
     for (const cell of SOLANA_MATRIX) {
       it(cell.id, { retry: 0 }, async () =>
-        guarded(cell.id, async () => {
+        guarded(cell.row, async () => {
           const { fixture: f, runtime: r } = ready()
           stage = 'snapshot'
           const before = await balances()
@@ -546,11 +546,40 @@ describe.sequential(
           expect(result.id).toBe(quote.intentId)
           stage = 'settlement'
           await record({ intentId: result.id, traceId: result.traceId })
+          const observedOperations = new Set<string>()
           const status = await waitForTerminalIntent(
             f.sdk,
             result.id,
             'execution',
-            { timeoutMs: 60_000 },
+            {
+              timeoutMs: 60_000,
+              onStatus: async (status) => {
+                for (const group of status.operations) {
+                  for (const operation of group.items) {
+                    const ref =
+                      'transaction' in operation
+                        ? operation.transaction
+                        : undefined
+                    const transaction =
+                      ref?.vm === 'svm'
+                        ? ref.signature
+                        : ref?.vm === 'evm'
+                          ? ref.txHash
+                          : undefined
+                    const key = `${status.status}-${group.chainId}-${operation.type}-${operation.status}-${transaction}`
+                    if (observedOperations.has(key)) continue
+                    observedOperations.add(key)
+                    await record({
+                      stage: `status-${status.status}-${operation.type}-${operation.status}`,
+                      chain: String(group.chainId),
+                      intentId: result.id,
+                      traceId: status.traceId,
+                      transaction,
+                    })
+                  }
+                }
+              },
+            },
           )
           stage = 'receipts'
           const refs = await verifyIntentReceipts(
@@ -635,34 +664,50 @@ describe.sequential(
       try {
         if (fixture && runtime) {
           stage = 'residue'
-          const final = await balances()
-          for (const [owner, assets] of Object.entries({
-            wallet: {
-              usdc: final.wallet.usdc,
-              lamports: final.wallet.lamports,
-              rent: final.wallet.rentExemptReserve,
-            },
-            recipient: {
-              usdc: final.recipient.usdc,
-              lamports: final.recipient.lamports,
-            },
-            base: final.base,
-            baseRecipient: final.baseRecipient,
-          }))
-            for (const [asset, value] of Object.entries(assets))
+          const owners = [
+            'wallet',
+            'recipient',
+            'base',
+            'baseRecipient',
+          ] as const
+          const results = await Promise.allSettled([
+            readSolanaBalances(runtime.connection, fixture.wallet),
+            readSolanaBalances(runtime.connection, fixture.recipient.publicKey),
+            readBaseSepoliaBalances(runtime.evmClient, fixture.evmAddress),
+            readBaseSepoliaBalances(runtime.evmClient, evmRecipient),
+          ])
+          for (const [index, result] of results.entries()) {
+            const owner = owners[index]
+            const identity = {
+              chain: owner.startsWith('base') ? baseChain : solChain,
+              wallet:
+                owner === 'base'
+                  ? fixture.evmAddress
+                  : owner === 'baseRecipient'
+                    ? evmRecipient
+                    : owner === 'recipient'
+                      ? fixture.recipient.publicKey.toBase58()
+                      : fixture.wallet.toBase58(),
+            }
+            if (result.status === 'rejected') {
               await record({
+                ...identity,
+                stage: `residue-${owner}-unresolved`,
+                errorCode: 'RESIDUE_READ_FAILED',
+              })
+              continue
+            }
+            for (const [asset, value] of Object.entries(result.value)) {
+              if (typeof value !== 'bigint') continue
+              await record({
+                ...identity,
                 stage: `residue-${owner}-${asset}`,
-                chain: owner.startsWith('base') ? baseChain : solChain,
-                wallet:
-                  owner === 'base'
-                    ? fixture.evmAddress
-                    : owner === 'baseRecipient'
-                      ? evmRecipient
-                      : owner === 'recipient'
-                        ? fixture.recipient.publicKey.toBase58()
-                        : fixture.wallet.toBase58(),
                 balanceDelta: value.toString(),
               })
+            }
+          }
+          if (results.some((result) => result.status === 'rejected'))
+            throw new Error('Incomplete residue reads')
         }
       } catch {
         await record({

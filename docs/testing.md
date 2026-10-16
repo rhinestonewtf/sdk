@@ -423,13 +423,20 @@ wallet and recipient USDC ATAs, then funds measured shortfalls only.
 ### Limits, execution, and evidence
 
 Funding ceilings are 5 USDC on each chain, 0.1 SOL including ATA rent/fees, and
-0.002 Base Sepolia ETH. The current fixture targets are 4 USDC plus rent and
-20,000,000 lamports on Solana, and 1 USDC plus 0.001 ETH on Base Sepolia; a
+0.002 Base Sepolia ETH. The current fixture targets are 2 USDC plus rent and
+10,000,000 lamports on Solana, and 0.5 USDC without an ETH top-up on Base Sepolia; a
 shortfall may be lower. Cross-chain source caps are 0.5 USDC. The suite stops
 on a limit or balance failure; it never automatically raises limits or refills.
 
-The runner is sequential, has five-minute test/hook timeouts, and has zero
-automatic retries. SDK deployment calls have a separate 60-second deadline that
+The full integration runner is sequential and stops after the first failed
+scenario. Solana tests have five-minute test/hook timeouts and zero automatic
+test retries. Solana RPC calls are paced; only allowlisted reads retry transient
+HTTP 429/502/503/504 responses (at most twice, honoring `Retry-After`, within a
+30-second total deadline). Writes and ambiguous transport failures are never
+retried. RPC failures record only method, status and category, not response
+bodies or credential-bearing URLs. Balance reads decode the fetched token
+account once, and final residue reporting retains successful reads even when
+another account cannot be read. SDK deployment calls have a separate 60-second deadline that
 revokes the fixture transport on failure; execution uses bounded status polling
 without first entering the SDK's deadline-free wait. These failures reach the
 suite guard to record evidence and halt later writes. It records a sanitized

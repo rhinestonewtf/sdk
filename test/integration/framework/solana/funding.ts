@@ -194,7 +194,7 @@ export class SolanaFundingHarness {
           )
         }
       }
-      // A 0.0001 SOL transfer cannot create a rent-exempt recipient by itself.
+      // Keep recipient rent separate from the native transfer being measured.
       const recipientReserve = BigInt(
         await this.fixture.connection.getMinimumBalanceForRentExemption(
           0,
