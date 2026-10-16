@@ -23,7 +23,10 @@ describe('full integration bundle wiring', () => {
       'test/integration/scenarios/**/*.itest.ts',
       'test/integration/solana/**/*.itest.ts',
     ])
-    expect(integrationConfig.test).toMatchObject({ fileParallelism: false })
+    expect(integrationConfig.test).toMatchObject({
+      fileParallelism: false,
+      bail: 1,
+    })
     expect(
       unitConfig.test?.include?.every((glob) => glob.endsWith('.test.ts')),
     ).toBe(true)

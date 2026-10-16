@@ -49,7 +49,12 @@ async function liveRuntime() {
   stage = 'config'
   const config = getSolanaIntegrationConfig()
   stage = 'network-preflight'
-  const preflight = await preflightSolanaIntegration(config)
+  const preflight = await preflightSolanaIntegration(config, async (error) => {
+    await record({
+      stage: `${stage}-rpc-${error.rpcMethod ?? 'write-or-unknown'}-${error.httpStatus ?? error.category}`,
+      errorCode: `SOLANA_RPC_${error.category.toUpperCase()}`,
+    })
+  })
   return {
     ...preflight,
     evmClient: createPublicClient({
@@ -437,7 +442,7 @@ describe.sequential(
                   chain: operation.transaction.chainId,
                   transaction: operation.transaction.signature,
                 })
-          stage = 'ata-and-funding'
+          stage = 'setup-token-accounts'
           await record({
             chain: solChain,
             wallet: r.config.funder.publicKey.toBase58(),
@@ -461,11 +466,13 @@ describe.sequential(
           expect(SOLANA_AMOUNTS.solTransfer).toBeGreaterThanOrEqual(reserve)
           safety.assertActive()
           // Provision once for three Solana USDC debits and one native transfer; never refill.
+          stage = 'fund-solana'
           await funding.fundShortfall({
             usdc: 2_000_000n,
             lamports: reserve + 10_000_000n,
           })
           safety.assertActive()
+          stage = 'fund-base-sepolia'
           await fundBaseSepoliaShortfall({
             fixture: f,
             publicClient: r.evmClient,
@@ -635,34 +642,50 @@ describe.sequential(
       try {
         if (fixture && runtime) {
           stage = 'residue'
-          const final = await balances()
-          for (const [owner, assets] of Object.entries({
-            wallet: {
-              usdc: final.wallet.usdc,
-              lamports: final.wallet.lamports,
-              rent: final.wallet.rentExemptReserve,
-            },
-            recipient: {
-              usdc: final.recipient.usdc,
-              lamports: final.recipient.lamports,
-            },
-            base: final.base,
-            baseRecipient: final.baseRecipient,
-          }))
-            for (const [asset, value] of Object.entries(assets))
+          const owners = [
+            'wallet',
+            'recipient',
+            'base',
+            'baseRecipient',
+          ] as const
+          const results = await Promise.allSettled([
+            readSolanaBalances(runtime.connection, fixture.wallet),
+            readSolanaBalances(runtime.connection, fixture.recipient.publicKey),
+            readBaseSepoliaBalances(runtime.evmClient, fixture.evmAddress),
+            readBaseSepoliaBalances(runtime.evmClient, evmRecipient),
+          ])
+          for (const [index, result] of results.entries()) {
+            const owner = owners[index]
+            const identity = {
+              chain: owner.startsWith('base') ? baseChain : solChain,
+              wallet:
+                owner === 'base'
+                  ? fixture.evmAddress
+                  : owner === 'baseRecipient'
+                    ? evmRecipient
+                    : owner === 'recipient'
+                      ? fixture.recipient.publicKey.toBase58()
+                      : fixture.wallet.toBase58(),
+            }
+            if (result.status === 'rejected') {
               await record({
+                ...identity,
+                stage: `residue-${owner}-unresolved`,
+                errorCode: 'RESIDUE_READ_FAILED',
+              })
+              continue
+            }
+            for (const [asset, value] of Object.entries(result.value)) {
+              if (typeof value !== 'bigint') continue
+              await record({
+                ...identity,
                 stage: `residue-${owner}-${asset}`,
-                chain: owner.startsWith('base') ? baseChain : solChain,
-                wallet:
-                  owner === 'base'
-                    ? fixture.evmAddress
-                    : owner === 'baseRecipient'
-                      ? evmRecipient
-                      : owner === 'recipient'
-                        ? fixture.recipient.publicKey.toBase58()
-                        : fixture.wallet.toBase58(),
                 balanceDelta: value.toString(),
               })
+            }
+          }
+          if (results.some((result) => result.status === 'rejected'))
+            throw new Error('Incomplete residue reads')
         }
       } catch {
         await record({

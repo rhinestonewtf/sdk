@@ -19,6 +19,8 @@ export default defineConfig({
     hookTimeout: 300_000,
     watch: false,
     fileParallelism: false,
+    // Do not start another funded scenario after a failed or ambiguous outcome.
+    bail: 1,
     retry: process.env.CI ? 2 : 0,
   },
 })
