@@ -98,7 +98,7 @@ export interface paths {
     put?: never
     /**
      * Create Intent
-     * @description Submits a quoted intent for execution. Takes the `intentId` from `POST /quotes` (`routes[].intentId`) plus the proofs authorizing it: on `2026-09.caucasus` one ordered `proofs[]` answering the quote's `signingRequests[]` position by position; on earlier versions the role-keyed signatures (origin, destination, optionally target-execution) and optional EIP-7702 authorizations.
+     * @description Submits a quoted intent for execution. Takes the `intentId` from `POST /quotes` (`routes[].intentId`) plus one ordered `proofs[]` answering the quote's `signingRequests[]` position by position.
      */
     post: operations['createIntent']
     delete?: never
@@ -158,7 +158,7 @@ export interface paths {
     put?: never
     /**
      * Create Indicative Quote
-     * @description Computes an indicative (non-binding) quote: ranked route estimates with per-route cost breakdown and fill time. Unlike `POST /quotes`, it returns no `intentId`, `signData`, or `expiresAt` — it cannot be submitted to `POST /intents`. Use it for pre-quote UX (price previews, route discovery) without persisting an intent.
+     * @description Computes an indicative (non-binding) quote: ranked route estimates with per-route cost breakdown and fill time. Unlike `POST /quotes`, it returns no `intentId`, `signingRequests`, or `expiresAt` — it cannot be submitted to `POST /intents`. Use it for pre-quote UX (price previews, route discovery) without persisting an intent.
      */
     post: operations['createQuoteEstimate']
     delete?: never
@@ -391,7 +391,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -580,7 +580,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -716,7 +716,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -852,7 +852,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2032,7 +2032,7 @@ export interface operations {
                  */
                 sponsoredValue?: string
                 /**
-                 * @description Rhinestone-owed slice of the sponsor charge, in integer micro-USD (1 USD = 1,000,000 units): the sponsor surcharge plus a sponsored protocol fee (`sponsorSettings.protocolFees`) where one applies. Charged on allocation-backed intents too — the allocation ledger carries the relayer liability only.
+                 * @description Rhinestone-owed slice of the sponsor charge, in integer micro-USD (1 USD = 1,000,000 units): the sponsor surcharge plus a sponsored protocol fee (`options.sponsorship.protocolFees`) where one applies. Charged on allocation-backed intents too — the allocation ledger carries the relayer liability only.
                  * @example 10000
                  */
                 protocolFee?: string
@@ -2065,7 +2065,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2201,7 +2201,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2337,7 +2337,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2473,7 +2473,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2671,7 +2671,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2807,7 +2807,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -2943,7 +2943,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -3285,7 +3285,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -3421,7 +3421,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -3557,7 +3557,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -3797,7 +3797,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -3933,7 +3933,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4069,7 +4069,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4205,7 +4205,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4341,7 +4341,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4477,7 +4477,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4613,7 +4613,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4852,7 +4852,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -4988,7 +4988,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -5152,7 +5152,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10092,7 +10092,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10228,7 +10228,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10364,7 +10364,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10500,7 +10500,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10636,7 +10636,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10772,7 +10772,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -10908,7 +10908,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -11044,7 +11044,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -11326,7 +11326,7 @@ export interface operations {
               feeBps: number
             }
             /**
-             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers (RHI-7069).
+             * @description Which fee categories to treat as sponsored. Sponsored categories are absorbed by the sponsor and do not reduce the delivered amount. The estimator prices every swap at market, so a same-chain swap `POST /quotes` sponsors to par under `swapFees` is estimated below what it delivers.
              * @example {
              *       "gas": true,
              *       "bridgeFees": true,
@@ -11624,7 +11624,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -11760,7 +11760,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -11896,7 +11896,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12032,7 +12032,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12168,7 +12168,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12304,7 +12304,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12440,7 +12440,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12576,7 +12576,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12738,7 +12738,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -12874,7 +12874,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13010,7 +13010,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13179,7 +13179,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13315,7 +13315,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13451,7 +13451,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13587,7 +13587,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13761,7 +13761,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -13897,7 +13897,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14033,7 +14033,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14169,7 +14169,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14337,7 +14337,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14473,7 +14473,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14609,7 +14609,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14745,7 +14745,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -14919,7 +14919,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -15055,7 +15055,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -15191,7 +15191,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -15327,7 +15327,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
@@ -15463,7 +15463,7 @@ export interface operations {
                 details?: {
                   /** @description Human-readable issue description */
                   message: string
-                  /** @description Structured issue context (e.g. `{ path: "body.accountAddress" }`) */
+                  /** @description Structured issue context (e.g. `{ path: "destination.chainId" }`) */
                   context?: {
                     [key: string]: unknown
                   }
