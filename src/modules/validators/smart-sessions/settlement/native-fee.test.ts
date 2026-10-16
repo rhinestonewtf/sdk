@@ -23,7 +23,7 @@ import {
   USDC_SONEIUM,
 } from '../../../../../test/utils/lz-calldata'
 import { SETTLEMENT_CATALOG } from '../../../../../test/utils/settlement-catalog'
-import { hasLifetimeBudget } from '../authorization'
+import { getSessionDetails, hasLifetimeBudget } from '../authorization'
 import {
   DEFAULT_POLICY_ADDRESSES,
   UNIVERSAL_ACTION_POLICY_COPIES,
@@ -33,7 +33,11 @@ import {
   toSession,
   validateSessionDefinition,
 } from '../resolve'
-import type { CrossChainPermissionInput, SessionDefinition } from '../types'
+import type {
+  CrossChainPermissionInput,
+  Session,
+  SessionDefinition,
+} from '../types'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { OFT_SEND_SELECTOR, oftAbi } from './oft'
 
@@ -303,5 +307,61 @@ describe('OFT on a reusable session', () => {
     expect(admits(action, send(), BUDGET)).toBe(false)
     expect(admits(action, send({ amount: CAP - 1n }))).toBe(false)
     expect(admits(action, send({ amount: CAP - 2n }))).toBe(true)
+  })
+})
+
+describe('a stored reusable LZ or OFT session without the lifetimeBudget flag', () => {
+  // Another ValueLimitPolicy deployment, as a policyAddresses override sets.
+  const VALUE_LIMIT = '0x9999999999999999999999999999999999999999' as Address
+  const stored = (def: SessionDefinition): Session => {
+    const { lifetimeBudget: _, ...rest } = toSession(
+      { ...def, policyAddresses: { valueLimit: VALUE_LIMIT } },
+      OPTIONS,
+    )
+    return rest
+  }
+  const lz = stored(
+    definition({
+      from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+    }),
+  )
+  const oft = stored(
+    definition(
+      {
+        from: { chain: arbitrum, token: USDT0_ARB, maxNativeFee: BUDGET },
+        to: { chain: plasma, token: USDT0_PLASMA },
+        settlementLayers: ['OFT'],
+      },
+      {},
+      arbitrum,
+    ),
+  )
+
+  test.each([
+    ['LZ', lz],
+    ['OFT', oft],
+  ])('%s still holds a budget an enable would reset', async (_, session) => {
+    expect(
+      session.actions.some((a) =>
+        a.actionPolicies.some(
+          ({ policy }) => policy.toLowerCase() === VALUE_LIMIT,
+        ),
+      ),
+    ).toBe(true)
+    expect(hasLifetimeBudget(session, 'production')).toBe(true)
+    await expect(
+      getSessionDetails({
+        account: ACCOUNT,
+        sessions: [session],
+        environment: 'production',
+        readNonce: async () => 0n,
+        readNonceAndEnabled: async () => ({ nonce: 0n, enabled: true }),
+      }),
+    ).rejects.toThrow(/lifetime budget/)
+  })
+
+  test('a one-time-use LZ session holds none', () => {
+    const session = toSession(definition({}, once), OPTIONS)
+    expect(hasLifetimeBudget(session, 'production')).toBe(false)
   })
 })
