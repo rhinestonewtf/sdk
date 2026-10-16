@@ -47,6 +47,9 @@ const USDC_ARB = getAddress(SETTLEMENT_CATALOG[arbitrum.id].cctp!.usdc)
 const USDC_OP = getAddress(SETTLEMENT_CATALOG[optimism.id].cctp!.usdc)
 const WETH = '0x4200000000000000000000000000000000000006' as Address
 const WETH_ARB = '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' as Address
+const CBBTC = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf' as Address
+const USDT0_OP = getAddress(SETTLEMENT_CATALOG[optimism.id].oft!.token)
+const USDT0_ARB = getAddress(SETTLEMENT_CATALOG[arbitrum.id].oft!.token)
 const OFT_ARB = SETTLEMENT_CATALOG[arbitrum.id].oft!
 const OFT_PLASMA = SETTLEMENT_CATALOG[plasma.id].oft!
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
@@ -106,6 +109,23 @@ const EXISTING: Record<string, SessionDefinition> = {
   'CCTP with fees': definition({ settlementLayers: ['CCTP'], allowFees: true }),
   all: definition({}),
   'all, reusable': reusable(definition({})),
+  // Several tokens through scope.ts that no IntentExecutor layer moves.
+  'all, WETH + cbBTC': definition({
+    from: [
+      { chain: base, token: WETH, maxAmount: 10n ** 18n },
+      { chain: base, token: CBBTC },
+    ],
+    to: { chain: arbitrum, token: WETH_ARB },
+  }),
+  'all, WETH + cbBTC, reusable': reusable(
+    definition({
+      from: [
+        { chain: base, token: WETH },
+        { chain: base, token: CBBTC },
+      ],
+      to: { chain: arbitrum, token: WETH_ARB },
+    }),
+  ),
   'all, two destinations': definition({
     to: [
       { chain: arbitrum, token: USDC_ARB },
@@ -158,6 +178,8 @@ describe('multi-token IntentExecutor-layer permits', () => {
         "ECO_IE": "0xb62e49180f1d7b6138c048260da917383e59df00125adb8084e872e15ffcb6f0",
         "OFT": "0x098fb71c867c060658796450ebbf82a30248d9a835c674184a80b8500ec567e0",
         "all": "0x033c93c174ccb13dfff1d47cb4d0f5b639b599f4e2fa87fac18c21468e7080dc",
+        "all, WETH + cbBTC": "0xf0c7939c45c75a962fba78f8ead56c212814ef8741cfc811b3cce8ba69725544",
+        "all, WETH + cbBTC, reusable": "0x28f664d135cb55f09816c517376cda226462946dc2bfe5a57469e3bfab1d78e1",
         "all, open recipient": "0xce4120780f062bfb4b0d2febbd8bec3f0cbe3f1d9c8cc4cfda3975f8be43f727",
         "all, reusable": "0x68bda12d6d633a364e68d89a2bf7c700b204dcf7f5f38cf13bdb4621eeaf413f",
         "all, two destinations": "0x0d62e77786b609381a2ee92f8a62c53bd6932f35d4c872992b0ca2c5c075da0d",
@@ -444,5 +466,140 @@ describe('a permit with tokens only some layers move', () => {
       'TOKEN_NOT_ROUTED',
       `crossChainPermits: CCTP moves none of the \`from\` tokens on chain ${base.id}`,
     ])
+  })
+})
+
+describe('caps and fee-paying layers across tokens', () => {
+  const OP_STABLES: Partial<CrossChainPermissionInput> = {
+    from: [
+      { chain: optimism, token: USDC_OP, maxAmount: 100n },
+      { chain: optimism, token: USDT0_OP },
+    ],
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: arbitrum, token: USDT0_ARB },
+    ],
+  }
+
+  test("'all' with OFT and LZ both able to settle keeps neither, and builds", () => {
+    const uncapped = {
+      ...OP_STABLES,
+      from: [
+        { chain: optimism, token: USDC_OP },
+        { chain: optimism, token: USDT0_OP },
+      ],
+    }
+    const session = toSession(definition(uncapped, optimism), {
+      settlement: CATALOG,
+    })
+    expect(session.settlementLayers).toEqual(['ACROSS', 'CCTP'])
+    expect(
+      session.settlementCoverage?.dropped
+        .filter(({ reason }) => reason.includes('each pay a native'))
+        .map(({ layer }) => layer),
+    ).toEqual(['OFT', 'LZ'])
+    // An explicit list still refuses the pair.
+    expect(
+      refusalOf(() =>
+        toSession(
+          definition(
+            { ...uncapped, settlementLayers: ['OFT', 'LZ'] },
+            optimism,
+          ),
+          { settlement: CATALOG },
+        ),
+      ).code,
+    ).toBe('MULTIPLE_FEE_PAYING_LAYERS')
+  })
+
+  test('the USDC-capped USDC + USDT0 permit on Optimism builds', () => {
+    const session = toSession(definition(OP_STABLES, optimism), {
+      settlement: CATALOG,
+    })
+    // OFT moves USDT0, which the cap is not set on.
+    expect(session.settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
+    expect(
+      session.settlementCoverage?.dropped.find(({ layer }) => layer === 'OFT')
+        ?.reason,
+    ).toContain('maxAmount is set on')
+  })
+
+  const WETH_CAPPED: Partial<CrossChainPermissionInput> = {
+    ...USDC_AND_WETH,
+    from: [
+      { chain: base, token: USDC },
+      { chain: base, token: WETH, maxAmount: 10n ** 18n },
+    ],
+  }
+
+  test("'all' drops a layer whose token the cap is not set on", () => {
+    const { settlementLayers, dropped } = scope(WETH_CAPPED, { across: true })
+    expect(settlementLayers).toEqual(['ACROSS'])
+    for (const layer of ['CCTP', 'LZ']) {
+      expect(dropped.find((d) => d.layer === layer)?.reason).toBe(
+        `${layer} moves ${USDC} on chain ${base.id}, but maxAmount is set on ${WETH}`,
+      )
+    }
+  })
+
+  test('a layer moving the capped token keeps the cap', () => {
+    const { actions, settlementLayers } = scope(USDC_AND_WETH, {
+      across: true,
+    })
+    expect(settlementLayers).toEqual(['ACROSS', 'CCTP', 'LZ'])
+    const action = actionOf(
+      actions,
+      BASE.cctp!.tokenMessenger,
+      DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
+    )
+    const burnOf = (amount: bigint) =>
+      encodeFunctionData({
+        abi: tokenMessengerAbi,
+        functionName: 'depositForBurnWithHook',
+        args: [
+          amount,
+          SETTLEMENT_CATALOG[arbitrum.id].cctp!.domain,
+          pad(ACCOUNT),
+          USDC,
+          pad('0x'),
+          1n,
+          1000,
+          '0x',
+        ],
+      })
+    expect(holds(action, burnOf(100n))).toBe(true)
+    expect(holds(action, burnOf(101n))).toBe(false)
+  })
+
+  test('an explicit list refuses a layer whose token the cap is not set on', () => {
+    for (const across of [false, true]) {
+      const refused = refusalOf(() =>
+        scope(
+          {
+            ...WETH_CAPPED,
+            settlementLayers: across ? ['ACROSS', 'CCTP'] : ['CCTP'],
+          },
+          { across },
+        ),
+      )
+      expect([refused.code, refused.leg]).toEqual([
+        'CAP_TOKEN_MISMATCH',
+        'from',
+      ])
+    }
+  })
+
+  test('an explicit LZ list refuses a `to` leg on a chain LZ does not reach', () => {
+    const xLayer = { ...arbitrum, id: 196 } as Chain
+    const refused = refusalOf(() =>
+      scope({
+        to: [
+          { chain: arbitrum, token: USDC_ARB },
+          { chain: xLayer, token: USDC_ARB },
+        ],
+        settlementLayers: ['LZ'],
+      }),
+    )
+    expect([refused.code, refused.leg]).toEqual(['TOKEN_NOT_ROUTED', 'to'])
   })
 })
