@@ -206,6 +206,16 @@ describe('maxNativeFee on a one-time-use session', () => {
 describe('maxNativeFee refusals', () => {
   test.each<[string, SessionDefinition, string]>([
     [
+      'two budgets on one chain',
+      definition({
+        from: [
+          { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+          { chain: base, token: OTHER, maxNativeFee: BUDGET },
+        ],
+      }),
+      'MULTIPLE_MAX_NATIVE_FEES',
+    ],
+    [
       'a zero budget',
       definition({
         from: {
