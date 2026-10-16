@@ -73,6 +73,8 @@ const LAYERS: Record<
     readonly requiresOneTimeUse?: true
     /** Enforces the leg's `to.minAmount` on what its call delivers. */
     readonly floorsDelivery?: true
+    /** Leaves out a `to` leg no route reaches instead of refusing it (LZ). */
+    readonly skipsUnreachedLegs?: true
   }
 > = {
   CCTP: {
@@ -109,7 +111,20 @@ const LAYERS: Record<
       ]),
     requiresOneTimeUse: true,
     floorsDelivery: true,
+    skipsUnreachedLegs: true,
   },
+}
+
+/** Whether the layer pins `ctx`'s one leg rather than finding no route to it. */
+function reaches(layer: keyof typeof LAYERS, ctx: SettlementContext): boolean {
+  try {
+    LAYERS[layer].scope(ctx)
+    return true
+  } catch (error) {
+    return !(
+      error instanceof SettlementLayerRefusal && error.code === 'LZ_NO_ROUTE'
+    )
+  }
 }
 
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
@@ -247,6 +262,9 @@ function scopePermit(
     )
   }
   const cap = caps[0]
+  const capToken = fromLegs.find(
+    ({ maxAmount }) => maxAmount !== undefined,
+  )?.token
   const sourceTokens = fromLegs.map(({ token }) => token)
 
   const recipientIsAccount = permit.recipientIsAccount ?? true
@@ -409,13 +427,25 @@ function scopePermit(
         { code: 'TOKEN_NOT_ROUTED', chainId: options.chainId, leg: 'from' },
       )
     }
+    // The layer's call counts the cap in its own token's units, so a cap set on
+    // another token would bound nothing.
+    if (
+      capToken !== undefined &&
+      tokens.length === 1 &&
+      !isAddressEqual(tokens[0], capToken)
+    ) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} moves ${tokens[0]} on chain ${options.chainId}, but maxAmount is set on ${capToken}`,
+        { code: 'CAP_TOKEN_MISMATCH', chainId: options.chainId, leg: 'from' },
+      )
+    }
     // A leg on a chain the layer does not serve stays, so the layer refuses it.
     const legs = destinations.filter(
       (leg) =>
         LAYERS[layer].tokens(settlement, leg.chainId).length === 0 ||
         moves(leg.chainId, leg.token),
     )
-    const action = LAYERS[layer].scope({
+    const ctx: SettlementContext = {
       chainId: options.chainId,
       settlement,
       target,
@@ -428,8 +458,13 @@ function scopePermit(
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
       ...(validUntil === undefined ? {} : { validUntil }),
-    })
-    return { layer, spender, action, tokens, legs }
+    }
+    const action = LAYERS[layer].scope(ctx)
+    // The legs the call pins: one a layer leaves out silently is not delivered.
+    const pinned = LAYERS[layer].skipsUnreachedLegs
+      ? legs.filter((leg) => reaches(layer, { ...ctx, destinations: [leg] }))
+      : legs
+    return { layer, spender, action, tokens, legs: pinned }
   }
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
   // only the layers that can; any other error still throws. A fixed order keeps
@@ -440,7 +475,7 @@ function scopePermit(
   const bridges = CROSS_CHAIN_LAYERS.filter((layer) =>
     requested.includes(layer),
   )
-  const scopedLayers = bridges.flatMap((layer) => {
+  const built = bridges.flatMap((layer) => {
     if (!all) {
       const scopedLayer = recover(
         (error) => refuse(error, { layer }),
@@ -456,6 +491,20 @@ function scopePermit(
       return []
     }
   })
+  // Each layer's call allows one send, but one burning transaction admits both,
+  // and each pays a native fee no pin bounds. 'all' keeps neither rather than
+  // pick one; an explicit list is refused below.
+  const feePaying = built.filter(
+    ({ layer }) => LAYERS[layer].requiresOneTimeUse,
+  )
+  const feeConflict = `${feePaying.map(({ layer }) => layer).join(' and ')} each pay a native LayerZero fee, so a permit may use only one of them; name the layers to keep`
+  if (all && feePaying.length > 1) {
+    for (const { layer } of feePaying) skipped.set(layer, feeConflict)
+  }
+  const scopedLayers =
+    all && feePaying.length > 1
+      ? built.filter((scoped) => !feePaying.includes(scoped))
+      : built
   // Only a dry run gets here with no named layer scoped; it has recorded why.
   if (!all && scopedLayers.length === 0) throw new RefusalCollectionHalted()
   const ecoSkipped = skipped.get('ECO_IE')
@@ -479,16 +528,11 @@ function scopePermit(
       { chainId: options.chainId },
     )
   }
-  // Each layer's call allows one send, but one burning transaction admits both,
-  // and each pays a native fee no pin bounds.
-  const feePaying = scopedLayers.filter(
-    ({ layer }) => LAYERS[layer].requiresOneTimeUse,
-  )
-  if (feePaying.length > 1) {
+  if (!all && feePaying.length > 1) {
     refuse(
       refusal(
         'MULTIPLE_FEE_PAYING_LAYERS',
-        `crossChainPermits: ${feePaying.map(({ layer }) => layer).join(' and ')} each pay a native LayerZero fee, so a permit may use only one of them; name the layers to keep`,
+        `crossChainPermits: ${feeConflict}`,
       ),
     )
   }
