@@ -919,9 +919,9 @@ interface SessionSigningContent {
  *
  * Omitting this field preserves the legacy unrestricted behavior. Scoped
  * signing matches the domain and schema only, not message field values, and
- * uses one validity window for every allowed schema. The production SDK does
- * not yet emit scoped ERC-7739 signatures, so scoped direct signing fails
- * locally until the deployed nested-signing path is remediated.
+ * uses one validity window for every allowed schema. A scoped session signs
+ * allowed typed data as an ERC-7739 signature, which Nexus and Startale
+ * accounts verify; it cannot sign plain messages.
  */
 type SessionSigning =
   | { mode: 'disabled' }

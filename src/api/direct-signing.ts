@@ -1,4 +1,5 @@
 import {
+  domainSeparator,
   encodePacked,
   type Hex,
   hashMessage,
@@ -9,10 +10,13 @@ import {
   zeroHash,
 } from 'viem'
 import type { AccountRuntime } from '../accounts/adapter'
+import { nexusEip712Domain } from '../accounts/adapters/nexus'
+import { startaleEip712Domain } from '../accounts/adapters/startale'
 import { wrapKernelMessageHash } from '../accounts/kernel-signing'
 import type { EvmChainReference } from '../chains/types'
 import { defineValidator } from '../modules/validators/definition'
 import { getPermissionId } from '../modules/validators/smart-sessions/digest'
+import { encodeErc7739ContentType } from '../modules/validators/smart-sessions/erc7739'
 import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sessions/module'
 import type { ResolvedSessionSignerSet } from '../modules/validators/smart-sessions/types'
 import type { ValidatorContributionCodec } from '../modules/validators/types'
@@ -20,10 +24,15 @@ import {
   createAccountSigningContext,
   getAccountSignatureRoute,
   getSigningValidatorCodec,
+  type SigningContext,
 } from '../signing/context'
 import { resolveAccountValidatorSignableHash } from '../signing/hash'
 import { signAccountMessage } from '../signing/message'
 import { createValidatorSigningTasks, signingTopology } from '../signing/plan'
+import {
+  type Erc7739VerifierDomain,
+  prepareSmartSessionErc7739Signing,
+} from '../signing/protocols/erc7739'
 import {
   resolveAccountTypedDataSigning,
   signAccountTypedData,
@@ -57,7 +66,7 @@ export async function signRuntimeMessage(
       checkpoints: input.checkpoints,
       chain: input.chain,
       session: input.session,
-      contentHash: hashMessage(input.message),
+      payload: { kind: 'direct', contentHash: hashMessage(input.message) },
       nominalMessage: input.message,
     })
   }
@@ -117,9 +126,9 @@ export async function signRuntimeTypedData(
   readonly transcript: SigningTranscript
 }> {
   if (input.session) {
-    // Sessions sign an account-bound digest in direct (notarized) mode, the
-    // same shape signRuntimeMessage produces, so external ERC-1271 verifiers
-    // resolve the session validator directly.
+    // A session allowed this domain and type signs it with ERC-7739; one
+    // allowed to sign anything signs the account-bound digest in direct mode,
+    // the shape signRuntimeMessage produces.
     const contentHash = hashTypedData(input.typedData)
     return signSessionErc1271({
       runtime: input.runtime,
@@ -127,7 +136,12 @@ export async function signRuntimeTypedData(
       checkpoints: input.checkpoints,
       chain: input.chain,
       session: input.session,
-      contentHash,
+      payload:
+        allowsSessionTypedContent(input.session, input.typedData) &&
+        (supportsSessionErc7739(input.runtime) ||
+          !allowsDirectSessionSigning(input.session))
+          ? { kind: 'erc7739', typedData: input.typedData }
+          : { kind: 'direct', contentHash },
       nominalMessage: { raw: contentHash },
     })
   }
@@ -175,23 +189,27 @@ export async function signRuntimeTypedData(
   })
 }
 
-// Shared ERC-1271 signing for a session: the session owner signs an
-// account-bound digest (keccak of account ‖ contentHash) in the smart-session
-// "notarized" (direct) mode. Used by both message and typed-data signing so
-// they produce the identical on-chain-verifiable shape.
+// Shared ERC-1271 signing for a session. In direct ("notarized") mode the
+// session owner signs an account-bound digest (keccak of account ‖
+// contentHash); in ERC-7739 ("notarized-typed") mode it signs the
+// TypedDataSign digest over the account's EIP-712 domain.
 async function signSessionErc1271(input: {
   readonly runtime: AccountRuntime
   readonly signerInvoker: SignerInvocationPort
   readonly checkpoints: SigningCheckpointPort
   readonly chain: EvmChainReference
   readonly session: ResolvedSessionSignerSet
-  readonly contentHash: Hex
+  readonly payload:
+    | { readonly kind: 'direct'; readonly contentHash: Hex }
+    | { readonly kind: 'erc7739'; readonly typedData: TypedDataDefinition }
   readonly nominalMessage: SignableMessage
 }): Promise<{
   readonly signature: Hex
   readonly transcript: SigningTranscript
 }> {
-  assertDirectSessionSigning(input.session)
+  if (input.payload.kind === 'direct') {
+    assertDirectSessionSigning(input.session)
+  }
   const selection = sessionOwnerSelection(input.session)
   const context = createAccountSigningContext({
     runtime: input.runtime,
@@ -200,10 +218,29 @@ async function signSessionErc1271(input: {
     selection,
   })
   const topology = signingTopology(context.validator, selection.signerIds)
-  const accountHash =
-    input.runtime.construction.account.kind === 'kernel'
-      ? wrapKernelMessageHash(input.contentHash, context.account.address)
-      : input.contentHash
+  let erc7739: ReturnType<typeof prepareSmartSessionErc7739Signing> | undefined
+  let signedHash: Hex
+  if (input.payload.kind === 'erc7739') {
+    erc7739 = prepareSmartSessionErc7739Signing({
+      typedData: input.payload.typedData,
+      verifierDomain: sessionVerifierDomain(context, input.chain),
+    })
+    signedHash = erc7739.digest
+  } else {
+    const accountHash =
+      input.runtime.construction.account.kind === 'kernel'
+        ? wrapKernelMessageHash(
+            input.payload.contentHash,
+            context.account.address,
+          )
+        : input.payload.contentHash
+    signedHash = hashMessage({
+      raw: encodePacked(
+        ['bytes32', 'bytes32'],
+        [pad(context.account.address, { size: 32 }), accountHash],
+      ),
+    })
+  }
   const route = getAccountSignatureRoute(input.runtime, context)
   return signAccountMessage({
     context,
@@ -212,14 +249,7 @@ async function signSessionErc1271(input: {
       message: input.nominalMessage,
       signingMaterial: {
         kind: 'message' as const,
-        message: {
-          raw: hashMessage({
-            raw: encodePacked(
-              ['bytes32', 'bytes32'],
-              [pad(context.account.address, { size: 32 }), accountHash],
-            ),
-          }),
-        },
+        message: { raw: signedHash },
       },
       chain: input.chain,
       ...topology,
@@ -241,8 +271,17 @@ async function signSessionErc1271(input: {
               input.runtime.construction.sessions.environment,
             ),
           },
-          mode: 'notarized',
+          mode: erc7739 ? 'notarized-typed' : 'notarized',
           permissionId: getPermissionId(input.session.session),
+          ...(erc7739
+            ? {
+                erc7739: {
+                  appDomainSeparator: erc7739.appDomainSeparator,
+                  contentsType: erc7739.contentsType,
+                  encodeData: erc7739.encodeData,
+                },
+              }
+            : {}),
           signerCodec: requireSessionOwnerCodec(
             getSigningValidatorCodec(context),
           ),
@@ -256,20 +295,82 @@ async function signSessionErc1271(input: {
   })
 }
 
-function assertDirectSessionSigning(session: ResolvedSessionSignerSet): void {
+function allowsSessionTypedContent(
+  session: ResolvedSessionSignerSet,
+  typedData: TypedDataDefinition,
+): boolean {
   const allowedContents = session.session.erc7739Policies.allowedERC7739Content
-  const allowsDirectSigning = allowedContents.some(
+  const appDomainSeparator = domainSeparator({ domain: typedData.domain ?? {} })
+  const allowed = allowedContents.find(
+    (content) => content.appDomainSeparator === appDomainSeparator,
+  )
+  const { primaryType } = typedData
+  // A domain-only message has no contents for ERC-7739 to rebuild.
+  const contentsType =
+    primaryType && primaryType !== 'EIP712Domain'
+      ? encodeErc7739ContentType({
+          primaryType,
+          types: typedData.types as Parameters<
+            typeof encodeErc7739ContentType
+          >[0]['types'],
+        })
+      : undefined
+  if (contentsType && allowed?.contentNames.includes(contentsType)) return true
+  if (allowsDirectSessionSigning(session) || allowedContents.length === 0) {
+    return false
+  }
+  throw new Error(
+    allowed && contentsType
+      ? `This Smart Session cannot sign "${contentsType}" under domain ${appDomainSeparator}`
+      : `This Smart Session cannot sign typed data under domain ${appDomainSeparator}`,
+  )
+}
+
+function allowsDirectSessionSigning(session: ResolvedSessionSignerSet) {
+  return session.session.erc7739Policies.allowedERC7739Content.some(
     (content) =>
       content.appDomainSeparator === zeroHash &&
       content.contentNames.includes(''),
   )
-  if (allowsDirectSigning) return
-  if (allowedContents.length === 0) {
+}
+
+function assertDirectSessionSigning(session: ResolvedSessionSignerSet): void {
+  if (allowsDirectSessionSigning(session)) return
+  if (session.session.erc7739Policies.allowedERC7739Content.length === 0) {
     throw new Error('This Smart Session has signing disabled')
   }
   throw new Error(
-    'Scoped Smart Session signing requires safe ERC-7739 emission, which is not available in this SDK',
+    'This Smart Session signs only the typed data it allows; sign it with signTypedData',
   )
+}
+
+function supportsSessionErc7739(runtime: AccountRuntime): boolean {
+  const { kind } = runtime.adapter.capabilities.signatureEnvelope
+  return kind === 'nexus' || kind === 'startale'
+}
+
+// The domain the emissary reads from the account's `eip712Domain()`. Only
+// accounts that forward the application's hash unchanged and expose that
+// domain can verify an ERC-7739 session signature.
+function sessionVerifierDomain(
+  context: SigningContext,
+  chain: EvmChainReference,
+): Erc7739VerifierDomain {
+  const envelope = context.accountCapabilities.signatureEnvelope
+  switch (envelope.kind) {
+    case 'nexus':
+      return nexusEip712Domain(context.account.address, chain.id)
+    case 'startale':
+      return startaleEip712Domain(
+        context.account.address,
+        chain.id,
+        envelope.version,
+      )
+    default:
+      throw new Error(
+        `Scoped Smart Session signing is not available for ${context.account.definition.kind} accounts`,
+      )
+  }
 }
 
 function sessionOwnerSelection(

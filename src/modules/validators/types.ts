@@ -1,7 +1,10 @@
 import type { Account, Address, Hex } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 import type { ModuleId } from '../types'
-import type { SmartSessionEnableContributionData } from './smart-session-signature-types'
+import type {
+  SmartSessionEnableContributionData,
+  SmartSessionErc7739Content,
+} from './smart-session-signature-types'
 
 export type ValidatorKind =
   | 'ecdsa'
@@ -172,10 +175,16 @@ export type ValidatorContributionCodec =
   | {
       readonly kind: 'smart-session'
       readonly validator: ModuleId
-      readonly mode: 'use' | 'enable-and-use' | 'pre-claim' | 'notarized'
+      readonly mode:
+        | 'use'
+        | 'enable-and-use'
+        | 'pre-claim'
+        | 'notarized'
+        | 'notarized-typed'
       readonly permissionId: Hex
       readonly claimPolicyData?: Hex
       readonly enableData?: SmartSessionEnableContributionData
+      readonly erc7739?: SmartSessionErc7739Content
       readonly signerCodec?: Exclude<
         ValidatorContributionCodec,
         { readonly kind: 'smart-session' }

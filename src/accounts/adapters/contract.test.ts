@@ -28,7 +28,7 @@ import type {
 import { createEoaAdapter } from './eoa'
 import { createHcaAdapter } from './hca'
 import { createKernelAdapter, kernelInstallData } from './kernel'
-import { createNexusAdapter, nexusMaterial } from './nexus'
+import { createNexusAdapter, nexusEip712Domain, nexusMaterial } from './nexus'
 import { createSafeAdapter, safeV0FactoryMaterial } from './safe'
 import {
   canonicalOwnerAddresses,
@@ -439,6 +439,16 @@ describe('account adapter contract', () => {
       name: 'Startale',
       version: '1.0.1',
       chainId: 1,
+      verifyingContract: accountA.address,
+      salt: zeroHash,
+    })
+  })
+
+  test('Nexus reports the 1.2.0 EIP-712 domain for both implementations', () => {
+    expect(nexusEip712Domain(accountA.address, 8453)).toEqual({
+      name: 'Nexus',
+      version: '1.2.0',
+      chainId: 8453,
       verifyingContract: accountA.address,
       salt: zeroHash,
     })

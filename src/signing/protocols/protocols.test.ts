@@ -1,4 +1,9 @@
-import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
+import {
+  domainSeparator,
+  type Hex,
+  hashTypedData,
+  type TypedDataDefinition,
+} from 'viem'
 import { describe, expect, test } from 'vitest'
 import { withoutHostCollation } from '../../../test/utils/locale'
 import {
@@ -10,11 +15,19 @@ import {
   type Erc7739VerifierDomain,
   encodeErc7739ContentType,
   hashErc7739TypedData,
+  prepareSmartSessionErc7739Signing,
   wrapErc7739TypedDataSignature,
 } from './erc7739'
 
 const factory = '0x1111111111111111111111111111111111111111'
 const account = '0x2222222222222222222222222222222222222222'
+const verifierDomain = {
+  name: 'Test',
+  version: '1',
+  chainId: 1,
+  verifyingContract: account,
+  salt: `0x${'00'.repeat(32)}`,
+} as const
 
 describe('signing protocol operations', () => {
   test('wraps, detects, and unwraps ERC-6492 exactly', () => {
@@ -234,6 +247,30 @@ describe('signing protocol operations', () => {
           verifyingContract: account,
           salt: `0x${'00'.repeat(32)}`,
         },
+      }),
+    ).toThrow('complete')
+  })
+
+  test('prepares a Smart Session ERC-7739 signature for typed data without a domain', () => {
+    const prepared = prepareSmartSessionErc7739Signing({
+      typedData: {
+        types: { Test: [{ name: 'value', type: 'uint256' }] },
+        primaryType: 'Test',
+        message: { value: 1n },
+      },
+      verifierDomain,
+    })
+
+    expect(prepared.appDomainSeparator).toBe(domainSeparator({ domain: {} }))
+    expect(prepared.contentsType).toBe('Test(uint256 value)')
+    expect(prepared.encodeData).toBe(`0x${'00'.repeat(31)}01`)
+  })
+
+  test('requires a primary type for a Smart Session ERC-7739 signature', () => {
+    expect(() =>
+      prepareSmartSessionErc7739Signing({
+        typedData: { domain: {}, types: {}, message: {} } as never,
+        verifierDomain,
       }),
     ).toThrow('complete')
   })

@@ -86,6 +86,7 @@ export function encodeValidatorContribution(
           ? { claimPolicyData: codec.claimPolicyData }
           : {}),
         ...(codec.enableData ? { enableData: codec.enableData } : {}),
+        ...(codec.erc7739 ? { erc7739: codec.erc7739 } : {}),
       })
     }
   }
