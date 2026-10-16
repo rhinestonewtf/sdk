@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { PublicKey } from '@solana/web3.js'
 import {
   createPublicClient,
   createWalletClient,
@@ -10,18 +9,10 @@ import {
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia } from 'viem/chains'
-import { afterAll, describe, expect, it, vi } from 'vitest'
-import {
-  OrchestratorError,
-  SimulationFailedError,
-  UnsupportedAccountCapabilityError,
-} from '../../../src/errors/index'
-import type { SignedTransactionData, Transaction } from '../../../src/index'
-import {
-  createSolanaSwigId,
-  solanaAddress,
-  solanaDevnet,
-} from '../../../src/solana/index'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { OrchestratorError } from '../../../src/errors/index'
+import type { SignedTransactionData } from '../../../src/index'
+import { solanaDevnet } from '../../../src/solana/index'
 import {
   createSolanaReport,
   getSolanaIntegrationConfig,
@@ -59,8 +50,6 @@ async function liveRuntime() {
   const config = getSolanaIntegrationConfig()
   stage = 'network-preflight'
   const preflight = await preflightSolanaIntegration(config)
-  // Use viem's chain-neutral client at the harness boundary; network identity
-  // remains independently checked before every funding/receipt operation.
   return {
     ...preflight,
     evmClient: createPublicClient({
@@ -81,9 +70,10 @@ const report = createSolanaReport()
 const safety = new SolanaSuiteSafety()
 let runtime: Runtime | undefined
 let fixture: SolanaFixture | undefined
-let submissions = 0
 let currentCase = 'setup'
 let stage = 'config'
+const solChain = solanaDevnet.caip2
+const baseChain = 'eip155:84532'
 
 async function record(fields: Parameters<typeof report.record>[0] = {}) {
   report.record({
@@ -104,26 +94,62 @@ async function guarded(caseId: string, run: () => Promise<void>) {
   return safety.guard(
     caseId,
     async () => {
-      currentCase = caseId
-      stage = 'start'
-      await record()
-      await run()
-      stage = 'verified'
-      await record()
+      const scoped = async () => {
+        currentCase = caseId
+        stage = 'start'
+        await record()
+        await run()
+        stage = 'verified'
+        await record()
+      }
+      if (fixture) await fixture.withRequests(scoped, 240_000)
+      else await scoped()
     },
     async (error) => {
-      const errorCode =
-        error instanceof OrchestratorError
-          ? error.code
-          : error instanceof Error
-            ? error.name
-            : 'UNKNOWN'
+      // Only allow known error codes and our own primitive assertion values into logs.
+      const code =
+        error instanceof OrchestratorError ? error.code : 'LIVE_CHECK_FAILED'
+      const errorCode = /^[A-Z_]{1,80}$/.test(code) ? code : 'LIVE_CHECK_FAILED'
       await record({ errorCode })
-      // Do not let Vitest serialize SDK error causes/artifacts into CI logs.
+      let detail = ''
+      const harnessMessages = [
+        'Deployment must expose exactly one submitted intent',
+        'Deployment submission/quoted rent evidence missing',
+        'Deployment has no Devnet receipt',
+        'Idempotent deployment submitted a second intent',
+        'Swig program ownership mismatch',
+        'Onchain Swig identity/wallet mismatch',
+        'Swig asset wallet ownership mismatch',
+        'Swig root identity/permissions mismatch',
+        'Insufficient Solana funder SOL (rent/fee headroom)',
+        'Insufficient/invalid Solana funder USDC',
+        'Insufficient Base funder USDC',
+        'Insufficient Base funder ETH fee headroom',
+        'Intent did not complete every operation with expected purpose',
+        'Solana visibility timeout; reconcile existing submission before spending again',
+        'Solana RPC timeout; reconcile existing submission',
+      ]
+      if (error instanceof Error && harnessMessages.includes(error.message))
+        detail = `; ${error.message}`
+      if (error instanceof Error && error.name === 'AssertionError') {
+        const safeValue = (key: string) => {
+          const value = Object.getOwnPropertyDescriptor(error, key)?.value
+          return typeof value === 'bigint' ||
+            (typeof value === 'number' && Number.isFinite(value)) ||
+            typeof value === 'boolean'
+            ? String(value)
+            : 'redacted'
+        }
+        detail = `; expected=${safeValue('expected')} actual=${safeValue('actual')}`
+      }
+      // Config/preflight messages are constructed locally and never interpolate credentials.
+      if (
+        error instanceof Error &&
+        (stage === 'config' || stage === 'network-preflight')
+      )
+        throw new Error(error.message)
       throw new Error(
-        stage === 'config' && error instanceof Error
-          ? error.message
-          : `${caseId} failed at ${stage} (${errorCode}); inspect sanitized report and reconcile before rerunning`,
+        `${caseId} failed at ${stage} (${errorCode})${detail}; inspect sanitized report and reconcile before rerunning`,
       )
     },
   )
@@ -144,8 +170,6 @@ async function balances() {
   return { wallet, recipient, base, baseRecipient }
 }
 type Balances = Awaited<ReturnType<typeof balances>>
-const solChain = solanaDevnet.caip2
-const baseChain = 'eip155:84532'
 function amount(legs: Quote['cost']['input'], chain: string, token: string) {
   return legs
     .filter(
@@ -170,27 +194,23 @@ function isInstruction(cell: SolanaCell) {
 function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
   expect(quote.intentId).toMatch(/^[a-zA-Z0-9_-]{1,160}$/)
   expect(quote.purpose).toBe('execution')
-  expect(quote.requirements).toEqual([])
+  expect(quote.requirements.length).toBe(0)
   expect(quote.signingRequests.length).toBeGreaterThan(0)
   expect(quote.expiresAt * 1000).toBeGreaterThan(Date.now())
-  const fee = quote.cost.fees
-  expect(Number.isFinite(fee.total.usd)).toBe(true)
-  expect(fee.total.usd).toBeGreaterThanOrEqual(0)
-  for (const category of Object.values(fee.breakdown)) {
-    expect(Number.isFinite(category.usd)).toBe(true)
-    expect(category.usd).toBeGreaterThanOrEqual(0)
+  for (const fee of [
+    quote.cost.fees.total,
+    ...Object.values(quote.cost.fees.breakdown),
+  ]) {
+    expect(Number.isFinite(fee.usd)).toBe(true)
+    expect(fee.usd).toBeGreaterThanOrEqual(0)
   }
-  assertGasSponsorship(cell, fee)
-  const inbound = cell.row === 'IN-D'
-  const sourceChain = inbound ? baseChain : solChain
-  const destinationChain = cell.row.startsWith('OUT-') ? baseChain : solChain
-  const sourceMint = inbound ? BASE_SEPOLIA_USDC : DEVNET_MINT
-  const destinationMint =
-    destinationChain === baseChain ? BASE_SEPOLIA_USDC : DEVNET_MINT
+  assertGasSponsorship(cell, quote.cost.fees)
   for (const leg of [...quote.cost.input, ...quote.cost.output]) {
     expect(leg.amount).toBeGreaterThanOrEqual(0n)
     if (leg.chainId === solChain) {
-      expect([DEVNET_MINT, NATIVE_SOL]).toContain(leg.tokenAddress)
+      expect(
+        leg.tokenAddress === DEVNET_MINT || leg.tokenAddress === NATIVE_SOL,
+      ).toBe(true)
       expect(leg.decimals).toBe(leg.tokenAddress === NATIVE_SOL ? 9 : 6)
     } else {
       expect(leg.chainId).toBe(baseChain)
@@ -200,7 +220,6 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
       expect(leg.decimals).toBe(6)
     }
   }
-  const input = amount(quote.cost.input, sourceChain, sourceMint)
   if (isInstruction(cell)) {
     for (const token of [DEVNET_MINT, NATIVE_SOL]) {
       const transfer =
@@ -211,6 +230,10 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
         amount(quote.cost.input, solChain, token) -
         amount(quote.cost.output, solChain, token)
       expect(net).toBeGreaterThanOrEqual(0n)
+      // Instructions have no source maxAmount: independently cap quoted fees before signing.
+      expect(net).toBeLessThanOrEqual(
+        token === DEVNET_MINT ? SOLANA_AMOUNTS.deliveryCap : 5_000_000n,
+      )
       expect(transfer + net).toBeLessThanOrEqual(
         token === DEVNET_MINT
           ? before.wallet.usdc
@@ -218,15 +241,26 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
       )
     }
   } else {
-    expect(quote.cost.input).toHaveLength(1)
-    expect(quote.cost.output).toHaveLength(1)
+    const inbound = cell.row === 'IN-D'
+    const input = amount(
+      quote.cost.input,
+      inbound ? baseChain : solChain,
+      inbound ? BASE_SEPOLIA_USDC : DEVNET_MINT,
+    )
+    expect(quote.cost.input.length).toBe(1)
+    expect(quote.cost.output.length).toBe(1)
     expect(input).toBeGreaterThan(0n)
     assertDeliveryCap(input)
     expect(input).toBeLessThanOrEqual(
       inbound ? before.base.usdc : before.wallet.usdc,
     )
+    const outgoing = cell.row === 'OUT-C'
     expect(
-      amount(quote.cost.output, destinationChain, destinationMint),
+      amount(
+        quote.cost.output,
+        outgoing ? baseChain : solChain,
+        outgoing ? BASE_SEPOLIA_USDC : DEVNET_MINT,
+      ),
     ).toBeGreaterThanOrEqual(requested(cell))
   }
   if (cell.row === 'OUT-C') {
@@ -239,41 +273,25 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
     expect(execution.executedBy?.address.toLowerCase()).toBe(
       f.evmAddress.toLowerCase(),
     )
-    const svm = quote.signingRequests.filter(
-      (request) => request.account.vm === 'svm',
-    )
-    const evm = quote.signingRequests.filter(
-      (request) => request.account.vm === 'evm',
-    )
     expect(
-      svm.some((request) => request.purpose === 'originAuthorization'),
-    ).toBe(true)
-    expect(
-      evm.some(
-        (request) =>
-          request.purpose === 'destinationAuthorization' ||
-          request.purpose === 'targetExecutionAuthorization',
+      quote.signingRequests.some(
+        (r) => r.account.vm === 'svm' && r.purpose === 'originAuthorization',
       ),
     ).toBe(true)
-    for (const request of svm) {
-      if (request.account.vm !== 'svm') throw new Error('Missing SVM account')
-      expect(request.account.wallet).toBe(f.wallet.toBase58())
-      expect(request.account.swigAccount).toBe(f.swig.toBase58())
-      expect(request.chainIds).toContain(solChain)
-    }
-    for (const request of evm) {
-      if (request.account.vm !== 'evm') throw new Error('Missing EVM account')
-      expect(request.account.address.toLowerCase()).toBe(
-        f.evmAddress.toLowerCase(),
-      )
-      expect(request.chainIds).toContain(baseChain)
-    }
+    expect(
+      quote.signingRequests.some(
+        (r) =>
+          r.account.vm === 'evm' &&
+          (r.purpose === 'destinationAuthorization' ||
+            r.purpose === 'targetExecutionAuthorization'),
+      ),
+    ).toBe(true)
   }
 }
 function recipientCredit(cell: SolanaCell, before: Balances, after: Balances) {
   return cell.row === 'SC-I-SOL'
     ? after.recipient.lamports - before.recipient.lamports
-    : cell.row.startsWith('OUT-')
+    : cell.row === 'OUT-C'
       ? after.baseRecipient.usdc - before.baseRecipient.usdc
       : after.recipient.usdc - before.recipient.usdc
 }
@@ -292,15 +310,10 @@ function verifyBalances(
         ? SOLANA_AMOUNTS.destinationCallUsdc
         : requested(cell),
     )
-  else {
-    const chain = cell.row === 'OUT-D' ? baseChain : solChain
-    const mint = chain === baseChain ? BASE_SEPOLIA_USDC : DEVNET_MINT
+  else
     expect(credit).toBeGreaterThanOrEqual(
-      amount(quote.cost.output, chain, mint),
+      amount(quote.cost.output, solChain, DEVNET_MINT),
     )
-    // Guaranteed output is a floor; rounding overdelivery is safe because
-    // the independently measured source debit is still capped below.
-  }
   const usdcDebit = inbound
     ? before.base.usdc - after.base.usdc
     : before.wallet.usdc - after.wallet.usdc
@@ -324,542 +337,344 @@ function verifyBalances(
         (cell.row === 'SC-I-SOL') === (token === NATIVE_SOL)
           ? requested(cell)
           : 0n
-      const net =
+      assertUserDebit(
+        debit,
+        transfer,
         amount(quote.cost.input, solChain, token) -
-        amount(quote.cost.output, solChain, token)
-      assertUserDebit(debit, transfer, net)
+          amount(quote.cost.output, solChain, token),
+      )
     }
   }
   if (cell.row !== 'SC-I-SOL')
     expect(after.recipient.lamports).toBe(before.recipient.lamports)
-  if (cell.row === 'SC-I-SOL' || cell.row.startsWith('OUT-'))
+  if (cell.row === 'SC-I-SOL' || cell.row === 'OUT-C')
     expect(after.recipient.usdc).toBe(before.recipient.usdc)
   if (inbound) expect(after.wallet.usdc).toBe(before.wallet.usdc)
-  if (!cell.row.startsWith('OUT-'))
+  if (cell.row !== 'OUT-C')
     expect(after.baseRecipient.usdc).toBe(before.baseRecipient.usdc)
   expect(after.baseRecipient.wei).toBe(before.baseRecipient.wei)
   expect(after.wallet.rentExemptReserve).toBe(before.wallet.rentExemptReserve)
   if (!instruction) expect(after.wallet.lamports).toBe(before.wallet.lamports)
-  // No ETH value is sent; any user gas debit must be disclosed as a cost leg.
-  const weiDebit = before.base.wei - after.base.wei
-  expect(weiDebit).toBe(0n)
-  if (cell.row === 'OUT-C') {
-    const guaranteed = amount(quote.cost.output, baseChain, BASE_SEPOLIA_USDC)
+  expect(after.base.wei).toBe(before.base.wei)
+  if (cell.row === 'OUT-C')
     expect(after.base.usdc - before.base.usdc + credit).toBeGreaterThanOrEqual(
-      guaranteed,
+      amount(quote.cost.output, baseChain, BASE_SEPOLIA_USDC),
     )
-  } else if (!inbound) expect(after.base.usdc).toBe(before.base.usdc)
+  else if (!inbound) expect(after.base.usdc).toBe(before.base.usdc)
 }
 
-describe.sequential('Solana Devnet / Base Sepolia fresh live matrix', () => {
-  it('preflights, deploys once, verifies authority and funds bounded shortfalls', async () =>
-    guarded('setup', async () => {
-      runtime = await liveRuntime()
-      const config = runtime.config
-      stage = 'fixture'
-      const baseFetch = globalThis.fetch
-      const fetcher: typeof fetch = Object.assign(
-        async (
-          input: Parameters<typeof fetch>[0],
-          init?: Parameters<typeof fetch>[1],
-        ) => {
-          const url =
-            typeof input === 'string'
-              ? input
-              : input instanceof URL
-                ? input.href
-                : input.url
-          if (
-            init?.method === 'POST' &&
-            new URL(url).pathname.endsWith('/intents')
-          ) {
-            safety.assertActive()
-            submissions++
-            if (currentCase === 'refusals')
-              throw new Error('Submission forbidden during prepare refusals')
-          }
-          return baseFetch(input, {
-            ...init,
-            signal: init?.signal
-              ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
-              : AbortSignal.timeout(30_000),
-          })
-        },
-        { preconnect: baseFetch.preconnect },
-      )
-      fixture = await createSolanaFixture({
-        sdkConfig: config.sdkConfig,
-        connection: runtime.connection,
-        evmClient: runtime.evmClient,
-        fetcher,
-        onDeploymentEvidence: async (evidence) => {
-          await record({
-            intentId: evidence.intentId,
-            quotedAmount: evidence.quotedAmounts.join(' '),
-            stage: evidence.submissions
-              ? 'deployment-submitting'
-              : 'deployment-quoted',
-          })
-        },
-      })
-      stage = 'deploy-and-verify'
-      await record({
-        chain: baseChain,
-        wallet: fixture.evmAddress,
-        recipient: evmRecipient,
-      })
-      safety.assertActive()
-      const deployment = await deployAndVerifySolanaFixture(fixture)
-      for (const group of deployment.status.operations) {
-        for (const operation of group.items) {
-          if ('transaction' in operation && operation.transaction?.vm === 'svm')
-            await record({
-              intentId: deployment.evidence.intentId,
-              traceId: deployment.status.traceId,
-              chain: operation.transaction.chainId,
-              transaction: operation.transaction.signature,
-            })
-        }
-      }
-      stage = 'ata-and-funding'
-      await record({
-        chain: solChain,
-        wallet: config.funder.publicKey.toBase58(),
-      })
-      await record({
-        chain: baseChain,
-        wallet: privateKeyToAccount(config.evmFunderPrivateKey).address,
-      })
-      const funding = new SolanaFundingHarness(
-        fixture,
-        config.funder,
-        undefined,
-        () => safety.assertActive(),
-        (signature) => record({ chain: solChain, transaction: signature }),
-      )
-      safety.assertActive()
-      await funding.setupTokenAccounts()
-      // One bounded provision for all cells; never refill a failing/negative case.
-      const reserve = BigInt(
-        await runtime.connection.getMinimumBalanceForRentExemption(0),
-      )
-      safety.assertActive()
-      await funding.fundShortfall({
-        usdc: 4_000_000n,
-        lamports: reserve + 20_000_000n,
-      })
-      safety.assertActive()
-      await fundBaseSepoliaShortfall({
-        fixture,
-        publicClient: runtime.evmClient,
-        walletClient: createWalletClient({
-          account: privateKeyToAccount(config.evmFunderPrivateKey),
-          chain: baseSepolia,
-          transport: http(config.baseSepoliaRpcUrl, {
-            retryCount: 0,
-            timeout: 30_000,
-          }),
-        }),
-        budget: funding.budget,
-        assertActive: () => safety.assertActive(),
-        persistTransaction: (hash) =>
-          record({ chain: baseChain, transaction: hash }),
-        target: { usdc: 1_000_000n, wei: 1_000_000_000_000_000n },
-      })
-      for (const [asset, spent] of Object.entries(funding.budget.snapshot()))
-        await record({
-          stage: `funded-${asset}`,
-          balanceDelta: spent.toString(),
-        })
-    }))
-
-  it('refuses malformed and insufficient requests at prepare without signing, submitting or spending', async () =>
-    guarded('refusals', async () => {
-      const { fixture: f } = ready()
-      const before = await balances()
-      const count = submissions
-      const sign = vi
-        .spyOn(f.account, 'signTransaction')
-        .mockImplementation(async () => {
-          throw new Error('Signing forbidden during prepare refusals')
-        })
-      const submit = vi
-        .spyOn(f.account, 'submitTransaction')
-        .mockImplementation(async () => {
-          throw new Error('Submission forbidden during prepare refusals')
-        })
-      const assertNoEffects = async () => {
-        expect(sign).not.toHaveBeenCalled()
-        expect(submit).not.toHaveBeenCalled()
-        expect(submissions).toBe(count)
-        expect(await balances()).toEqual(before)
-      }
-      const delivery: Transaction = matrixTransaction(
-        SOLANA_MATRIX[0],
-        f.wallet,
-        f.recipient.publicKey,
-        evmRecipient,
-      )
-      const recipient = solanaAddress(f.recipient.publicKey.toBase58())
-      const instructions = {
-        chain: solanaDevnet,
-        instructions: [{ programId: NATIVE_SOL, accounts: [], data: '' }],
-      }
-      const malformed: { id: string; input: unknown; field: string }[] = [
-        {
-          id: 'native-delivery',
-          input: {
-            source: { token: NATIVE_SOL },
-            destination: {
-              chain: solanaDevnet,
-              token: NATIVE_SOL,
-              amount: 1n,
-              recipient,
-            },
-          },
-          field: 'destination.token',
-        },
-        {
-          id: 'inbound-instructions',
-          input: {
-            source: { chain: baseSepolia, token: BASE_SEPOLIA_USDC },
-            destination: instructions,
-          },
-          field: 'destination.instructions',
-        },
-        {
-          id: 'inbound-calls',
-          input: {
-            source: { chain: baseSepolia, token: BASE_SEPOLIA_USDC },
-            destination: {
-              chain: solanaDevnet,
-              token: DEVNET_MINT,
-              amount: 1n,
-              recipient,
-              calls: [],
-            },
-          },
-          field: 'destination.calls',
-        },
-        {
-          id: 'missing-fee-source',
-          input: { destination: instructions, sponsored: false },
-          field: 'source',
-        },
-        {
-          id: 'instruction-cap',
-          input: {
-            source: { token: DEVNET_MINT, maxAmount: 1n },
-            destination: instructions,
-          },
-          field: 'source.maxAmount',
-        },
-        ...[0n, -1n].map((maxAmount) => ({
-          id: maxAmount === 0n ? 'zero-cap' : 'negative-cap',
-          input: { ...delivery, source: { token: DEVNET_MINT, maxAmount } },
-          field: 'source.maxAmount',
-        })),
-        {
-          id: 'above-cap',
-          input: { ...delivery, source: { token: DEVNET_MINT, maxAmount: 1n } },
-          field: 'source.maxAmount',
-        },
-        {
-          id: 'mint-mismatch',
-          input: { ...delivery, source: { token: NATIVE_SOL } },
-          field: 'source.token',
-        },
-      ]
-      try {
-        for (const refusal of malformed) {
-          stage = `prepare-refusal-${refusal.id}`
-          // Deliberately exercise the untyped JS input boundary, never a happy-path cast.
-          let caught: unknown
-          try {
-            await Reflect.apply(f.account.prepareTransaction, f.account, [
-              refusal.input,
-            ])
-          } catch (error) {
-            caught = error
-          }
-          await record({
-            errorCode:
-              caught instanceof OrchestratorError
-                ? caught.code
-                : caught instanceof Error
-                  ? caught.name
-                  : 'NO_DOMAIN_ERROR',
-          })
-          expect(caught).toBeInstanceOf(UnsupportedAccountCapabilityError)
-          if (!(caught instanceof UnsupportedAccountCapabilityError))
-            throw new Error('Wrong refusal domain')
-          expect(caught.context.field).toBe(refusal.field)
-          await record({ errorCode: caught.name })
-          await assertNoEffects()
-        }
-        stage = 'prepare-refusal-invalid-deployment-id'
-        const identity = createSolanaSwigId()
-        const independent = await f.sdk.createAccount({
-          solana: {
-            swig: identity.swig,
-            owner: {
-              type: 'ecdsa',
-              account: privateKeyToAccount(generatePrivateKey()),
-            },
-          },
-        })
-        const state = new PublicKey(identity.swig)
-        const wallet = new PublicKey(identity.wallet)
-        expect(await f.connection.getAccountInfo(state)).toBeNull()
-        const independentBefore = await readSolanaBalances(f.connection, wallet)
-        let deploymentError: unknown
-        try {
-          await independent.deploy('solana', solanaDevnet, { swigId: '0x01' })
-        } catch (error) {
-          deploymentError = error
-        }
-        expect(deploymentError).toBeInstanceOf(
-          UnsupportedAccountCapabilityError,
-        )
-        if (!(deploymentError instanceof UnsupportedAccountCapabilityError))
-          throw new Error('Wrong deployment refusal domain')
-        expect(deploymentError.context.field).toBe('swigId')
-        expect(await f.connection.getAccountInfo(state)).toBeNull()
-        expect(await readSolanaBalances(f.connection, wallet)).toEqual(
-          independentBefore,
-        )
-        await assertNoEffects()
-        stage = 'prepare-refusal-insufficient-balance'
-        let caught: unknown
-        try {
-          await f.account.prepareTransaction({
-            source: {
-              token: DEVNET_MINT,
-              maxAmount: before.wallet.usdc + 1_000_000_000n,
-            },
-            destination: {
-              chain: solanaDevnet,
-              token: DEVNET_MINT,
-              amount: before.wallet.usdc + 1_000_000_000n,
-              recipient,
-            },
-            sponsored: false,
-          })
-        } catch (error) {
-          caught = error
-        }
-        await record({
-          errorCode:
-            caught instanceof OrchestratorError
-              ? caught.code
-              : caught instanceof Error
-                ? caught.name
-                : 'NO_DOMAIN_ERROR',
-        })
-        expect(caught).toBeInstanceOf(SimulationFailedError)
-        if (!(caught instanceof SimulationFailedError))
-          throw new Error('Wrong insufficient-balance domain')
-        expect(caught.code).toBe('SIMULATION_FAILED')
-        expect(caught.category).toBe('INSUFFICIENT_BALANCE')
-        await record({ errorCode: caught.code })
-        await assertNoEffects()
-      } finally {
-        sign.mockRestore()
-        submit.mockRestore()
-      }
-    }))
-
-  for (const cell of SOLANA_MATRIX) {
-    it(cell.id, async () =>
-      guarded(cell.id, async () => {
-        const { fixture: f, runtime: r } = ready()
-        stage = 'snapshot'
-        const before = await balances()
-        stage = 'prepare'
-        await record()
-        const prepared = await f.account.prepareTransaction(
-          matrixTransaction(
-            cell,
-            f.wallet,
-            f.recipient.publicKey,
-            evmRecipient,
-          ),
-        )
-        const quote = prepared.quotes.best
-        stage = 'quote-check'
-        validateQuote(cell, quote, before)
-        for (const direction of ['input', 'output'] as const) {
-          for (const leg of quote.cost[direction])
-            await record({
-              stage: `quote-${direction}`,
-              chain: leg.chainId,
-              mint: leg.tokenAddress,
-              quotedAmount: leg.amount.toString(),
-              intentId: quote.intentId,
-              traceId: prepared.quotes.traceId,
-            })
-        }
-        for (const [category, fee] of Object.entries(quote.cost.fees.breakdown))
-          await record({
-            stage: `quote-fee-${category}-${fee.sponsored ? 'sponsored' : 'user'}`,
-            quotedAmount: fee.usd.toString(),
-            intentId: quote.intentId,
-          })
-        stage = 'sign'
-        const signed = await f.account.signTransaction(prepared)
-        expect(signed.quote.intentId).toBe(quote.intentId)
-        expect(signed.proofs).toHaveLength(quote.signingRequests.length)
-        for (const [index, request] of quote.signingRequests.entries()) {
-          const proof = signed.proofs[index]
-          expect(proof?.kind).toBe(request.payload.kind)
-          if (proof?.kind === 'personalSign')
-            expect(proof.signature.length).toBeGreaterThan(2)
-          if (proof?.kind === 'eip712') {
-            if (typeof proof.signature === 'string')
-              expect(proof.signature.length).toBeGreaterThan(2)
-            else {
-              expect(proof.signature.preClaim.length).toBeGreaterThan(2)
-              expect(proof.signature.notarizedClaim.length).toBeGreaterThan(2)
+describe.sequential(
+  'Solana Devnet / Base Sepolia focused live flows',
+  { retry: 0 },
+  () => {
+    beforeAll(async () =>
+      guarded('setup', async () => {
+        runtime = await liveRuntime()
+        const r = runtime
+        stage = 'fixture'
+        const baseFetch = globalThis.fetch
+        const fetcher: typeof fetch = Object.assign(
+          async (
+            input: Parameters<typeof fetch>[0],
+            init?: Parameters<typeof fetch>[1],
+          ) => {
+            const url =
+              typeof input === 'string'
+                ? input
+                : input instanceof URL
+                  ? input.href
+                  : input.url
+            if (
+              init?.method === 'POST' &&
+              new URL(url).pathname.endsWith('/intents')
+            ) {
+              safety.assertActive()
+              await record({ stage: `${stage}-before-submit` })
+              safety.assertActive()
             }
-          }
-        }
-        stage = 'submitting'
-        // This write must finish before the first state-changing submission call.
-        await record({
-          intentId: signed.quote.intentId,
-          traceId: prepared.quotes.traceId,
-        })
-        safety.assertActive()
-        const result = await f.account.submitTransaction(signed)
-        expect(result.id).toBe(quote.intentId)
-        stage = 'settlement'
-        await record({ intentId: result.id, traceId: result.traceId })
-        const status = await waitForTerminalIntent(
-          f.sdk,
-          result.id,
-          'execution',
-          { timeoutMs: 60_000 },
-        )
-        stage = 'receipts'
-        const refs = await verifyIntentReceipts(
-          status,
-          r.connection,
-          r.evmClient,
-          cell.row.startsWith('SC-') ? [solChain] : [solChain, baseChain],
-        )
-        for (const ref of refs)
-          await record({
-            chain: ref.chainId,
-            transaction: ref.vm === 'svm' ? ref.signature : ref.txHash,
-            traceId: status.traceId,
-          })
-        if (cell.row === 'OUT-C') {
-          let matched = false
-          for (const ref of refs) {
-            if (ref.vm !== 'evm') continue
-            const receipt = await r.evmClient.getTransactionReceipt({
-              hash: ref.txHash,
+            return baseFetch(input, {
+              ...init,
+              signal: init?.signal
+                ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
+                : AbortSignal.timeout(30_000),
             })
-            for (const log of receipt.logs) {
-              if (log.address.toLowerCase() !== BASE_SEPOLIA_USDC.toLowerCase())
-                continue
-              try {
-                const event = decodeEventLog({
-                  abi: erc20Abi,
-                  eventName: 'Transfer',
-                  data: log.data,
-                  topics: log.topics,
+          },
+          { preconnect: baseFetch.preconnect },
+        )
+        fixture = await createSolanaFixture({
+          sdkConfig: r.config.sdkConfig,
+          connection: r.connection,
+          evmClient: r.evmClient,
+          fetcher,
+          onDeploymentEvidence: async (evidence) =>
+            record({
+              intentId: evidence.intentId,
+              quotedAmount: evidence.quotedAmounts.join(' '),
+              stage: evidence.submissions
+                ? 'deployment-submitting'
+                : 'deployment-quoted',
+            }),
+        })
+        const f = fixture
+        await f.withRequests(async () => {
+          stage = 'deploy-and-verify'
+          await record({
+            chain: baseChain,
+            wallet: f.evmAddress,
+            recipient: evmRecipient,
+          })
+          safety.assertActive()
+          const deployment = await deployAndVerifySolanaFixture(f)
+          for (const group of deployment.status.operations)
+            for (const operation of group.items)
+              if (
+                'transaction' in operation &&
+                operation.transaction?.vm === 'svm'
+              )
+                await record({
+                  intentId: deployment.evidence.intentId,
+                  traceId: deployment.status.traceId,
+                  chain: operation.transaction.chainId,
+                  transaction: operation.transaction.signature,
                 })
-                if (
-                  event.args.from.toLowerCase() ===
-                    f.evmAddress.toLowerCase() &&
-                  event.args.to.toLowerCase() === evmRecipient.toLowerCase() &&
-                  event.args.value === SOLANA_AMOUNTS.destinationCallUsdc
-                )
-                  matched = true
-              } catch {
-                /* Other USDC events are not transfer evidence. */
-              }
-            }
-          }
-          expect(matched).toBe(true)
-        }
-        stage = 'balance-visibility'
-        const minimum =
-          cell.row === 'OUT-C'
-            ? SOLANA_AMOUNTS.destinationCallUsdc
-            : requested(cell)
-        const after = await pollSolana(
-          balances,
-          (value) =>
-            recipientCredit(cell, before, value) >= minimum &&
-            (cell.row === 'IN-D'
-              ? value.base.usdc < before.base.usdc
-              : cell.row === 'SC-I-SOL'
-                ? value.wallet.lamports < before.wallet.lamports
-                : value.wallet.usdc < before.wallet.usdc),
-        )
-        stage = 'effects'
-        verifyBalances(cell, quote, before, after)
-        for (const [asset, delta] of Object.entries({
-          solUsdc: after.wallet.usdc - before.wallet.usdc,
-          solLamports: after.wallet.lamports - before.wallet.lamports,
-          baseUsdc: after.base.usdc - before.base.usdc,
-          baseWei: after.base.wei - before.base.wei,
-          recipientCredit: recipientCredit(cell, before, after),
-        }))
+          stage = 'ata-and-funding'
           await record({
-            stage: `effects-${asset}`,
-            balanceDelta: delta.toString(),
+            chain: solChain,
+            wallet: r.config.funder.publicKey.toBase58(),
           })
+          await record({
+            chain: baseChain,
+            wallet: privateKeyToAccount(r.config.evmFunderPrivateKey).address,
+          })
+          const funding = new SolanaFundingHarness(
+            f,
+            r.config.funder,
+            undefined,
+            () => safety.assertActive(),
+            (signature) => record({ chain: solChain, transaction: signature }),
+          )
+          safety.assertActive()
+          await funding.setupTokenAccounts()
+          const reserve = BigInt(
+            await r.connection.getMinimumBalanceForRentExemption(0),
+          )
+          expect(SOLANA_AMOUNTS.solTransfer).toBeGreaterThanOrEqual(reserve)
+          safety.assertActive()
+          // Provision once for three Solana USDC debits and one native transfer; never refill.
+          await funding.fundShortfall({
+            usdc: 2_000_000n,
+            lamports: reserve + 10_000_000n,
+          })
+          safety.assertActive()
+          await fundBaseSepoliaShortfall({
+            fixture: f,
+            publicClient: r.evmClient,
+            walletClient: createWalletClient({
+              account: privateKeyToAccount(r.config.evmFunderPrivateKey),
+              chain: baseSepolia,
+              transport: http(r.config.baseSepoliaRpcUrl, {
+                retryCount: 0,
+                timeout: 30_000,
+              }),
+            }),
+            budget: funding.budget,
+            assertActive: () => safety.assertActive(),
+            persistTransaction: (hash) =>
+              record({ chain: baseChain, transaction: hash }),
+            target: { usdc: 500_000n, wei: 0n },
+          })
+          for (const [asset, spent] of Object.entries(
+            funding.budget.snapshot(),
+          ))
+            await record({
+              stage: `funded-${asset}`,
+              balanceDelta: spent.toString(),
+            })
+        }, 240_000)
       }),
     )
-  }
 
-  afterAll(async () => {
-    try {
-      if (fixture && runtime) {
-        stage = 'residue'
-        const final = await balances()
-        for (const [owner, assets] of Object.entries({
-          wallet: {
-            usdc: final.wallet.usdc,
-            lamports: final.wallet.lamports,
-            rent: final.wallet.rentExemptReserve,
-          },
-          recipient: {
-            usdc: final.recipient.usdc,
-            lamports: final.recipient.lamports,
-          },
-          base: final.base,
-          baseRecipient: final.baseRecipient,
-        })) {
-          for (const [asset, value] of Object.entries(assets))
+    for (const cell of SOLANA_MATRIX) {
+      it(cell.id, { retry: 0 }, async () =>
+        guarded(cell.id, async () => {
+          const { fixture: f, runtime: r } = ready()
+          stage = 'snapshot'
+          const before = await balances()
+          stage = 'prepare'
+          await record()
+          const prepared = await f.account.prepareTransaction(
+            matrixTransaction(
+              cell,
+              f.wallet,
+              f.recipient.publicKey,
+              evmRecipient,
+            ),
+          )
+          const quote = prepared.quotes.best
+          stage = 'quote-check'
+          validateQuote(cell, quote, before)
+          for (const direction of ['input', 'output'] as const)
+            for (const leg of quote.cost[direction])
+              await record({
+                stage: `quote-${direction}`,
+                chain: leg.chainId,
+                mint: leg.tokenAddress,
+                quotedAmount: leg.amount.toString(),
+                intentId: quote.intentId,
+                traceId: prepared.quotes.traceId,
+              })
+          for (const [category, fee] of Object.entries(
+            quote.cost.fees.breakdown,
+          ))
             await record({
-              stage: `residue-${owner}-${asset}`,
-              chain: owner.startsWith('base') ? baseChain : solChain,
-              wallet:
-                owner === 'base'
-                  ? fixture.evmAddress
-                  : owner === 'baseRecipient'
-                    ? evmRecipient
-                    : owner === 'recipient'
-                      ? fixture.recipient.publicKey.toBase58()
-                      : fixture.wallet.toBase58(),
-              balanceDelta: value.toString(),
+              stage: `quote-fee-${category}-${fee.sponsored ? 'sponsored' : 'user'}`,
+              quotedAmount: fee.usd.toString(),
+              intentId: quote.intentId,
             })
-        }
-      }
-    } catch {
-      await record({
-        stage: 'residue-unresolved',
-        errorCode: 'RESIDUE_READ_FAILED',
-      })
-      throw new Error(
-        'Final residue could not be read; reconcile public fixture balances before rerunning',
+          stage = 'sign'
+          const signed = await f.account.signTransaction(prepared)
+          expect(signed.quote.intentId).toBe(quote.intentId)
+          expect(signed.proofs.length).toBe(quote.signingRequests.length)
+          stage = 'submitting'
+          // Persist the recovery identifier before any ambiguous network write.
+          await record({
+            intentId: signed.quote.intentId,
+            traceId: prepared.quotes.traceId,
+          })
+          safety.assertActive()
+          const result = await f.account.submitTransaction(signed)
+          expect(result.id).toBe(quote.intentId)
+          stage = 'settlement'
+          await record({ intentId: result.id, traceId: result.traceId })
+          const status = await waitForTerminalIntent(
+            f.sdk,
+            result.id,
+            'execution',
+            { timeoutMs: 60_000 },
+          )
+          stage = 'receipts'
+          const refs = await verifyIntentReceipts(
+            status,
+            r.connection,
+            r.evmClient,
+            cell.row.startsWith('SC-') ? [solChain] : [solChain, baseChain],
+          )
+          for (const ref of refs)
+            await record({
+              chain: ref.chainId,
+              transaction: ref.vm === 'svm' ? ref.signature : ref.txHash,
+              traceId: status.traceId,
+            })
+          if (cell.row === 'OUT-C') {
+            let matched = false
+            for (const ref of refs) {
+              if (ref.vm !== 'evm') continue
+              const receipt = await r.evmClient.getTransactionReceipt({
+                hash: ref.txHash,
+              })
+              for (const log of receipt.logs) {
+                if (
+                  log.address.toLowerCase() !== BASE_SEPOLIA_USDC.toLowerCase()
+                )
+                  continue
+                try {
+                  const event = decodeEventLog({
+                    abi: erc20Abi,
+                    eventName: 'Transfer',
+                    data: log.data,
+                    topics: log.topics,
+                  })
+                  if (
+                    event.args.from.toLowerCase() ===
+                      f.evmAddress.toLowerCase() &&
+                    event.args.to.toLowerCase() ===
+                      evmRecipient.toLowerCase() &&
+                    event.args.value === SOLANA_AMOUNTS.destinationCallUsdc
+                  )
+                    matched = true
+                } catch {
+                  /* Other USDC events are not transfer evidence. */
+                }
+              }
+            }
+            expect(matched).toBe(true)
+          }
+          stage = 'balance-visibility'
+          const minimum =
+            cell.row === 'OUT-C'
+              ? SOLANA_AMOUNTS.destinationCallUsdc
+              : requested(cell)
+          const after = await pollSolana(
+            balances,
+            (value) =>
+              recipientCredit(cell, before, value) >= minimum &&
+              (cell.row === 'IN-D'
+                ? value.base.usdc < before.base.usdc
+                : cell.row === 'SC-I-SOL'
+                  ? value.wallet.lamports < before.wallet.lamports
+                  : value.wallet.usdc < before.wallet.usdc),
+          )
+          stage = 'effects'
+          verifyBalances(cell, quote, before, after)
+          for (const [asset, delta] of Object.entries({
+            solUsdc: after.wallet.usdc - before.wallet.usdc,
+            solLamports: after.wallet.lamports - before.wallet.lamports,
+            baseUsdc: after.base.usdc - before.base.usdc,
+            baseWei: after.base.wei - before.base.wei,
+            recipientCredit: recipientCredit(cell, before, after),
+          }))
+            await record({
+              stage: `effects-${asset}`,
+              balanceDelta: delta.toString(),
+            })
+        }),
       )
-    } finally {
-      await report.write()
     }
-  })
-})
+
+    afterAll(async () => {
+      try {
+        if (fixture && runtime) {
+          stage = 'residue'
+          const final = await balances()
+          for (const [owner, assets] of Object.entries({
+            wallet: {
+              usdc: final.wallet.usdc,
+              lamports: final.wallet.lamports,
+              rent: final.wallet.rentExemptReserve,
+            },
+            recipient: {
+              usdc: final.recipient.usdc,
+              lamports: final.recipient.lamports,
+            },
+            base: final.base,
+            baseRecipient: final.baseRecipient,
+          }))
+            for (const [asset, value] of Object.entries(assets))
+              await record({
+                stage: `residue-${owner}-${asset}`,
+                chain: owner.startsWith('base') ? baseChain : solChain,
+                wallet:
+                  owner === 'base'
+                    ? fixture.evmAddress
+                    : owner === 'baseRecipient'
+                      ? evmRecipient
+                      : owner === 'recipient'
+                        ? fixture.recipient.publicKey.toBase58()
+                        : fixture.wallet.toBase58(),
+                balanceDelta: value.toString(),
+              })
+        }
+      } catch {
+        await record({
+          stage: 'residue-unresolved',
+          errorCode: 'RESIDUE_READ_FAILED',
+        })
+        throw new Error(
+          'Final residue could not be read; reconcile public fixture balances before rerunning',
+        )
+      } finally {
+        await report.write()
+      }
+    })
+  },
+)

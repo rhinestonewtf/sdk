@@ -23,7 +23,8 @@ export const SWIG_PROGRAM = new PublicKey(
 export const SOLANA_AMOUNTS = {
   sameChainUsdc: 10_000n,
   crossChainUsdc: 50_000n,
-  solTransfer: 100_000n,
+  // A fresh system-account recipient must receive at least its rent minimum.
+  solTransfer: 1_000_000n,
   destinationCallUsdc: 10_000n,
   deliveryCap: 500_000n,
 } as const

@@ -77,6 +77,8 @@ function fixtureForTest() {
   const fixture = {
     ...derived,
     requests: new SolanaRequestScope(),
+    withRequests: <T>(run: () => Promise<T>, timeoutMs?: number) =>
+      fixture.requests.wait(run, timeoutMs),
     evmAddress,
     owner: { address: evmAddress },
     recipient: Keypair.generate(),

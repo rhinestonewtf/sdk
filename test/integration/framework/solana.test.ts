@@ -101,7 +101,8 @@ describe('Solana independent harness guards', () => {
     const sol = SystemInstruction.decodeTransfer(
       solTransferInstruction(wallet, recipient),
     )
-    expect(sol.lamports).toBe(100_000n)
+    expect(sol.lamports).toBe(1_000_000n)
+    expect(sol.lamports).toBeGreaterThanOrEqual(650_240n)
     expect(sol.toPubkey.equals(recipient)).toBe(true)
     const spl = decodeTransferCheckedInstruction(
       usdcTransferInstruction(wallet, recipient),

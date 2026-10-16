@@ -49,26 +49,26 @@ export function parseSolanaFunderPrivateKey(
 
 export function getSolanaIntegrationConfig(env: Environment = process.env) {
   const errors: string[] = []
-  const target = env.INTEGRATION_SOLANA_TARGET || 'dev'
-  if (target !== 'dev' && target !== 'prod') {
-    errors.push('INTEGRATION_SOLANA_TARGET must be dev or prod')
-  }
-  const service: SolanaTarget = target === 'prod' ? 'prod' : 'dev'
-  const endpointUrl = SOLANA_ENDPOINTS[service]
-  if (
-    env.INTEGRATION_ORCHESTRATOR_URL &&
-    env.INTEGRATION_ORCHESTRATOR_URL.replace(/\/+$/, '') !== endpointUrl
-  ) {
+  const override = env.INTEGRATION_ORCHESTRATOR_URL?.replace(/\/+$/, '')
+  const endpointUrl = override || SOLANA_ENDPOINTS.prod
+  const service: SolanaTarget =
+    endpointUrl === SOLANA_ENDPOINTS.dev ? 'dev' : 'prod'
+  if (!Object.values(SOLANA_ENDPOINTS).some((url) => url === endpointUrl)) {
     errors.push(
-      'INTEGRATION_ORCHESTRATOR_URL conflicts with INTEGRATION_SOLANA_TARGET; remove the override',
+      'INTEGRATION_ORCHESTRATOR_URL must be a known prod or dev endpoint',
     )
   }
+  const contracts = env.INTEGRATION_USE_DEV_CONTRACTS
+  if (contracts && contracts !== 'true' && contracts !== 'false') {
+    errors.push('INTEGRATION_USE_DEV_CONTRACTS must be true or false')
+  }
+  const useDevContracts = contracts === 'true' || Boolean(override)
   if (
-    env.INTEGRATION_USE_DEV_CONTRACTS !== undefined &&
-    env.INTEGRATION_USE_DEV_CONTRACTS !== String(service === 'dev')
+    useDevContracts !== (service === 'dev') ||
+    (contracts === 'false' && service === 'dev')
   ) {
     errors.push(
-      'INTEGRATION_USE_DEV_CONTRACTS conflicts with INTEGRATION_SOLANA_TARGET; remove the override',
+      'INTEGRATION_USE_DEV_CONTRACTS conflicts with the selected orchestrator endpoint',
     )
   }
   const apiKey = env.INTEGRATION_RHINESTONE_API_KEY
@@ -189,7 +189,7 @@ export async function preflightSolanaIntegration(
   return { config, connection, evmClient }
 }
 
-export const SOLANA_REPORT_PATH = '.scratch/rhi-7365/solana-report.json'
+export const SOLANA_REPORT_PATH = '.scratch/integration/solana-report.json'
 
 export function createSolanaReport(path = SOLANA_REPORT_PATH) {
   const entries: SolanaDiagnostic[] = []
