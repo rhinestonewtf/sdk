@@ -5,7 +5,7 @@ import {
   type Hex,
   pad,
 } from 'viem'
-import { arbitrum, base, plasma, soneium } from 'viem/chains'
+import { arbitrum, base, optimism, plasma, soneium } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import { admits, install } from '../../../../../test/utils/installed-policies'
@@ -376,4 +376,119 @@ test('the re-enable refusal names every budget the session holds', async () => {
       readNonceAndEnabled: async () => ({ nonce: 0n, enabled: true }),
     }),
   ).rejects.toThrow(/its maxAmount and maxNativeFee are lifetime budgets:/)
+})
+
+describe('maxNativeFee across tokens', () => {
+  const USDC_OP = SETTLEMENT_CATALOG[optimism.id].cctp!.usdc
+  const USDT0_OP = SETTLEMENT_CATALOG[optimism.id].oft!.token
+  const WETH = '0x4200000000000000000000000000000000000006' as Address
+  const VALUE_LIMIT = DEFAULT_POLICY_ADDRESSES.valueLimit
+  /** USDC and USDT0 on Optimism, which CCTP, LZ (USDC) and OFT (USDT0) move. */
+  const stables = (
+    usdc: { maxAmount?: bigint; maxNativeFee?: bigint },
+    usdt0: { maxNativeFee?: bigint } = {},
+    extra: Partial<SessionDefinition> = {},
+  ) =>
+    definition(
+      {
+        from: [
+          { chain: optimism, token: USDC_OP, ...usdc },
+          { chain: optimism, token: USDT0_OP, ...usdt0 },
+        ],
+        to: [
+          { chain: arbitrum, token: USDC_ARB },
+          { chain: arbitrum, token: USDT0_ARB },
+        ],
+        settlementLayers: 'all',
+      },
+      extra,
+      optimism,
+    )
+  /** The value-limit budget on each fee-paying call the session holds. */
+  const budgets = (def: SessionDefinition) =>
+    resolveSessionData(def, OPTIONS)
+      .actions.filter(
+        (a) =>
+          a.actionTargetSelector === LZ_EXECUTE_SELECTOR ||
+          a.actionTargetSelector === OFT_SEND_SELECTOR,
+      )
+      .map((a) => ({
+        selector: a.actionTargetSelector,
+        budget: a.actionPolicies.some(
+          ({ policy }) => policy.toLowerCase() === VALUE_LIMIT.toLowerCase(),
+        ),
+      }))
+
+  test("refuses rather than let 'all' drop both OFT and LZ under a budget", () => {
+    for (const extra of [{}, once]) {
+      const def = stables({ maxNativeFee: BUDGET }, {}, extra)
+      expect(codes(def)).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
+      expect(() => toSession(def, OPTIONS)).toThrow(
+        /maxNativeFee applies only to LZ and OFT, and 'all' keeps neither here: OFT and LZ each pay/,
+      )
+    }
+    // Without a budget, 'all' keeps neither, as before.
+    expect(
+      toSession(stables({}, {}, once), OPTIONS).settlementLayers,
+    ).not.toContain('LZ')
+  })
+
+  test('the budget goes on the fee-paying layer the capped token keeps', () => {
+    // maxAmount on USDC: OFT (USDT0) is dropped and LZ (USDC) is kept.
+    for (const def of [
+      stables({ maxAmount: CAP, maxNativeFee: BUDGET }),
+      stables({ maxAmount: CAP }, { maxNativeFee: BUDGET }),
+    ]) {
+      expect(toSession(def, OPTIONS).settlementLayers).toContain('LZ')
+      expect(budgets(def)).toEqual([
+        { selector: LZ_EXECUTE_SELECTOR, budget: true },
+      ])
+    }
+  })
+
+  test('a reusable fee-paying layer is kept only with a budget', () => {
+    const without = toSession(stables({ maxAmount: CAP }), OPTIONS)
+    expect(without.settlementLayers).not.toContain('LZ')
+    expect(
+      without.settlementCoverage?.dropped.find(({ layer }) => layer === 'LZ')
+        ?.reason,
+    ).toContain('requires oneTimeUse or a maxNativeFee')
+    expect(
+      toSession(stables({ maxAmount: CAP, maxNativeFee: BUDGET }), OPTIONS)
+        .settlementLayers,
+    ).toContain('LZ')
+  })
+
+  test('refuses a budget when the cap on another token drops LZ', () => {
+    const def = definition({
+      from: [
+        { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+        { chain: base, token: WETH, maxAmount: 10n ** 18n },
+      ],
+      settlementLayers: 'all',
+    })
+    expect(codes(def)).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
+  })
+
+  test('the shared LZ pull cap counts in the capped token beside another token', () => {
+    const lz = installed(
+      definition({
+        from: [
+          {
+            chain: base,
+            token: USDC_BASE,
+            maxAmount: CAP,
+            maxNativeFee: BUDGET,
+          },
+          { chain: base, token: WETH },
+        ],
+        settlementLayers: ['ACROSS', 'LZ'],
+      }),
+    )
+    expect(admits(lz, execute(cctp({ pull: CAP - 1n, fee: 0n })), FEE)).toBe(
+      true,
+    )
+    expect(admits(lz, execute(cctp({ pull: 2n, fee: 0n })), FEE)).toBe(false)
+    expect(admits(lz, execute(cctp({ pull: 1n, fee: 0n })), FEE)).toBe(true)
+  })
 })
