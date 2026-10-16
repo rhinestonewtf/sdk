@@ -15,6 +15,7 @@ import {
   assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
+  isEvmCallAuthorization,
   matrixTransaction,
   SOLANA_MATRIX,
   SolanaSuiteSafety,
@@ -147,6 +148,59 @@ describe('destination call disclosure', () => {
     expect(() => assertEvmCallExecution(value, evmRecipient)).toThrow(
       'fixture account',
     )
+  })
+})
+
+describe('destination call authorization', () => {
+  const request: Parameters<typeof isEvmCallAuthorization>[0] = {
+    account: { vm: 'evm', address: evmRecipient },
+    chainIds: ['eip155:84532'],
+    purpose: 'originAuthorization',
+  }
+  it.each([
+    'originAuthorization',
+    'destinationAuthorization',
+    'targetExecutionAuthorization',
+  ] as const)(
+    'accepts %s bound to the destination account and chain',
+    (purpose) => {
+      expect(
+        isEvmCallAuthorization(
+          { ...request, purpose },
+          evmRecipient,
+          'eip155:84532',
+        ),
+      ).toBe(true)
+    },
+  )
+  it('rejects delegation-only, another account, another chain, and SVM requests', () => {
+    expect(
+      isEvmCallAuthorization(
+        { ...request, purpose: 'delegationAuthorization' },
+        evmRecipient,
+        'eip155:84532',
+      ),
+    ).toBe(false)
+    expect(
+      isEvmCallAuthorization(
+        request,
+        '0x0000000000000000000000000000000000000001',
+        'eip155:84532',
+      ),
+    ).toBe(false)
+    expect(isEvmCallAuthorization(request, evmRecipient, 'eip155:1')).toBe(
+      false,
+    )
+    expect(
+      isEvmCallAuthorization(
+        {
+          ...request,
+          account: { vm: 'svm', wallet: 'wallet', swigAccount: 'swig' },
+        },
+        evmRecipient,
+        'eip155:84532',
+      ),
+    ).toBe(false)
   })
 })
 

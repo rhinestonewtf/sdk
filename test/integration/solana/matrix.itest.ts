@@ -38,6 +38,7 @@ import {
   assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
+  isEvmCallAuthorization,
   matrixTransaction,
   NATIVE_SOL,
   SOLANA_MATRIX,
@@ -279,11 +280,8 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
       ),
     ).toBe(true)
     expect(
-      quote.signingRequests.some(
-        (r) =>
-          r.account.vm === 'evm' &&
-          (r.purpose === 'destinationAuthorization' ||
-            r.purpose === 'targetExecutionAuthorization'),
+      quote.signingRequests.some((r) =>
+        isEvmCallAuthorization(r, f.evmAddress, baseChain),
       ),
     ).toBe(true)
   }

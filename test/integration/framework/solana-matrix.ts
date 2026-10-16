@@ -202,6 +202,25 @@ export function assertEvmCallExecution(
     )
 }
 
+export function isEvmCallAuthorization(
+  request: Pick<
+    SignedTransactionData['quote']['signingRequests'][number],
+    'account' | 'chainIds' | 'purpose'
+  >,
+  account: Address,
+  chainId: string,
+) {
+  // A Solana route's EVM child authorizes same-chain execution as an origin claim.
+  return (
+    request.account.vm === 'evm' &&
+    request.account.address.toLowerCase() === account.toLowerCase() &&
+    request.chainIds.includes(chainId) &&
+    (request.purpose === 'originAuthorization' ||
+      request.purpose === 'destinationAuthorization' ||
+      request.purpose === 'targetExecutionAuthorization')
+  )
+}
+
 export function assertUserDebit(
   actual: bigint,
   transfer: bigint,
