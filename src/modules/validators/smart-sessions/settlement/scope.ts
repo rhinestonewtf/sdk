@@ -68,9 +68,10 @@ const LAYERS: Record<
     /**
      * Each call costs the account a native messaging fee no pin can bound, so
      * a reusable session could repeat dust sends until the balance is gone.
-     * A `maxAmount` caps the token, not that fee, so it does not lift this.
+     * A `maxAmount` caps the token, not that fee; only oneTimeUse or a
+     * `maxNativeFee`, a ValueLimitPolicy on the call, bounds it.
      */
-    readonly requiresOneTimeUse?: true
+    readonly paysNativeFee?: true
     /** Enforces the leg's `to.minAmount` on what its call delivers. */
     readonly floorsDelivery?: true
     /** Leaves out a `to` leg no route reaches instead of refusing it (LZ). */
@@ -87,7 +88,7 @@ const LAYERS: Record<
     target: (settlement, chainId) => served(settlement, chainId, 'oft').adapter,
     scope: scopeOft,
     tokens: (settlement, chainId) => defined([settlement[chainId]?.oft?.token]),
-    requiresOneTimeUse: true,
+    paysNativeFee: true,
     floorsDelivery: true,
   },
   ECO_IE: {
@@ -109,7 +110,7 @@ const LAYERS: Record<
         settlement[chainId]?.lz?.stargateUsdc?.token,
         settlement[chainId]?.lz?.cctp?.token,
       ]),
-    requiresOneTimeUse: true,
+    paysNativeFee: true,
     floorsDelivery: true,
     skipsUnreachedLegs: true,
   },
@@ -265,6 +266,35 @@ function scopePermit(
   const capToken = fromLegs.find(
     ({ maxAmount }) => maxAmount !== undefined,
   )?.token
+  const nativeFees = fromLegs.flatMap(({ maxNativeFee }) =>
+    maxNativeFee === undefined ? [] : [maxNativeFee],
+  )
+  if (nativeFees.length > 1) {
+    refuse(
+      refusal(
+        'MULTIPLE_MAX_NATIVE_FEES',
+        'crossChainPermits: give maxNativeFee on at most one `from` token per chain',
+        { chainId: options.chainId, leg: 'from' },
+      ),
+    )
+  }
+  const maxNativeFee = nativeFees[0]
+  // ValueLimitPolicy refuses a zero limit at enable.
+  if (maxNativeFee !== undefined && maxNativeFee <= 0n) {
+    refuse(
+      refusal(
+        'MAX_NATIVE_FEE_NOT_POSITIVE',
+        'crossChainPermits: maxNativeFee must be positive',
+        { chainId: options.chainId, leg: 'from' },
+      ),
+    )
+  }
+  const nativeFeeNotApplicable = (why = 'neither settles this permit') =>
+    refusal(
+      'MAX_NATIVE_FEE_NOT_APPLICABLE',
+      `crossChainPermits: maxNativeFee applies only to LZ and OFT, and ${why} on chain ${options.chainId}`,
+      { chainId: options.chainId, leg: 'from' },
+    )
   const sourceTokens = fromLegs.map(({ token }) => token)
 
   const recipientIsAccount = permit.recipientIsAccount ?? true
@@ -348,6 +378,7 @@ function scopePermit(
       )
     : undefined
   if (sameChainOnly) {
+    if (maxNativeFee !== undefined) refuse(nativeFeeNotApplicable())
     const settlementLayers = requested
     const sameChain = scopeSameChain({
       chainId: options.chainId,
@@ -398,9 +429,10 @@ function scopePermit(
         { code: 'FILL_DEADLINE_ONLY_PERMIT2' },
       )
     }
-    if (LAYERS[layer].requiresOneTimeUse && !options.oneTimeUse) {
+    const paysNativeFee = LAYERS[layer].paysNativeFee
+    if (paysNativeFee && !options.oneTimeUse && maxNativeFee === undefined) {
       throw new SettlementLayerRefusal(
-        `crossChainPermits: an ${layer} permit requires oneTimeUse`,
+        `crossChainPermits: an ${layer} permit requires oneTimeUse or a maxNativeFee on its \`from\` leg`,
         { code: 'LAYER_REQUIRES_ONE_TIME_USE' },
       )
     }
@@ -458,8 +490,23 @@ function scopePermit(
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
       ...(validUntil === undefined ? {} : { validUntil }),
+      ...(options.oneTimeUse ? {} : { reusable: true as const }),
     }
-    const action = LAYERS[layer].scope(ctx)
+    const scoped = LAYERS[layer].scope(ctx)
+    // The call's `msg.value` is all the native it takes from the account, so
+    // the cumulative policy bounds every fee the session pays on this layer.
+    // It counts what is sent, not refunds: an overpaid send still uses it, and
+    // the key may spend all of it as real fees on 1-unit sends.
+    const action =
+      paysNativeFee && maxNativeFee !== undefined
+        ? {
+            ...scoped,
+            policies: [
+              ...(scoped.policies ?? []),
+              { type: 'value-limit' as const, limit: maxNativeFee },
+            ],
+          }
+        : scoped
     // The legs the call pins: one a layer leaves out silently is not delivered.
     const pinned = LAYERS[layer].skipsUnreachedLegs
       ? legs.filter((leg) => reaches(layer, { ...ctx, destinations: [leg] }))
@@ -494,9 +541,7 @@ function scopePermit(
   // Each layer's call allows one send, but one burning transaction admits both,
   // and each pays a native fee no pin bounds. 'all' keeps neither rather than
   // pick one; an explicit list is refused below.
-  const feePaying = built.filter(
-    ({ layer }) => LAYERS[layer].requiresOneTimeUse,
-  )
+  const feePaying = built.filter(({ layer }) => LAYERS[layer].paysNativeFee)
   const feeConflict = `${feePaying.map(({ layer }) => layer).join(' and ')} each pay a native LayerZero fee, so a permit may use only one of them; name the layers to keep`
   if (all && feePaying.length > 1) {
     for (const { layer } of feePaying) skipped.set(layer, feeConflict)
@@ -505,6 +550,22 @@ function scopePermit(
     all && feePaying.length > 1
       ? built.filter((scoped) => !feePaying.includes(scoped))
       : built
+  // The budget belongs to the fee-paying layer kept. With none kept, refuse
+  // rather than let 'all' settle without the layer the budget was set for. A
+  // named fee-paying layer that was refused has said why already.
+  if (
+    maxNativeFee !== undefined &&
+    (all || !bridges.some((layer) => LAYERS[layer].paysNativeFee)) &&
+    !scopedLayers.some(({ layer }) => LAYERS[layer].paysNativeFee)
+  ) {
+    refuse(
+      nativeFeeNotApplicable(
+        all && feePaying.length > 1
+          ? `'all' keeps neither here: ${feeConflict}`
+          : 'neither settles this permit',
+      ),
+    )
+  }
   // Only a dry run gets here with no named layer scoped; it has recorded why.
   if (!all && scopedLayers.length === 0) throw new RefusalCollectionHalted()
   const ecoSkipped = skipped.get('ECO_IE')

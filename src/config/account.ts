@@ -389,7 +389,12 @@ interface CrossChainPermit {
    * `maxAmount` with `fallback` requires `oneTimeUse`, and a native token
    * is refused.
    */
-  from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
+  from?: {
+    chain: Chain
+    token: Address
+    maxAmount?: bigint
+    maxNativeFee?: bigint
+  }[]
   /**
    * Allowed destination legs: chain + token (+ optional recipient pin).
    * Omit for no destination-token restriction. Note `recipientIsAccount`
@@ -450,7 +455,12 @@ interface FromLeg {
    * It does not count the allowances the account already holds, which
    * the session's routes can still spend: one the owner gave Permit2 or a
    * bridge, or one another session left. For the cap to be the most the
-   * session can move, revoke those allowances for the token first. It does
+   * session can move, revoke those allowances for the token first. Each
+   * layer that pulls the token (including `ACROSS` through Permit2) also
+   * counts its own pulls against `maxAmount`, so with such an allowance the
+   * total can reach `maxAmount` times the number of those layers in the
+   * permit, on a reusable session over its life, still only to the pinned
+   * recipients. It does
    * not count the `allowFees` calls either, which have caps of their own. On
    * the wrapped native token, the native wrap is capped at `maxAmount` over
    * the session's life as well, on a budget of its own.
@@ -458,6 +468,24 @@ interface FromLeg {
    * refuses it.
    */
   maxAmount?: bigint
+  /**
+   * `LZ` and `OFT` only: the most native value, in wei of this chain's native
+   * token, the session may send with those layers' calls on this chain to pay
+   * LayerZero messaging fees. A lifetime total like `maxAmount`. Required for
+   * those layers without `oneTimeUse`; with it, it caps that one settlement.
+   *
+   * It counts the native each call sends, not what is spent after refunds: a
+   * send that overpays and is refunded still uses the budget, so later sends
+   * can be refused while the account keeps the native. The key can also spend
+   * the whole budget as real LayerZero fees on sends of 1 token unit, so set
+   * it to what you accept to lose to fees, not to an expected fee times the
+   * number of sends.
+   *
+   * It bounds native only. The tokens these layers move stay bounded by
+   * `maxAmount`, including its multiple across layers when the account holds
+   * an allowance the session did not grant (see `maxAmount`).
+   */
+  maxNativeFee?: bigint
 }
 
 interface ToLeg {
@@ -1300,9 +1328,10 @@ interface Session {
    *  permission id. Absent on sessions stored before this field existed. */
   access?: SessionAccess
   /** Set on a session without `oneTimeUse` whose `crossChainPermits` entry
-   *  sets `maxAmount` on its chain, making it a lifetime budget. Enabling
-   *  the session again resets that budget, so `getSessionDetails` refuses one
-   *  that is already enabled unless you pass `allowBudgetReset`; it finds the
+   *  sets `maxAmount` or `maxNativeFee` on its chain, making it a lifetime
+   *  budget. Enabling the session again resets that budget, so
+   *  `getSessionDetails` refuses one that is already enabled unless you pass
+   *  `allowBudgetReset`; it finds the
    *  budget in the session's actions too, so a stored session without this
    *  field is still checked, as is a hand-written rule of the same cap shape.
    *  Metadata only — it does not change the

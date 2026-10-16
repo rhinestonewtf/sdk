@@ -174,6 +174,10 @@ describe('refusal codes', () => {
       'UNIVERSAL_ACTION_COPY_INVALID',
       'UNIVERSAL_ACTION_POLICY_NO_CODE',
       'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
+      'MAX_NATIVE_FEE_NOT_POSITIVE',
+      'MAX_NATIVE_FEE_NOT_APPLICABLE',
+      'MULTIPLE_MAX_NATIVE_FEES',
+      'LZ_REUSABLE_ROUTES_SPLIT',
       'SESSION_REFUSED',
     ])
     for (const code of Object.keys(SESSION_REFUSAL_CODES)) {
@@ -222,7 +226,8 @@ describe('collectSessionRefusals', () => {
       },
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
-        message: 'crossChainPermits: an OFT permit requires oneTimeUse',
+        message:
+          'crossChainPermits: an OFT permit requires oneTimeUse or a maxNativeFee on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },
@@ -309,7 +314,8 @@ describe('collectSessionRefusals', () => {
       },
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
-        message: 'crossChainPermits: an OFT permit requires oneTimeUse',
+        message:
+          'crossChainPermits: an OFT permit requires oneTimeUse or a maxNativeFee on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },

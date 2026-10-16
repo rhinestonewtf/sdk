@@ -266,7 +266,12 @@ export interface SessionAccess {
 }
 
 export interface CrossChainPermit {
-  from?: { chain: Chain; token: Address; maxAmount?: bigint }[]
+  from?: {
+    chain: Chain
+    token: Address
+    maxAmount?: bigint
+    maxNativeFee?: bigint
+  }[]
   to?: {
     chain: Chain
     token: Address
@@ -287,6 +292,7 @@ export interface FromLeg {
   chain: Chain
   token: Address
   maxAmount?: bigint
+  maxNativeFee?: bigint
 }
 
 export interface ToLeg {
@@ -463,9 +469,10 @@ export interface Session {
   /** Whether the session keeps the intent-execution fallback, and why. Metadata
    *  only; absent on sessions stored before it existed. */
   access?: SessionAccess
-  /** Set on a session without `oneTimeUse` whose permit sets `maxAmount`: its
-   *  budget lives in counters an enable re-initialises, so getSessionDetails
-   *  refuses one already enabled unless told to reset it. Metadata only. */
+  /** Set on a session without `oneTimeUse` whose permit sets `maxAmount` or
+   *  `maxNativeFee`: its budget lives in counters an enable re-initialises,
+   *  so getSessionDetails refuses one already enabled unless told to reset
+   *  it. Metadata only. */
   lifetimeBudget?: true
   // A one-time-use session's id and policy, so every intent can
   // carry the burn and run in verify-execution mode (see prepareIntentSessions).

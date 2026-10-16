@@ -239,7 +239,8 @@ describe('maxAmount on a reusable session', () => {
       expect.arrayContaining([
         {
           layer: 'LZ',
-          reason: 'an LZ permit requires oneTimeUse',
+          reason:
+            'an LZ permit requires oneTimeUse or a maxNativeFee on its `from` leg',
         },
       ]),
     )

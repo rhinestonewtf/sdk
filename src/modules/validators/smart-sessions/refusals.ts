@@ -57,7 +57,7 @@ export const SESSION_REFUSAL_CODES = {
   SETTLEMENT_CATALOG_MISSING:
     "IntentExecutor layers without the orchestrator's settlement addresses",
   LAYER_REQUIRES_ONE_TIME_USE:
-    'a layer that pays a native fee (OFT, LZ) without oneTimeUse',
+    'a layer that pays a native fee (OFT, LZ) without oneTimeUse or maxNativeFee',
   LAYER_NOT_SERVED: 'the layer does not route on a named chain',
   MAX_FEE_BPS_ECO_IE_UNAVAILABLE:
     "maxFeeBps with settlementLayers 'all' where ECO_IE cannot settle",
@@ -132,6 +132,13 @@ export const SESSION_REFUSAL_CODES = {
     'universalAction has no code on the chain, so its copies cannot be checked',
   UNIVERSAL_ACTION_COPY_CODE_MISMATCH:
     'a universalActionCopies entry without the code of universalAction',
+  MAX_NATIVE_FEE_NOT_POSITIVE: 'a maxNativeFee of 0 or less',
+  MAX_NATIVE_FEE_NOT_APPLICABLE:
+    'maxNativeFee on a chain or permit where neither LZ nor OFT settles',
+  MULTIPLE_MAX_NATIVE_FEES:
+    'maxNativeFee on more than one `from` token per chain',
+  LZ_REUSABLE_ROUTES_SPLIT:
+    'an LZ permit without oneTimeUse whose capped `to` legs need batches of different shapes, which no one counter can cap; give them separate sessions',
   SESSION_REFUSED:
     'the session is refused for a reason with no code of its own; see message',
 } as const

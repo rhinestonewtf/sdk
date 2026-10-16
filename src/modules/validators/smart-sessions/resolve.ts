@@ -554,6 +554,18 @@ function resolveSession(
         ),
       )
     }
+    if (
+      !isSettlementScopedPermit(permit) &&
+      permit.from?.some((leg) => leg.maxNativeFee !== undefined)
+    ) {
+      refuse(
+        refusal(
+          'MAX_NATIVE_FEE_NOT_APPLICABLE',
+          'crossChainPermits: maxNativeFee applies only to LZ and OFT',
+          at,
+        ),
+      )
+    }
     const permit2Permit = permit === scopedPermit ? acrossPermit : permit
     if (!permit2Permit || isSettlementScopedPermit(permit2Permit)) continue
     // Permit2 moves the wrapped token, so a native leg never matches the claim.
@@ -1657,8 +1669,9 @@ export function toSession(
     ...(!definition.oneTimeUse &&
       resolvedPermits.some(({ from }) =>
         from?.some(
-          ({ chain, maxAmount }) =>
-            chain.id === definition.chain.id && maxAmount !== undefined,
+          ({ chain, maxAmount, maxNativeFee }) =>
+            chain.id === definition.chain.id &&
+            (maxAmount !== undefined || maxNativeFee !== undefined),
         ),
       ) && { lifetimeBudget: true as const }),
     ...(definition.oneTimeUse && {
