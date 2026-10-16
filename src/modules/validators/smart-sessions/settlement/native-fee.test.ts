@@ -357,11 +357,23 @@ describe('a stored reusable LZ or OFT session without the lifetimeBudget flag', 
         readNonce: async () => 0n,
         readNonceAndEnabled: async () => ({ nonce: 0n, enabled: true }),
       }),
-    ).rejects.toThrow(/lifetime budget/)
+    ).rejects.toThrow(/its maxNativeFee is a lifetime budget:/)
   })
 
   test('a one-time-use LZ session holds none', () => {
     const session = toSession(definition({}, once), OPTIONS)
     expect(hasLifetimeBudget(session, 'production')).toBe(false)
   })
+})
+
+test('the re-enable refusal names every budget the session holds', async () => {
+  await expect(
+    getSessionDetails({
+      account: ACCOUNT,
+      sessions: [toSession(definition({}), OPTIONS)],
+      environment: 'production',
+      readNonce: async () => 0n,
+      readNonceAndEnabled: async () => ({ nonce: 0n, enabled: true }),
+    }),
+  ).rejects.toThrow(/its maxAmount and maxNativeFee are lifetime budgets:/)
 })
