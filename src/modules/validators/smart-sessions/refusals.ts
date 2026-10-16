@@ -63,8 +63,11 @@ export const SESSION_REFUSAL_CODES = {
     "maxFeeBps with settlementLayers 'all' where ECO_IE cannot settle",
   NO_LAYER_CAN_SETTLE: "settlementLayers 'all' where no layer can settle",
   MULTIPLE_FEE_PAYING_LAYERS: 'both OFT and LZ, which each pay a native fee',
-  ONE_SOURCE_TOKEN: 'the layer takes exactly one `from` token per chain',
+  ONE_SOURCE_TOKEN:
+    'more than one `from` token on a chain that the layer moves; it takes one',
   TOKEN_NOT_ROUTED: 'a `from` or `to` token the layer does not move',
+  CAP_TOKEN_MISMATCH:
+    'maxAmount set on a `from` token other than the one the layer moves',
   ECO_IE_STABLECOIN_DECIMALS:
     'an ECO_IE token priced by maxFeeBps that is not one served USD stablecoin of 6 or 18 decimals',
   ACCOUNT_REQUIRED: 'the layer needs `account` on the definition',

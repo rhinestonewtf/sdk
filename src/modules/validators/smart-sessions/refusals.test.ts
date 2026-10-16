@@ -134,6 +134,7 @@ describe('refusal codes', () => {
       'MULTIPLE_FEE_PAYING_LAYERS',
       'ONE_SOURCE_TOKEN',
       'TOKEN_NOT_ROUTED',
+      'CAP_TOKEN_MISMATCH',
       'ECO_IE_STABLECOIN_DECIMALS',
       'ACCOUNT_REQUIRED',
       'ECO_IE_NEEDS_MAX_AMOUNT_AND_FEE',
@@ -387,7 +388,7 @@ describe('collectSessionRefusals', () => {
     )
   })
 
-  test('a second cap and each layer refusing the extra token are reported', () => {
+  test('a second cap and each layer judged on the token it moves are reported', () => {
     const refusals = validateRefusals(
       session(
         [
@@ -408,8 +409,10 @@ describe('collectSessionRefusals', () => {
       refusals.map(({ code, layer, chainId }) => [code, layer, chainId]),
     ).toEqual([
       ['MULTIPLE_MAX_AMOUNTS', undefined, arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'OFT', arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'LZ', arbitrum.id],
+      // OFT takes USDT0 alone, which has no route to Base; LZ takes USDC, and
+      // the chain's one cap is the first, on USDT0.
+      ['LAYER_NOT_SERVED', 'OFT', base.id],
+      ['CAP_TOKEN_MISMATCH', 'LZ', arbitrum.id],
     ])
   })
 
