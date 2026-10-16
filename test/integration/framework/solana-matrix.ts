@@ -181,6 +181,27 @@ export function assertGasSponsorship(
     throw new Error('Gas-only quote must sponsor gas')
 }
 
+export function assertEvmCallExecution(
+  execution:
+    | {
+        vm?: string
+        executedBy?: { kind: string; address: string }
+        calls?: readonly unknown[]
+      }
+    | undefined,
+  account: Address,
+) {
+  // The wire plan tags its destination block with vm, not its nested execution.
+  if (
+    !execution?.calls?.length ||
+    execution.executedBy?.kind !== 'account' ||
+    execution.executedBy.address.toLowerCase() !== account.toLowerCase()
+  )
+    throw new Error(
+      'EVM destination calls must execute through the fixture account',
+    )
+}
+
 export function assertUserDebit(
   actual: bigint,
   transfer: bigint,

@@ -11,6 +11,7 @@ import {
   waitForTerminalIntent,
 } from './solana'
 import {
+  assertEvmCallExecution,
   assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
@@ -121,6 +122,32 @@ describe('focused Solana live flows', () => {
       }
     })
   }
+})
+
+describe('destination call disclosure', () => {
+  const execution = {
+    executedBy: { kind: 'account', address: evmRecipient },
+    calls: [{}],
+  }
+  it('accepts the wire execution without a redundant nested VM discriminator', () => {
+    expect(() => assertEvmCallExecution(execution, evmRecipient)).not.toThrow()
+  })
+  it.each([
+    undefined,
+    { ...execution, calls: [] },
+    { ...execution, executedBy: { kind: 'solver', address: evmRecipient } },
+    {
+      ...execution,
+      executedBy: {
+        kind: 'account',
+        address: '0x0000000000000000000000000000000000000001',
+      },
+    },
+  ])('refuses missing calls or a different executor (#%#)', (value) => {
+    expect(() => assertEvmCallExecution(value, evmRecipient)).toThrow(
+      'fixture account',
+    )
+  })
 })
 
 describe('gas sponsorship validation', () => {

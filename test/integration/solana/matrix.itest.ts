@@ -34,6 +34,7 @@ import {
   waitForTerminalIntent,
 } from '../framework/solana'
 import {
+  assertEvmCallExecution,
   assertGasSponsorship,
   assertUserDebit,
   DEVNET_MINT,
@@ -270,14 +271,8 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
   }
   if (cell.row === 'OUT-C') {
     const { fixture: f } = ready()
-    const execution = quote.plan.destination.execution
-    expect(execution?.vm).toBe('evm')
-    if (execution?.vm !== 'evm')
-      throw new Error('Missing EVM destination execution')
-    expect(execution.executedBy?.kind).toBe('account')
-    expect(execution.executedBy?.address.toLowerCase()).toBe(
-      f.evmAddress.toLowerCase(),
-    )
+    expect(quote.plan.destination.vm).toBe('evm')
+    assertEvmCallExecution(quote.plan.destination.execution, f.evmAddress)
     expect(
       quote.signingRequests.some(
         (r) => r.account.vm === 'svm' && r.purpose === 'originAuthorization',
