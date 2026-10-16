@@ -68,15 +68,15 @@ describe('Solana funder JSON64', () => {
   })
 })
 
-describe('opt-in Solana configuration', () => {
-  it('defaults to dev endpoint and matching contracts, with testnet RPCs', () => {
+describe('shared Solana configuration', () => {
+  it('defaults to prod endpoint and matching contracts, with testnet RPCs', () => {
     const config = getSolanaIntegrationConfig(validEnv)
     expect(config).toMatchObject({
-      target: 'dev',
-      endpointUrl: SOLANA_ENDPOINTS.dev,
-      useDevContracts: true,
+      target: 'prod',
+      endpointUrl: SOLANA_ENDPOINTS.prod,
+      useDevContracts: false,
       solanaRpcUrl: SOLANA_DEVNET_RPC_URL,
-      sdkConfig: { endpointUrl: SOLANA_ENDPOINTS.dev, useDevContracts: true },
+      sdkConfig: { endpointUrl: SOLANA_ENDPOINTS.prod, useDevContracts: false },
     })
     expect(config.funder.publicKey.equals(keypair.publicKey)).toBe(true)
   })
@@ -84,41 +84,59 @@ describe('opt-in Solana configuration', () => {
   it('treats blank optional .env entries as unset', () => {
     const config = getSolanaIntegrationConfig({
       ...validEnv,
-      INTEGRATION_SOLANA_TARGET: '',
+      INTEGRATION_ORCHESTRATOR_URL: '',
+      INTEGRATION_USE_DEV_CONTRACTS: '',
       INTEGRATION_SOLANA_RPC_URL: '',
       INTEGRATION_RPC_URL_84532: '',
     })
-    expect(config.target).toBe('dev')
+    expect(config.target).toBe('prod')
     expect(config.solanaRpcUrl).toBe(SOLANA_DEVNET_RPC_URL)
     expect(config.baseSepoliaRpcUrl).toMatch(/^https:/)
   })
 
-  it('explicitly selects prod service without changing the Solana cluster', () => {
+  it('selects dev via the shared endpoint without changing the Solana cluster', () => {
     const config = getSolanaIntegrationConfig({
       ...validEnv,
-      INTEGRATION_SOLANA_TARGET: 'prod',
-      INTEGRATION_ORCHESTRATOR_URL: `${SOLANA_ENDPOINTS.prod}/`,
-      INTEGRATION_USE_DEV_CONTRACTS: 'false',
+      INTEGRATION_ORCHESTRATOR_URL: `${SOLANA_ENDPOINTS.dev}/`,
     })
     expect(config.sdkConfig).toMatchObject({
-      endpointUrl: SOLANA_ENDPOINTS.prod,
-      useDevContracts: false,
+      endpointUrl: SOLANA_ENDPOINTS.dev,
+      useDevContracts: true,
     })
     expect(config.solanaRpcUrl).toBe(SOLANA_DEVNET_RPC_URL)
   })
 
+  it('accepts explicit contract selection when it agrees with the environment', () => {
+    expect(
+      getSolanaIntegrationConfig({
+        ...validEnv,
+        INTEGRATION_USE_DEV_CONTRACTS: 'false',
+      }).useDevContracts,
+    ).toBe(false)
+    expect(
+      getSolanaIntegrationConfig({
+        ...validEnv,
+        INTEGRATION_ORCHESTRATOR_URL: SOLANA_ENDPOINTS.dev,
+        INTEGRATION_USE_DEV_CONTRACTS: 'true',
+      }).useDevContracts,
+    ).toBe(true)
+  })
+
   it.each([
-    { INTEGRATION_SOLANA_TARGET: 'mainnet' },
+    { INTEGRATION_USE_DEV_CONTRACTS: 'true' },
+    {
+      INTEGRATION_ORCHESTRATOR_URL: SOLANA_ENDPOINTS.prod,
+      INTEGRATION_USE_DEV_CONTRACTS: 'false',
+    },
     { INTEGRATION_ORCHESTRATOR_URL: SOLANA_ENDPOINTS.prod },
     {
       INTEGRATION_ORCHESTRATOR_URL:
         'https://untrusted.invalid/?secret=do-not-echo',
     },
-    { INTEGRATION_USE_DEV_CONTRACTS: 'false' },
     { INTEGRATION_USE_DEV_CONTRACTS: 'yes' },
     {
-      INTEGRATION_SOLANA_TARGET: 'prod',
-      INTEGRATION_USE_DEV_CONTRACTS: 'true',
+      INTEGRATION_ORCHESTRATOR_URL: SOLANA_ENDPOINTS.dev,
+      INTEGRATION_USE_DEV_CONTRACTS: 'false',
     },
     { INTEGRATION_SOLANA_RPC_URL: 'file:///secret' },
     { INTEGRATION_RPC_URL_84532: 'invalid' },
@@ -198,8 +216,8 @@ describe('read-only network preflight', () => {
 
 describe('sanitized report API', () => {
   it('persists only safe evidence', async () => {
-    await mkdir('.scratch/rhi-7365', { recursive: true })
-    const root = await mkdtemp('.scratch/rhi-7365/report-')
+    await mkdir('.scratch/integration', { recursive: true })
+    const root = await mkdtemp('.scratch/integration/report-')
     try {
       const path = join(root, 'nested/report.json')
       const report = createSolanaReport(path)

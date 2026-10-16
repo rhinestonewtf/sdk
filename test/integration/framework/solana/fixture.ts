@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
 import {
   type Connection,
@@ -46,23 +47,51 @@ export function deriveCompatibleSwig(
   return { swig, wallet, swigId: `0x${id.toString('hex')}` as const, id }
 }
 
-// The client captures its fetch port synchronously during construction. Restore
-// the global immediately, before any asynchronous account setup or requests.
-function observedSdk(
-  config: RhinestoneSDKConfig,
-  evidence: DeploymentEvidence[],
+const requestContext = new AsyncLocalStorage<object>()
+let activeRequestScope: object | undefined
+
+export interface SolanaFixtureRequests {
+  /**
+   * Scope and await complete SDK workflows, including invocation-time clients.
+   * Defaults to 60s; timeout/error permanently revokes this fixture's transport.
+   * Same-fixture nesting is supported; independent scopes must run serially.
+   */
+  withRequests<T>(run: () => Promise<T>, timeoutMs?: number): Promise<T>
+}
+
+function scopedRequests(
   fetcher: typeof fetch,
   requests: SolanaRequestScope,
-  onDeploymentEvidence?: (evidence: DeploymentEvidence) => void | Promise<void>,
-) {
+): SolanaFixtureRequests['withRequests'] {
+  const token = {}
+  return async (run, timeoutMs = 60_000) => {
+    requests.assertActive()
+    if (requestContext.getStore() === token) {
+      if (activeRequestScope !== token)
+        throw new Error('Solana fixture request scope expired')
+      return requests.wait(run, timeoutMs)
+    }
+    if (activeRequestScope)
+      throw new Error('Solana fixture request scopes must not overlap')
+    const previous = globalThis.fetch
+    activeRequestScope = token
+    globalThis.fetch = fetcher
+    try {
+      return await requestContext.run(token, () =>
+        requests.wait(run, timeoutMs),
+      )
+    } finally {
+      globalThis.fetch = previous
+      activeRequestScope = undefined
+    }
+  }
+}
+
+// Keep the root client's captured port observed even outside invocation scopes.
+function observedSdk(config: RhinestoneSDKConfig, fetcher: typeof fetch) {
   const previous = globalThis.fetch
   try {
-    globalThis.fetch = observeDeploymentFetch(
-      fetcher,
-      evidence,
-      onDeploymentEvidence,
-      () => requests.assertActive(),
-    )
+    globalThis.fetch = fetcher
     return new RhinestoneSDK(config)
   } finally {
     globalThis.fetch = previous
@@ -94,28 +123,33 @@ export async function createSolanaFixture({
     throw new Error('Swig environment and endpoint mismatch')
   const deploymentEvidence: DeploymentEvidence[] = []
   const requests = new SolanaRequestScope()
-  const sdk = observedSdk(
-    sdkConfig,
-    deploymentEvidence,
+  const observedFetch = observeDeploymentFetch(
     requests.fetch(fetcher),
-    requests,
+    deploymentEvidence,
     onDeploymentEvidence,
+    () => requests.assertActive(),
   )
+  const withRequests = scopedRequests(observedFetch, requests)
+  const sdk = observedSdk(sdkConfig, observedFetch)
   const owner = privateKeyToAccount(generatePrivateKey())
   const evmConfig = {
     account: { type: 'safe' as const },
     owners: { type: 'ecdsa' as const, accounts: [owner] },
   }
-  const evmAccount = await sdk.createAccount({ evm: evmConfig })
+  const evmAccount = await withRequests(() =>
+    sdk.createAccount({ evm: evmConfig }),
+  )
   const evmAddress = evmAccount.getAddress('evm')
   const derived = deriveCompatibleSwig(evmAddress, service)
-  const account = await sdk.createAccount({
-    evm: evmConfig,
-    solana: {
-      swig: solanaAddress(derived.swig.toBase58()),
-      owner: { type: 'ecdsa', account: owner },
-    },
-  })
+  const account = await withRequests(() =>
+    sdk.createAccount({
+      evm: evmConfig,
+      solana: {
+        swig: solanaAddress(derived.swig.toBase58()),
+        owner: { type: 'ecdsa', account: owner },
+      },
+    }),
+  )
   if (
     account.getAddress('evm').toLowerCase() !== evmAddress.toLowerCase() ||
     account.getAddress('solana') !== derived.wallet.toBase58()
@@ -132,6 +166,7 @@ export async function createSolanaFixture({
     evmClient,
     deploymentEvidence,
     requests,
+    withRequests,
     ...derived,
   }
 }
@@ -185,7 +220,7 @@ export async function deployAndVerifySolanaFixture(
   await assertSolanaTestNetworks(fixture.connection, fixture.evmClient)
   if (await fixture.connection.getAccountInfo(fixture.swig, 'confirmed'))
     throw new Error('Fresh fixture state already exists')
-  await fixture.requests.wait(
+  await fixture.withRequests(
     () => fixture.account.deploy('solana', solanaDevnet),
     timeoutMs,
   )
@@ -222,7 +257,7 @@ export async function deployAndVerifySolanaFixture(
   )
   await verifySolanaFixtureAuthority(fixture)
   const snapshot = JSON.stringify(fixture.deploymentEvidence)
-  await fixture.requests.wait(
+  await fixture.withRequests(
     () => fixture.account.deploy('solana', solanaDevnet),
     timeoutMs,
   )

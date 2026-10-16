@@ -20,7 +20,8 @@ describe('SDK release workflow', () => {
     expect(workflow).toContain(
       'branches:\n      - main\n      - release\n      - v1',
     )
-    expect(workflow).not.toContain('solana')
+    expect(workflow).not.toContain('      - solana\n')
+    expect(workflow).not.toContain('refs/heads/solana')
     expect(workflow).not.toContain('docs-repo')
     expect(workflow).not.toContain('generate:reference')
     expect(workflow).not.toContain('SDK_REFERENCE_DOCS_')
@@ -61,9 +62,12 @@ describe('SDK release workflow', () => {
   })
 
   it('requires full release gates before publishing and preserves v1 behavior', () => {
-    expect(workflow).toContain(
-      `- name: Run all integration tests\n        if: ${releaseRef}\n        run: bun run test:integration -- --run`,
-    )
+    const integrationStep = workflow
+      .split('- name: Run all integration tests\n')[1]
+      .split('\n      - name:')[0]
+    expect(integrationStep).toContain(`if: ${releaseRef}`)
+    expect(integrationStep).toContain('run: bun run test:integration -- --run')
+    expect(integrationStep).toContain('INTEGRATION_SOLANA_FUNDER_PRIVATE_KEY:')
     expect(workflow).toContain(
       `((${mainRef} || ${releaseRef}) && needs.build-and-test.result == 'success' && needs.integration-tests.result == 'success')`,
     )

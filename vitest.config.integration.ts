@@ -8,7 +8,10 @@ for (const [key, value] of Object.entries(env)) {
 
 export default defineConfig({
   test: {
-    include: ['test/integration/scenarios/**/*.itest.ts'],
+    include: [
+      'test/integration/scenarios/**/*.itest.ts',
+      'test/integration/solana/**/*.itest.ts',
+    ],
     // Funded scenarios cold-fund a fresh account and poll the dev orchestrator's
     // portfolio endpoint (seconds to tens of seconds per call, plus indexer lag)
     // before executing on-chain; 180s left no margin under load.

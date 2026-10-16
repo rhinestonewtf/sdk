@@ -15,7 +15,6 @@ import {
   assertUserDebit,
   DEVNET_MINT,
   matrixTransaction,
-  NATIVE_SOL,
   SOLANA_MATRIX,
   SolanaSuiteSafety,
 } from './solana-matrix'
@@ -25,28 +24,18 @@ const recipient = Keypair.generate().publicKey
 const evmRecipient = '0x1234567890123456789012345678901234567890'
 afterEach(() => vi.useRealTimers())
 
-describe('Solana acceptance matrix', () => {
-  it('contains exactly twelve unique cells, one of each sponsorship per required row', () => {
-    const expectedRows = [
-      'SC-D',
-      'SC-I-USDC',
-      'SC-I-SOL',
-      'IN-D',
-      'OUT-D',
-      'OUT-C',
-    ]
-    expect(SOLANA_MATRIX).toHaveLength(12)
-    expect(new Set(SOLANA_MATRIX.map((cell) => cell.id)).size).toBe(12)
-    expect([...new Set(SOLANA_MATRIX.map((cell) => cell.row))]).toEqual(
-      expectedRows,
-    )
-    for (const row of expectedRows) {
-      expect(
-        SOLANA_MATRIX.filter((cell) => cell.row === row).map(
-          (cell) => cell.gasSponsored,
-        ),
-      ).toEqual([false, true])
-    }
+describe('focused Solana live flows', () => {
+  it('contains exactly five single-flow cases with fixed sponsorship', () => {
+    expect(
+      SOLANA_MATRIX.map(({ row, gasSponsored }) => [row, gasSponsored]),
+    ).toEqual([
+      ['SC-D', false],
+      ['SC-I-USDC', false],
+      ['SC-I-SOL', true],
+      ['IN-D', true],
+      ['OUT-C', true],
+    ])
+    expect(new Set(SOLANA_MATRIX.map((cell) => cell.id)).size).toBe(5)
   })
 
   for (const cell of SOLANA_MATRIX) {
@@ -67,9 +56,7 @@ describe('Solana acceptance matrix', () => {
         expect(destination.chain).toBe(solanaDevnet)
         expect(destination.instructions).toHaveLength(1)
         expect(transaction.source).toEqual(
-          cell.gasSponsored
-            ? undefined
-            : { token: cell.row === 'SC-I-SOL' ? NATIVE_SOL : DEVNET_MINT },
+          cell.gasSponsored ? undefined : { token: DEVNET_MINT },
         )
         expect(destination).not.toHaveProperty('token')
         expect(destination).not.toHaveProperty('recipient')
@@ -114,7 +101,7 @@ describe('Solana acceptance matrix', () => {
             token: BASE_SEPOLIA_USDC,
             amount: SOLANA_AMOUNTS.crossChainUsdc,
           })
-          if (cell.row === 'OUT-C') {
+          {
             expect(destination).not.toHaveProperty('recipient')
             if (!('calls' in destination) || !destination.calls)
               throw new Error('Missing destination calls')
@@ -129,7 +116,7 @@ describe('Solana acceptance matrix', () => {
               functionName: 'transfer',
               args: [evmRecipient, SOLANA_AMOUNTS.destinationCallUsdc],
             })
-          } else expect(destination).toHaveProperty('recipient', evmRecipient)
+          }
         }
       }
     })

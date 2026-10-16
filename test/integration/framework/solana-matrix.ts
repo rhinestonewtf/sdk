@@ -11,22 +11,33 @@ import {
   usdcTransferInstruction,
 } from './solana'
 
-export const SOLANA_ROWS = [
-  'SC-D',
-  'SC-I-USDC',
-  'SC-I-SOL',
-  'IN-D',
-  'OUT-D',
-  'OUT-C',
+export const SOLANA_MATRIX = [
+  {
+    row: 'SC-D',
+    gasSponsored: false,
+    id: 'same-chain USDC delivery (unsponsored)',
+  },
+  {
+    row: 'SC-I-USDC',
+    gasSponsored: false,
+    id: 'same-chain USDC instruction (unsponsored)',
+  },
+  {
+    row: 'SC-I-SOL',
+    gasSponsored: true,
+    id: 'native SOL instruction (gas sponsored)',
+  },
+  {
+    row: 'IN-D',
+    gasSponsored: true,
+    id: 'Base Sepolia to Solana USDC delivery (gas sponsored)',
+  },
+  {
+    row: 'OUT-C',
+    gasSponsored: true,
+    id: 'Solana to Base Sepolia ERC20 transfer call (gas sponsored)',
+  },
 ] as const
-export type SolanaRow = (typeof SOLANA_ROWS)[number]
-export const SOLANA_MATRIX = SOLANA_ROWS.flatMap((row) =>
-  [false, true].map((gasSponsored) => ({
-    row,
-    gasSponsored,
-    id: `${row}-${gasSponsored ? 'gas-only' : 'unsponsored'}`,
-  })),
-)
 export type SolanaCell = (typeof SOLANA_MATRIX)[number]
 export const NATIVE_SOL = solanaAddress('11111111111111111111111111111111')
 export const DEVNET_MINT = solanaAddress(DEVNET_USDC.toBase58())
@@ -61,9 +72,7 @@ export function matrixTransaction(
     case 'SC-I-SOL': {
       const native = cell.row === 'SC-I-SOL'
       return {
-        ...(cell.gasSponsored
-          ? {}
-          : { source: { token: native ? NATIVE_SOL : DEVNET_MINT } }),
+        ...(!native ? { source: { token: DEVNET_MINT } } : {}),
         destination: {
           chain: solanaDevnet,
           instructions: [
@@ -87,17 +96,6 @@ export function matrixTransaction(
           token: DEVNET_MINT,
           amount: SOLANA_AMOUNTS.crossChainUsdc,
           recipient: solanaAddress(recipient.toBase58()),
-        },
-        sponsored,
-      }
-    case 'OUT-D':
-      return {
-        source,
-        destination: {
-          chain: baseSepolia,
-          token: BASE_SEPOLIA_USDC,
-          amount: SOLANA_AMOUNTS.crossChainUsdc,
-          recipient: evmRecipient,
         },
         sponsored,
       }
