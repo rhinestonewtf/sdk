@@ -334,8 +334,8 @@ function scopePermit(
       ),
     )
   }
-  // Every layer in the permit must enforce `to.minAmount`, or the key would
-  // settle around it: scopeLayer refuses one that cannot (CCTP never can).
+  // A layer delivering a floored leg must enforce its `to.minAmount`, or the key
+  // would settle around it: scopeLayer refuses one that cannot (CCTP never can).
   const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
   if (minAmount && !sameChainOnly && options.settlement) {
     const settlement = options.settlement
@@ -404,12 +404,6 @@ function scopePermit(
         { code: 'LAYER_REQUIRES_ONE_TIME_USE' },
       )
     }
-    if (minAmount && !LAYERS[layer].floorsDelivery) {
-      throw new SettlementLayerRefusal(
-        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
-        { code: 'MIN_AMOUNT_NOT_ENFORCEABLE' },
-      )
-    }
     const target = LAYERS[layer].target(settlement, options.chainId)
     const spender =
       LAYERS[layer].spender?.(settlement, options.chainId) ?? target
@@ -439,12 +433,20 @@ function scopePermit(
         { code: 'CAP_TOKEN_MISMATCH', chainId: options.chainId, leg: 'from' },
       )
     }
-    // A leg on a chain the layer does not serve stays, so the layer refuses it.
-    const legs = destinations.filter(
-      (leg) =>
-        LAYERS[layer].tokens(settlement, leg.chainId).length === 0 ||
-        moves(leg.chainId, leg.token),
-    )
+    // A leg on a chain the layer does not serve is left to the other layers; the
+    // explicit-list coverage check below refuses one none of them takes.
+    const legs = destinations.filter((leg) => moves(leg.chainId, leg.token))
+    // Every layer in the permit must enforce the floor on the legs it delivers,
+    // or the key would settle around it.
+    if (
+      !LAYERS[layer].floorsDelivery &&
+      legs.some((leg) => leg.minAmount !== undefined)
+    ) {
+      throw new SettlementLayerRefusal(
+        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
+        { code: 'MIN_AMOUNT_NOT_ENFORCEABLE' },
+      )
+    }
     const ctx: SettlementContext = {
       chainId: options.chainId,
       settlement,
@@ -559,12 +561,21 @@ function scopePermit(
       (leg) => !scopedLayers.some(({ legs }) => legs.includes(leg)),
     )
     if (leg) {
+      const served = bridges.some(
+        (layer) => LAYERS[layer].tokens(settlement, leg.chainId).length > 0,
+      )
       refuse(
-        refusal(
-          'TOKEN_NOT_ROUTED',
-          `crossChainPermits: no named layer delivers the \`to\` token ${leg.token} on chain ${leg.chainId}`,
-          { chainId: leg.chainId, leg: 'to' },
-        ),
+        served
+          ? refusal(
+              'TOKEN_NOT_ROUTED',
+              `crossChainPermits: no named layer delivers the \`to\` token ${leg.token} on chain ${leg.chainId}`,
+              { chainId: leg.chainId, leg: 'to' },
+            )
+          : refusal(
+              'LAYER_NOT_SERVED',
+              `crossChainPermits: no named layer routes to chain ${leg.chainId}`,
+              { chainId: leg.chainId, leg: 'to' },
+            ),
       )
     }
   }

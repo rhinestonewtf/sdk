@@ -313,10 +313,10 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(100n, 0n))).toBe(false)
     })
 
-    test('is refused beside CCTP, which cannot enforce it', () => {
+    test('is refused beside CCTP, which cannot move its token', () => {
       expect(() =>
         resolveSettlementScope([permit(['OFT', 'CCTP'])], options),
-      ).toThrow('CCTP cannot enforce `to.minAmount`')
+      ).toThrow('CCTP moves only USDC')
     })
 
     test("keeps ECO_IE beside OFT under 'all' without validUntil", () => {
@@ -636,9 +636,9 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(9_799_999n))).toBe(false)
     })
 
-    test('is refused beside CCTP, which cannot enforce it', () => {
+    test('is refused beside CCTP, which does not reach its leg', () => {
       expect(() => lzScope({ settlementLayers: ['LZ', 'CCTP'] })).toThrow(
-        'CCTP cannot enforce `to.minAmount`',
+        'CCTP does not route to',
       )
     })
 
