@@ -206,6 +206,7 @@ const scope = (
     across?: boolean
     account?: Address
     settlement?: SettlementCatalog
+    chainId?: number
   } = {},
 ) => {
   const resolved = resolveSettlementScope(
@@ -216,7 +217,7 @@ const scope = (
       }),
     ],
     {
-      chainId: base.id,
+      chainId: options.chainId ?? base.id,
       environment: 'production',
       account: options.account ?? ACCOUNT,
       oneTimeUse: options.oneTimeUse ?? true,
@@ -270,7 +271,7 @@ const refusalOf = (fn: () => unknown) => {
   try {
     fn()
   } catch (error) {
-    return error as Error & { code?: string; leg?: string }
+    return error as Error & { code?: string; leg?: string; chainId?: number }
   }
   throw new Error('expected a refusal')
 }
@@ -589,6 +590,72 @@ describe('caps and fee-paying layers across tokens', () => {
     }
   })
 
+  const STABLES_OP: Partial<CrossChainPermissionInput> = {
+    from: [
+      { chain: optimism, token: USDC_OP },
+      { chain: optimism, token: USDT0_OP },
+    ],
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: arbitrum, token: USDT0_ARB, minAmount: 1n },
+    ],
+  }
+
+  test('a floor binds only the layer that delivers the floored leg', () => {
+    const { settlementLayers } = scope(
+      { ...STABLES_OP, settlementLayers: ['CCTP', 'OFT'] },
+      { chainId: optimism.id },
+    )
+    expect(settlementLayers).toEqual(['CCTP', 'OFT'])
+  })
+
+  test('a floored leg only a non-flooring layer delivers is refused', () => {
+    const refused = refusalOf(() =>
+      scope(
+        {
+          ...STABLES_OP,
+          to: [
+            { chain: arbitrum, token: USDC_ARB, minAmount: 1n },
+            { chain: arbitrum, token: USDT0_ARB },
+          ],
+          settlementLayers: ['CCTP', 'OFT'],
+        },
+        { chainId: optimism.id },
+      ),
+    )
+    expect(refused.code).toBe('MIN_AMOUNT_NOT_ENFORCEABLE')
+  })
+
+  const xLayer = { ...arbitrum, id: 196 } as Chain
+  const ARB_AND_XLAYER: Partial<CrossChainPermissionInput> = {
+    from: [{ chain: base, token: USDC }],
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: xLayer, token: USDC_ARB },
+    ],
+  }
+
+  test("'all' keeps CCTP for its leg when another leg targets a chain CCTP does not serve", () => {
+    const { settlementLayers, actions } = scope(ARB_AND_XLAYER, {
+      across: true,
+    })
+    expect(settlementLayers).toContain('CCTP')
+    const action = actionOf(
+      actions,
+      BASE.cctp!.tokenMessenger,
+      DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
+    )
+    expect(holds(action, burn())).toBe(true)
+    expect(holds(action, burn({ recipient: OTHER }))).toBe(false)
+  })
+
+  test('an explicit CCTP list refuses a leg no named layer serves', () => {
+    const refused = refusalOf(() =>
+      scope({ ...ARB_AND_XLAYER, settlementLayers: ['CCTP'] }),
+    )
+    expect([refused.code, refused.leg]).toEqual(['LAYER_NOT_SERVED', 'to'])
+  })
+
   test('an explicit LZ list refuses a `to` leg on a chain LZ does not reach', () => {
     const xLayer = { ...arbitrum, id: 196 } as Chain
     const refused = refusalOf(() =>
@@ -600,6 +667,83 @@ describe('caps and fee-paying layers across tokens', () => {
         settlementLayers: ['LZ'],
       }),
     )
-    expect([refused.code, refused.leg]).toEqual(['TOKEN_NOT_ROUTED', 'to'])
+    expect([refused.code, refused.leg]).toEqual(['LAYER_NOT_SERVED', 'to'])
+  })
+})
+
+describe('legs a layer does not deliver', () => {
+  test('an explicit LZ list refuses a served `to` leg LZ has no route to', () => {
+    const refused = refusalOf(() =>
+      scope({
+        to: [
+          { chain: arbitrum, token: USDC_ARB },
+          { chain: base, token: USDC },
+        ],
+        settlementLayers: ['LZ'],
+      }),
+    )
+    expect([refused.code, refused.leg, refused.message]).toEqual([
+      'TOKEN_NOT_ROUTED',
+      'to',
+      `crossChainPermits: no named layer delivers the \`to\` token ${USDC} on chain ${base.id}`,
+    ])
+  })
+
+  const FLOORED_USDT0 = 5_000_000n
+  const OP_SPLIT: Partial<CrossChainPermissionInput> = {
+    from: [
+      { chain: optimism, token: USDC_OP },
+      { chain: optimism, token: USDT0_OP },
+    ],
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: arbitrum, token: USDT0_ARB, minAmount: FLOORED_USDT0 },
+    ],
+  }
+
+  test('a floor binds only the layer that delivers its leg', () => {
+    const { actions, settlementLayers } = scope(
+      { ...OP_SPLIT, settlementLayers: ['CCTP', 'OFT'] },
+      { chainId: optimism.id },
+    )
+    expect(settlementLayers).toEqual(['CCTP', 'OFT'])
+    const send = actions.find((a) =>
+      isAddressEqual(a.target, SETTLEMENT_CATALOG[optimism.id].oft!.adapter),
+    )
+    const rules = JSON.stringify(send?.policies, (_, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    )
+    // OFT floors minAmountLD (offset 224) at the leg's minAmount.
+    expect(rules).toContain(
+      `"condition":"greaterThanOrEqual","calldataOffset":"224","referenceValue":"${FLOORED_USDT0}"`,
+    )
+  })
+
+  test('CCTP still refuses a floor on a leg it delivers', () => {
+    const refused = refusalOf(() =>
+      scope({
+        to: { chain: arbitrum, token: USDC_ARB, minAmount: 90n },
+        settlementLayers: ['CCTP'],
+      }),
+    )
+    expect(refused.code).toBe('MIN_AMOUNT_NOT_ENFORCEABLE')
+  })
+
+  test('a floored leg no named layer can floor is refused', () => {
+    const refused = refusalOf(() =>
+      scope(
+        {
+          from: { chain: optimism, token: USDC_OP },
+          to: OP_SPLIT.to,
+          settlementLayers: ['CCTP'],
+        },
+        { chainId: optimism.id },
+      ),
+    )
+    expect([refused.code, refused.leg, refused.chainId]).toEqual([
+      'TOKEN_NOT_ROUTED',
+      'to',
+      arbitrum.id,
+    ])
   })
 })

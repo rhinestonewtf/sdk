@@ -459,6 +459,29 @@ describe('maxNativeFee across tokens', () => {
     ).toContain('LZ')
   })
 
+  test('refuses a budget whose fee-paying layer keeps no leg', () => {
+    // LZ moves USDC on Base and OFT moves USDT0 on Arbitrum; neither delivers
+    // these legs, so their projections are empty.
+    for (const def of [
+      definition({
+        from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+        to: { chain: arbitrum, token: USDT0_ARB },
+        settlementLayers: 'all',
+      }),
+      definition(
+        {
+          from: { chain: arbitrum, token: USDT0_ARB, maxNativeFee: BUDGET },
+          to: { chain: plasma, token: USDC_PLASMA },
+          settlementLayers: 'all',
+        },
+        {},
+        arbitrum,
+      ),
+    ]) {
+      expect(codes(def)).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
+    }
+  })
+
   test('refuses a budget when the cap on another token drops LZ', () => {
     const def = definition({
       from: [
