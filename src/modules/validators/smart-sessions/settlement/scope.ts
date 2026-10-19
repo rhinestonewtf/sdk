@@ -126,6 +126,30 @@ function legRefusal(
   }
 }
 
+/**
+ * What a layer's call pins to reach a leg: its chain and token, and the CCTP
+ * domain or LayerZero endpoint id of each route that delivers its token there.
+ */
+function deliveries(
+  settlement: SettlementCatalog,
+  leg: SettlementContext['destinations'][number],
+): string[] {
+  const at = settlement[leg.chainId]
+  const is = (token: Address | undefined) =>
+    token !== undefined && isAddressEqual(token, leg.token)
+  return [
+    `chain:${leg.chainId}:${leg.token.toLowerCase()}`,
+    ...(at?.cctp && is(at.cctp.usdc) ? [`cctp:${at.cctp.domain}`] : []),
+    ...(at?.lz?.cctp && is(at.lz.cctp.token)
+      ? [`cctp:${at.lz.cctp.domain}`]
+      : []),
+    ...(at?.lz?.stargateUsdc && is(at.lz.stargateUsdc.token)
+      ? [`stargate:${at.lz.stargateUsdc.eid}`]
+      : []),
+    ...(at?.oft && is(at.oft.token) ? [`oft:${at.oft.eid}`] : []),
+  ]
+}
+
 export const INTENT_EXECUTOR_SETTLEMENT_LAYERS = [
   'CCTP',
   'OFT',
@@ -383,13 +407,16 @@ function scopePermit(
   }
   // Two legs that admit the same delivery but set different floors leave the
   // looser one open: a layer that leaves out the floored leg would still pin its
-  // twin. Every flooring layer refuses such a pair, so the permit does too.
+  // twin. Every flooring layer refuses such a pair, so the permit does too. A
+  // layer pins a destination by its domain or endpoint id, which another chain
+  // (a testnet) can share, so those count as the same delivery as well.
   const twin = destinations.find((leg, i) =>
     destinations.some(
       (other, j) =>
         j < i &&
-        other.chainId === leg.chainId &&
-        isAddressEqual(other.token, leg.token) &&
+        deliveries(settlement, other).some((key) =>
+          deliveries(settlement, leg).includes(key),
+        ) &&
         (other.recipient === undefined ||
           leg.recipient === undefined ||
           isAddressEqual(other.recipient, leg.recipient)) &&
@@ -400,7 +427,7 @@ function scopePermit(
     refuse(
       refusal(
         'CONFLICTING_LEG_FLOORS',
-        `crossChainPermits: two \`to\` legs deliver ${twin.token} on chain ${twin.chainId} to the same recipient with different \`to.minAmount\`s; give it once`,
+        `crossChainPermits: two \`to\` legs reach the same destination as ${twin.token} on chain ${twin.chainId}, for the same recipient, with different \`to.minAmount\`s; give it once`,
         { chainId: twin.chainId, leg: 'to' },
       ),
     )
@@ -561,6 +588,20 @@ function scopePermit(
       ),
     )
   }
+  // maxFeeBps asks ECO_IE to settle the permit, so it must pin every leg.
+  const eco = scopedLayers.find(({ layer }) => layer === 'ECO_IE')
+  const ecoMisses = eco
+    ? destinations.find((leg) => !eco.legs.includes(leg))
+    : undefined
+  if (permit.maxFeeBps !== undefined && ecoMisses) {
+    refuse(
+      refusal(
+        'MAX_FEE_BPS_ECO_IE_UNAVAILABLE',
+        `crossChainPermits: maxFeeBps asks for ECO_IE, which cannot settle the \`to\` leg ${ecoMisses.token} on chain ${ecoMisses.chainId}`,
+        { layer: 'ECO_IE', chainId: ecoMisses.chainId, leg: 'to' },
+      ),
+    )
+  }
   if (scopedLayers.length === 0 && !across) {
     throw refusal(
       'NO_LAYER_CAN_SETTLE',
@@ -599,8 +640,11 @@ function scopePermit(
         ),
       )
     }
+    // A leg on this chain is not this session's to bridge (LZ skips it).
     const leg = destinations.find(
-      (leg) => !scopedLayers.some(({ legs }) => legs.includes(leg)),
+      (leg) =>
+        leg.chainId !== options.chainId &&
+        !scopedLayers.some(({ legs }) => legs.includes(leg)),
     )
     // A named layer that could not pin the leg says why; otherwise none moves it.
     const why = leg
@@ -689,11 +733,17 @@ function scopePermit(
     ...scopedLayers.map(({ action }) => action),
     ...approveActions,
   ]
+  // Fee calls only for tokens a kept route spends; ACROSS spends every one.
+  const feeTokens = across
+    ? sourceTokens
+    : sourceTokens.filter((token) =>
+        scopedLayers.some(({ tokens }) =>
+          tokens.some((moved) => isAddressEqual(moved, token)),
+        ),
+      )
   return {
     actions:
-      fees === undefined
-        ? actions
-        : withFeeActions(actions, sourceTokens, fees),
+      fees === undefined ? actions : withFeeActions(actions, feeTokens, fees),
     permissions: [],
     settlementLayers,
     dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),
