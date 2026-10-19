@@ -8,7 +8,14 @@ import {
   isAddressEqual,
   pad,
 } from 'viem'
-import { arbitrum, base, optimism, plasma } from 'viem/chains'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  optimism,
+  optimismSepolia,
+  plasma,
+} from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../../../../test/consts'
 import {
@@ -110,6 +117,18 @@ const EXISTING: Record<string, SessionDefinition> = {
   'CCTP with fees': definition({ settlementLayers: ['CCTP'], allowFees: true }),
   all: definition({}),
   'all, reusable': reusable(definition({})),
+  // A `to` leg on the session's own chain belongs to the other chain's session.
+  'LZ, Base <-> Arbitrum': definition({
+    from: [
+      { chain: base, token: USDC, maxAmount: 100n },
+      { chain: arbitrum, token: USDC_ARB, maxAmount: 100n },
+    ],
+    to: [
+      { chain: base, token: USDC },
+      { chain: arbitrum, token: USDC_ARB },
+    ],
+    settlementLayers: ['LZ'],
+  }),
   // Several tokens through scope.ts that no IntentExecutor layer moves.
   'all, WETH + cbBTC': definition({
     from: [
@@ -177,6 +196,7 @@ describe('multi-token IntentExecutor-layer permits', () => {
         "CCTP two destinations": "0x9ed85e9dda9a3a38779cc847d36a8dc0d4f98e6a1ca675e6b54f9659ead14769",
         "CCTP with fees": "0xf7ad71ccb1ba05a8565fef07e19ba3365d8aaf5bd42841443d6ba2f9f1468cbb",
         "ECO_IE": "0xb62e49180f1d7b6138c048260da917383e59df00125adb8084e872e15ffcb6f0",
+        "LZ, Base <-> Arbitrum": "0xdf7da219be4c81957a50df182c4f0f4ad025c949b7c9269b86564ef20a629571",
         "OFT": "0x098fb71c867c060658796450ebbf82a30248d9a835c674184a80b8500ec567e0",
         "all": "0x033c93c174ccb13dfff1d47cb4d0f5b639b599f4e2fa87fac18c21468e7080dc",
         "all, WETH + cbBTC": "0xf0c7939c45c75a962fba78f8ead56c212814ef8741cfc811b3cce8ba69725544",
@@ -673,18 +693,19 @@ describe('caps and fee-paying layers across tokens', () => {
 })
 
 describe('legs a layer does not deliver', () => {
-  test('an explicit LZ list refuses a served `to` leg LZ has no route to', () => {
-    const refused = refusalOf(() =>
-      scope({
-        to: [
-          { chain: arbitrum, token: USDC_ARB },
-          { chain: base, token: USDC },
-        ],
-        settlementLayers: ['LZ'],
-      }),
-    )
-    // LZ says why it cannot pin the leg.
-    expect(refused.code).toBe('LZ_NO_ROUTE')
+  test('an explicit LZ list skips a `to` leg on its own source chain', () => {
+    const { settlementLayers } = scope({
+      from: [
+        { chain: base, token: USDC, maxAmount: 100n },
+        { chain: arbitrum, token: USDC_ARB, maxAmount: 100n },
+      ],
+      to: [
+        { chain: base, token: USDC },
+        { chain: arbitrum, token: USDC_ARB },
+      ],
+      settlementLayers: ['LZ'],
+    })
+    expect(settlementLayers).toEqual(['LZ'])
   })
 
   const FLOORED_USDT0 = 5_000_000n
@@ -753,10 +774,9 @@ describe('ECO_IE legs and caps', () => {
   const OP_TO_ARB_AND_RONIN: Partial<CrossChainPermissionInput> = {
     from: { chain: optimism, token: USDC_OP, maxAmount: 100n },
     to: [
-      { chain: arbitrum, token: USDC_ARB },
-      { chain: RONIN, token: USDC_RONIN },
+      { chain: arbitrum, token: USDC_ARB, minAmount: 95n },
+      { chain: RONIN, token: USDC_RONIN, minAmount: 95n },
     ],
-    maxFeeBps: 50,
     validUntil: VALID_UNTIL,
   }
 
@@ -775,6 +795,27 @@ describe('ECO_IE legs and caps', () => {
     expect(rules).toContain(`"referenceValue":"${arbitrum.id}"`)
     expect(rules).not.toContain(`"referenceValue":"2020"`)
     expect(rules.toLowerCase()).toContain(ACCOUNT.slice(2).toLowerCase())
+  })
+
+  test('maxFeeBps still asks ECO_IE to settle every leg', () => {
+    const { to: _, ...rest } = OP_TO_ARB_AND_RONIN
+    const refused = refusalOf(() =>
+      scope(
+        {
+          ...rest,
+          to: [
+            { chain: arbitrum, token: USDC_ARB },
+            { chain: RONIN, token: USDC_RONIN },
+          ],
+          maxFeeBps: 50,
+        },
+        { chainId: optimism.id },
+      ),
+    )
+    expect([refused.code, refused.chainId]).toEqual([
+      'MAX_FEE_BPS_ECO_IE_UNAVAILABLE',
+      2020,
+    ])
   })
 
   test('an explicit ECO_IE list says why it cannot pin a leg', () => {
@@ -813,5 +854,196 @@ describe('ECO_IE legs and caps', () => {
         typeof v === 'bigint' ? v.toString() : v,
       ),
     ).toContain('"referenceValue":"95"')
+  })
+})
+
+describe('a floor on one of two CCTP legs', () => {
+  const FLOORED_AND_NOT: Partial<CrossChainPermissionInput> = {
+    to: [
+      { chain: arbitrum, token: USDC_ARB, minAmount: 95n },
+      { chain: optimism, token: USDC_OP },
+    ],
+  }
+  const domain = (chain: Chain) => SETTLEMENT_CATALOG[chain.id].cctp!.domain
+
+  test('CCTP pins only the unfloored leg; the floored one is left to ECO_IE', () => {
+    const { actions, settlementLayers } = scope({
+      ...FLOORED_AND_NOT,
+      settlementLayers: ['CCTP', 'ECO_IE'],
+      maxFeeBps: 50,
+      validUntil: VALID_UNTIL,
+    })
+    expect(settlementLayers).toEqual(['CCTP', 'ECO_IE'])
+    const action = actionOf(
+      actions,
+      BASE.cctp!.tokenMessenger,
+      DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
+    )
+    expect(holds(action, burn({ domain: domain(optimism) }))).toBe(true)
+    expect(holds(action, burn({ domain: domain(arbitrum) }))).toBe(false)
+    expect(
+      holds(action, burn({ domain: domain(optimism), recipient: OTHER })),
+    ).toBe(false)
+  })
+
+  test("'all' keeps CCTP for the unfloored leg", () => {
+    expect(scope(FLOORED_AND_NOT).settlementLayers).toContain('CCTP')
+  })
+
+  test('a floored leg only CCTP is named for is refused, never unfloored', () => {
+    const refused = refusalOf(() =>
+      scope({ ...FLOORED_AND_NOT, settlementLayers: ['CCTP'] }),
+    )
+    expect([refused.code, refused.message]).toEqual([
+      'MIN_AMOUNT_NOT_ENFORCEABLE',
+      'crossChainPermits: CCTP cannot enforce `to.minAmount`',
+    ])
+  })
+})
+
+describe('twin legs with different floors', () => {
+  const UNCAPPED = { chain: base, token: USDC }
+  const TWINS: Partial<CrossChainPermissionInput> = {
+    from: UNCAPPED,
+    to: [
+      { chain: arbitrum, token: USDC_ARB, minAmount: 5n },
+      { chain: arbitrum, token: USDC_ARB },
+    ],
+  }
+
+  test.each([
+    ["'all' beside ACROSS", { settlementLayers: 'all' }, true],
+    [
+      'CCTP named beside ECO_IE',
+      { settlementLayers: ['CCTP', 'ECO_IE'], maxFeeBps: 50 },
+      false,
+    ],
+    ['LZ named', { settlementLayers: ['LZ'] }, false],
+  ] as [string, Partial<CrossChainPermissionInput>, boolean][])(
+    'are refused: %s',
+    (_, layers, across) => {
+      const refused = refusalOf(() =>
+        scope({ ...TWINS, ...layers }, { across }),
+      )
+      expect([refused.code, refused.chainId]).toEqual([
+        'CONFLICTING_LEG_FLOORS',
+        arbitrum.id,
+      ])
+    },
+  )
+
+  test('an open recipient beside a floored leg to the account is a twin', () => {
+    const refused = refusalOf(() =>
+      scope({
+        from: UNCAPPED,
+        allowRecipientNotAccount: true,
+        to: [
+          {
+            chain: arbitrum,
+            token: USDC_ARB,
+            recipient: ACCOUNT,
+            minAmount: 5n,
+          },
+          { chain: arbitrum, token: USDC_ARB, recipient: 'any' },
+        ],
+      }),
+    )
+    expect(refused.code).toBe('CONFLICTING_LEG_FLOORS')
+  })
+
+  test('legs to different chains are not twins', () => {
+    expect(
+      scope({
+        from: UNCAPPED,
+        to: [
+          { chain: arbitrum, token: USDC_ARB, minAmount: 5n },
+          { chain: optimism, token: USDC_OP },
+        ],
+      }).settlementLayers,
+    ).toContain('CCTP')
+  })
+})
+
+describe('floors across chains that share a destination', () => {
+  const at = (chain: Chain) => ({
+    chain,
+    token: getAddress(SETTLEMENT_CATALOG[chain.id].cctp!.usdc),
+  })
+
+  // Testnets reuse mainnet CCTP domains: a burn to the shared domain would
+  // deliver to the floored mainnet leg with no floor.
+  test.each([
+    ['Arbitrum + Arbitrum Sepolia, all', arbitrum, arbitrumSepolia, 'all'],
+    [
+      'Arbitrum + Arbitrum Sepolia, CCTP + ECO_IE',
+      arbitrum,
+      arbitrumSepolia,
+      ['CCTP', 'ECO_IE'],
+    ],
+    ['Optimism + OP Sepolia, all', optimism, optimismSepolia, 'all'],
+  ] as [string, Chain, Chain, CrossChainPermissionInput['settlementLayers']][])(
+    'a floored mainnet leg beside an unfloored leg on its testnet (same CCTP domain) is refused: %s',
+    (_, mainnet, testnet, settlementLayers) => {
+      const refused = refusalOf(() =>
+        scope({
+          to: [{ ...at(mainnet), minAmount: 99n }, at(testnet)],
+          settlementLayers,
+          validUntil: VALID_UNTIL,
+        }),
+      )
+      expect(refused.code).toBe('CONFLICTING_LEG_FLOORS')
+    },
+  )
+
+  test('legs that share a LayerZero endpoint id count as the same destination', () => {
+    const SHADOW = 777_777
+    const arb = SETTLEMENT_CATALOG[arbitrum.id]
+    const settlement: SettlementCatalog = {
+      ...CATALOG,
+      [SHADOW]: { lz: { ...arb.lz!, cctp: undefined } },
+    }
+    const refused = refusalOf(() =>
+      scope(
+        {
+          to: [
+            { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+            {
+              chain: { ...arbitrum, id: SHADOW } as Chain,
+              token: arb.lz!.stargateUsdc!.token,
+            },
+          ],
+          settlementLayers: ['LZ'],
+        },
+        { settlement },
+      ),
+    )
+    expect(refused.code).toBe('CONFLICTING_LEG_FLOORS')
+  })
+})
+
+describe('fee calls follow the kept routes', () => {
+  test('a `from` token no kept layer moves gets no fee calls', () => {
+    const settlement: SettlementCatalog = {
+      ...CATALOG,
+      [optimism.id]: { ...SETTLEMENT_CATALOG[optimism.id], fees: FEES },
+    }
+    const { actions, settlementLayers } = scope(
+      {
+        from: [
+          { chain: optimism, token: USDC_OP, maxAmount: 100n },
+          { chain: optimism, token: USDT0_OP },
+        ],
+        to: [
+          { chain: arbitrum, token: USDC_ARB },
+          { chain: arbitrum, token: USDT0_ARB },
+        ],
+        allowFees: true,
+      },
+      { chainId: optimism.id, settlement },
+    )
+    // OFT, the one layer that moves USDT0, is dropped: its token is not capped.
+    expect(settlementLayers).not.toContain('OFT')
+    expect(actions.some((a) => isAddressEqual(a.target, USDT0_OP))).toBe(false)
+    expect(actions.some((a) => isAddressEqual(a.target, USDC_OP))).toBe(true)
   })
 })
