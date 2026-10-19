@@ -482,6 +482,44 @@ describe('maxNativeFee across tokens', () => {
     }
   })
 
+  test('refuses a budget when LZ cannot pin any of its legs', () => {
+    // LZ moves this leg's token but cannot pin it alone: its floor sits on a
+    // CCTP route, so LZ keeps no pinned leg and is not kept.
+    const def = definition({
+      from: {
+        chain: base,
+        token: USDC_BASE,
+        maxAmount: CAP,
+        maxNativeFee: BUDGET,
+      },
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: CAP / 2n },
+      settlementLayers: 'all',
+      maxFeeBps: 100,
+      validUntil: new Date(Date.now() + 8 * 86_400_000),
+    })
+    expect(codes(def)).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
+    // Without the budget and with oneTimeUse, 'all' builds and drops LZ for
+    // that leg alone.
+    const session = toSession(
+      {
+        ...def,
+        ...once,
+        crossChainPermits: [
+          {
+            ...def.crossChainPermits![0],
+            from: { chain: base, token: USDC_BASE, maxAmount: CAP },
+          },
+        ],
+      },
+      OPTIONS,
+    )
+    expect(session.settlementLayers).not.toContain('LZ')
+    expect(
+      session.settlementCoverage?.dropped.find(({ layer }) => layer === 'LZ')
+        ?.reason,
+    ).toMatch(/CCTP/)
+  })
+
   test('refuses a budget when the cap on another token drops LZ', () => {
     const def = definition({
       from: [
