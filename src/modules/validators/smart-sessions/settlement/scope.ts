@@ -434,17 +434,14 @@ function scopePermit(
     // A leg on a chain the layer does not serve is left to the other layers; the
     // explicit-list coverage check below refuses one none of them takes.
     const legs = destinations.filter((leg) => moves(leg.chainId, leg.token))
-    // Every layer in the permit must enforce the floor on the legs it delivers,
-    // or the key would settle around it.
-    if (
-      !LAYERS[layer].floorsDelivery &&
-      legs.some((leg) => leg.minAmount !== undefined)
-    ) {
-      throw new SettlementLayerRefusal(
-        `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
-        { code: 'MIN_AMOUNT_NOT_ENFORCEABLE' },
-      )
-    }
+    // A layer must enforce the floor on every leg it delivers, or the key would
+    // settle around it, so one that cannot leaves floored legs to those that can.
+    const unfloorable = LAYERS[layer].floorsDelivery
+      ? undefined
+      : new SettlementLayerRefusal(
+          `crossChainPermits: ${layer} cannot enforce \`to.minAmount\``,
+          { code: 'MIN_AMOUNT_NOT_ENFORCEABLE' },
+        )
     const ctx: SettlementContext = {
       chainId: options.chainId,
       settlement,
@@ -468,11 +465,22 @@ function scopePermit(
     // none pinnable, the layer refuses as before.
     const refused = new Map(
       legs.flatMap((leg) => {
-        const why = legRefusal(layer, { ...ctx, destinations: [leg] })
+        const why =
+          unfloorable && leg.minAmount !== undefined
+            ? unfloorable
+            : legRefusal(layer, { ...ctx, destinations: [leg] })
         return why ? [[leg, why] as const] : []
       }),
     )
     const pinned = legs.filter((leg) => !refused.has(leg))
+    // Never fall back to building over a floor the layer cannot enforce.
+    if (
+      pinned.length === 0 &&
+      unfloorable &&
+      legs.some((leg) => leg.minAmount !== undefined)
+    ) {
+      throw unfloorable
+    }
     const action = LAYERS[layer].scope(
       pinned.length ? { ...ctx, destinations: pinned } : ctx,
     )
