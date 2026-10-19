@@ -30,6 +30,7 @@ import type {
   SessionDefinition,
 } from '../types'
 import { DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR, tokenMessengerAbi } from './cctp'
+import { PUBLISH_AND_FUND_SELECTOR } from './eco'
 import { APPROVE_SELECTOR } from './fees'
 import { LZ_EXECUTE_SELECTOR } from './lz'
 import { resolveSettlementScope } from './scope'
@@ -682,11 +683,8 @@ describe('legs a layer does not deliver', () => {
         settlementLayers: ['LZ'],
       }),
     )
-    expect([refused.code, refused.leg, refused.message]).toEqual([
-      'TOKEN_NOT_ROUTED',
-      'to',
-      `crossChainPermits: no named layer delivers the \`to\` token ${USDC} on chain ${base.id}`,
-    ])
+    // LZ says why it cannot pin the leg.
+    expect(refused.code).toBe('LZ_NO_ROUTE')
   })
 
   const FLOORED_USDT0 = 5_000_000n
@@ -745,5 +743,75 @@ describe('legs a layer does not deliver', () => {
       'to',
       arbitrum.id,
     ])
+  })
+})
+
+describe('ECO_IE legs and caps', () => {
+  const RONIN = { ...arbitrum, id: 2020 } as Chain
+  const USDC_RONIN = getAddress(SETTLEMENT_CATALOG[2020].eco!.stablecoins[0])
+  // Optimism and Ronin share no Eco prover; Optimism and Arbitrum do.
+  const OP_TO_ARB_AND_RONIN: Partial<CrossChainPermissionInput> = {
+    from: { chain: optimism, token: USDC_OP, maxAmount: 100n },
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: RONIN, token: USDC_RONIN },
+    ],
+    maxFeeBps: 50,
+    validUntil: VALID_UNTIL,
+  }
+
+  test("'all' keeps ECO_IE for the leg it has a prover for", () => {
+    const { actions, settlementLayers } = scope(OP_TO_ARB_AND_RONIN, {
+      chainId: optimism.id,
+    })
+    expect(settlementLayers).toContain('ECO_IE')
+    const publish = actions.find(
+      (a) => a.selector === PUBLISH_AND_FUND_SELECTOR,
+    )
+    const rules = JSON.stringify(publish?.policies, (_, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    )
+    // Only the Arbitrum leg is pinned, to the account.
+    expect(rules).toContain(`"referenceValue":"${arbitrum.id}"`)
+    expect(rules).not.toContain(`"referenceValue":"2020"`)
+    expect(rules.toLowerCase()).toContain(ACCOUNT.slice(2).toLowerCase())
+  })
+
+  test('an explicit ECO_IE list says why it cannot pin a leg', () => {
+    const refused = refusalOf(() =>
+      scope(
+        { ...OP_TO_ARB_AND_RONIN, settlementLayers: ['ECO_IE'] },
+        { chainId: optimism.id },
+      ),
+    )
+    expect([refused.code, refused.chainId]).toEqual([
+      'ECO_IE_NO_SHARED_PROVER',
+      2020,
+    ])
+  })
+
+  test("another token's missing cap does not drop ECO_IE's floor", () => {
+    const { actions, settlementLayers } = scope({
+      from: [
+        { chain: base, token: USDC, maxAmount: 100n },
+        { chain: base, token: WETH },
+      ],
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 95n },
+    })
+    expect(settlementLayers).toContain('ECO_IE')
+    const publish = actions.find(
+      (a) => a.selector === PUBLISH_AND_FUND_SELECTOR,
+    )
+    // The floor binds what the route delivers.
+    expect(
+      JSON.stringify(publish?.policies, (_, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      ),
+    ).toContain('"condition":"greaterThanOrEqual","calldataOffset"')
+    expect(
+      JSON.stringify(publish?.policies, (_, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      ),
+    ).toContain('"referenceValue":"95"')
   })
 })
