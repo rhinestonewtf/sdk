@@ -240,7 +240,7 @@ describe('maxAmount on a reusable session', () => {
         {
           layer: 'LZ',
           reason:
-            'an LZ permit requires oneTimeUse or a maxNativeFee on its `from` leg',
+            'an LZ permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
         },
       ]),
     )

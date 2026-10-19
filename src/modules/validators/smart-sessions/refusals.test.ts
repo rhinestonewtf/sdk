@@ -227,7 +227,7 @@ describe('collectSessionRefusals', () => {
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
         message:
-          'crossChainPermits: an OFT permit requires oneTimeUse or a maxNativeFee on its `from` leg',
+          'crossChainPermits: an OFT permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },
@@ -315,7 +315,7 @@ describe('collectSessionRefusals', () => {
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
         message:
-          'crossChainPermits: an OFT permit requires oneTimeUse or a maxNativeFee on its `from` leg',
+          'crossChainPermits: an OFT permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },

@@ -122,6 +122,48 @@ describe('LZ on a reusable session', () => {
     expect(codes(def)).toContain('LAYER_REQUIRES_ONE_TIME_USE')
   })
 
+  describe('without maxAmount, so the token could cycle without end', () => {
+    const uncapped = (
+      settlementLayers: CrossChainPermissionInput['settlementLayers'],
+      extra: Partial<SessionDefinition> = {},
+    ) =>
+      definition(
+        {
+          from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+          settlementLayers,
+        },
+        extra,
+      )
+
+    test('is refused when named', () => {
+      expect(codes(uncapped(['LZ']))).toContain('LAYER_REQUIRES_ONE_TIME_USE')
+    })
+
+    test("is dropped from 'all', with the reason", () => {
+      // With the budget, the dropped LZ leaves it no layer to bound.
+      expect(codes(uncapped('all'))).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
+      const session = toSession(
+        definition({
+          from: { chain: base, token: USDC_BASE },
+          settlementLayers: 'all',
+        }),
+        OPTIONS,
+      )
+      expect(session.settlementLayers).not.toContain('LZ')
+      expect(
+        session.settlementCoverage?.dropped.find(({ layer }) => layer === 'LZ')
+          ?.reason,
+      ).toBe(
+        'an LZ permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
+      )
+    })
+
+    test('builds with both, and with oneTimeUse as before', () => {
+      expect(codes(definition({}))).toEqual([])
+      expect(codes(uncapped(['LZ'], once))).toEqual([])
+    })
+  })
+
   test('runs again and again within maxNativeFee', () => {
     const lz = installed(definition({}))
     for (let i = 0; i < 3; i++) {
@@ -162,6 +204,7 @@ describe('LZ on a reusable session', () => {
     expect(codes(definition({ to: [ARB_LEG, SONEIUM_LEG] }))).toContain(
       'LZ_REUSABLE_ROUTES_SPLIT',
     )
+    // Uncapped, the routes would not split, but a reusable LZ needs a cap.
     expect(
       codes(
         definition({
@@ -169,7 +212,7 @@ describe('LZ on a reusable session', () => {
           to: [ARB_LEG, SONEIUM_LEG],
         }),
       ),
-    ).toEqual([])
+    ).toContain('LAYER_REQUIRES_ONE_TIME_USE')
   })
 
   test('keeps the recipient, destination and pull pinned', () => {
@@ -187,7 +230,12 @@ describe('LZ on a reusable session', () => {
 
   test('is a lifetime budget, from its metadata and from its actions', () => {
     const def = definition({
-      from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+      from: {
+        chain: base,
+        token: USDC_BASE,
+        maxAmount: CAP,
+        maxNativeFee: BUDGET,
+      },
     })
     const session = toSession(def, OPTIONS)
     expect(session.lifetimeBudget).toBe(true)
@@ -322,13 +370,23 @@ describe('a stored reusable LZ or OFT session without the lifetimeBudget flag', 
   }
   const lz = stored(
     definition({
-      from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+      from: {
+        chain: base,
+        token: USDC_BASE,
+        maxAmount: CAP,
+        maxNativeFee: BUDGET,
+      },
     }),
   )
   const oft = stored(
     definition(
       {
-        from: { chain: arbitrum, token: USDT0_ARB, maxNativeFee: BUDGET },
+        from: {
+          chain: arbitrum,
+          token: USDT0_ARB,
+          maxAmount: CAP,
+          maxNativeFee: BUDGET,
+        },
         to: { chain: plasma, token: USDT0_PLASMA },
         settlementLayers: ['OFT'],
       },
@@ -357,7 +415,7 @@ describe('a stored reusable LZ or OFT session without the lifetimeBudget flag', 
         readNonce: async () => 0n,
         readNonceAndEnabled: async () => ({ nonce: 0n, enabled: true }),
       }),
-    ).rejects.toThrow(/its maxNativeFee is a lifetime budget:/)
+    ).rejects.toThrow(/its maxAmount and maxNativeFee are lifetime budgets:/)
   })
 
   test('a one-time-use LZ session holds none', () => {
@@ -424,7 +482,7 @@ describe('maxNativeFee across tokens', () => {
       const def = stables({ maxNativeFee: BUDGET }, {}, extra)
       expect(codes(def)).toContain('MAX_NATIVE_FEE_NOT_APPLICABLE')
       expect(() => toSession(def, OPTIONS)).toThrow(
-        /maxNativeFee applies only to LZ and OFT, and 'all' keeps neither here: OFT and LZ each pay/,
+        /maxNativeFee applies only to LZ and OFT, and ('all' keeps neither here|neither settles this permit)/,
       )
     }
     // Without a budget, 'all' keeps neither, as before.
@@ -452,7 +510,7 @@ describe('maxNativeFee across tokens', () => {
     expect(
       without.settlementCoverage?.dropped.find(({ layer }) => layer === 'LZ')
         ?.reason,
-    ).toContain('requires oneTimeUse or a maxNativeFee')
+    ).toContain('requires oneTimeUse, or both a maxNativeFee and a maxAmount')
     expect(
       toSession(stables({ maxAmount: CAP, maxNativeFee: BUDGET }), OPTIONS)
         .settlementLayers,
@@ -464,13 +522,23 @@ describe('maxNativeFee across tokens', () => {
     // these legs, so their projections are empty.
     for (const def of [
       definition({
-        from: { chain: base, token: USDC_BASE, maxNativeFee: BUDGET },
+        from: {
+          chain: base,
+          token: USDC_BASE,
+          maxAmount: CAP,
+          maxNativeFee: BUDGET,
+        },
         to: { chain: arbitrum, token: USDT0_ARB },
         settlementLayers: 'all',
       }),
       definition(
         {
-          from: { chain: arbitrum, token: USDT0_ARB, maxNativeFee: BUDGET },
+          from: {
+            chain: arbitrum,
+            token: USDT0_ARB,
+            maxAmount: CAP,
+            maxNativeFee: BUDGET,
+          },
           to: { chain: plasma, token: USDC_PLASMA },
           settlementLayers: 'all',
         },
