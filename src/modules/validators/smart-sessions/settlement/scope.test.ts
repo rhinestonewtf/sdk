@@ -377,12 +377,6 @@ describe('settlement-scoped crossChainPermits', () => {
         SETTLEMENT_CATALOG,
         'above uint64',
       ],
-      [
-        'twin legs with different floors',
-        { to: [plasmaLeg(95n), plasmaLeg(94n)] },
-        SETTLEMENT_CATALOG,
-        'admit the same send but set different',
-      ],
     ] as [
       string,
       Partial<CrossChainPermissionInput>,
@@ -411,6 +405,21 @@ describe('settlement-scoped crossChainPermits', () => {
         }
       },
     )
+
+    test("refuses twin legs with different floors, named or under 'all'", () => {
+      for (const layers of [['OFT'], 'all'] as const) {
+        expect(() =>
+          resolveSettlementScope(
+            [
+              permit(layers === 'all' ? 'all' : [...layers], {
+                to: [plasmaLeg(95n), plasmaLeg(94n)],
+              }),
+            ],
+            options,
+          ),
+        ).toThrow('with different `to.minAmount`s')
+      }
+    })
 
     describe('from legs with different caps, which ECO_IE cannot floor alike', () => {
       const spread = (

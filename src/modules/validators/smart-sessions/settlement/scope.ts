@@ -381,6 +381,30 @@ function scopePermit(
       "crossChainPermits: IntentExecutor layers and 'all' (the default) need options.settlement from GET /chains; pass it or name settlementLayers, e.g. ['ACROSS']",
     )
   }
+  // Two legs that admit the same delivery but set different floors leave the
+  // looser one open: a layer that leaves out the floored leg would still pin its
+  // twin. Every flooring layer refuses such a pair, so the permit does too.
+  const twin = destinations.find((leg, i) =>
+    destinations.some(
+      (other, j) =>
+        j < i &&
+        other.chainId === leg.chainId &&
+        isAddressEqual(other.token, leg.token) &&
+        (other.recipient === undefined ||
+          leg.recipient === undefined ||
+          isAddressEqual(other.recipient, leg.recipient)) &&
+        other.minAmount !== leg.minAmount,
+    ),
+  )
+  if (twin) {
+    refuse(
+      refusal(
+        'CONFLICTING_LEG_FLOORS',
+        `crossChainPermits: two \`to\` legs deliver ${twin.token} on chain ${twin.chainId} to the same recipient with different \`to.minAmount\`s; give it once`,
+        { chainId: twin.chainId, leg: 'to' },
+      ),
+    )
+  }
   // ECO_IE pins Eco's deadlines under the earlier of the permit's validUntil and
   // the one-time-use deadline.
   const validUntil =
