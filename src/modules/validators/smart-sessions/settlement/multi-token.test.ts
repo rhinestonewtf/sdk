@@ -815,3 +815,47 @@ describe('ECO_IE legs and caps', () => {
     ).toContain('"referenceValue":"95"')
   })
 })
+
+describe('a floor on one of two CCTP legs', () => {
+  const FLOORED_AND_NOT: Partial<CrossChainPermissionInput> = {
+    to: [
+      { chain: arbitrum, token: USDC_ARB, minAmount: 95n },
+      { chain: optimism, token: USDC_OP },
+    ],
+  }
+  const domain = (chain: Chain) => SETTLEMENT_CATALOG[chain.id].cctp!.domain
+
+  test('CCTP pins only the unfloored leg; the floored one is left to ECO_IE', () => {
+    const { actions, settlementLayers } = scope({
+      ...FLOORED_AND_NOT,
+      settlementLayers: ['CCTP', 'ECO_IE'],
+      maxFeeBps: 50,
+      validUntil: VALID_UNTIL,
+    })
+    expect(settlementLayers).toEqual(['CCTP', 'ECO_IE'])
+    const action = actionOf(
+      actions,
+      BASE.cctp!.tokenMessenger,
+      DEPOSIT_FOR_BURN_WITH_HOOK_SELECTOR,
+    )
+    expect(holds(action, burn({ domain: domain(optimism) }))).toBe(true)
+    expect(holds(action, burn({ domain: domain(arbitrum) }))).toBe(false)
+    expect(
+      holds(action, burn({ domain: domain(optimism), recipient: OTHER })),
+    ).toBe(false)
+  })
+
+  test("'all' keeps CCTP for the unfloored leg", () => {
+    expect(scope(FLOORED_AND_NOT).settlementLayers).toContain('CCTP')
+  })
+
+  test('a floored leg only CCTP is named for is refused, never unfloored', () => {
+    const refused = refusalOf(() =>
+      scope({ ...FLOORED_AND_NOT, settlementLayers: ['CCTP'] }),
+    )
+    expect([refused.code, refused.message]).toEqual([
+      'MIN_AMOUNT_NOT_ENFORCEABLE',
+      'crossChainPermits: CCTP cannot enforce `to.minAmount`',
+    ])
+  })
+})
