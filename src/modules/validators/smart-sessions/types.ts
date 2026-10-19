@@ -486,8 +486,8 @@ export interface Session {
 
 export interface SessionDetailsOptions {
   /**
-   * Sign a session whose lifetime `maxAmount` is already enabled; its enable
-   * then resets that budget.
+   * Sign a session whose lifetime budget is already enabled; its enable then
+   * resets every such budget it holds: `maxAmount` and `maxNativeFee`.
    */
   readonly allowBudgetReset?: boolean
 }
