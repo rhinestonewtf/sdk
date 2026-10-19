@@ -859,3 +859,66 @@ describe('a floor on one of two CCTP legs', () => {
     ])
   })
 })
+
+describe('twin legs with different floors', () => {
+  const UNCAPPED = { chain: base, token: USDC }
+  const TWINS: Partial<CrossChainPermissionInput> = {
+    from: UNCAPPED,
+    to: [
+      { chain: arbitrum, token: USDC_ARB, minAmount: 5n },
+      { chain: arbitrum, token: USDC_ARB },
+    ],
+  }
+
+  test.each([
+    ["'all' beside ACROSS", { settlementLayers: 'all' }, true],
+    [
+      'CCTP named beside ECO_IE',
+      { settlementLayers: ['CCTP', 'ECO_IE'], maxFeeBps: 50 },
+      false,
+    ],
+    ['LZ named', { settlementLayers: ['LZ'] }, false],
+  ] as [string, Partial<CrossChainPermissionInput>, boolean][])(
+    'are refused: %s',
+    (_, layers, across) => {
+      const refused = refusalOf(() =>
+        scope({ ...TWINS, ...layers }, { across }),
+      )
+      expect([refused.code, refused.chainId]).toEqual([
+        'CONFLICTING_LEG_FLOORS',
+        arbitrum.id,
+      ])
+    },
+  )
+
+  test('an open recipient beside a floored leg to the account is a twin', () => {
+    const refused = refusalOf(() =>
+      scope({
+        from: UNCAPPED,
+        allowRecipientNotAccount: true,
+        to: [
+          {
+            chain: arbitrum,
+            token: USDC_ARB,
+            recipient: ACCOUNT,
+            minAmount: 5n,
+          },
+          { chain: arbitrum, token: USDC_ARB, recipient: 'any' },
+        ],
+      }),
+    )
+    expect(refused.code).toBe('CONFLICTING_LEG_FLOORS')
+  })
+
+  test('legs to different chains are not twins', () => {
+    expect(
+      scope({
+        from: UNCAPPED,
+        to: [
+          { chain: arbitrum, token: USDC_ARB, minAmount: 5n },
+          { chain: optimism, token: USDC_OP },
+        ],
+      }).settlementLayers,
+    ).toContain('CCTP')
+  })
+})
