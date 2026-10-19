@@ -1,11 +1,19 @@
 import {
   type Account,
   type Address,
+  concat,
   encodeAbiParameters,
   erc20Abi,
   type Hex,
+  hexToNumber,
   isAddressEqual,
+  numberToHex,
+  parseErc6492Signature,
+  recoverMessageAddress,
+  slice,
   type TypedDataDefinition,
+  zeroAddress,
+  zeroHash,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
@@ -34,7 +42,10 @@ import {
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
+import { getSmartSessionEmissaryAddress } from '../modules/validators/smart-sessions/module'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
+import { encodeErc7739ContentTail } from '../modules/validators/smart-sessions/signature'
+import { prepareSmartSessionErc7739Signing } from '../signing/protocols/erc7739'
 import { createCoreComposition } from './compose'
 import type { CoreDependencies } from './compose-types'
 
@@ -537,64 +548,258 @@ describe('internal core composition', () => {
     )
   })
 
+  const sessionTypedData = {
+    domain: { chainId: 1, verifyingContract: target },
+    types: { Test: [{ name: 'value', type: 'uint256' }] },
+    primaryType: 'Test',
+    message: { value: 1n },
+  } as const
+  const scopedSigning = {
+    mode: 'scoped' as const,
+    allowedContents: [
+      {
+        domain: sessionTypedData.domain,
+        types: sessionTypedData.types,
+        primaryType: sessionTypedData.primaryType,
+      },
+    ],
+  }
+
+  function sessionSigning(
+    signing: Parameters<typeof toSession>[0]['signing'],
+    account: Parameters<typeof resolveAccountConfig>[1]['account'] = {
+      type: 'nexus',
+      version: '1.2.0',
+    },
+    // Refusals stub the signer to prove it is never reached; the rest sign
+    // with the account owner.
+    stubSigner = true,
+  ) {
+    const base = fixture()
+    const invoke = vi.fn()
+    const context = {
+      ...base.context,
+      account: resolveAccountConfig(base.context.sdk, {
+        account,
+        owners: { type: 'ecdsa', accounts: [owner] },
+      }),
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      stubSigner
+        ? { ...base.dependencies, signerInvoker: { invoke } }
+        : base.dependencies,
+    ).createAccount(context).workflows
+    const session = toSession({
+      chain: { id: 1 } as never,
+      owners: { type: 'ecdsa', accounts: [owner] },
+      ...(signing ? { signing } : {}),
+    })
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: { 1: { session } },
+    }
+    return { context, workflows, session, signers, invoke }
+  }
+
   test.each([
     {
-      signing: { mode: 'disabled' as const },
-      error: 'signing disabled',
+      account: { type: 'nexus' as const, version: '1.2.1' as const },
+      // What both Nexus implementations' eip712Domain() returns.
+      name: 'Nexus',
+      version: '1.2.0',
     },
     {
-      signing: {
-        mode: 'scoped' as const,
-        allowedContents: [
-          {
-            domain: { chainId: 1, verifyingContract: target },
-            types: { Test: [{ name: 'value', type: 'uint256' }] },
-            primaryType: 'Test',
-          },
-        ],
-      },
-      error: 'safe ERC-7739 emission',
+      account: { type: 'startale' as const },
+      name: 'Startale',
+      version: '1.0.1',
     },
   ])(
-    'rejects $signing.mode Smart Session direct signing before invoking a signer',
-    async ({ signing, error }) => {
-      const base = fixture()
-      const invoke = vi.fn()
-      const workflows = createCoreComposition(base.context.sdk, {
-        ...base.dependencies,
-        signerInvoker: { invoke },
-      }).createAccount(base.context).workflows
-      const session = toSession({
-        chain: { id: 1 } as never,
-        owners: { type: 'ecdsa', accounts: [owner] },
-        signing,
+    'signs allowed typed data with a scoped Smart Session on $name in ERC-7739 mode',
+    async ({ account: accountInput, name, version }) => {
+      const { context, workflows, session, signers } = sessionSigning(
+        scopedSigning,
+        accountInput,
+        false,
+      )
+
+      const { signature } = await workflows.signTypedData(context, {
+        typedData: sessionTypedData,
+        chain,
+        signers,
       })
-      const signers = {
-        kind: 'smart-session' as const,
-        byChain: { 1: { session } },
-      }
-      const typedData = {
-        domain: { chainId: 1, verifyingContract: target },
-        types: { Test: [{ name: 'value', type: 'uint256' }] },
-        primaryType: 'Test',
-        message: { value: 1n },
-      } as const
+
+      const account = workflows.getAddress(context, chain)
+      const content = prepareSmartSessionErc7739Signing({
+        typedData: sessionTypedData,
+        verifierDomain: {
+          name,
+          version,
+          chainId: chain.id,
+          verifyingContract: account,
+          salt: zeroHash,
+        },
+      })
+      const accountSignature = parseErc6492Signature(signature).signature
+      const contribution = slice(accountSignature, 20)
+      const signatureEnd = 1 + hexToNumber(slice(contribution, 33, 65))
+      const validatorSignature = slice(contribution, 65, signatureEnd)
+      expect(slice(accountSignature, 0, 20)).toBe(
+        getSmartSessionEmissaryAddress(context.account.sessions.environment),
+      )
+      expect(slice(contribution, 0, 1)).toBe('0x01')
+      expect(slice(contribution, 1, 33)).toBe(session.permissionId)
+      expect(slice(contribution, signatureEnd)).toBe(
+        encodeErc7739ContentTail(content),
+      )
+      expect(
+        await recoverMessageAddress({
+          message: { raw: content.digest },
+          // The validator marks an EIP-191 signature by adding 4 to v.
+          signature: concat([
+            slice(validatorSignature, 0, 64),
+            numberToHex(hexToNumber(slice(validatorSignature, 64)) - 4),
+          ]),
+        }),
+      ).toBe(owner.address)
+    },
+  )
+
+  test('keeps unrestricted Smart Session typed-data signing in direct mode', async () => {
+    const { context, workflows, signers } = sessionSigning(
+      undefined,
+      undefined,
+      false,
+    )
+
+    const { signature } = await workflows.signTypedData(context, {
+      typedData: sessionTypedData,
+      chain,
+      signers,
+    })
+
+    // The unwrapped account signature this SDK produced before ERC-7739 mode.
+    expect(parseErc6492Signature(signature).signature).toBe(
+      '0xad568b3f825a8d5ffc06dd3253526b64d810ae890093422f0a1c18f58637f2b53ce950c02c49a37c028b4a500587a924ecefb744b20000000000000000000000000000000000000000000000000000000000000081a34d93bfea99cf4783a1fd08a430fc443fa749c164152124c8c68ac781e2709e72da502139f7747fd35e7bc858dedaeec1f35fe315e1c30c5cb6a688939be65d1f',
+    )
+  })
+
+  test.each([
+    {
+      label: 'disabled signing',
+      signing: { mode: 'disabled' as const },
+      typedData: sessionTypedData,
+      messageError: 'signing disabled',
+      typedDataError: 'signing disabled',
+    },
+    {
+      label: 'a type the scoped session does not allow',
+      signing: scopedSigning,
+      typedData: {
+        ...sessionTypedData,
+        types: { Other: [{ name: 'value', type: 'uint256' }] },
+        primaryType: 'Other',
+      },
+      messageError: 'signs only the typed data it allows',
+      typedDataError: 'cannot sign "Other(uint256 value)" under domain 0x',
+    },
+    {
+      label: 'a domain the scoped session does not allow',
+      signing: scopedSigning,
+      typedData: {
+        ...sessionTypedData,
+        domain: { chainId: 2, verifyingContract: target },
+      },
+      messageError: 'signs only the typed data it allows',
+      typedDataError: 'cannot sign typed data under domain 0x',
+    },
+  ])(
+    'rejects $label before invoking a signer',
+    async ({ signing, typedData, messageError, typedDataError }) => {
+      const { context, workflows, signers, invoke } = sessionSigning(signing)
 
       await expect(
-        workflows.signMessage(base.context, {
-          message: 'hello',
-          chain,
-          signers,
-        }),
-      ).rejects.toThrow(error)
+        workflows.signMessage(context, { message: 'hello', chain, signers }),
+      ).rejects.toThrow(messageError)
       await expect(
-        workflows.signTypedData(base.context, {
-          typedData,
+        workflows.signTypedData(context, { typedData, chain, signers }),
+      ).rejects.toThrow(typedDataError)
+      expect(invoke).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    { account: { type: 'safe' as const }, name: 'safe' },
+    { account: { type: 'kernel' as const }, name: 'kernel' },
+  ])(
+    'refuses scoped Smart Session signing on $name accounts',
+    async ({ account, name }) => {
+      const { context, workflows, signers, invoke } = sessionSigning(
+        scopedSigning,
+        account,
+      )
+
+      await expect(
+        workflows.signTypedData(context, {
+          typedData: sessionTypedData,
           chain,
           signers,
         }),
-      ).rejects.toThrow(error)
+      ).rejects.toThrow(
+        `Scoped Smart Session signing is not available for ${name} accounts`,
+      )
       expect(invoke).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    { account: { type: 'safe' as const }, name: 'safe' },
+    { account: { type: 'kernel' as const }, name: 'kernel' },
+  ])(
+    'falls back to direct mode on $name accounts when the session also allows it',
+    async ({ account }) => {
+      const { context, workflows, session } = sessionSigning(
+        scopedSigning,
+        account,
+        false,
+      )
+      const scopedAndDirect = {
+        ...session,
+        erc7739Policies: {
+          ...session.erc7739Policies,
+          allowedERC7739Content: [
+            ...session.erc7739Policies.allowedERC7739Content,
+            { appDomainSeparator: zeroHash, contentNames: [''] },
+          ],
+        },
+      }
+
+      const { signature } = await workflows.signTypedData(context, {
+        typedData: sessionTypedData,
+        chain,
+        signers: {
+          kind: 'smart-session',
+          byChain: { 1: { session: scopedAndDirect } },
+        },
+      })
+
+      // The ERC-7739 tail depends only on the typed data, so its absence means
+      // direct mode was used.
+      const tail = encodeErc7739ContentTail(
+        prepareSmartSessionErc7739Signing({
+          typedData: sessionTypedData,
+          verifierDomain: {
+            name: '',
+            version: '',
+            chainId: chain.id,
+            verifyingContract: zeroAddress,
+            salt: zeroHash,
+          },
+        }),
+      )
+      expect(
+        parseErc6492Signature(signature).signature.toLowerCase(),
+      ).not.toContain(tail.slice(2).toLowerCase())
     },
   )
 

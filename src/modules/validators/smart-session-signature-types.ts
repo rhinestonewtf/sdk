@@ -35,3 +35,10 @@ export interface SmartSessionEnableContributionData {
     readonly claimPolicies: readonly SmartSessionPolicyData[]
   }
 }
+
+/** What the emissary rebuilds an ERC-7739 session signature's signed contents from. */
+export interface SmartSessionErc7739Content {
+  readonly appDomainSeparator: Hex
+  readonly contentsType: string
+  readonly encodeData: Hex
+}
