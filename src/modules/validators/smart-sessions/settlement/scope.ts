@@ -422,10 +422,16 @@ function scopePermit(
       }),
     )
   }
-  // A dry run that refuses the fee addresses goes on to check the layers.
+  // A dry run that refuses the fee addresses goes on to check the layers. A
+  // bridge permit's tokens are judged once its kept routes are known: only
+  // the tokens that get fee calls must be served stablecoins.
   const fees = permit.allowFees
     ? recover(refuse, () =>
-        servedFees(options.settlement, options.chainId, sourceTokens),
+        servedFees(
+          options.settlement,
+          options.chainId,
+          sameChainOnly ? sourceTokens : [],
+        ),
       )
     : undefined
   if (sameChainOnly) {
@@ -838,9 +844,18 @@ function scopePermit(
           tokens.some((moved) => isAddressEqual(moved, token)),
         ),
       )
+  // Every token that gets a fee call is validated here, and only those.
+  const feeScope =
+    fees === undefined
+      ? undefined
+      : recover(refuse, () =>
+          servedFees(settlement, options.chainId, feeTokens),
+        )
   return {
     actions:
-      fees === undefined ? actions : withFeeActions(actions, feeTokens, fees),
+      feeScope === undefined
+        ? actions
+        : withFeeActions(actions, feeTokens, feeScope),
     permissions: [],
     settlementLayers,
     dropped: [...skipped].map(([layer, reason]) => ({ layer, reason })),

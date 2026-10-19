@@ -1119,3 +1119,38 @@ describe('floors judged against the caps that fund them', () => {
     ])
   })
 })
+
+describe('allowFees with tokens no kept route spends', () => {
+  const TRANSFER = '0xa9059cbb'
+  const USDC_AND_WETH_FEES: Partial<CrossChainPermissionInput> = {
+    from: [
+      { chain: base, token: USDC, maxAmount: 100n },
+      { chain: base, token: WETH },
+    ],
+    allowFees: true,
+  }
+
+  test('a floor that leaves WETH to no kept route builds, with fee calls on USDC only', () => {
+    const { actions, settlementLayers } = scope({
+      ...USDC_AND_WETH_FEES,
+      to: { chain: arbitrum, token: USDC_ARB, minAmount: 95n },
+    })
+    expect(settlementLayers).toContain('ECO_IE')
+    expect(actions.some((a) => isAddressEqual(a.target, WETH))).toBe(false)
+    expect(
+      actions.some(
+        (a) => isAddressEqual(a.target, USDC) && a.selector === TRANSFER,
+      ),
+    ).toBe(true)
+  })
+
+  test('with ACROSS kept, WETH and allowFees is still refused', () => {
+    const refused = refusalOf(() =>
+      scope(
+        { ...USDC_AND_WETH_FEES, to: { chain: arbitrum, token: USDC_ARB } },
+        { across: true },
+      ),
+    )
+    expect(refused.code).toBe('ALLOW_FEES_NON_STABLECOIN')
+  })
+})
