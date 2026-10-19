@@ -134,6 +134,7 @@ describe('refusal codes', () => {
       'MULTIPLE_FEE_PAYING_LAYERS',
       'ONE_SOURCE_TOKEN',
       'TOKEN_NOT_ROUTED',
+      'CAP_TOKEN_MISMATCH',
       'ECO_IE_STABLECOIN_DECIMALS',
       'ACCOUNT_REQUIRED',
       'ECO_IE_NEEDS_MAX_AMOUNT_AND_FEE',
@@ -173,6 +174,10 @@ describe('refusal codes', () => {
       'UNIVERSAL_ACTION_COPY_INVALID',
       'UNIVERSAL_ACTION_POLICY_NO_CODE',
       'UNIVERSAL_ACTION_COPY_CODE_MISMATCH',
+      'MAX_NATIVE_FEE_NOT_POSITIVE',
+      'MAX_NATIVE_FEE_NOT_APPLICABLE',
+      'MULTIPLE_MAX_NATIVE_FEES',
+      'LZ_REUSABLE_ROUTES_SPLIT',
       'SESSION_REFUSED',
     ])
     for (const code of Object.keys(SESSION_REFUSAL_CODES)) {
@@ -221,7 +226,8 @@ describe('collectSessionRefusals', () => {
       },
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
-        message: 'crossChainPermits: an OFT permit requires oneTimeUse',
+        message:
+          'crossChainPermits: an OFT permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },
@@ -308,7 +314,8 @@ describe('collectSessionRefusals', () => {
       },
       {
         code: 'LAYER_REQUIRES_ONE_TIME_USE',
-        message: 'crossChainPermits: an OFT permit requires oneTimeUse',
+        message:
+          'crossChainPermits: an OFT permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its `from` leg',
         permitIndex: 0,
         layer: 'OFT',
       },
@@ -387,7 +394,7 @@ describe('collectSessionRefusals', () => {
     )
   })
 
-  test('a second cap and each layer refusing the extra token are reported', () => {
+  test('a second cap and each layer judged on the token it moves are reported', () => {
     const refusals = validateRefusals(
       session(
         [
@@ -408,8 +415,10 @@ describe('collectSessionRefusals', () => {
       refusals.map(({ code, layer, chainId }) => [code, layer, chainId]),
     ).toEqual([
       ['MULTIPLE_MAX_AMOUNTS', undefined, arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'OFT', arbitrum.id],
-      ['ONE_SOURCE_TOKEN', 'LZ', arbitrum.id],
+      // OFT takes USDT0 alone, which has no route to Base; LZ takes USDC, and
+      // the chain's one cap is the first, on USDT0.
+      ['LAYER_NOT_SERVED', 'OFT', base.id],
+      ['CAP_TOKEN_MISMATCH', 'LZ', arbitrum.id],
     ])
   })
 

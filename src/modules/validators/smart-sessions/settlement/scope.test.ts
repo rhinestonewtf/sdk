@@ -313,10 +313,10 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(100n, 0n))).toBe(false)
     })
 
-    test('is refused beside CCTP, which cannot enforce it', () => {
+    test('is refused beside CCTP, which cannot move its token', () => {
       expect(() =>
         resolveSettlementScope([permit(['OFT', 'CCTP'])], options),
-      ).toThrow('CCTP cannot enforce `to.minAmount`')
+      ).toThrow('CCTP moves only USDC')
     })
 
     test("keeps ECO_IE beside OFT under 'all' without validUntil", () => {
@@ -377,12 +377,6 @@ describe('settlement-scoped crossChainPermits', () => {
         SETTLEMENT_CATALOG,
         'above uint64',
       ],
-      [
-        'twin legs with different floors',
-        { to: [plasmaLeg(95n), plasmaLeg(94n)] },
-        SETTLEMENT_CATALOG,
-        'admit the same send but set different',
-      ],
     ] as [
       string,
       Partial<CrossChainPermissionInput>,
@@ -411,6 +405,21 @@ describe('settlement-scoped crossChainPermits', () => {
         }
       },
     )
+
+    test("refuses twin legs with different floors, named or under 'all'", () => {
+      for (const layers of [['OFT'], 'all'] as const) {
+        expect(() =>
+          resolveSettlementScope(
+            [
+              permit(layers === 'all' ? 'all' : [...layers], {
+                to: [plasmaLeg(95n), plasmaLeg(94n)],
+              }),
+            ],
+            options,
+          ),
+        ).toThrow('with different `to.minAmount`s')
+      }
+    })
 
     describe('from legs with different caps, which ECO_IE cannot floor alike', () => {
       const spread = (
@@ -636,9 +645,9 @@ describe('settlement-scoped crossChainPermits', () => {
       expect(satisfiesRules(action, send(9_799_999n))).toBe(false)
     })
 
-    test('is refused beside CCTP, which cannot enforce it', () => {
+    test('is refused beside CCTP, which does not reach its leg', () => {
       expect(() => lzScope({ settlementLayers: ['LZ', 'CCTP'] })).toThrow(
-        'CCTP cannot enforce `to.minAmount`',
+        'CCTP does not route to',
       )
     })
 
@@ -1077,7 +1086,7 @@ describe('settlement-scoped crossChainPermits', () => {
       })
     })
 
-    // A floor on any leg is a floor CCTP could route around on that leg.
+    // CCTP cannot floor a leg, so it takes only the unfloored one.
     describe('a floor on one of two legs', () => {
       const USDC_OP = SETTLEMENT_CATALOG[optimism.id].eco!.stablecoins[0]
       const twoLegs = (
@@ -1092,15 +1101,27 @@ describe('settlement-scoped crossChainPermits', () => {
           settlementLayers,
         })
 
-      test('refuses CCTP when named', () => {
-        expect(() => resolveSessionData(twoLegs(['CCTP', 'ECO_IE']))).toThrow(
-          'CCTP cannot enforce `to.minAmount`',
+      test('keeps CCTP for the unfloored leg when named', () => {
+        expect(toSession(twoLegs(['CCTP', 'ECO_IE'])).settlementLayers).toEqual(
+          ['CCTP', 'ECO_IE'],
         )
       })
 
-      test("drops CCTP under 'all'", () => {
-        expect(toSession(twoLegs('all')).settlementLayers).not.toContain('CCTP')
+      test("keeps CCTP for the unfloored leg under 'all'", () => {
+        expect(toSession(twoLegs('all')).settlementLayers).toContain('CCTP')
         expect(toSession(twoLegs('all')).settlementLayers).toContain('ECO_IE')
+      })
+
+      test('refuses CCTP alone, which leaves the floored leg undelivered', () => {
+        const cctpOnly = {
+          ...twoLegs(['CCTP']),
+        }
+        cctpOnly.crossChainPermits = cctpOnly.crossChainPermits?.map(
+          (permit) => ({ ...permit, maxFeeBps: undefined }),
+        )
+        expect(() => resolveSessionData(cctpOnly)).toThrow(
+          'CCTP cannot enforce `to.minAmount`',
+        )
       })
     })
 
