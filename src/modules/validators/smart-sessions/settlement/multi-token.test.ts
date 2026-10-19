@@ -1072,3 +1072,50 @@ describe('a floored leg on the source chain', () => {
     expect(settlementLayers).toEqual(['LZ'])
   })
 })
+
+describe('floors judged against the caps that fund them', () => {
+  const SONEIUM = { ...arbitrum, id: 1868 } as Chain
+  const USDC_SONEIUM = getAddress(
+    SETTLEMENT_CATALOG[1868].lz!.stargateUsdc!.token,
+  )
+  const USDT0_PLASMA = getAddress(OFT_PLASMA.token)
+  const USDT0_ARB_CHAIN = getAddress(OFT_ARB.token)
+  // USDC 100 funds a USDC leg floored at 95; USDT0 1000 funds a USDT0 leg
+  // floored at 900. Neither floor is judged against the other token's cap.
+  const INDEPENDENT = (
+    usdcFloor: bigint,
+  ): Partial<CrossChainPermissionInput> => ({
+    from: [
+      { chain: base, token: USDC, maxAmount: 100_000_000n },
+      { chain: arbitrum, token: USDT0_ARB_CHAIN, maxAmount: 1_000_000_000n },
+    ],
+    to: [
+      { chain: SONEIUM, token: USDC_SONEIUM, minAmount: usdcFloor },
+      { chain: plasma, token: USDT0_PLASMA, minAmount: 900_000_000n },
+    ],
+  })
+  const floorRule = (actions: readonly ScopedAction[], floor: bigint) =>
+    JSON.stringify(
+      actions.map((a) => a.policies),
+      (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+    ).includes(`"referenceValue":"${floor}"`)
+
+  test('USDC 100/95 beside USDT0 1000/900 builds on each source chain', () => {
+    const onBase = scope(INDEPENDENT(95_000_000n))
+    expect(onBase.settlementLayers).toEqual(['LZ'])
+    expect(floorRule(onBase.actions, 95_000_000n)).toBe(true)
+    const onArbitrum = scope(INDEPENDENT(95_000_000n), {
+      chainId: arbitrum.id,
+    })
+    expect(onArbitrum.settlementLayers).toEqual(['OFT'])
+    expect(floorRule(onArbitrum.actions, 900_000_000n)).toBe(true)
+  })
+
+  test("a floor above its own token's cap is still refused", () => {
+    const refused = refusalOf(() => scope(INDEPENDENT(150_000_000n)))
+    expect([refused.code, refused.chainId]).toEqual([
+      'MIN_AMOUNT_OUTSIDE_CAP',
+      1868,
+    ])
+  })
+})
