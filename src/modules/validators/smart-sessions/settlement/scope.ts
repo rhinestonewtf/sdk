@@ -701,10 +701,18 @@ function scopePermit(
         ),
       )
     }
-    // A leg on this chain is not this session's to bridge (LZ skips it).
+    // A leg on this chain is not this session's to bridge (LZ skips it), unless
+    // its floor binds a named layer that moves its token and cannot enforce it.
+    const ownChainExempt = (leg: (typeof destinations)[number]) =>
+      leg.minAmount === undefined ||
+      !scopedLayers.some(
+        ({ layer, tokens }) =>
+          !LAYERS[layer].floorsDelivery &&
+          tokens.some((moved) => isAddressEqual(moved, leg.token)),
+      )
     const leg = destinations.find(
       (leg) =>
-        leg.chainId !== options.chainId &&
+        (leg.chainId !== options.chainId || !ownChainExempt(leg)) &&
         !scopedLayers.some(({ legs }) => legs.includes(leg)),
     )
     // A named layer that could not pin the leg says why; otherwise none moves it.

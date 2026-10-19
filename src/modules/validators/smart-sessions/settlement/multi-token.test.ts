@@ -1047,3 +1047,28 @@ describe('fee calls follow the kept routes', () => {
     expect(actions.some((a) => isAddressEqual(a.target, USDC_OP))).toBe(true)
   })
 })
+
+describe('a floored leg on the source chain', () => {
+  const OWN_CHAIN_FLOOR: Partial<CrossChainPermissionInput> = {
+    from: [{ chain: base, token: USDC }],
+    to: [
+      { chain: arbitrum, token: USDC_ARB },
+      { chain: base, token: USDC, minAmount: 5n },
+    ],
+  }
+
+  test('an explicit CCTP list refuses it, as CCTP cannot floor', () => {
+    const refused = refusalOf(() =>
+      scope({ ...OWN_CHAIN_FLOOR, settlementLayers: ['CCTP'] }),
+    )
+    expect(refused.code).toBe('MIN_AMOUNT_NOT_ENFORCEABLE')
+  })
+
+  test('an explicit LZ list still builds, as LZ leaves its own chain alone', () => {
+    const { settlementLayers } = scope({
+      ...OWN_CHAIN_FLOOR,
+      settlementLayers: ['LZ'],
+    })
+    expect(settlementLayers).toEqual(['LZ'])
+  })
+})
