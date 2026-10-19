@@ -367,7 +367,9 @@ identity, and creating a new identity does not migrate an existing grant.
 
 Reusable `maxAmount` is a lifetime approval/value budget on counted paths,
 not a bound on existing allowances or arbitrary actions. Reusable LZ/OFT
-`maxNativeFee` is a lifetime native-fee budget of the same kind. Account and
+`maxNativeFee` is a lifetime native-fee budget of the same kind, and reusable
+LZ/OFT require both it and `maxAmount` (refused as LAYER_REQUIRES_ONE_TIME_USE
+otherwise), so neither the fees nor the token can cycle without bound. Account and
 standalone `getSessionDetails` read nonce and enabled state in one multicall for
 a budgeted session and refuse already-enabled sessions unless `allowBudgetReset`
 is true, which resets both budgets.

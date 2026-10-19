@@ -350,9 +350,10 @@ interface Permit2ClaimPolicy {
  *
  *   A settlement-scoped permit cannot be combined with `SAME_CHAIN`, nor
  *   share a session with another permit. `OFT` and `LZ` require
- *   `oneTimeUse` or a `maxNativeFee` on the chain's `from` leg, since each
- *   send pays a native LayerZero fee that `maxAmount` does not bound
- *   (without either, `'all'` drops them), and only
+ *   `oneTimeUse`, or both a `maxNativeFee` and a `maxAmount` on the chain's
+ *   `from` leg: each send pays a native LayerZero fee that `maxAmount` does not
+ *   bound, and without `maxAmount` a reusable key could cycle the whole balance
+ *   (without them, `'all'` drops these layers), and only
  *   sponsored intents without an app fee settle through it unless it sets
  *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
  *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
@@ -473,7 +474,8 @@ interface FromLeg {
    * `LZ` and `OFT` only: the most native value, in wei of this chain's native
    * token, the session may send with those layers' calls on this chain to pay
    * LayerZero messaging fees. A lifetime total like `maxAmount`. Required for
-   * those layers without `oneTimeUse`; with it, it caps that one settlement.
+   * those layers without `oneTimeUse`, together with `maxAmount` on the same
+   * chain; with `oneTimeUse`, it caps that one settlement.
    *
    * It counts the native each call sends, not what is spent after refunds: a
    * send that overpays and is refunded still uses the budget, so later sends

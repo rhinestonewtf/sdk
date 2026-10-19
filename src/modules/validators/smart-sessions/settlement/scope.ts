@@ -69,7 +69,8 @@ const LAYERS: Record<
      * Each call costs the account a native messaging fee no pin can bound, so
      * a reusable session could repeat dust sends until the balance is gone.
      * A `maxAmount` caps the token, not that fee; only oneTimeUse or a
-     * `maxNativeFee`, a ValueLimitPolicy on the call, bounds it.
+     * `maxNativeFee`, a ValueLimitPolicy on the call, bounds it. A reusable
+     * session also needs `maxAmount`, or the token could cycle without end.
      */
     readonly paysNativeFee?: true
     /** Enforces the leg's `to.minAmount` on what its call delivers. */
@@ -514,9 +515,15 @@ function scopePermit(
       )
     }
     const paysNativeFee = LAYERS[layer].paysNativeFee
-    if (paysNativeFee && !options.oneTimeUse && maxNativeFee === undefined) {
+    // A reusable session also needs maxAmount: without it the key can send the
+    // whole balance back and forth, paying bridge fees each time.
+    if (
+      paysNativeFee &&
+      !options.oneTimeUse &&
+      (maxNativeFee === undefined || cap === undefined)
+    ) {
       throw new SettlementLayerRefusal(
-        `crossChainPermits: an ${layer} permit requires oneTimeUse or a maxNativeFee on its \`from\` leg`,
+        `crossChainPermits: an ${layer} permit requires oneTimeUse, or both a maxNativeFee and a maxAmount on its \`from\` leg`,
         { code: 'LAYER_REQUIRES_ONE_TIME_USE' },
       )
     }

@@ -57,7 +57,7 @@ export const SESSION_REFUSAL_CODES = {
   SETTLEMENT_CATALOG_MISSING:
     "IntentExecutor layers without the orchestrator's settlement addresses",
   LAYER_REQUIRES_ONE_TIME_USE:
-    'a layer that pays a native fee (OFT, LZ) without oneTimeUse or maxNativeFee',
+    'a layer that pays a native fee (OFT, LZ) without oneTimeUse, or without both maxNativeFee and maxAmount',
   LAYER_NOT_SERVED: 'the layer does not route on a named chain',
   MAX_FEE_BPS_ECO_IE_UNAVAILABLE:
     "maxFeeBps with settlementLayers 'all' where ECO_IE cannot settle",
