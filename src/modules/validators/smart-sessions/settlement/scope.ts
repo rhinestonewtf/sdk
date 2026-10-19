@@ -74,8 +74,6 @@ const LAYERS: Record<
     readonly paysNativeFee?: true
     /** Enforces the leg's `to.minAmount` on what its call delivers. */
     readonly floorsDelivery?: true
-    /** Leaves out a `to` leg no route reaches instead of refusing it (LZ). */
-    readonly skipsUnreachedLegs?: true
   }
 > = {
   CCTP: {
@@ -112,19 +110,20 @@ const LAYERS: Record<
       ]),
     paysNativeFee: true,
     floorsDelivery: true,
-    skipsUnreachedLegs: true,
   },
 }
 
-/** Whether the layer pins `ctx`'s one leg rather than finding no route to it. */
-function reaches(layer: keyof typeof LAYERS, ctx: SettlementContext): boolean {
+/** Why the layer cannot pin `ctx`'s one leg, or undefined when it can. */
+function legRefusal(
+  layer: keyof typeof LAYERS,
+  ctx: SettlementContext,
+): SettlementLayerRefusal | undefined {
   try {
     LAYERS[layer].scope(ctx)
-    return true
+    return undefined
   } catch (error) {
-    return !(
-      error instanceof SettlementLayerRefusal && error.code === 'LZ_NO_ROUTE'
-    )
+    if (error instanceof SettlementLayerRefusal) return error
+    throw error
   }
 }
 
@@ -413,7 +412,6 @@ function scopePermit(
       "crossChainPermits: IntentExecutor layers and 'all' (the default) need options.settlement from GET /chains; pass it or name settlementLayers, e.g. ['ACROSS']",
     )
   }
-  const fromCaps = (permit.from ?? []).map(({ maxAmount }) => maxAmount)
   // ECO_IE pins Eco's deadlines under the earlier of the permit's validUntil and
   // the one-time-use deadline.
   const validUntil =
@@ -487,14 +485,30 @@ function scopePermit(
       sourceTokens: tokens.length ? tokens : sourceTokens,
       destinations: legs.length ? legs : destinations,
       cap,
-      fromCaps,
+      // Only the `from` legs this layer moves, on any chain: another token's cap
+      // bounds nothing it publishes.
+      fromCaps: (permit.from ?? [])
+        .filter((leg) => moves(leg.chain.id, leg.token))
+        .map(({ maxAmount }) => maxAmount),
       ...(permit.maxFeeBps === undefined
         ? {}
         : { maxFeeBps: permit.maxFeeBps }),
       ...(validUntil === undefined ? {} : { validUntil }),
       ...(options.oneTimeUse ? {} : { reusable: true as const }),
     }
-    const scoped = LAYERS[layer].scope(ctx)
+    // A leg the layer cannot pin alone (no route, no shared prover, an unpinnable
+    // recipient) is left to the other layers rather than dropping this one; with
+    // none pinnable, the layer refuses as before.
+    const refused = new Map(
+      legs.flatMap((leg) => {
+        const why = legRefusal(layer, { ...ctx, destinations: [leg] })
+        return why ? [[leg, why] as const] : []
+      }),
+    )
+    const pinned = legs.filter((leg) => !refused.has(leg))
+    const scoped = LAYERS[layer].scope(
+      pinned.length ? { ...ctx, destinations: pinned } : ctx,
+    )
     // The call's `msg.value` is all the native it takes from the account, so
     // the cumulative policy bounds every fee the session pays on this layer.
     // It counts what is sent, not refunds: an overpaid send still uses it, and
@@ -509,11 +523,7 @@ function scopePermit(
             ],
           }
         : scoped
-    // The legs the call pins: one a layer leaves out silently is not delivered.
-    const pinned = LAYERS[layer].skipsUnreachedLegs
-      ? legs.filter((leg) => reaches(layer, { ...ctx, destinations: [leg] }))
-      : legs
-    return { layer, spender, action, tokens, legs: pinned }
+    return { layer, spender, action, tokens, legs: pinned, refused }
   }
   // An explicit list is strict: a layer that cannot scope throws. 'all' keeps
   // only the layers that can; any other error still throws. A fixed order keeps
@@ -621,7 +631,13 @@ function scopePermit(
     const leg = destinations.find(
       (leg) => !scopedLayers.some(({ legs }) => legs.includes(leg)),
     )
-    if (leg) {
+    // A named layer that could not pin the leg says why; otherwise none moves it.
+    const why = leg
+      ? scopedLayers.find(({ refused }) => refused.has(leg))
+      : undefined
+    if (leg && why) {
+      refuse(why.refused.get(leg) as Error, { layer: why.layer })
+    } else if (leg) {
       const served = bridges.some(
         (layer) => LAYERS[layer].tokens(settlement, leg.chainId).length > 0,
       )
