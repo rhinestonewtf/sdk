@@ -350,8 +350,9 @@ interface Permit2ClaimPolicy {
  *
  *   A settlement-scoped permit cannot be combined with `SAME_CHAIN`, nor
  *   share a session with another permit. `OFT` and `LZ` require
- *   `oneTimeUse`, since each send pays a native LayerZero fee that
- *   `maxAmount` does not bound, and only
+ *   `oneTimeUse` or a `maxNativeFee` on the chain's `from` leg, since each
+ *   send pays a native LayerZero fee that `maxAmount` does not bound
+ *   (without either, `'all'` drops them), and only
  *   sponsored intents without an app fee settle through it unless it sets
  *   `allowFees`. `ECO_IE` needs `maxAmount`, a delivery floor (`maxFeeBps` or
  *   `to.minAmount`), and any `validUntil` at least 7 days ahead (see
