@@ -47,7 +47,8 @@ const LZ_CCTP_TOKEN_MESSENGER: Address =
 
 /**
  * The most relay fee the key may send LayerZero's receiver, in USDC units:
- * ~10x the live fee into Ethereum, the dearest destination.
+ * ~10x the live fee into Ethereum, the dearest destination. A cumulative
+ * ceiling: on a reusable session it bounds every relay fee the session pays.
  */
 export const LZ_CCTP_MAX_RELAY_FEE = 1_000_000n
 
@@ -143,6 +144,8 @@ interface Route {
   readonly leg: (leg: Leg) => Rule[] | undefined
   /** Whether this route reaches the leg's chain at all, whatever its token. */
   readonly reaches: (leg: Leg) => boolean
+  /** The offset of the amount the batch pulls from the account. */
+  readonly pull: bigint
   /**
    * Usage-limited rules, evaluated last: a passing limited rule counts even if
    * its branch then fails.
@@ -322,7 +325,8 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
             : [atLeast(s(SEND.minAmountLD), leg.minAmount)]),
         ]
       },
-      limits: cap(args[0](96n)),
+      pull: args[0](96n),
+      limits: [],
     })
   }
   if (cctpFrom) {
@@ -370,10 +374,12 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
             ...recipient(b(64n), leg),
           ]
         },
+        pull: args[0](96n),
         limits: [
-          ...cap(args[0](96n)),
           // The fee goes to LayerZero's receiver, so the key cannot keep it;
-          // the ceiling bounds how much of the pull it can waste there.
+          // the ceiling bounds how much of the pull it can waste there. On a
+          // reusable session it is a lifetime total (about 10 sends into
+          // Ethereum), after which the fee route is refused.
           ...(feeless ? [] : [cumulativeCap(args[1](32n), maxFee)]),
         ],
       })
@@ -401,18 +407,25 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
     if (leg.minAmount !== undefined)
       requireStargateFloor(leg, leg.minAmount, legs)
   }
+  // Once per session, each route counts its own pull. A reusable session counts
+  // every route's pull on one rule after the OR (below): per-route counters
+  // would let a stale TransferDelegate allowance fund maxAmount per route.
+  const reusable = ctx.reusable === true
   const branches = routes.flatMap((route) => {
     const pinned = legs.flatMap((leg) => {
       const rules = route.leg(leg)
       return rules ? [rules] : []
     })
     if (pinned.length === 0) return []
+    const limits = reusable
+      ? route.limits
+      : [...cap(route.pull), ...route.limits]
     return [
       {
         route,
         rest: [
           anyOf(pinned.map(allOf)),
-          ...(route.limits.length ? [allOf(route.limits)] : []),
+          ...(limits.length ? [allOf(limits)] : []),
         ],
       },
     ]
@@ -441,6 +454,19 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
       return and([...(shared.length ? [allOf(shared)] : []), anyOf(own)])
     },
   )
+  // The pulled amount sits at one offset per batch shape, so one rule counts
+  // every route only when they share a shape.
+  if (reusable && ctx.cap !== undefined && groups.length > 1) {
+    throw new SettlementLayerRefusal(
+      `crossChainPermits: an LZ permit without oneTimeUse caps one batch shape, and the \`to\` legs from chain ${ctx.chainId} need ${groups.length}; give them separate sessions, or set oneTimeUse`,
+      { code: 'LZ_REUSABLE_ROUTES_SPLIT', chainId: ctx.chainId },
+    )
+  }
+  const pullCap = reusable ? cap(branches[0].route.pull) : []
+  const routed = and([
+    anyOf(groups),
+    ...(pullCap.length ? [allOf(pullCap)] : []),
+  ])
   return {
     target: multiCall,
     selector: LZ_EXECUTE_SELECTOR,
@@ -454,8 +480,14 @@ export function scopeLz(ctx: SettlementContext): ScopedAction {
           type: 'and',
           // A usage limit on the shared calls pointer: one execute per session,
           // so a stale TransferDelegate allowance cannot fund a second route.
-          left: allOf([{ ...pinValue(0n, 0x40n), usageLimit: 0x40n }]),
-          right: anyOf(groups),
+          // A reusable session bounds the pulls with one cap and the fees with
+          // its maxNativeFee instead.
+          left: allOf([
+            reusable
+              ? pinValue(0n, 0x40n)
+              : { ...pinValue(0n, 0x40n), usageLimit: 0x40n },
+          ]),
+          right: routed,
         },
       },
     ],

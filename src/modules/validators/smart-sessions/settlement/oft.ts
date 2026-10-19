@@ -162,8 +162,11 @@ export function scopeOft(ctx: SettlementContext): ScopedAction {
   const rules: UniversalActionPolicyParamRule[] = [
     // Counts its own value against a limit of that value: one send per session.
     // The burning transaction admits every later op, and each send costs a
-    // native fee no pin bounds.
-    { ...pinValue(SEND.sendParamPointer, 0x80n), usageLimit: 0x80n },
+    // native fee no pin bounds. A reusable session bounds the fees with its
+    // maxNativeFee instead; the cap below is one counter for every send.
+    ctx.reusable
+      ? pinValue(SEND.sendParamPointer, 0x80n)
+      : { ...pinValue(SEND.sendParamPointer, 0x80n), usageLimit: 0x80n },
     pinValue(SEND.extraOptionsPointer, 0xe0n),
     pinValue(SEND.composeMsgPointer, 0x100n),
     pinValue(SEND.oftCmdPointer, 0x120n),
