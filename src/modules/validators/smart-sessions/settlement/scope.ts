@@ -392,7 +392,35 @@ function scopePermit(
   const minAmount = permit.to.some((leg) => leg.minAmount !== undefined)
   if (minAmount && !sameChainOnly && options.settlement) {
     const settlement = options.settlement
-    recover(refuse, () => requireFloorsWithinCaps(permit, settlement))
+    // A floor is judged against the caps that fund the same asset to it: a
+    // one-token bridge (OFT, LZ) or ECO_IE between two of one stablecoin. A
+    // different stablecoin's cap funds it only through ECO_IE, whose caps must
+    // be equal (ECO_IE_FLOOR_NEEDS_EQUAL_CAPS), so one fitting cap is enough.
+    const carries = (
+      layer: 'OFT' | 'LZ' | 'ECO_IE',
+      chainId: number,
+      token: Address,
+    ) =>
+      LAYERS[layer]
+        .tokens(settlement, chainId)
+        .some((moved) => isAddressEqual(moved, token))
+    const symbol = (chainId: number, token: Address) =>
+      settlement[chainId]?.usdStablecoins?.find((stable) =>
+        isAddressEqual(stable.address, token),
+      )?.symbol
+    recover(refuse, () =>
+      requireFloorsWithinCaps(permit, settlement, (from, to) => {
+        const both = (layer: 'OFT' | 'LZ' | 'ECO_IE') =>
+          carries(layer, from.chain.id, from.token) &&
+          carries(layer, to.chain.id, to.token)
+        const sameStable =
+          symbol(from.chain.id, from.token) !== undefined &&
+          symbol(from.chain.id, from.token) === symbol(to.chain.id, to.token)
+        if (both('OFT') || both('LZ') || (both('ECO_IE') && sameStable))
+          return 'same'
+        return both('ECO_IE') ? 'other' : undefined
+      }),
+    )
   }
   // A dry run that refuses the fee addresses goes on to check the layers.
   const fees = permit.allowFees
