@@ -25,7 +25,7 @@ import {
   swapApprovesAsActions,
   withFeeActions,
 } from './fees'
-import { requireFloorsWithinCaps } from './floor'
+import { floorWithinCap, requireFloorsWithinCaps } from './floor'
 import { scopeLz } from './lz'
 import { scopeOft } from './oft'
 import { scopeSameChain } from './same-chain'
@@ -394,8 +394,9 @@ function scopePermit(
     const settlement = options.settlement
     // A floor is judged against the caps that fund the same asset to it: a
     // one-token bridge (OFT, LZ) or ECO_IE between two of one stablecoin. A
-    // different stablecoin's cap funds it only through ECO_IE, whose caps must
-    // be equal (ECO_IE_FLOOR_NEEDS_EQUAL_CAPS), so one fitting cap is enough.
+    // different stablecoin's cap funds it only through ECO_IE; a units mistake
+    // fits none of them. Each layer still leaves out a leg its own cap cannot fund
+    // (see scopeLayer), so no fit here vouches for another route.
     const carries = (
       layer: 'OFT' | 'LZ' | 'ECO_IE',
       chainId: number,
@@ -581,23 +582,41 @@ function scopePermit(
     // A leg the layer cannot pin alone (no route, no shared prover, an unpinnable
     // recipient) is left to the other layers rather than dropping this one; with
     // none pinnable, the layer refuses as before.
+    // The call funds every floored leg it pins from this chain's cap, in the
+    // cap's own token: a floor that cap cannot fund keeps the leg off this layer,
+    // whatever another route or chain's cap would allow.
+    const outsideCap = (leg: (typeof legs)[number]) =>
+      cap !== undefined &&
+      capToken !== undefined &&
+      leg.minAmount !== undefined &&
+      floorWithinCap(
+        settlement,
+        { chainId: options.chainId, token: capToken, maxAmount: cap },
+        { chainId: leg.chainId, token: leg.token, minAmount: leg.minAmount },
+      ) === false
+        ? new SettlementLayerRefusal(
+            `crossChainPermits: \`to.minAmount\` ${leg.minAmount} on chain ${leg.chainId} must be between half of and all of the chain ${options.chainId} maxAmount, which funds ${layer}`,
+            { code: 'MIN_AMOUNT_OUTSIDE_CAP', chainId: leg.chainId, leg: 'to' },
+          )
+        : undefined
     const refused = new Map(
       legs.flatMap((leg) => {
         const why =
           unfloorable && leg.minAmount !== undefined
             ? unfloorable
-            : legRefusal(layer, { ...ctx, destinations: [leg] })
+            : (outsideCap(leg) ??
+              legRefusal(layer, { ...ctx, destinations: [leg] }))
         return why ? [[leg, why] as const] : []
       }),
     )
     const pinned = legs.filter((leg) => !refused.has(leg))
-    // Never fall back to building over a floor the layer cannot enforce.
-    if (
-      pinned.length === 0 &&
-      unfloorable &&
-      legs.some((leg) => leg.minAmount !== undefined)
-    ) {
-      throw unfloorable
+    // With no leg left, refuse for the legs' own reasons: never fall back to
+    // building over a leg this layer was refused (a floor it cannot enforce or
+    // fund).
+    if (pinned.length === 0 && refused.size > 0) {
+      throw unfloorable && legs.some((leg) => leg.minAmount !== undefined)
+        ? unfloorable
+        : [...refused.values()][0]
     }
     const scoped = LAYERS[layer].scope(
       pinned.length ? { ...ctx, destinations: pinned } : ctx,

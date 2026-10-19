@@ -13,7 +13,7 @@ type To = NonNullable<CrossChainPermit['to']>[number]
  * between the two USD stablecoins' decimals; undefined when either decimals is
  * not served, so the pair is not judged.
  */
-function floorWithinCap(
+export function floorWithinCap(
   settlement: SettlementCatalog,
   from: { chainId: number; token: Address; maxAmount: bigint },
   to: { chainId: number; token: Address; minAmount: bigint },

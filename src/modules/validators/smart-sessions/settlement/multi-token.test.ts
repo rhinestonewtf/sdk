@@ -1154,3 +1154,35 @@ describe('allowFees with tokens no kept route spends', () => {
     expect(refused.code).toBe('ALLOW_FEES_NON_STABLECOIN')
   })
 })
+
+describe("a floor each layer's own cap must fund", () => {
+  const USDT_OP = getAddress('0x94b008aa00579c1307b0ef2c499ad98a8ce58e58')
+  const SONEIUM = { ...arbitrum, id: 1868 } as Chain
+  // A Soneium USDC cap of 100 fits the 99 floor over LZ; Optimism's USDT cap,
+  // which funds ECO_IE's reward, does not, and must not be vouched for by it.
+  const R5A: Partial<CrossChainPermissionInput> = {
+    from: [
+      { chain: optimism, token: USDT_OP, maxAmount: 100_000_000n },
+      {
+        chain: SONEIUM,
+        token: getAddress(SETTLEMENT_CATALOG[1868].lz!.stargateUsdc!.token),
+        maxAmount: 100n,
+      },
+    ],
+    to: { chain: arbitrum, token: USDC_ARB, minAmount: 99n },
+  }
+
+  test.each([
+    ['ECO_IE named', ['ECO_IE']],
+    ["'all'", 'all'],
+  ] as [string, CrossChainPermissionInput['settlementLayers']][])(
+    'ECO_IE does not pin a floor far under its reward cap: %s',
+    (_, settlementLayers) => {
+      const refused = refusalOf(() =>
+        scope({ ...R5A, settlementLayers }, { chainId: optimism.id }),
+      )
+      expect(refused.code).toMatch(/MIN_AMOUNT_OUTSIDE_CAP|NO_LAYER_CAN_SETTLE/)
+      expect(refused.message).toContain('must be between half of and all of')
+    },
+  )
+})
