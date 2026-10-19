@@ -11,3 +11,5 @@ A chain's `maxAmount` counts in the units of the token it is set on, so an Inten
 A layer also takes only the `to` legs it delivers: a leg on a chain the layer does not serve, or one with a `to.minAmount`, no longer drops the layer for the legs it can settle. A floored leg must be delivered by a layer that enforces its floor (OFT, ECO_IE, LZ's Stargate send); an explicit list refuses a leg none of its layers delivers (`TOKEN_NOT_ROUTED`, or `LAYER_NOT_SERVED` when none routes to that chain).
 
 A `to` leg a layer cannot pin on its own (no route or shared Eco prover to its chain, a recipient the layer cannot pin, a floor it cannot express) is left to the other layers instead of dropping the layer, and ECO_IE weighs only the caps of the `from` tokens it moves. An explicit list still refuses such a leg when none of its layers pins it, with that layer's own refusal.
+
+Two `to` legs that deliver the same token on the same chain to the same recipient (an open recipient matches any) with different `to.minAmount`s are refused with `CONFLICTING_LEG_FLOORS` for the whole permit, as every flooring layer already refused them.
