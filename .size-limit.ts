@@ -16,7 +16,9 @@ const limits = [
     // replay paths (~0.3 kB). Swig creation adds its request builder, route
     // validation and error mapping (~1.5 kB).
     // The settlement/session compiler adds ~19 kB to the 85.78 kB v3 baseline.
-    limit: '106 kB',
+    // Explicit destination grants and quote consistency add 1.12 kB to the
+    // measured 107.02 kB baseline; the resulting root bundle is 108.14 kB.
+    limit: '109 kB',
     import: '*',
     ignore: viem,
   },
@@ -108,8 +110,8 @@ const limits = [
   {
     name: '@rhinestone/sdk/smart-sessions',
     path: `${packageRoot}/smart-sessions/index.js`,
-    // Full settlement policies and validation measure 32.14 kB (was 14.47 kB).
-    limit: '33 kB',
+    // Full settlement policies and validation measure 33.98 kB.
+    limit: '34 kB',
     import: '*',
     ignore: viem,
   },
