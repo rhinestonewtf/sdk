@@ -377,13 +377,29 @@ Read failure stays closed; ordinary sessions retain nonce-only reads. Pass the
 resulting details to `signEnableSession`; do not rebuild an authorized session.
 
 Intent preparation narrows the one explicit source and routing filters before
-quoting and binding sponsorship. Once sessions burn before user calls, at most
-once per participating EVM chain; own destination execution burns separately
-unless it is the same chain. Session envelopes are chain-local, so a
-destination authorization for the account's own execution on another chain is
-signed with that chain's session even when its message repeats an origin's.
-Session-specific EVM behavior does not broaden managed/standalone Solana
-capabilities.
+quoting and binding sponsorship. One-time sessions burn before user calls, at
+most once per participating EVM chain; own destination execution burns separately
+unless it is the same chain.
+
+For external recipients, only the selected quote's authorization requirements
+add a destination session. Callers must supply that chain's explicit grant and,
+if it is not enabled, its enable data. Unused destination selections impose no
+reads, setup or routing restrictions. Missing grants and grants requiring a
+destination burn the route cannot execute are refused; preparation never derives
+a grant or inserts calls for an external recipient.
+
+If discovery changes signature mode, mocks or routing inputs, preparation
+refreshes the quote once with matching sponsorship authorization. Unstable
+replacement requirements fail closed. Restored and explicitly selected quotes
+are never refreshed during signing: incompatible request inputs require fresh
+preparation. Direct signing resolves only the supplied authorization requests;
+a source one-time grant needs an already committed Permit2 burn.
+
+Session envelopes are chain-local, so destination authorization uses the
+account's destination grant even when its message repeats an origin's source
+domain or wire chain IDs. The signed payload, proof order and count stay
+unchanged. Session-specific EVM behavior does not broaden managed/standalone
+Solana capabilities.
 
 ## Execution paths
 

@@ -31,9 +31,10 @@ import { signingTopology } from '../../signing/plan'
 import type { SignatureUsage } from '../../signing/types'
 import { projectIntentAccount } from './account'
 import { normalizeIntentQuote } from './normalize'
-import { originChainId } from './origin-chain'
+import { originChainId, signatureSpansMultipleChains } from './origin-chain'
 import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
+import { sameSessionRequest } from './session-quote'
 import { constrainSessionIntent } from './session-routing'
 import { prepareIntentSessions } from './sessions'
 import type {
@@ -46,12 +47,13 @@ export async function prepareIntent<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   input: IntentInput<CompatibilityConfig>,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
+  const originalInput = input
   const accountChain = selectAccountChain(input)
   const runtime = await context.account.forChain(accountChain)
   input = constrainSessionIntent(input, runtime.identity.address)
   const calls = await resolveDestinationCalls(context, input, runtime)
   const source = await resolveSourceCalls(context, input, runtime)
-  const sessions = await prepareIntentSessions({
+  let sessions = await prepareIntentSessions({
     intent: input,
     runtime,
     context,
@@ -65,30 +67,68 @@ export async function prepareIntent<CompatibilityConfig>(
   }
   const ownerSelection =
     input.signers?.kind === 'owner' ? input.signers : undefined
-  const { request, intentInput } = buildIntentRequest({
-    transaction: sessions
-      ? { ...input, signatureMode: sessions.signatureMode }
-      : input,
-    account: projectIntentAccount({
-      runtime,
-      setupOverride: input.accountSetupOverride,
-      ...(input.eip7702InitSignature
-        ? { eip7702InitSignature: input.eip7702InitSignature }
-        : {}),
-    }),
-    ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
-    calls:
-      sessions?.destinationBurn && calls.length > 0
-        ? [sessions.destinationBurn, ...calls]
-        : calls,
-    sourceCalls: [...preClaimCalls, ...source.calls],
-    providedFunds: source.providedFunds,
-  })
-  const response = await context.quoteClient.createQuote(request, {
+  const buildRequest = () =>
+    buildIntentRequest({
+      transaction: sessions
+        ? { ...input, signatureMode: sessions.signatureMode }
+        : input,
+      account: projectIntentAccount({
+        runtime,
+        setupOverride: input.accountSetupOverride,
+        ...(input.eip7702InitSignature
+          ? { eip7702InitSignature: input.eip7702InitSignature }
+          : {}),
+      }),
+      ...(sessions ? { mockSignatures: sessions.mockSignatures } : {}),
+      calls:
+        sessions?.destinationBurn && calls.length > 0
+          ? [sessions.destinationBurn, ...calls]
+          : calls,
+      sourceCalls: [...preClaimCalls, ...source.calls],
+      providedFunds: source.providedFunds,
+    })
+  let { request, intentInput } = buildRequest()
+  let response = await context.quoteClient.createQuote(request, {
     intentInput,
     sponsored: isSponsoredIntentInput(intentInput),
   })
-  const quote = normalizeIntentQuote(selectIntentQuote(response.routes))
+  let quote = normalizeIntentQuote(selectIntentQuote(response.routes))
+  if (sessions) {
+    const resolveSelected = async () => {
+      const requiredChains = requiredIntentSessionChains(
+        runtime,
+        quote.signingRequests,
+        input.destination.kind === 'evm' ? input.destination : undefined,
+      )
+      sessions = await prepareIntentSessions({
+        intent: originalInput,
+        runtime,
+        context,
+        requiredChains,
+        previous: sessions,
+      })
+      input = constrainSessionIntent(
+        originalInput,
+        runtime.identity.address,
+        Object.keys(sessions!.byChain).map(Number),
+      )
+      return buildRequest()
+    }
+    let resolved = await resolveSelected()
+    if (!sameSessionRequest(request, resolved.request)) {
+      ;({ request, intentInput } = resolved)
+      response = await context.quoteClient.createQuote(request, {
+        intentInput,
+        sponsored: isSponsoredIntentInput(intentInput),
+      })
+      quote = normalizeIntentQuote(selectIntentQuote(response.routes))
+      resolved = await resolveSelected()
+      if (!sameSessionRequest(request, resolved.request))
+        throw new Error(
+          'The replacement quote changed its session requirements. Prepare a fresh transaction with compatible grants and route filters.',
+        )
+    }
+  }
   const quotes = response.routes.map((candidate) =>
     candidate.intentId === quote.intentId
       ? quote
@@ -239,8 +279,9 @@ function classifyRequests(
         // are chain-local.
         const validationChain =
           purpose === 'destinationAuthorization' &&
+          sessions &&
           destination &&
-          sessions?.[destination.id]
+          !isHyperCoreWireId(destination.id)
             ? destination
             : chain
         const session = sessions?.[validationChain.id]
@@ -453,6 +494,30 @@ export function assertSupportedSigningRequests(
   })
 }
 
+export function requiredIntentSessionChains(
+  runtime: AccountRuntime,
+  requests: readonly SigningRequest[],
+  destination?: EvmChainReference,
+): readonly EvmChainReference[] {
+  assertSupportedSigningRequests(requests)
+  const classified = classifyRequests(
+    requests,
+    {},
+    destination,
+    signingRequestBinding(runtime),
+  )
+  const chains = new Map<number, EvmChainReference>()
+  for (const request of classified) {
+    if (request.kind !== 'eip712') continue
+    if (signatureSpansMultipleChains(request.payload.typedData))
+      throw new Error(
+        'Cannot sign a chain-agnostic intent payload with a smart session: supply a chain-local authorization',
+      )
+    chains.set(request.validationChain.id, request.validationChain)
+  }
+  return [...chains.values()]
+}
+
 export function buildIntentSigningInput(
   runtime: AccountRuntime,
   quote: PreparedIntent['quote'],
@@ -468,6 +533,19 @@ export function buildIntentSigningInput(
     destination,
     signingRequestBinding(runtime),
   )
+  if (sessions) {
+    for (const request of requests) {
+      if (request.kind !== 'eip712') continue
+      if (signatureSpansMultipleChains(request.payload.typedData))
+        throw new Error(
+          'Cannot sign a chain-agnostic intent payload with a smart session: supply a chain-local authorization',
+        )
+      if (!sessions[request.validationChain.id])
+        throw new Error(
+          `No session configured for chain ${request.validationChain.id}. Supply an explicit grant for every required authorization chain.`,
+        )
+    }
+  }
   const sessionTopology = sessions
     ? signingTopology(
         defineValidator(

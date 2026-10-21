@@ -84,9 +84,11 @@ import { accountChainIdFromOrigins } from '../transactions/intents/origin-chain'
 import {
   buildIntentSigningInput,
   prepareIntent,
+  requiredIntentSessionChains,
 } from '../transactions/intents/prepare'
 import { requestSetId } from '../transactions/intents/proofs'
 import { sendIntent } from '../transactions/intents/send'
+import { assertSessionQuoteCompatible } from '../transactions/intents/session-quote'
 import { prepareIntentSessions } from '../transactions/intents/sessions'
 import {
   assembleIntent,
@@ -965,8 +967,22 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     const prepared = await prepareIntentSessions<CompatibilityConfig>({
       intent: input.intentInput,
       runtime,
+      requiredChains: requiredIntentSessionChains(
+        runtime,
+        input.quote.signingRequests,
+        input.intentInput.destination.kind === 'evm'
+          ? input.intentInput.destination
+          : undefined,
+      ),
       context: { checkpoints: checkpointPort(context.account, dependencies) },
     })
+    if (prepared)
+      assertSessionQuoteCompatible({
+        intent: input.intentInput,
+        account: runtime.identity.address,
+        request: input.request,
+        sessions: prepared,
+      })
     resolvedSessions = prepared?.byChain
   }
   const signing = buildIntentSigningInput(
@@ -1020,14 +1036,18 @@ async function signIntentFromRequests<CompatibilityConfig>(
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
   if (input.signers?.kind === 'smart-session') {
     const preparedSessions = await prepareIntentSessions<CompatibilityConfig>({
-      // The origin requests validate on the account chain, so its session must
-      // resolve alongside the target's; the token is irrelevant to resolution.
       intent: {
         destination: input.targetChain,
-        source: { chain: accountChain, token: zeroAddress },
         calls: [],
         signers: input.signers,
       },
+      authorizationOnly: true,
+      authorizationRequests: input.signingRequests,
+      requiredChains: requiredIntentSessionChains(
+        runtime,
+        input.signingRequests,
+        input.targetChain.kind === 'evm' ? input.targetChain : undefined,
+      ),
       runtime,
       context: { checkpoints: checkpointPort(context.account, dependencies) },
     })
