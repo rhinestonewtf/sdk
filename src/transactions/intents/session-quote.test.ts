@@ -5,6 +5,7 @@ import type { Call } from '../../calls/types'
 import { toEvmChainReference } from '../../chains/caip2'
 import { toSession } from '../../modules/validators/smart-sessions/resolve'
 import type { Session } from '../../modules/validators/smart-sessions/types'
+import { projectPreparedBinding, restorePreparedBinding } from './compatibility'
 import { buildIntentRequest } from './request'
 import {
   assertSessionQuoteCompatible,
@@ -173,6 +174,48 @@ describe('assertSessionQuoteCompatible', () => {
       sessions: prepared,
     })
   })
+
+  test.each([undefined, 5n])(
+    'accepts persisted call values and source cap %s without rehydration',
+    (maxAmount) => {
+      const input = intent({
+        source: { chain: sourceChain, token, maxAmount },
+      })
+      const request = restorePreparedBinding(
+        JSON.parse(JSON.stringify(projectPreparedBinding(quoted(input)))),
+      )
+      assertSessionQuoteCompatible({
+        intent: input,
+        account: account.address,
+        request,
+        sessions: sessions(),
+      })
+    },
+  )
+
+  test.each(['cap', 'pre-claim', 'burn'] as const)(
+    'rejects a changed persisted %s amount',
+    (field) => {
+      const input = intent({
+        source: { chain: sourceChain, token, maxAmount: 5n },
+      })
+      const request = restorePreparedBinding(
+        JSON.parse(JSON.stringify(projectPreparedBinding(quoted(input)))),
+      )
+      if (field === 'cap') {
+        Object.assign(request.source!, { maxAmount: '6' })
+      } else {
+        const execution =
+          field === 'pre-claim'
+            ? request.source!.execution!
+            : request.destination.vm === 'evm'
+              ? request.destination.execution!
+              : undefined
+        Object.assign(execution!.calls[0]!, { value: '99' })
+      }
+      expectIncompatible({ intent: input, request })
+    },
+  )
 
   test.each([
     [

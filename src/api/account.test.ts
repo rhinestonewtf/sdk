@@ -3999,6 +3999,28 @@ describe('quote-driven Smart Session API lifecycle', () => {
     },
   )
 
+  test.each(['cached', 'restored'] as const)(
+    'signs a persisted quote with a scoped source cap (%s)',
+    async (path) => {
+      const f = fixture()
+      f.signers.sessions[base.id] = {
+        session: {
+          ...f.sourceSession,
+          permit2Sources: [{ chain: base, token: mainnetUsdc, maxAmount: 5n }],
+        },
+      }
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      expect(prepared.request.request).toHaveProperty('source.maxAmount', '5')
+      const artifact = path === 'restored' ? restore(prepared) : prepared
+      f.createQuote.mockClear()
+      const signed = await f.account.signTransaction(artifact)
+      expect(signed.proofs).toHaveLength(2)
+      expect(f.sourceOwner.signMessage).toHaveBeenCalledOnce()
+      expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
+      expect(f.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
   test.each(['missing', 'wrong-chain'] as const)(
     'refuses a restored selected quote with a %s destination grant before signing',
     async (selection) => {

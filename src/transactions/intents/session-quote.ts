@@ -59,7 +59,7 @@ export function assertSessionQuoteCompatible<C>(input: {
       return (
         actual &&
         actual.to.toLowerCase() === call.target.toLowerCase() &&
-        actual.value === call.value &&
+        sameSessionRequest(actual.value, call.value) &&
         actual.data.toLowerCase() === call.data.toLowerCase()
       )
     })
@@ -86,7 +86,10 @@ export function assertSessionQuoteCompatible<C>(input: {
       constrained.options?.quoters,
     ) ||
     (request.source?.vm === 'evm' &&
-      request.source.maxAmount !== constrained.source?.maxAmount) ||
+      !sameSessionRequest(
+        request.source.maxAmount,
+        constrained.source?.maxAmount,
+      )) ||
     !prefixMatches(sessions.preClaimCalls, sourceCalls) ||
     (sessions.destinationBurn &&
       input.intent.calls.length > 0 &&
