@@ -43,6 +43,9 @@ export function resolveCrossChainPermission(
     chain: leg.chain,
     token: leg.token,
     ...(leg.maxAmount === undefined ? {} : { maxAmount: leg.maxAmount }),
+    ...(leg.maxNativeFee === undefined
+      ? {}
+      : { maxNativeFee: leg.maxNativeFee }),
   }))
   const to = normalizeLegs(input.to)?.map((leg) => ({
     chain: leg.chain,

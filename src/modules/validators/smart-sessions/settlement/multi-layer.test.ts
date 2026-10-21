@@ -405,7 +405,15 @@ describe('multi-layer settlement permits', () => {
     expect(() => scope({ settlementLayers: ['OFT', 'LZ'] }, USDC_OFT)).toThrow(
       message,
     )
-    expect(() => scope({ settlementLayers: 'all' }, USDC_OFT)).toThrow(message)
+    // 'all' keeps neither, rather than pick one.
+    const all = scope({ settlementLayers: 'all' }, USDC_OFT)
+    expect(all.settlementLayers).toEqual(['CCTP'])
+    expect(
+      all.dropped.filter(({ reason }) => reason.startsWith(message)),
+    ).toEqual([
+      expect.objectContaining({ layer: 'OFT' }),
+      expect.objectContaining({ layer: 'LZ' }),
+    ])
   })
 
   test("'all' refuses a permit no layer can satisfy, saying why", () => {

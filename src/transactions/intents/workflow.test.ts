@@ -20,6 +20,7 @@ import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { parseCaip2, toEvmChainReference } from '../../chains/caip2'
 import type { SigningProof } from '../../clients/orchestrator/public'
+import { toSponsorshipApprovalInput } from '../../clients/orchestrator/sponsorship-approval'
 import type {
   OrchestratorExecutionQuote,
   OrchestratorIntentRequest,
@@ -260,6 +261,519 @@ const input = {
   source: { chain, token: address },
   calls: [{ target: address, value: 1n, data: '0x' as const }],
 }
+
+describe.each([
+  { sourceChain: base, targetChain: arbitrum },
+  { sourceChain: arbitrum, targetChain: base },
+])(
+  'external recipient sessions $sourceChain.id -> $targetChain.id',
+  ({ sourceChain, targetChain }) => {
+    const sourceOwner = {
+      ...account,
+      sign: vi.fn(account.sign),
+      signMessage: vi.fn(account.signMessage),
+      signTypedData: account.signTypedData,
+    }
+    const destinationOwner = {
+      ...secondAccount,
+      sign: vi.fn(secondAccount.sign),
+      signMessage: vi.fn(secondAccount.signMessage),
+      signTypedData: secondAccount.signTypedData,
+    }
+    vi.spyOn(sourceOwner, 'signTypedData')
+    vi.spyOn(destinationOwner, 'signTypedData')
+    const source = toEvmChainReference(sourceChain.id)
+    const destination = toEvmChainReference(targetChain.id)
+    const sourceSession = toSession({
+      chain: sourceChain,
+      owners: { type: 'ecdsa', accounts: [sourceOwner] },
+    })
+    const destinationSession = toSession({
+      chain: targetChain,
+      owners: { type: 'ecdsa', accounts: [destinationOwner] },
+    })
+    const enableData: SessionEnableData = {
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: BigInt(source.id), sessionDigest: `0x${'22'.repeat(32)}` },
+        {
+          chainId: BigInt(destination.id),
+          sessionDigest: `0x${'33'.repeat(32)}`,
+        },
+      ],
+      sessionToEnableIndex: 1,
+    }
+    const externalInput: IntentInput<{ marker: boolean }> = {
+      source: { chain: source, token: address, maxAmount: 7n },
+      destination,
+      recipient: {
+        kind: 'bare',
+        address: '0x0000000000000000000000000000000000000099',
+      },
+      calls: [],
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          [source.id]: { session: sourceSession },
+          [destination.id]: { session: destinationSession, enableData },
+        },
+      },
+    }
+    const route = (
+      authorization = true,
+      payloadChain = source.id,
+      intentId = 'final',
+    ) =>
+      quote({
+        chainId: source.id,
+        intentId,
+        settlementLayer: 'ACROSS',
+        signingRequests: [
+          originRequest(source.id),
+          ...(authorization ? [destinationRequest(payloadChain)] : []),
+        ],
+      })
+    const fixture = (
+      authorization = true,
+      payloadChain = source.id,
+      enabled = true,
+    ) => {
+      for (const owner of [sourceOwner, destinationOwner]) {
+        owner.sign.mockClear()
+        owner.signMessage.mockClear()
+        vi.mocked(owner.signTypedData).mockClear()
+      }
+      const read = vi.fn(
+        async (checkpoint: { id: string; chain?: { id: number } }) => [
+          {
+            kind: 'session-enabled' as const,
+            id: checkpoint.id,
+            enabled: checkpoint.chain?.id === destination.id ? enabled : true,
+          },
+        ],
+      )
+      const createQuote = vi.fn(async () => ({
+        traceId: 'final-trace',
+        routes: [route(authorization, payloadChain)],
+      }))
+      const workflow = context({
+        checkpoints: { read },
+        quoteClient: { createQuote },
+      })
+      return { workflow, read, createQuote }
+    }
+    const fingerprint = (value: unknown) =>
+      JSON.stringify(value, (_, item) =>
+        typeof item === 'bigint' ? item.toString() : item,
+      )
+
+    test.each([
+      ['repeated source', true],
+      ['destination domain', false],
+    ])(
+      'keeps %s payload and chain-local proofs, owners and enable index',
+      async (_label, repeated) => {
+        const payloadChain = repeated ? source.id : destination.id
+        const { workflow, read, createQuote } = fixture(
+          true,
+          payloadChain,
+          false,
+        )
+        const before = fingerprint(externalInput)
+        const prepared = await prepareIntent(workflow, externalInput)
+        const origin = eip712Slot(prepared.signing, 0)
+        const target = eip712Slot(prepared.signing, 1)
+        expect(origin.validationChain.id).toBe(source.id)
+        expect(target.validationChain.id).toBe(destination.id)
+        expect(target.payload.chain.id).toBe(payloadChain)
+        expect(target.payload.typedData).toEqual(
+          intentTypedData(payloadChain, 1n),
+        )
+        expect(target.reuse).toBeUndefined()
+        expect(target.payload.id === origin.payload.id).toBe(repeated)
+        expect(sourceSession.permissionId).not.toBe(
+          destinationSession.permissionId,
+        )
+        const plan = buildSessionIntentPlanInput(
+          prepared,
+          createAccountSigningContext({
+            runtime: runtime(),
+            purpose: 'intent',
+            signerInvoker: workflow.signerInvoker,
+          }),
+        )
+        const stage = plan.stages.find(({ id }) => id === 'request-1')
+        expect(stage?.checkpoint).toMatchObject({
+          chain: { id: destination.id },
+          permissionId: destinationSession.permissionId,
+        })
+        expect(
+          stage?.tasks.every((task) => task.chain?.id === destination.id),
+        ).toBe(true)
+        const codec = stage?.artifacts[0]?.validatorCodec
+        expect(codec?.kind).toBe('smart-session-state')
+        if (codec?.kind !== 'smart-session-state')
+          throw new Error('Expected session codec')
+        expect(codec.whenDisabled.enableData).toMatchObject(enableData)
+        expect(codec.whenDisabled.enableData?.sessionToEnableIndex).toBe(1)
+        expect(prepared.request.destination).not.toHaveProperty('execution')
+        expect(prepared.request.source).not.toHaveProperty('execution')
+        expect(createQuote).toHaveBeenCalledTimes(2)
+        expect(read).toHaveBeenCalledTimes(2)
+        const signed = await signIntent(workflow, prepared)
+        expect(signed.proofs).toHaveLength(2)
+        expect(hexProof(signed.proofs[0])).toContain(
+          sourceSession.permissionId.slice(2),
+        )
+        expect(hexProof(signed.proofs[1])).toMatch(/^0x01/u)
+        expect(hexProof(signed.proofs[1])).not.toBe(hexProof(signed.proofs[0]))
+        for (const owner of [sourceOwner, destinationOwner]) {
+          expect(
+            owner.sign.mock.calls.length +
+              owner.signMessage.mock.calls.length +
+              vi.mocked(owner.signTypedData).mock.calls.length,
+          ).toBeGreaterThan(0)
+        }
+        expect(read).toHaveBeenCalledTimes(3)
+        expect(fingerprint(externalInput)).toBe(before)
+      },
+    )
+
+    test('signs an enabled destination with its own permission', async () => {
+      const { workflow } = fixture()
+      const prepared = await prepareIntent(workflow, externalInput)
+      const signed = await signIntent(workflow, prepared)
+      expect(hexProof(signed.proofs[1])).toContain(
+        destinationSession.permissionId.slice(2),
+      )
+      expect(hexProof(signed.proofs[1])).not.toBe(hexProof(signed.proofs[0]))
+    })
+
+    test.each(['absent', 'misbound'] as const)(
+      'refuses %s destination grant before any signer or retry',
+      async (selection) => {
+        const { workflow, read, createQuote } = fixture()
+        await expect(
+          prepareIntent(workflow, {
+            ...externalInput,
+            signers: {
+              kind: 'smart-session',
+              byChain: {
+                [source.id]: { session: sourceSession },
+                ...(selection === 'misbound'
+                  ? { [destination.id]: { session: sourceSession } }
+                  : {}),
+              },
+            },
+          }),
+        ).rejects.toThrow(
+          selection === 'absent'
+            ? `No session configured for chain ${destination.id}`
+            : `belongs to chain ${source.id}`,
+        )
+        expect(read).toHaveBeenCalledOnce()
+        expect(createQuote).toHaveBeenCalledOnce()
+        expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+        expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+        for (const owner of [sourceOwner, destinationOwner]) {
+          expect(owner.sign).not.toHaveBeenCalled()
+          expect(owner.signMessage).not.toHaveBeenCalled()
+          expect(owner.signTypedData).not.toHaveBeenCalled()
+        }
+      },
+    )
+
+    test.each([false, true])(
+      'no authorization ignores unused destination selection=%s',
+      async (supplied) => {
+        const { workflow, read, createQuote } = fixture(false)
+        read.mockImplementation(async (checkpoint) => {
+          if (checkpoint.chain?.id === destination.id)
+            throw new Error('Unused destination read')
+          return [{ kind: 'session-enabled', id: checkpoint.id, enabled: true }]
+        })
+        const prepared = await prepareIntent(workflow, {
+          ...externalInput,
+          options: { settlementLayers: { include: ['ACROSS'] } },
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [source.id]: { session: sourceSession },
+              ...(supplied
+                ? {
+                    [destination.id]: {
+                      session: {
+                        ...destinationSession,
+                        oneTimeUse: { id: 17n, policy: address },
+                        access: {
+                          kind: 'scoped' as const,
+                          reason: 'Destination only',
+                        },
+                        settlementLayers: ['ECO_IE' as const],
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        })
+        expect(Object.keys(prepared.resolvedSessions ?? {})).toEqual([
+          String(source.id),
+        ])
+        expect(prepared.request.options?.settlementLayers).toEqual({
+          include: ['ACROSS'],
+        })
+        expect(prepared.request.destination).not.toHaveProperty('execution')
+        expect(createQuote).toHaveBeenCalledOnce()
+        expect(read).toHaveBeenCalledOnce()
+        const signed = await signIntent(workflow, prepared)
+        expect(signed.proofs).toHaveLength(1)
+        expect(read).toHaveBeenCalledOnce()
+      },
+    )
+
+    test('refuses an authorization-only burn without destination reads or calls', async () => {
+      const { workflow, read, createQuote } = fixture()
+      await expect(
+        prepareIntent(workflow, {
+          ...externalInput,
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [source.id]: { session: sourceSession },
+              [destination.id]: {
+                session: {
+                  ...destinationSession,
+                  oneTimeUse: { id: 17n, policy: address },
+                },
+              },
+            },
+          },
+        }),
+      ).rejects.toThrow('authorization-only route cannot execute')
+      expect(read).toHaveBeenCalledOnce()
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+      for (const owner of [sourceOwner, destinationOwner]) {
+        expect(owner.sign).not.toHaveBeenCalled()
+        expect(owner.signMessage).not.toHaveBeenCalled()
+        expect(owner.signTypedData).not.toHaveBeenCalled()
+      }
+    })
+
+    test('refuses a disabled authorization grant without enable data', async () => {
+      const { workflow, createQuote } = fixture(true, source.id, false)
+      await expect(
+        prepareIntent(workflow, {
+          ...externalInput,
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [source.id]: { session: sourceSession },
+              [destination.id]: { session: destinationSession },
+            },
+          },
+        }),
+      ).rejects.toThrow('Supply its enable data')
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      for (const owner of [sourceOwner, destinationOwner]) {
+        expect(owner.sign).not.toHaveBeenCalled()
+        expect(owner.signMessage).not.toHaveBeenCalled()
+        expect(owner.signTypedData).not.toHaveBeenCalled()
+      }
+    })
+
+    test('refuses participating destination filters that conflict with the caller', async () => {
+      const { workflow, createQuote } = fixture()
+      await expect(
+        prepareIntent(workflow, {
+          ...externalInput,
+          options: { settlementLayers: { include: ['ACROSS'] } },
+          signers: {
+            kind: 'smart-session',
+            byChain: {
+              [source.id]: { session: sourceSession },
+              [destination.id]: {
+                session: {
+                  ...destinationSession,
+                  access: { kind: 'scoped', reason: 'ECO only' },
+                  settlementLayers: ['ECO_IE'],
+                },
+              },
+            },
+          },
+        }),
+      ).rejects.toThrow('no settlement layer is left')
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+    })
+
+    test('does not load grants required only by an unselected alternative', async () => {
+      const { workflow, createQuote, read } = fixture(false)
+      createQuote.mockResolvedValueOnce({
+        traceId: 'source-only',
+        routes: [
+          route(false, source.id, 'selected'),
+          route(true, source.id, 'unselected'),
+        ],
+      })
+      const prepared = await prepareIntent(workflow, {
+        ...externalInput,
+        signers: {
+          kind: 'smart-session',
+          byChain: { [source.id]: { session: sourceSession } },
+        },
+      })
+      expect(prepared.quote.intentId).toBe('selected')
+      expect(prepared.signing.requests).toHaveLength(1)
+      expect(createQuote).toHaveBeenCalledOnce()
+      expect(read).toHaveBeenCalledOnce()
+    })
+
+    test('refreshes mode, mocks and filters once with matching sponsorship and only final IDs', async () => {
+      const { workflow, read, createQuote } = fixture(true, source.id, false)
+      createQuote.mockResolvedValueOnce({
+        traceId: 'provisional-trace',
+        routes: [route(true, source.id, 'provisional')],
+      })
+      createQuote.mockResolvedValueOnce({
+        traceId: 'final-trace',
+        routes: [
+          route(true, source.id, 'final'),
+          route(false, source.id, 'final-alternative'),
+        ],
+      })
+      const lazySource = vi.fn(async () => ({
+        target: address,
+        value: 0n,
+        data: '0x12' as const,
+      }))
+      const lazyDestination = vi.fn(async () => ({
+        target: address,
+        value: 0n,
+        data: '0x34' as const,
+      }))
+      const selected = {
+        ...destinationSession,
+        access: { kind: 'scoped' as const, reason: 'Across only' },
+        settlementLayers: ['ACROSS' as const],
+      }
+      const intent: IntentInput<{ marker: boolean }> = {
+        ...externalInput,
+        source: {
+          chain: source,
+          token: address,
+          maxAmount: 7n,
+          calls: [{ call: { resolve: lazySource } }],
+        },
+        calls: [{ resolve: lazyDestination }],
+        options: {
+          settlementLayers: { include: ['ACROSS', 'RELAY'] },
+          quoters: { exclude: ['fynd'] },
+          sponsorSettings: { gas: true, bridgeFees: true, swapFees: false },
+        },
+        signers: {
+          kind: 'smart-session',
+          byChain: {
+            [source.id]: { session: sourceSession },
+            [destination.id]: { session: selected, enableData },
+          },
+        },
+      }
+      const before = fingerprint(intent)
+      const prepared = await prepareIntent(workflow, intent)
+      expect(createQuote).toHaveBeenCalledTimes(2)
+      const requests = vi.mocked(workflow.quoteClient.createQuote).mock.calls
+      const first = requests[0]!
+      const final = requests[1]!
+      expect(smartAccount(first[0]).signatureMode).toBe(1)
+      expect(smartAccount(final[0]).signatureMode).toBe(5)
+      expect(
+        Object.keys(
+          smartAccount(first[0]).simulation?.mockSignaturesByChain ?? {},
+        ),
+      ).toEqual([source.caip2])
+      expect(
+        smartAccount(final[0]).simulation?.mockSignaturesByChain?.[
+          destination.caip2
+        ],
+      ).toBe(
+        buildSmartSessionMockSignature({
+          session: selected,
+          environment: 'production',
+          chainCount: 1,
+          targetChainId: destination.id,
+          shape: 'enable',
+        }),
+      )
+      expect(final[0].options?.settlementLayers).toEqual({
+        include: ['ACROSS'],
+      })
+      expect(final[0].options?.quoters).toEqual({ exclude: ['fynd'] })
+      expect(final[0].source).toMatchObject({
+        maxAmount: 7n,
+        execution: { calls: [{ to: address, value: 0n, data: '0x12' }] },
+      })
+      expect(final[0].destination).toMatchObject({
+        execution: { calls: [{ to: address, value: 0n, data: '0x34' }] },
+      })
+      for (const [request, authorization] of requests) {
+        expect(authorization).toEqual({
+          intentInput: toSponsorshipApprovalInput(request),
+          sponsored: true,
+        })
+      }
+      expect(prepared.request).toEqual(final[0])
+      expect(prepared.intentInput).toEqual(final[1]?.intentInput)
+      expect(prepared.input.options?.settlementLayers).toEqual({
+        include: ['ACROSS'],
+      })
+      expect(prepared.traceId).toBe('final-trace')
+      expect(prepared.quote.intentId).toBe('final')
+      expect(prepared.quotes.map(({ intentId }) => intentId)).toEqual([
+        'final',
+        'final-alternative',
+      ])
+      expect(prepared.request.destination).toMatchObject({
+        recipient: expect.anything(),
+      })
+      expect(lazySource).toHaveBeenCalledOnce()
+      expect(lazyDestination).toHaveBeenCalledOnce()
+      expect(read).toHaveBeenCalledTimes(2)
+      expect(fingerprint(intent)).toBe(before)
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+    })
+
+    test('refuses unstable replacement requirements without a third quote or signer', async () => {
+      const { workflow, createQuote } = fixture()
+      createQuote.mockResolvedValueOnce({ traceId: 'first', routes: [route()] })
+      createQuote.mockResolvedValueOnce({
+        traceId: 'second',
+        routes: [route(false)],
+      })
+      await expect(prepareIntent(workflow, externalInput)).rejects.toThrow(
+        'replacement quote changed its session requirements',
+      )
+      expect(createQuote).toHaveBeenCalledTimes(2)
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+    })
+
+    test('propagates refresh authorization failure before signing', async () => {
+      const { workflow, createQuote } = fixture()
+      createQuote.mockResolvedValueOnce({ traceId: 'first', routes: [route()] })
+      const denial = new Error('Sponsorship approval refused')
+      createQuote.mockRejectedValueOnce(denial)
+      await expect(prepareIntent(workflow, externalInput)).rejects.toBe(denial)
+      expect(createQuote).toHaveBeenCalledTimes(2)
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+    })
+  },
+)
 
 describe('intent workflow', () => {
   test('prepares calls, deployment data, request, and signing payloads', async () => {
@@ -511,16 +1025,27 @@ describe('intent workflow', () => {
     const read = vi.fn(async (checkpoint: { id: string }) => [
       { kind: 'session-enabled' as const, id: checkpoint.id, enabled: true },
     ])
-    const prepared = await prepareIntent(context({ checkpoints: { read } }), {
-      ...input,
-      destination: toEvmChainReference(arbitrum.id),
-      calls: [],
-      recipient: {
-        kind: 'bare',
-        address: '0x0000000000000000000000000000000000000099',
+    const prepared = await prepareIntent(
+      context({
+        checkpoints: { read },
+        quoteClient: {
+          createQuote: vi.fn(async () => ({
+            traceId: 'source-only',
+            routes: [quote({ signingRequests: [originRequest()] })],
+          })),
+        },
+      }),
+      {
+        ...input,
+        destination: toEvmChainReference(arbitrum.id),
+        calls: [],
+        recipient: {
+          kind: 'bare',
+          address: '0x0000000000000000000000000000000000000099',
+        },
+        signers: { kind: 'smart-session', byChain: { 1: { session } } },
       },
-      signers: { kind: 'smart-session', byChain: { 1: { session } } },
-    })
+    )
     expect(Object.keys(prepared.resolvedSessions ?? {})).toEqual(['1'])
     expect(prepared.request.destination).not.toHaveProperty('execution')
     expect(read).toHaveBeenCalledTimes(1)
@@ -1533,27 +2058,26 @@ describe('intent workflow', () => {
       ).toEqual(['request-0'])
     })
 
-    test('reuses the origin when the destination has no session of its own', async () => {
+    test('refuses a missing external destination grant instead of reusing the origin', async () => {
       const { workflow } = crossChainWorkflow(true)
-      const prepared = await prepareIntent(workflow, {
-        ...input,
-        destination,
-        calls: [],
-        recipient: {
-          kind: 'bare',
-          address: '0x0000000000000000000000000000000000000099',
-        },
-        signers: {
-          kind: 'smart-session',
-          byChain: { 1: { session: sourceSession } },
-        },
-      })
-      const destinationSlot = eip712Slot(prepared.signing, 1)
-      expect(destinationSlot.validationChain.id).toBe(1)
-      expect(destinationSlot.reuse).toEqual({
-        artifactId: 'request-0',
-        selection: 'pre-claim',
-      })
+      await expect(
+        prepareIntent(workflow, {
+          ...input,
+          destination,
+          calls: [],
+          recipient: {
+            kind: 'bare',
+            address: '0x0000000000000000000000000000000000000099',
+          },
+          signers: {
+            kind: 'smart-session',
+            byChain: { 1: { session: sourceSession } },
+          },
+        }),
+      ).rejects.toThrow('No session configured for chain 42161')
+      expect(workflow.signerInvoker.invoke).not.toHaveBeenCalled()
+      expect(workflow.submissionClient.submitIntent).not.toHaveBeenCalled()
+      expect(workflow.quoteClient.createQuote).toHaveBeenCalledOnce()
     })
 
     test('does not evaluate the destination claim policy against the source message', () => {

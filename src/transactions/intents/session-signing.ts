@@ -229,7 +229,7 @@ function buildSessionStage(input: {
         module,
         signing.signerCodec,
         'notarized',
-        input.typedData,
+        input.usage === 'intent-origin' ? input.typedData : undefined,
       ),
       ...(signing.validatorFactors
         ? { validatorFactors: signing.validatorFactors }

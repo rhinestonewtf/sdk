@@ -16,6 +16,8 @@ import {
   SMART_SESSIONS_FALLBACK_TARGET_FLAG,
   SMART_SESSIONS_FALLBACK_TARGET_SELECTOR_FLAG,
 } from './resolve'
+import { LZ_EXECUTE_SELECTOR } from './settlement/lz'
+import { OFT_SEND_SELECTOR } from './settlement/oft'
 import type { Session, SessionData, SessionDetails } from './types'
 
 export const SESSION_LOCK_TAG = '0x000000000000000000000000' as const
@@ -165,9 +167,37 @@ function isOneTimeUse(
 }
 
 /**
- * Whether the session's maxAmount is a lifetime budget, from its actions as
- * well as its metadata, so a stored session missing the flag is still caught.
- * A hand-written rule of the same shape is guarded too, which fails closed.
+ * The lifetime budgets a reusable session's actions hold. A hand-written rule
+ * of the cap's shape counts too, which fails closed.
+ */
+function budgetsInActions(session: Session): string[] {
+  const amount = session.actions.some(
+    ({ actionTargetSelector, actionPolicies }) => {
+      // approve(address,uint256), transfer(address,uint256)
+      const amountWord =
+        actionTargetSelector === '0x095ea7b3' ||
+        actionTargetSelector === '0xa9059cbb'
+      return actionPolicies.some(({ initData }) =>
+        hasCapRule(initData, amountWord),
+      )
+    },
+  )
+  // A reusable LZ or OFT call carries a maxNativeFee whatever policy
+  // deployment holds it, so its presence alone is a budget.
+  const nativeFee = session.actions.some(
+    ({ actionTargetSelector }) =>
+      actionTargetSelector === LZ_EXECUTE_SELECTOR ||
+      actionTargetSelector === OFT_SEND_SELECTOR,
+  )
+  return [
+    ...(amount ? ['maxAmount'] : []),
+    ...(nativeFee ? ['maxNativeFee'] : []),
+  ]
+}
+
+/**
+ * Whether the session holds a lifetime budget, from its actions as well as its
+ * metadata, so a stored session missing the flag is still caught.
  */
 export function hasLifetimeBudget(
   session: Session,
@@ -175,15 +205,7 @@ export function hasLifetimeBudget(
 ): boolean {
   if (session.lifetimeBudget) return true
   if (isOneTimeUse(session, environment)) return false
-  return session.actions.some(({ actionTargetSelector, actionPolicies }) => {
-    // approve(address,uint256), transfer(address,uint256)
-    const amountWord =
-      actionTargetSelector === '0x095ea7b3' ||
-      actionTargetSelector === '0xa9059cbb'
-    return actionPolicies.some(({ initData }) =>
-      hasCapRule(initData, amountWord),
-    )
-  })
+  return budgetsInActions(session).length > 0
 }
 
 export async function getSessionDetails(input: {
@@ -215,8 +237,13 @@ export async function getSessionDetails(input: {
       }
       const { nonce, enabled } = await input.readNonceAndEnabled(session)
       if (enabled) {
+        const budgets = budgetsInActions(session)
+        const held =
+          budgets.length > 1
+            ? `${budgets.join(' and ')} are lifetime budgets`
+            : `${budgets[0] ?? 'maxAmount'} is a lifetime budget`
         throw new Error(
-          `The session ${session.permissionId} is already enabled on chain ${session.chain.id}, and its maxAmount is a lifetime budget: signing its enable again would reset that budget. Leave it out of getSessionDetails, or pass { allowBudgetReset: true } to reset it.`,
+          `The session ${session.permissionId} is already enabled on chain ${session.chain.id}, and its ${held}: signing its enable again would reset that budget. Leave it out of getSessionDetails, or pass { allowBudgetReset: true } to reset it.`,
         )
       }
       return nonce
