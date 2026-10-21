@@ -2,10 +2,12 @@ import {
   type Account,
   type Address,
   encodeAbiParameters,
+  encodeFunctionData,
   erc20Abi,
   type Hex,
   isAddressEqual,
   type TypedDataDefinition,
+  zeroHash,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base as baseChain } from 'viem/chains'
@@ -34,6 +36,7 @@ import {
 import { getIntentExecutorModule } from '../modules/intent-executor'
 import { K1_DEFAULT_VALIDATOR_ADDRESS } from '../modules/validators/k1'
 import { getSessionDetails } from '../modules/validators/smart-sessions/authorization'
+import { oneTimeUseIdPolicyAbi } from '../modules/validators/smart-sessions/one-time-use'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { createCoreComposition } from './compose'
 import type { CoreDependencies } from './compose-types'
@@ -1016,12 +1019,29 @@ describe('internal core composition', () => {
       kind: 'smart-session' as const,
       byChain: {
         1: {
+          enableData: {
+            userSignature: `0x${'11'.repeat(65)}` as Hex,
+            hashesAndChainIds: [
+              { chainId: 1n, sessionDigest: userOperationHash },
+            ],
+            sessionToEnableIndex: 0,
+          },
           session: toSession({
             chain: { id: 1 } as never,
             owners: { type: 'ecdsa', accounts: [owner] },
           }),
         },
         [arbitrum.id]: {
+          enableData: {
+            userSignature: `0x${'22'.repeat(65)}` as Hex,
+            hashesAndChainIds: [
+              {
+                chainId: BigInt(arbitrum.id),
+                sessionDigest: userOperationHash,
+              },
+            ],
+            sessionToEnableIndex: 0,
+          },
           session: toSession({
             chain: arbitrum,
             owners: {
@@ -1044,13 +1064,21 @@ describe('internal core composition', () => {
         account: { evm: { address: account } },
       } as never)
 
+      const intentInput = {
+        destination,
+        source: { chain, token: target },
+        recipient: { kind: 'bare' as const, address: target },
+        calls: [],
+        signers,
+      }
+      const original = await workflows.prepareIntent(context, intentInput)
       const prepared = await workflows.reconstructPreparedIntent(context, {
         traceId: 'trace-restore',
         quote: routed,
         quotes: [routed],
-        request: {} as never,
-        approvalInput: {} as never,
-        intentInput: { destination, calls: [], signers },
+        request: original.request,
+        approvalInput: original.intentInput,
+        intentInput,
       })
 
       const slot = prepared.signing.requests[1]
@@ -1058,6 +1086,247 @@ describe('internal core composition', () => {
       expect(slot.payload.chain.id).toBe(1)
       expect(slot.validationChain.id).toBe(arbitrum.id)
       expect(slot.reuse).toBeUndefined()
+    })
+
+    function burnPayload() {
+      const burn = {
+        to: target,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: oneTimeUseIdPolicyAbi,
+          functionName: 'consumeFor',
+          args: [17n, 42n],
+        }),
+      }
+      return {
+        domain: { chainId: 1, verifyingContract: target },
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        types: {
+          PermitBatchWitnessTransferFrom: [
+            { name: 'permitted', type: 'TokenPermissions[]' },
+            { name: 'spender', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'mandate', type: 'Mandate' },
+          ],
+          TokenPermissions: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Token: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Ops: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+          ],
+          Op: [
+            { name: 'vt', type: 'bytes32' },
+            { name: 'ops', type: 'Ops[]' },
+          ],
+          Target: [
+            { name: 'recipient', type: 'address' },
+            { name: 'tokenOut', type: 'Token[]' },
+            { name: 'targetChain', type: 'uint256' },
+            { name: 'fillExpiry', type: 'uint256' },
+          ],
+          Mandate: [
+            { name: 'target', type: 'Target' },
+            { name: 'minGas', type: 'uint128' },
+            { name: 'originOps', type: 'Op' },
+            { name: 'destOps', type: 'Op' },
+            { name: 'q', type: 'bytes32' },
+          ],
+        },
+        message: {
+          permitted: [{ token: target, amount: 1n }],
+          spender: target,
+          nonce: 42n,
+          deadline: 9999999999n,
+          mandate: {
+            target: {
+              recipient: target,
+              tokenOut: [{ token: target, amount: 1n }],
+              targetChain: BigInt(arbitrum.id),
+              fillExpiry: 9999999999n,
+            },
+            minGas: 0n,
+            originOps: { vt: zeroHash, ops: [burn] },
+            destOps: { vt: zeroHash, ops: [] as (typeof burn)[] },
+            q: zeroHash,
+          },
+        },
+      }
+    }
+    const sourceOnce = {
+      ...signers,
+      byChain: {
+        ...signers.byChain,
+        1: {
+          ...signers.byChain[1],
+          session: toSession({
+            chain: { id: 1 } as never,
+            owners: { type: 'ecdsa', accounts: [owner] },
+            oneTimeUse: { id: 17n },
+            policyAddresses: { oneTimeUseId: target },
+          }),
+        },
+      },
+    }
+
+    test.each([false, true])(
+      'direct signing preserves a committed source burn (same chain: %s)',
+      async (sameChain) => {
+        const { composition, context, dependencies } = fixture()
+        const workflows = composition.createAccount(context).workflows
+        const account = workflows.getAddress(context, chain)
+        const typedData = burnPayload()
+        const signingRequests = [
+          eip712Request({ chainId: 1, account, typedData }),
+          eip712Request({
+            chainId: 1,
+            account,
+            purpose: 'destinationAuthorization',
+            typedData,
+          }),
+        ]
+        const before = structuredClone({
+          signingRequests,
+          session: sourceOnce.byChain[1].session.oneTimeUse,
+        })
+        const signed = await workflows.signIntentFromRequests(context, {
+          signingRequests,
+          targetChain: sameChain ? chain : destination,
+          signers: sourceOnce,
+        })
+        expect(signed.proofs).toHaveLength(2)
+        expect(signed.proofs[0]).toMatchObject({
+          kind: 'eip712',
+          signature: expect.any(Object),
+        })
+        expect({
+          signingRequests,
+          session: sourceOnce.byChain[1].session.oneTimeUse,
+        }).toEqual(before)
+        expect(dependencies.orchestrator.createQuote).not.toHaveBeenCalled()
+        expect(dependencies.orchestrator.submitIntent).not.toHaveBeenCalled()
+      },
+    )
+
+    test.each([
+      'absent',
+      'wrong policy',
+      'wrong id',
+      'wrong witness',
+      'unstamped witness',
+      'value',
+      'executor burn',
+      'malformed calldata',
+      'destination ops only',
+      'unsigned mandate',
+      'unsigned ops',
+    ])(
+      'direct signing refuses source one-time use with %s evidence before signing',
+      async (fault) => {
+        const { composition, context, dependencies } = fixture()
+        const workflows = composition.createAccount(context).workflows
+        const account = workflows.getAddress(context, chain)
+        const typedData = burnPayload()
+        const burn = typedData.message.mandate.originOps.ops[0]!
+        if (fault === 'absent') typedData.message.mandate.originOps.ops = []
+        if (fault === 'wrong policy') burn.to = owner.address as typeof target
+        if (fault === 'value') burn.value = 1n
+        if (['wrong id', 'wrong witness', 'unstamped witness'].includes(fault))
+          burn.data = encodeFunctionData({
+            abi: oneTimeUseIdPolicyAbi,
+            functionName: 'consumeFor',
+            args: [
+              fault === 'wrong id' ? 18n : 17n,
+              fault === 'unstamped witness'
+                ? 0n
+                : fault === 'wrong witness'
+                  ? 43n
+                  : 42n,
+            ],
+          })
+        if (fault === 'executor burn')
+          burn.data = encodeFunctionData({
+            abi: oneTimeUseIdPolicyAbi,
+            functionName: 'consume',
+            args: [17n],
+          })
+        if (fault === 'malformed calldata') burn.data = '0x1234'
+        if (fault === 'destination ops only') {
+          typedData.message.mandate.destOps.ops = [burn]
+          typedData.message.mandate.originOps.ops = []
+        }
+        if (fault === 'unsigned mandate')
+          typedData.types.PermitBatchWitnessTransferFrom =
+            typedData.types.PermitBatchWitnessTransferFrom.filter(
+              ({ name }) => name !== 'mandate',
+            )
+        if (fault === 'unsigned ops')
+          typedData.types.Op = typedData.types.Op.filter(
+            ({ name }) => name !== 'ops',
+          )
+        const signMessage = vi.spyOn(owner, 'signMessage')
+        const signTypedData = vi.spyOn(owner, 'signTypedData')
+        try {
+          await expect(
+            workflows.signIntentFromRequests(context, {
+              signingRequests: [
+                eip712Request({ chainId: 1, account, typedData }),
+              ],
+              targetChain: destination,
+              signers: sourceOnce,
+            }),
+          ).rejects.toThrow(/oneTimeUse burn/)
+          expect(signMessage).not.toHaveBeenCalled()
+          expect(signTypedData).not.toHaveBeenCalled()
+          expect(dependencies.orchestrator.createQuote).not.toHaveBeenCalled()
+        } finally {
+          signMessage.mockRestore()
+          signTypedData.mockRestore()
+        }
+      },
+    )
+
+    test('direct signing never treats a repeated source burn as destination burn evidence', async () => {
+      const { composition, context } = fixture()
+      const workflows = composition.createAccount(context).workflows
+      const account = workflows.getAddress(context, chain)
+      const typedData = burnPayload()
+      await expect(
+        workflows.signIntentFromRequests(context, {
+          signingRequests: [
+            eip712Request({ chainId: 1, account, typedData }),
+            eip712Request({
+              chainId: 1,
+              account,
+              purpose: 'destinationAuthorization',
+              typedData,
+            }),
+          ],
+          targetChain: destination,
+          signers: {
+            ...sourceOnce,
+            byChain: {
+              ...sourceOnce.byChain,
+              [arbitrum.id]: {
+                ...signers.byChain[arbitrum.id],
+                session: toSession({
+                  chain: arbitrum,
+                  owners: { type: 'ecdsa', accounts: [owner] },
+                  oneTimeUse: { id: 17n },
+                  policyAddresses: { oneTimeUseId: target },
+                }),
+              },
+            },
+          },
+        }),
+      ).rejects.toThrow(new RegExp(`chain ${arbitrum.id}.*oneTimeUse burn`))
     })
 
     test('headless signIntent signs both slots of a cross-chain session pair', async () => {

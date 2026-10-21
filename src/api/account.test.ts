@@ -1,6 +1,12 @@
-import { type Account, bytesToHex, type Hex, hexToBytes } from 'viem'
+import {
+  type Account,
+  bytesToHex,
+  type Chain,
+  type Hex,
+  hexToBytes,
+} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet, optimism } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import {
   quote as caucasusQuote,
@@ -26,6 +32,7 @@ import {
   solanaMainnet,
   tronMainnet,
 } from '../chains/non-evm'
+import { ChainCatalog } from '../clients/orchestrator/chain-catalog'
 import {
   parseErrorEnvelope,
   SolanaAccountAlreadyCreatedError,
@@ -49,7 +56,12 @@ import type {
   OrchestratorQuote,
   OrchestratorQuoteContext,
 } from '../clients/orchestrator/types'
-import type { SolanaManagedAccountConfig, SolanaOwner } from '../config/account'
+import type { RpcReadPort } from '../clients/rpc/port'
+import type {
+  Session,
+  SolanaManagedAccountConfig,
+  SolanaOwner,
+} from '../config/account'
 import type { LegacyAccountConfig } from '../config/legacy'
 import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
@@ -70,6 +82,7 @@ import type { EvmAccountConfig } from '../evm/index'
 import type { OwnerSignature, RhinestoneAccountConfig } from '../index'
 import { RhinestoneSDK } from '../index'
 import { ecdsaSignerId } from '../modules/validators/signer-id'
+import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { SOCIAL_RECOVERY_VALIDATOR_ADDRESS } from '../modules/validators/social-recovery'
 import type { IntentRecipientProjection } from '../transactions/intents/account'
 import { projectPreparedBinding } from '../transactions/intents/compatibility'
@@ -94,7 +107,8 @@ import {
   createAccountFacade,
   createSolanaAccountFacade,
 } from './account'
-import type { CoreComposition } from './compose-types'
+import { createCoreComposition } from './compose'
+import type { CoreComposition, CoreDependencies } from './compose-types'
 import type { AdaptedSignerSelection } from './signer-selection'
 import { normalizeTransaction } from './transaction-input'
 
@@ -3777,6 +3791,498 @@ describe('EVM prepare against the orchestrator', () => {
       vi.unstubAllGlobals()
     }
   })
+})
+
+describe('quote-driven Smart Session API lifecycle', () => {
+  function fixture(
+    source: Chain = base,
+    destination: Chain = arbitrum,
+    needsDestination = true,
+  ) {
+    function trackedSigner(account: typeof owner) {
+      const signTypedData = vi.fn<
+        (input: Parameters<typeof account.signTypedData>[0]) => Promise<Hex>
+      >(account.signTypedData)
+      const sign = vi.fn(account.sign!)
+      const signMessage = vi.fn(account.signMessage)
+      return {
+        ...account,
+        sign,
+        signMessage,
+        signTypedData: signTypedData as typeof account.signTypedData,
+      }
+    }
+    const sourceOwner = trackedSigner(owner)
+    const destinationOwner = trackedSigner(guardian)
+    const sourceSession = toSession({
+      chain: source,
+      owners: { type: 'ecdsa', accounts: [sourceOwner] },
+    })
+    const destinationSession = toSession({
+      chain: destination,
+      owners: { type: 'ecdsa', accounts: [destinationOwner] },
+    })
+    const signers = {
+      type: 'session' as const,
+      sessions: {
+        [source.id]: { session: sourceSession },
+        [destination.id]: { session: destinationSession },
+      },
+    }
+    const compatibilityConfig: LegacyAccountConfig<unknown> = {
+      account: { type: 'nexus', version: '1.2.0' },
+      owners: { type: 'ecdsa', accounts: [owner] },
+    }
+    const sdk = resolveSdkConfig({
+      auth: { mode: 'apiKey', apiKey: 'offline' },
+    })
+    const readContract = vi.fn(
+      async (_context: { chain: { id: number } }) => true,
+    )
+    const forChain = vi.fn((_chain: { id: number }) => ({
+      getCode: vi.fn(async () => ({ code: '0x01' as const })),
+      getTransactionCount: vi.fn(async () => 0n),
+      readContract: readContract as RpcReadPort['readContract'],
+      multicall: async <TResults extends readonly unknown[]>() =>
+        [] as unknown as TResults,
+    }))
+    const createQuote = vi.fn(async (request: OrchestratorIntentRequest) => {
+      const account = request.account.evm!.address
+      const origin = eip712Request({ chainId: source.id, account })
+      const destinationRequest = eip712Request({
+        chainId: source.id,
+        account,
+        purpose: 'destinationAuthorization',
+        typedData:
+          origin.payload.kind === 'eip712'
+            ? origin.payload.typedData
+            : undefined,
+      })
+      const best = caucasusQuote({
+        intentId: 'best',
+        signingRequests: needsDestination
+          ? [origin, destinationRequest]
+          : [origin],
+      })
+      const alternate = caucasusQuote({
+        intentId: 'alternate',
+        signingRequests: [origin, destinationRequest],
+      })
+      return { traceId: 'session-lifecycle', routes: [best, alternate] }
+    })
+    const submitIntent = vi.fn(async () => ({
+      traceId: 'submitted',
+      intentId: 'best',
+    }))
+    const dependencies = {
+      orchestrator: {
+        createQuote,
+        submitIntent,
+        getChainCatalog: vi.fn(
+          async () =>
+            new ChainCatalog({
+              [source.id]: {
+                name: source.name,
+                testnet: false,
+                supportedTokens: 'all',
+              },
+              [destination.id]: {
+                name: destination.name,
+                testnet: false,
+                supportedTokens: 'all',
+              },
+            }),
+        ),
+        getIntentStatus: vi.fn(),
+        splitIntents: vi.fn(),
+        getPortfolio: vi.fn(),
+        getAppFeeBalances: vi.fn(),
+      },
+      rpc: { forChain },
+      bundler: {
+        estimateGas: vi.fn(),
+        getGasPrice: vi.fn(),
+        send: vi.fn(),
+        getReceipt: vi.fn(),
+      },
+      clock: {
+        now: () => 0,
+        sleep: vi.fn(),
+        timeout: <T>(promise: Promise<T>) => promise,
+      },
+    } satisfies CoreDependencies
+    const account = createAccountFacade(
+      compatibilityConfig,
+      { evm: compatibilityConfig as EvmAccountConfig },
+      createCoreComposition(sdk, dependencies),
+    )
+    const transaction = {
+      source: { chain: source, token: mainnetUsdc },
+      destination: {
+        chain: destination,
+        token: optimismUsdc,
+        amount: 1n,
+        recipient: recipientAddress,
+      },
+      signers,
+    }
+    return {
+      account,
+      transaction,
+      signers,
+      sourceSession,
+      destinationSession,
+      sourceOwner,
+      destinationOwner,
+      createQuote,
+      submitIntent,
+      readContract,
+      forChain,
+      expectUnsigned: () => {
+        for (const signer of [sourceOwner, destinationOwner]) {
+          expect(signer.sign).not.toHaveBeenCalled()
+          expect(signer.signMessage).not.toHaveBeenCalled()
+          expect(signer.signTypedData).not.toHaveBeenCalled()
+        }
+      },
+    }
+  }
+
+  // Signer implementations are local capabilities, not JSON data.
+  function restore(prepared: PreparedTransactionData): PreparedTransactionData {
+    const transported = JSON.parse(
+      JSON.stringify(prepared, (_key, value) =>
+        typeof value === 'bigint' ? { $bigint: String(value) } : value,
+      ),
+      (_key, value) =>
+        value && typeof value === 'object' && '$bigint' in value
+          ? BigInt(value.$bigint)
+          : value,
+    )
+    return {
+      ...transported,
+      transaction: {
+        ...transported.transaction,
+        signers: prepared.transaction.signers,
+      },
+    }
+  }
+
+  test.each([
+    { source: base, destination: arbitrum },
+    { source: arbitrum, destination: base },
+  ])(
+    'signs a restored external-recipient quote with chain-local grants ($source.id → $destination.id)',
+    async ({ source, destination }) => {
+      const f = fixture(source, destination)
+      const grantsBefore = JSON.stringify(serializeBigInts(f.signers))
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      const signed = await f.account.signTransaction(restore(prepared))
+      expect(signed.quote.intentId).toBe('best')
+      expect(signed.proofs).toHaveLength(2)
+      expect(signed.proofs[1]).not.toEqual(signed.proofs[0])
+      for (const [index, session] of [
+        f.sourceSession,
+        f.destinationSession,
+      ].entries()) {
+        const proof = signed.proofs[index]
+        if (proof?.kind !== 'eip712' || typeof proof.signature !== 'string')
+          throw new Error('Expected an EIP-712 session proof')
+        expect(proof.signature).toContain(session.permissionId.slice(2))
+      }
+      expect(JSON.stringify(serializeBigInts(f.signers))).toBe(grantsBefore)
+      expect(f.sourceOwner.signMessage).toHaveBeenCalledOnce()
+      expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
+      expect(f.createQuote).toHaveBeenCalledTimes(2)
+      await f.account.submitTransaction(signed)
+      expect(f.submitIntent).toHaveBeenCalledOnce()
+    },
+  )
+
+  test.each(['missing', 'wrong-chain'] as const)(
+    'refuses a restored selected quote with a %s destination grant before signing',
+    async (selection) => {
+      const f = fixture()
+      const prepared = restore(
+        await f.account.prepareTransaction(f.transaction),
+      )
+      const sessions: Record<number, { session: Session }> = {
+        [base.id]: { session: f.sourceSession },
+      }
+      if (selection === 'wrong-chain')
+        sessions[arbitrum.id] = { session: f.sourceSession }
+      const artifact = {
+        ...prepared,
+        transaction: {
+          ...f.transaction,
+          signers: { type: 'session' as const, sessions },
+        },
+      }
+      f.createQuote.mockClear()
+      await expect(f.account.signTransaction(artifact)).rejects.toThrow(
+        selection === 'missing'
+          ? /No session configured for chain 42161/
+          : /chain 42161 belongs to chain 8453/,
+      )
+      await expect(f.account.signAuthorizations(artifact)).rejects.toThrow(
+        selection === 'missing'
+          ? /No session configured for chain 42161/
+          : /chain 42161 belongs to chain 8453/,
+      )
+      f.expectUnsigned()
+      expect(f.submitIntent).not.toHaveBeenCalled()
+      expect(f.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(['mode', 'mocks', 'restrictions'] as const)(
+    'refuses an exact restored quote with incompatible %s without re-quoting',
+    async (change) => {
+      const f = fixture()
+      const prepared = restore(
+        await f.account.prepareTransaction(f.transaction),
+      )
+      const destinationSession: Session = {
+        ...f.destinationSession,
+        ...(change === 'mode' ? { hasExplicitPermissions: true } : {}),
+        ...(change === 'mocks'
+          ? { permissionId: `0x${'99'.repeat(32)}` as Hex }
+          : {}),
+        ...(change === 'restrictions'
+          ? {
+              access: {
+                kind: 'scoped' as const,
+                reason: 'Explicit route restriction',
+              },
+              settlementLayers: ['ACROSS' as const],
+            }
+          : {}),
+      }
+      const artifact = {
+        ...prepared,
+        transaction: {
+          ...f.transaction,
+          signers: {
+            type: 'session' as const,
+            sessions: {
+              ...f.signers.sessions,
+              [arbitrum.id]: { session: destinationSession },
+            },
+          },
+        },
+      }
+      f.createQuote.mockClear()
+      await expect(f.account.signTransaction(artifact)).rejects.toThrow(
+        /exact quote is incompatible.*fresh transaction/,
+      )
+      await expect(f.account.signAuthorizations(artifact)).rejects.toThrow(
+        /exact quote is incompatible.*fresh transaction/,
+      )
+      f.expectUnsigned()
+      expect(f.submitIntent).not.toHaveBeenCalled()
+      expect(f.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(['cached', 'restored'] as const)(
+    'does not let an unused alternative impose a destination grant (%s)',
+    async (path) => {
+      const f = fixture(base, arbitrum, false)
+      const prepared = await f.account.prepareTransaction({
+        ...f.transaction,
+        signers: {
+          type: 'session',
+          sessions: { [base.id]: { session: f.sourceSession } },
+        },
+      })
+      expect(f.createQuote).toHaveBeenCalledOnce()
+      expect(
+        f.readContract.mock.calls.every(
+          ([context]) => context.chain.id !== arbitrum.id,
+        ),
+      ).toBe(true)
+      const artifact = path === 'restored' ? restore(prepared) : prepared
+      await expect(
+        f.account.signTransaction(artifact, { intentId: 'alternate' }),
+      ).rejects.toThrow(/No session configured for chain 42161/)
+      f.expectUnsigned()
+      const signed = await f.account.signTransaction(artifact)
+      expect(signed.proofs).toHaveLength(1)
+      expect(f.createQuote).toHaveBeenCalledOnce()
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(['missing', 'wrong-chain', 'enforcement', 'routing'] as const)(
+    'revalidates a mutated destination grant despite a warm cache (%s)',
+    async (change) => {
+      const f = fixture()
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      if (change === 'missing') {
+        delete f.signers.sessions[arbitrum.id]
+      } else {
+        f.signers.sessions[arbitrum.id] = {
+          session:
+            change === 'wrong-chain'
+              ? f.sourceSession
+              : {
+                  ...f.destinationSession,
+                  ...(change === 'enforcement'
+                    ? { oneTimeUse: { id: 17n, policy: recipientAddress } }
+                    : {
+                        access: {
+                          kind: 'scoped' as const,
+                          reason: 'Changed routing scope',
+                        },
+                        settlementLayers: ['ACROSS' as const],
+                      }),
+                },
+        }
+      }
+      f.createQuote.mockClear()
+      const reason =
+        change === 'missing'
+          ? /No session configured for chain 42161/
+          : change === 'wrong-chain'
+            ? /chain 42161 belongs to chain 8453/
+            : change === 'enforcement'
+              ? /oneTimeUse burn/
+              : /exact quote is incompatible.*fresh transaction/
+      await expect(f.account.signTransaction(prepared)).rejects.toThrow(reason)
+      await expect(f.account.signAuthorizations(prepared)).rejects.toThrow(
+        reason,
+      )
+      f.expectUnsigned()
+      expect(f.createQuote).not.toHaveBeenCalled()
+      expect(f.submitIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test('revalidates a changed best quote on the same cached artifact', async () => {
+    const f = fixture(base, arbitrum, false)
+    const prepared = await f.account.prepareTransaction({
+      ...f.transaction,
+      signers: {
+        type: 'session',
+        sessions: { [base.id]: { session: f.sourceSession } },
+      },
+    })
+    prepared.quotes.best = prepared.quotes.all.find(
+      ({ intentId }) => intentId === 'alternate',
+    )!
+    await expect(f.account.signTransaction(prepared)).rejects.toThrow(
+      /No session configured for chain 42161/,
+    )
+    f.expectUnsigned()
+    expect(f.createQuote).toHaveBeenCalledOnce()
+    expect(f.submitIntent).not.toHaveBeenCalled()
+  })
+
+  test.each(['cached', 'restored'] as const)(
+    'refuses an alternate quote whose request lacks the required destination mock (%s)',
+    async (path) => {
+      const f = fixture(base, arbitrum, false)
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      await expect(
+        f.account.signTransaction(
+          path === 'restored' ? restore(prepared) : prepared,
+          { intentId: 'alternate' },
+        ),
+      ).rejects.toThrow(/exact quote is incompatible.*fresh transaction/)
+      f.expectUnsigned()
+      expect(f.createQuote).toHaveBeenCalledOnce()
+      expect(f.submitIntent).not.toHaveBeenCalled()
+    },
+  )
+
+  test('ignores an unused supplied destination grant with incompatible enforcement and routing', async () => {
+    const f = fixture(base, arbitrum, false)
+    const unused: Session = {
+      ...f.destinationSession,
+      access: { kind: 'scoped', reason: 'Unused restricted grant' },
+      settlementLayers: ['ACROSS'],
+      oneTimeUse: { id: 17n, policy: recipientAddress },
+    }
+    const prepared = await f.account.prepareTransaction({
+      ...f.transaction,
+      signers: {
+        type: 'session',
+        sessions: { ...f.signers.sessions, [arbitrum.id]: { session: unused } },
+      },
+    })
+    await f.account.signTransaction(restore(prepared))
+    expect(f.createQuote).toHaveBeenCalledOnce()
+    expect(
+      f.readContract.mock.calls.every(
+        ([context]) => context.chain.id !== arbitrum.id,
+      ),
+    ).toBe(true)
+    expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
+  })
+
+  test('direct signIntent does not prepare execution for an unused destination grant', async () => {
+    const f = fixture(base, arbitrum, false)
+    const prepared = await f.account.prepareTransaction(f.transaction)
+    f.readContract.mockClear()
+    const signed = await f.account.signIntent(
+      f.account.getTransactionMessages(prepared),
+      arbitrum,
+      {
+        type: 'session',
+        sessions: {
+          ...f.signers.sessions,
+          [arbitrum.id]: {
+            session: {
+              ...f.destinationSession,
+              oneTimeUse: { id: 17n, policy: recipientAddress },
+            },
+          },
+        },
+      },
+    )
+    expect(signed.proofs).toHaveLength(1)
+    expect(
+      f.readContract.mock.calls.every(
+        ([context]) => context.chain.id === base.id,
+      ),
+    ).toBe(true)
+    expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
+    expect(f.createQuote).toHaveBeenCalledOnce()
+  })
+
+  test.each([false, true])(
+    'direct signIntent resolves only provided authorization requirements (destination required: %s)',
+    async (needsDestination) => {
+      const f = fixture()
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      const requests = f.account.getTransactionMessages(prepared)
+      f.createQuote.mockClear()
+      f.forChain.mockClear()
+      if (needsDestination) {
+        await expect(
+          f.account.signIntent(requests, arbitrum, {
+            type: 'session',
+            session: f.sourceSession,
+          }),
+        ).rejects.toThrow(/No session configured for chain 42161/)
+        f.expectUnsigned()
+      } else {
+        const signed = await f.account.signIntent(
+          requests.slice(0, 1),
+          arbitrum,
+          { type: 'session', session: f.sourceSession },
+        )
+        expect(signed.proofs).toHaveLength(1)
+        expect(
+          f.forChain.mock.calls.every(([chain]) => chain.id !== arbitrum.id),
+        ).toBe(true)
+        expect(f.sourceOwner.signMessage).toHaveBeenCalledOnce()
+      }
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
+      expect(f.createQuote).not.toHaveBeenCalled()
+      expect(f.submitIntent).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe('EVM prepared artifacts from an earlier wire version', () => {

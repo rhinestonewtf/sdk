@@ -113,6 +113,7 @@ import {
 } from '../transactions/intents/compatibility'
 import { normalizeIntentQuote } from '../transactions/intents/normalize'
 import { assertSupportedSigningRequests } from '../transactions/intents/prepare'
+import { sameSessionRequest } from '../transactions/intents/session-quote'
 import {
   SOLANA_AUTHORITY_SPONSORSHIP,
   type SolanaEvmExecution,
@@ -1006,10 +1007,15 @@ function toPublicQuote(quote: OrchestratorExecutionQuote): Quote {
   }) as Quote
 }
 
+interface CachedPreparedIntent {
+  readonly prepared: PreparedIntent<Compat>
+  readonly transaction: Transaction
+}
+
 function toPreparedTransactionData(
   prepared: PreparedIntent<Compat>,
   transaction: Transaction,
-  cache: WeakMap<object, PreparedIntent<Compat>>,
+  cache: WeakMap<object, CachedPreparedIntent>,
 ): PreparedTransactionData {
   const data: PreparedTransactionData = {
     quotes: {
@@ -1021,7 +1027,10 @@ function toPreparedTransactionData(
     request: projectPreparedBinding(prepared.request),
     transaction,
   }
-  cache.set(data, prepared)
+  cache.set(data, {
+    prepared,
+    transaction: cloneArtifactValue(transaction),
+  })
   return data
 }
 
@@ -1200,7 +1209,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
 ): ManagedEvmAccount<C> & ManagedSolanaDeployment {
   // Intent identity caches are facade-scoped. Values crossing account/SDK
   // instances are reconstructed and validated by the receiving account.
-  const preparedIntents = new WeakMap<object, PreparedIntent<Compat>>()
+  const preparedIntents = new WeakMap<object, CachedPreparedIntent>()
   const signedIntents = new WeakMap<object, SignedIntent<Compat>>()
   const context = (
     method: AccountInvocationContext<LegacyAccountConfig<unknown>>['method'],
@@ -1260,7 +1269,20 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
       )
     }
     const cached = preparedIntents.get(prepared)
-    if (cached && !intentId) return Promise.resolve(cached)
+    if (
+      cached &&
+      !intentId &&
+      sameSessionRequest(cached.transaction, prepared.transaction) &&
+      sameSessionRequest(
+        toPublicQuote(cached.prepared.quote),
+        prepared.quotes.best,
+      ) &&
+      sameSessionRequest(
+        projectPreparedBinding(cached.prepared.request),
+        prepared.request,
+      )
+    )
+      return Promise.resolve(cached.prepared)
     return workflowsFor(ctx).reconstructPreparedIntent(
       ctx,
       reconstructInput(ctx, prepared, intentId),

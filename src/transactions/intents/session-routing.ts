@@ -1,4 +1,5 @@
 import type { Session } from '../../modules/validators/smart-sessions/types'
+import { sessionChains } from './sessions'
 import type { IntentInput, IntentOptions } from './types'
 
 type LayerFilter = NonNullable<IntentOptions['settlementLayers']>
@@ -10,16 +11,13 @@ type Quoter = Extract<QuoterFilter, { include: unknown }>['include'][number]
 export function constrainSessionIntent<C>(
   intent: IntentInput<C>,
   account: string,
+  participatingChainIds?: readonly number[],
 ): IntentInput<C> {
   if (intent.signers?.kind !== 'smart-session') return intent
-  const chainIds = new Set<number>()
-  if (intent.source) chainIds.add(intent.source.chain.id)
-  if (
-    intent.destination.kind === 'evm' &&
-    (!intent.recipient ||
-      intent.recipient.address.toLowerCase() === account.toLowerCase())
+  const chainIds = new Set(
+    participatingChainIds ??
+      sessionChains(intent, account).map((chain) => chain.id),
   )
-    chainIds.add(intent.destination.id)
   const sessions = Object.entries(intent.signers.byChain)
     .filter(([id]) => chainIds.has(Number(id)))
     .map(([, selected]) => selected.session)
@@ -69,6 +67,15 @@ export function constrainSessionIntent<C>(
     intent.options?.settlementLayers,
   )
   const quoters = quoterPin(sessions, intent.options?.quoters)
+  if (
+    participatingChainIds &&
+    quoters &&
+    'include' in quoters &&
+    !quoters.include.length
+  )
+    throw new Error(
+      'quoters: no quoter is compatible with the participating smart sessions. Prepare a fresh transaction with compatible grants and route filters.',
+    )
   return {
     ...intent,
     ...(source ? { source } : {}),

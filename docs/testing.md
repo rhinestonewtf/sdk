@@ -62,6 +62,17 @@ signer, the typed refusal, and the `getAuthorityStatus` mapping. Live
 authority changes are not covered offline. Offline tests never execute a Solana
 mainnet transfer.
 
+Smart Session intent regressions in `src/transactions/intents/workflow.test.ts`
+cover Base ↔ Arbitrum external-recipient authorization, chain-local grants and
+enable data, repeated source-domain payloads, missing/misbound grants, unused
+destination selections, unsupported burns, and the one-refresh bound with final
+request/sponsorship consistency. `src/api/account.test.ts` and
+`src/api/compose.test.ts` cover restored and alternate quotes, warm-cache
+revalidation, exact-quote incompatibility without re-quoting, and direct signing
+without invented destination execution. These deterministic tests do not prove
+live ACROSS liquidity or settlement; testnet acceptance must verify ACROSS itself
+in both directions against the exact candidate SDK, not fallback success.
+
 The pure-core gate requires 95% statements, lines, and functions and 90%
 branches. Contract-only files are excluded. The architecture check rejects
 forbidden layer edges, concrete-client imports, published-barrel imports, and
