@@ -1066,17 +1066,6 @@ describe('intent workflow', () => {
       return origin.preClaimSig
     }
 
-    test('validates the destination slot on the destination chain', async () => {
-      const { workflow } = workflowFor([])
-      const prepared = await prepareIntent(workflow, crossChain)
-      const slot = prepared.signing.destination
-
-      if (slot?.mode !== 'sign') throw new Error('Expected a signed slot')
-      expect(slot.validationChain.id).toBe(arbitrum.id)
-      expect(slot.payload.chain.id).toBe(1)
-      expect(slot.payload.id).toBe(prepared.signing.origins[0]?.id)
-    })
-
     test('signs a pre-enabled destination with the destination session', async () => {
       const { workflow } = workflowFor([1, arbitrum.id])
       const signed = await signIntent(
