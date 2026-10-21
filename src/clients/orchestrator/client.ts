@@ -19,7 +19,7 @@ import { assertSponsorshipApproval } from './sponsorship-approval'
 import type { OrchestratorQuoteContext } from './types'
 import type { WireChainsResponse } from './wire'
 
-const SDK_VERSION = '3.0.1'
+const SDK_VERSION = '3.1.0'
 const API_VERSION = '2026-09.caucasus'
 // Bounds how long a killed layer or pulled settlement address stays pinnable.
 const CHAIN_CATALOG_TTL_MS = 10 * 60 * 1000
