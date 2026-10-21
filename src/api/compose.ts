@@ -69,7 +69,10 @@ import type {
   SignerInvocationPort,
   SigningCheckpointPort,
 } from '../signing/types'
-import { accountChainIdFromOrigins } from '../transactions/intents/origin-chain'
+import {
+  accountChainIdFromOrigins,
+  originChainId,
+} from '../transactions/intents/origin-chain'
 import {
   buildIntentSigningInput,
   prepareIntent,
@@ -894,6 +897,9 @@ async function signIntentFromSignData<CompatibilityConfig>(
     const preparedSessions = await prepareIntentSessions<CompatibilityConfig>({
       intent: {
         destination: input.targetChain,
+        sourceChains: [
+          ...new Set(input.signData.origin.map(originChainId)),
+        ].map(toEvmChainReference),
         calls: [],
         tokenRequests: [],
         signers: input.signers,

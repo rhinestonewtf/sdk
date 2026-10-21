@@ -27,7 +27,10 @@ export interface IntentSigningPayload {
 export type DestinationSigningRequirement =
   | {
       readonly mode: 'sign'
+      /** `payload.chain` is the signing domain, which Permit2 routes set to the source chain. */
       readonly payload: IntentSigningPayload
+      /** The intent's destination chain, whose account validates this envelope. */
+      readonly validationChain: EvmChainReference
       readonly artifactId: string
     }
   | {

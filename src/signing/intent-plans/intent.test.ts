@@ -1002,6 +1002,7 @@ describe('intent signing plans', () => {
             mode: 'sign',
             artifactId: 'destination',
             payload: destinationPayload,
+            validationChain: destinationPayload.chain,
           },
         },
         stages: signedDestination.stages.map((stage) => ({
@@ -1031,6 +1032,7 @@ describe('intent signing plans', () => {
               ...incompatibleDestination.intent.origins[0],
               id: `0x${'12'.repeat(32)}`,
             },
+            validationChain: incompatibleDestination.intent.origins[0].chain,
           },
         },
       }),

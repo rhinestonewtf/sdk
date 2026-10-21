@@ -300,10 +300,11 @@ export function buildIntentSigningInput(
     ...topology,
     origins: origins.map(({ artifactId: _artifactId, ...origin }) => origin),
     destination:
-      sessions && destinationSession && destinationPayload
+      sessions && destinationChain && destinationSession && destinationPayload
         ? {
             mode: 'sign',
             payload: destinationPayload,
+            validationChain: destinationChain,
             artifactId: 'destination',
           }
         : {

@@ -41,7 +41,7 @@ import { sendIntent } from './send'
 import { buildSessionIntentPlanInput } from './session-signing'
 import { signIntent, signIntentAsOwner } from './sign-transaction'
 import { submitIntent } from './submit'
-import type { IntentWorkflowContext } from './types'
+import type { IntentWorkflowContext, SignedIntent } from './types'
 
 const chain = toEvmChainReference(1)
 const account = privateKeyToAccount(
@@ -1011,6 +1011,251 @@ describe('intent workflow', () => {
     })
   })
 
+  describe('cross-chain destination session', () => {
+    const POLICY = '0x00000000000000000000000000000000000000aa' as const
+    const destination = toEvmChainReference(arbitrum.id)
+    const sourceSession = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [account] },
+      oneTimeUse: { id: 17n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    const destinationSession = toSession({
+      chain: arbitrum,
+      owners: { type: 'ecdsa', accounts: [secondAccount] },
+      oneTimeUse: { id: 17n },
+      policyAddresses: { oneTimeUseId: POLICY },
+    })
+    const enableData = (index: number) => ({
+      userSignature: signature,
+      hashesAndChainIds: [
+        { chainId: 1n, sessionDigest: `0x${'22'.repeat(32)}` as const },
+        {
+          chainId: BigInt(arbitrum.id),
+          sessionDigest: `0x${'33'.repeat(32)}` as const,
+        },
+      ],
+      sessionToEnableIndex: index,
+    })
+    const signers = {
+      kind: 'smart-session' as const,
+      byChain: {
+        1: { session: sourceSession, enableData: enableData(0) },
+        [arbitrum.id]: {
+          session: destinationSession,
+          enableData: enableData(1),
+        },
+      },
+    }
+    const workflowFor = (enabledOn: readonly number[]) => {
+      const read = vi.fn(async (checkpoint) => [
+        {
+          kind: 'session-enabled' as const,
+          id: checkpoint.id,
+          enabled: enabledOn.includes(checkpoint.chain.id),
+        },
+      ])
+      return { read, workflow: context({ checkpoints: { read } }) }
+    }
+    const crossChain = { ...input, destination, sourceChains: [chain], signers }
+    const preClaim = (signed: Pick<SignedIntent, 'originSignatures'>) => {
+      const [origin] = signed.originSignatures
+      if (typeof origin !== 'object') {
+        throw new Error('Expected a Smart Session signature pair')
+      }
+      return origin.preClaimSig
+    }
+
+    test('signs a pre-enabled destination with the destination session', async () => {
+      const { workflow } = workflowFor([1, arbitrum.id])
+      const signed = await signIntent(
+        workflow,
+        await prepareIntent(workflow, crossChain),
+      )
+
+      expect(
+        preClaim(signed).startsWith(
+          `0x00${sourceSession.permissionId.slice(2)}`,
+        ),
+      ).toBe(true)
+      expect(
+        signed.destinationSignature.startsWith(
+          `0x00${destinationSession.permissionId.slice(2)}`,
+        ),
+      ).toBe(true)
+      expect(signed.destinationSignature).not.toBe(preClaim(signed))
+    })
+
+    test('enables a fresh destination session on the destination chain', async () => {
+      const { read, workflow } = workflowFor([])
+      const prepared = await prepareIntent(workflow, crossChain)
+      const plan = buildSessionIntentPlanInput(
+        prepared,
+        createAccountSigningContext({
+          runtime: runtime(),
+          purpose: 'intent',
+          signerInvoker: { invoke: vi.fn() },
+        }),
+      )
+      const stage = plan.stages.find(({ id }) => id === 'destination')
+
+      expect(stage?.checkpoint).toMatchObject({
+        kind: 'session-enabled',
+        chain: { id: arbitrum.id },
+        permissionId: destinationSession.permissionId,
+      })
+      expect(stage?.tasks).not.toHaveLength(0)
+      expect(stage?.tasks.every((task) => task.chain?.id === arbitrum.id)).toBe(
+        true,
+      )
+      expect(stage?.artifacts.map(({ id }) => id)).toEqual(['destination'])
+      expect(stage?.artifacts[0]?.validatorCodec).toMatchObject({
+        kind: 'smart-session-state',
+        whenDisabled: {
+          permissionId: destinationSession.permissionId,
+          enableData: {
+            sessionToEnableIndex: 1,
+            hashesAndChainIds: [
+              { chainId: 1n },
+              { chainId: BigInt(arbitrum.id) },
+            ],
+          },
+        },
+      })
+
+      const signed = await signIntent(workflow, prepared)
+      expect(read).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chain: expect.objectContaining({ id: arbitrum.id }),
+          permissionId: destinationSession.permissionId,
+        }),
+      )
+      expect(signed.destinationSignature).toMatch(/^0x01/u)
+      expect(signed.destinationSignature).not.toBe(preClaim(signed))
+    })
+
+    test('signs the destination with its session without destination calls', async () => {
+      const { workflow } = workflowFor([1, arbitrum.id])
+      const signed = await signIntent(
+        workflow,
+        await prepareIntent(workflow, { ...crossChain, calls: [] }),
+      )
+
+      expect(
+        signed.destinationSignature.startsWith(
+          `0x00${destinationSession.permissionId.slice(2)}`,
+        ),
+      ).toBe(true)
+    })
+
+    test('keeps an owner-signed cross-chain destination reusing the origin', async () => {
+      const prepared = await prepareIntent(context(), {
+        ...input,
+        destination,
+      })
+
+      expect(prepared.signing.destination).toEqual({
+        mode: 'reuse-origin',
+        artifactId: 'destination',
+        originArtifactId: 'origin-0',
+        selection: 'whole',
+      })
+    })
+
+    test("does not evaluate the destination session's claim policy against the source message", () => {
+      const restricted = (on: typeof mainnet | typeof arbitrum) =>
+        ({
+          kind: 'smart-session' as const,
+          session: toSession({
+            chain: on,
+            owners: { type: 'ecdsa', accounts: [account] },
+            claimPolicies: [
+              {
+                type: 'permit2',
+                originOps: [{ chain: on, required: false }],
+              },
+            ],
+          }),
+          verifyExecutions: true,
+        }) as const
+      const permit2 = {
+        domain: {
+          name: 'Permit2',
+          chainId: 1,
+          verifyingContract: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
+        },
+        types: {
+          PermitBatchWitnessTransferFrom: [
+            { name: 'permitted', type: 'TokenPermissions[]' },
+            { name: 'spender', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'mandate', type: 'Mandate' },
+          ],
+          TokenPermissions: [
+            { name: 'token', type: 'address' },
+            { name: 'amount', type: 'uint256' },
+          ],
+          Mandate: [{ name: 'originOps', type: 'Op' }],
+          Op: [
+            { name: 'vt', type: 'bytes32' },
+            { name: 'ops', type: 'Ops[]' },
+          ],
+          Ops: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+          ],
+        },
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        message: {
+          permitted: [{ token: address, amount: 1n }],
+          spender: address,
+          nonce: 1n,
+          deadline: 1n,
+          mandate: {
+            originOps: {
+              vt: `0x${'00'.repeat(32)}`,
+              ops: [{ to: address, value: 0n, data: '0x' }],
+            },
+          },
+        },
+      } as unknown as TypedDataDefinition
+      const prepared = {
+        signing: {
+          origins: [],
+          destination: {
+            mode: 'sign',
+            artifactId: 'destination',
+            payload: {
+              id: `0x${'44'.repeat(32)}`,
+              chain,
+              typedData: permit2,
+            },
+            validationChain: destination,
+          },
+        },
+        resolvedSessions: {
+          1: restricted(mainnet),
+          [arbitrum.id]: restricted(arbitrum),
+        },
+        sessionEnvironment: 'production',
+      } as never
+      const signing = createAccountSigningContext({
+        runtime: runtime(),
+        purpose: 'intent',
+        signerInvoker: { invoke: vi.fn() },
+      })
+
+      const plan = buildSessionIntentPlanInput(prepared, signing)
+      expect(
+        plan.stages
+          .find(({ id }) => id === 'destination')
+          ?.artifacts.map(({ id }) => id),
+      ).toEqual(['destination'])
+    })
+  })
+
   describe('dummy pre-claim action', () => {
     const POLICY = '0x00000000000000000000000000000000000000aa' as const
     const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
@@ -1202,9 +1447,10 @@ describe('intent workflow', () => {
           artifactId: 'destination',
           payload: {
             id: `0x${'33'.repeat(32)}`,
-            chain: destination,
-            typedData: typedData(destination.id),
+            chain: source,
+            typedData: typedData(source.id),
           },
+          validationChain: destination,
         },
       },
       resolvedSessions: {
