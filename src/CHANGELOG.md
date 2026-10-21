@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 3.0.1
+
+### Patch Changes
+
+- b71a00e: Fix cross-chain smart-session intents with own-account destination calls failing destination simulation: the destination authorization is now signed with the destination chain's session instead of reusing the source chain's envelope.
+
 ## 3.0.0
 
 ### Major Changes
