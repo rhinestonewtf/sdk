@@ -122,7 +122,9 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
   }
   const destination = prepared.signing.destination
   if (destination?.mode === 'sign') {
-    const session = requireSession(prepared, destination.payload.chain.id)
+    // Session envelopes are chain-local, and the destination message repeats
+    // the origin's source-domain payload, so sign with the destination session.
+    const session = requireSession(prepared, destination.validationChain.id)
     stages.push(
       buildSessionStage({
         id: 'destination',
@@ -130,13 +132,12 @@ export function buildSessionIntentPlanInput<CompatibilityConfig>(
         usage: 'intent-destination',
         typedData: destination.payload.typedData,
         payloadId: destination.payload.id,
-        chain: destination.payload.chain,
+        chain: destination.validationChain,
         session,
         environment: requireSessionEnvironment(prepared),
         context,
         payloads,
         output: session.verifyExecutions ? 'pre-claim' : 'notarized',
-        includeNotarized: session.verifyExecutions,
       }),
     )
   } else if (destination) {
@@ -204,7 +205,6 @@ function buildSessionStage(input: {
   readonly context: SigningContext
   readonly payloads: Record<Hex, SigningPayloadRegistry[Hex]>
   readonly output: 'pair' | 'pre-claim' | 'notarized'
-  readonly includeNotarized?: boolean
 }): IntentSigningPlanCreationInput['stages'][number] {
   const signing = sessionOwnerSigning(
     input.session,
@@ -224,11 +224,7 @@ function buildSessionStage(input: {
       }
     : { kind: 'none' as const, id: `${input.id}:none` }
   const notarizedId = `${input.id}:notarized`
-  if (
-    input.output === 'pair' ||
-    input.output === 'notarized' ||
-    input.includeNotarized
-  ) {
+  if (input.output === 'pair' || input.output === 'notarized') {
     const payloadId = notarizedPayload(
       input.context.account.address,
       input.payloadId,

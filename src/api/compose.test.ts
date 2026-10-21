@@ -766,6 +766,67 @@ describe('internal core composition', () => {
     expect(signed.destinationSignature).toMatch(/^0x/u)
   })
 
+  test('headless signIntent signs both slots of a cross-chain session pair', async () => {
+    const base = fixture()
+    const read = vi.fn(async () => true)
+    const dependencies = {
+      ...base.dependencies,
+      rpc: {
+        forChain: () => ({
+          ...base.dependencies.rpc.forChain(),
+          readContract: read as never,
+        }),
+      },
+    }
+    const workflows = createCoreComposition(
+      base.context.sdk,
+      dependencies,
+    ).createAccount(base.context).workflows
+    const sessionOn = (on: typeof arbitrum | { id: 1 }, signer: Account) =>
+      toSession({
+        chain: on as never,
+        owners: { type: 'ecdsa', accounts: [signer] },
+        oneTimeUse: { id: 17n },
+        policyAddresses: { oneTimeUseId: `0x${'aa'.repeat(20)}` },
+      })
+    const source = sessionOn({ id: 1 }, owner)
+    const destination = sessionOn(
+      arbitrum,
+      privateKeyToAccount(`0x${'00'.repeat(31)}02`),
+    )
+    const typedData = {
+      domain: { chainId: 1, verifyingContract: target },
+      types: { Test: [{ name: 'value', type: 'uint256' }] },
+      primaryType: 'Test',
+      message: { value: 1n },
+    } as const
+
+    const signed = await workflows.signIntentFromSignData(base.context, {
+      signData: { origin: [typedData], destination: typedData },
+      targetChain: toEvmChainReference(arbitrum.id),
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: { session: source },
+          [arbitrum.id]: { session: destination },
+        },
+      },
+    })
+
+    const [origin] = signed.originSignatures
+    if (typeof origin !== 'object') {
+      throw new Error('Expected a Smart Session signature pair')
+    }
+    expect(
+      origin.preClaimSig.startsWith(`0x00${source.permissionId.slice(2)}`),
+    ).toBe(true)
+    expect(
+      signed.destinationSignature.startsWith(
+        `0x00${destination.permissionId.slice(2)}`,
+      ),
+    ).toBe(true)
+  })
+
   test('createSession resolves the wrapped-native token from the chain catalog', async () => {
     const base = fixture()
     const weth = '0x4200000000000000000000000000000000000006'
