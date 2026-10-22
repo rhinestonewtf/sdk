@@ -1132,6 +1132,21 @@ describe('quote plan and recorded executions', () => {
     })
   })
 
+  test('omits a Swig authority change run by a solver', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'svm',
+        chainId: SOLANA,
+        account: swig,
+        execution: { executedBy: { kind: 'solver', address }, authority },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.destination).not.toHaveProperty('execution')
+  })
+
   test('tags HyperCore actions and keeps the settlement its own EVM tags', () => {
     const plan = planOf({
       source: [],

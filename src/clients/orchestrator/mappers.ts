@@ -301,16 +301,15 @@ function mapExecutionFromWire(
   }
   if ('authority' in execution) {
     if (vm !== 'svm') return undefined
+    const executedBy =
+      'executedBy' in execution ? execution.executedBy : undefined
+    // Only the Swig state account runs an authority change.
+    if (executedBy && executedBy.kind !== 'account') return undefined
     return {
       vm,
       chainId,
-      ...('executedBy' in execution
-        ? {
-            executedBy: {
-              kind: execution.executedBy.kind as 'account',
-              address: execution.executedBy.address,
-            },
-          }
+      ...(executedBy
+        ? { executedBy: { kind: 'account', address: executedBy.address } }
         : {}),
       authority: mapSolanaAuthorityFromWire(execution.authority),
     }
