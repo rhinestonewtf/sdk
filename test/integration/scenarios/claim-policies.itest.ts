@@ -4,6 +4,7 @@ import type { RhinestoneAccount, Session } from '../../../src/index'
 import { toSession } from '../../../src/smart-sessions/index'
 import { sourceChain, targetChain } from '../config/chains'
 import { createIntegrationSDK } from '../config/environment'
+import { crossChainSessionIntent } from '../framework/claim-policies'
 import { createOwner } from '../framework/fixtures'
 import { ensureFunded, waitForOrchestratorUsdc } from '../framework/funding'
 import {
@@ -18,7 +19,6 @@ import { getTokenAddress } from '../framework/tokens'
 // The Permit2 claim is signed on the source chain; a same-chain intent would
 // never exercise its ERC-1271 recipient gate.
 const UNRELATED: Address = '0x4444444444444444444444444444444444444444'
-const MOVED = 10_000n
 const FUNDING = 100_000n
 
 function permitSession(account: Address, recipient?: Address): Session {
@@ -130,39 +130,4 @@ async function expectSettled(
   expectOriginSignatures(execution.signed, 'dual')
   expectNoFailedOperations(execution.status)
   expectCompletedOperation(execution.status, targetChain.id)
-}
-
-async function crossChainSessionIntent(
-  account: RhinestoneAccount,
-  session: Session,
-): Promise<Parameters<RhinestoneAccount['prepareTransaction']>[0]> {
-  const sessionDetails = await account.getSessionDetails([session])
-  const userSignature = await account.signEnableSession(sessionDetails)
-
-  return {
-    source: {
-      chain: sourceChain,
-      token: getTokenAddress('USDC', sourceChain.id),
-      maxAmount: FUNDING,
-    },
-    // A real token delivery forces a source-chain Permit2 claim; empty calls
-    // alone could settle without ever consulting the recipient policy.
-    destination: {
-      chain: targetChain,
-      token: getTokenAddress('USDC', targetChain.id),
-      amount: MOVED,
-      calls: [],
-    },
-    sponsored: true,
-    settlementLayers: { include: ['ACROSS'] },
-    signers: {
-      type: 'session',
-      session,
-      enableData: {
-        userSignature,
-        hashesAndChainIds: sessionDetails.hashesAndChainIds,
-        sessionToEnableIndex: 0,
-      },
-    },
-  }
 }
