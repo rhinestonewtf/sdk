@@ -54,6 +54,8 @@ function pinForChains(input: {
   readonly sourceVia: readonly unknown[] | undefined
   readonly destinationChainId: number
   readonly destinationVia: readonly unknown[] | undefined
+  /** Without own destination calls the destination grant only authorizes. */
+  readonly authorizationOnlyDestination?: boolean
 }) {
   const sessions = {
     [input.sourceChainId]: { session: session(input.sourceVia) },
@@ -62,9 +64,13 @@ function pinForChains(input: {
   const intent = adaptTransaction(
     { account: {} } as never,
     {
-      destination: { chain: { id: input.destinationChainId } },
+      destination: {
+        chain: { id: input.destinationChainId },
+        calls: input.authorizationOnlyDestination
+          ? []
+          : [{ to: SETTLER, data: '0x' }],
+      },
       source: { chain: { id: input.sourceChainId }, token: USDC },
-      calls: [],
       signers: { type: 'session', sessions },
     } as never,
   ) as { options?: { quoters?: unknown } }
@@ -177,6 +183,20 @@ describe('quoter pin derived from a session venue scope', () => {
         sourceVia: [zeroEx({ settler: SETTLER })],
         destinationChainId: 10,
         destinationVia: [rhinestoneSwap()],
+      }),
+    ).toEqual({ include: ['0x'] })
+  })
+
+  test('an authorization-only destination session does not narrow the source pin', () => {
+    // Without own destination calls the destination grant only signs payloads a
+    // cross-chain fill never consumes, so its venues must not veto routes.
+    expect(
+      pinForChains({
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER })],
+        destinationChainId: 10,
+        destinationVia: [fynd()],
+        authorizationOnlyDestination: true,
       }),
     ).toEqual({ include: ['0x'] })
   })

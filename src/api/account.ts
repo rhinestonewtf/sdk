@@ -2645,8 +2645,16 @@ export function adaptTransaction(
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
       ...(() => {
+        // A cross-chain destination without own calls only authorizes, so its
+        // grant must not narrow routes. A self-recipient with calls is re-pinned
+        // by the core once the account address is known.
+        const destinationRoutes =
+          destinationChainId !== undefined &&
+          (!sourceChain ||
+            sourceChain.id === destinationChainId ||
+            ((evmTarget.calls?.length ?? 0) > 0 && !evmTarget.recipient))
         const derived = quoterPinFromSession(transaction.signers, [
-          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(destinationRoutes ? [destinationChainId] : []),
           ...(sourceChain ? [sourceChain.id] : []),
         ])
         const quoters = narrowQuoterPin(derived, transaction.quoters)
