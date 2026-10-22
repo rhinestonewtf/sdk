@@ -57,6 +57,7 @@ function sessions(
     mockSignatures: { 1: '0xaaaa' },
     preClaimCalls: [preClaim],
     destinationBurn: burn,
+    routingChainIds: [1],
     ...overrides,
   }
 }
@@ -65,7 +66,7 @@ function quoted(input: IntentInput, prepared = sessions()) {
   const constrained = constrainSessionIntent(
     input,
     account.address,
-    Object.keys(prepared.byChain).map(Number),
+    prepared.routingChainIds,
   )
   return buildIntentRequest({
     transaction: { ...constrained, signatureMode: prepared.signatureMode },
@@ -352,5 +353,50 @@ describe('assertSessionQuoteCompatible', () => {
       },
       sessions: prepared,
     })
+  })
+  test('ignores route pins of resolved grants outside routing participation', () => {
+    const pinned: Session = {
+      ...baseSession,
+      chain: { ...mainnet, id: destinationChain.id },
+      access: { kind: 'scoped', reason: 'ECO only' },
+      settlementLayers: ['ECO_IE'],
+    }
+    const input = intent({
+      options: { settlementLayers: { include: ['ACROSS'] } },
+      signers: {
+        kind: 'smart-session',
+        byChain: {
+          1: { session: baseSession },
+          [destinationChain.id]: { session: pinned },
+        },
+      },
+    })
+    const prepared = sessions({
+      byChain: {
+        ...sessions().byChain,
+        [destinationChain.id]: {
+          kind: 'smart-session',
+          session: pinned,
+          verifyExecutions: true,
+        },
+      },
+      mockSignatures: { 1: '0xaaaa', [destinationChain.id]: '0xbbbb' },
+    })
+    const request = quoted(input, prepared)
+    expect(request.options?.settlementLayers).toEqual({ include: ['ACROSS'] })
+    assertSessionQuoteCompatible({
+      intent: input,
+      account: account.address,
+      request,
+      sessions: prepared,
+    })
+    expect(() =>
+      assertSessionQuoteCompatible({
+        intent: input,
+        account: account.address,
+        request,
+        sessions: { ...prepared, routingChainIds: [1, destinationChain.id] },
+      }),
+    ).toThrow('no settlement layer')
   })
 })
