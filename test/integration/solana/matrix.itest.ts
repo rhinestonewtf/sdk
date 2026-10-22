@@ -273,7 +273,11 @@ function validateQuote(cell: SolanaCell, quote: Quote, before: Balances) {
   if (cell.row === 'OUT-C') {
     const { fixture: f } = ready()
     expect(quote.plan.destination.vm).toBe('evm')
-    assertEvmCallExecution(quote.plan.destination.execution, f.evmAddress)
+    assertEvmCallExecution(
+      quote.plan.destination.execution,
+      f.evmAddress,
+      baseChain,
+    )
     expect(
       quote.signingRequests.some(
         (r) => r.account.vm === 'svm' && r.purpose === 'originAuthorization',

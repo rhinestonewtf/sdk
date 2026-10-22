@@ -565,6 +565,22 @@ not approve or wrap anything on your behalf.
 
 `TokenRequirements`, `ApprovalRequired` and `WrapRequired` are removed.
 
+Each plan leg's `execution` names the same `vm` and `chainId` as its leg, so
+narrow on `execution.vm`. Call values are bigints. A HyperCore execution's
+`settlement` is absent when you sent no HyperEVM calls, and a full read's
+`executions.destination` is `null` when the record holds no destination
+execution:
+
+```ts
+const execution = quote.plan.destination.execution
+if (execution?.vm === 'evm') execution.calls[0]?.value // bigint
+if (execution?.vm === 'hypercore' && execution.settlement) {
+  execution.settlement.calls
+}
+
+const recorded = status.details?.executions?.destination // PlanExecution | null
+```
+
 ### Swig authority is optional recorded evidence
 
 A Swig account summary always identifies its asset-holding `wallet` and

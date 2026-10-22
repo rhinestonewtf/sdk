@@ -926,7 +926,12 @@ interface IntentAccountSummary {
   account: IntentAccountView
 }
 
-/** Calls or instructions a plan discloses, and who runs them. */
+/**
+ * Calls or instructions a plan discloses, and who runs them.
+ *
+ * Narrow on `vm`. In a quote plan, `vm` and `chainId` repeat those of the
+ * enclosing {@link PlanLeg}. Call values are bigints.
+ */
 type PlanExecution =
   | {
       vm: 'evm'
@@ -953,8 +958,12 @@ type PlanExecution =
       vm: 'hypercore'
       chainId: Caip2ChainId
       actions?: { action?: HyperCoreAction; nonce: number; agent: Address }[]
-      /** The HyperEVM transaction that settles the actions. */
-      settlement: {
+      /**
+       * The caller's own HyperEVM calls that settle the actions. Absent when the
+       * caller sent no HyperEVM calls, and on records written before caller
+       * calls were attributed.
+       */
+      settlement?: {
         vm: 'evm'
         chainId: Caip2ChainId
         executedBy?: { kind: 'account' | 'solver'; address: Address }
@@ -966,6 +975,7 @@ interface PlanLeg {
   vm: 'evm' | 'svm' | 'tvm' | 'stellar' | 'hypercore'
   chainId: Caip2ChainId
   account: IntentAccountView
+  /** What runs on this leg, tagged with the leg's own `vm` and `chainId`. */
   execution?: PlanExecution
 }
 
@@ -1220,10 +1230,11 @@ interface IntentDetails {
   /**
    * What actually ran. The destination `calls` may include orchestration the
    * caller did not write, unlike a quote's caller-execution disclosure.
+   * `destination` is `null` when the record holds no destination execution.
    */
   executions?: {
     source: Extract<PlanExecution, { vm: 'evm' }>[]
-    destination: PlanExecution
+    destination: PlanExecution | null
   }
   deployments?: IntentAccountSummary[]
   cost: {

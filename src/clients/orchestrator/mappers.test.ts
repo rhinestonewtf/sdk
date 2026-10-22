@@ -11,6 +11,7 @@ import type {
   OrchestratorQuote,
   OrchestratorSignedIntent,
 } from './types'
+import type { WireQuotePlan, WireRecordedExecutions } from './wire'
 
 function bridgeFillOf(route: OrchestratorQuote | undefined) {
   return route?.purpose === 'execution' ? route.bridgeFill : undefined
@@ -999,5 +1000,320 @@ describe('mapIntentStatusFromWire', () => {
     expect(mapped.details?.cost.sponsoredValue).toBe(42n)
     // Absent recorded facts stay absent rather than becoming empty arrays.
     expect(mapped.details).not.toHaveProperty('executions')
+  })
+})
+
+describe('quote plan and recorded executions', () => {
+  const BASE_SEPOLIA = 'eip155:84532'
+  const HYPER_EVM = 'eip155:999'
+  const HYPERCORE = 'hypercore:perp'
+  const wallet = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
+  const swigAccount = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const evmAccount = { address, type: 'erc7579' as const }
+  const swig = { wallet, swigAccount }
+  const executor = { kind: 'account' as const, address }
+  const calls = [
+    { to: address, value: '0', data: '0x' },
+    { to: address, value: '1000000000000000000', data: '0xa9059cbb' },
+  ]
+  const mappedCalls = [
+    { to: address, value: 0n, data: '0x' },
+    { to: address, value: 1000000000000000000n, data: '0xa9059cbb' },
+  ]
+  const instruction = {
+    programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+    accounts: [{ pubkey: wallet, isSigner: true, isWritable: true }],
+    data: 'CQ==',
+  }
+  const authority = {
+    action: 'add' as const,
+    key: { kind: 'secp256r1' as const, publicKey: `0x02${'11'.repeat(32)}` },
+    permission: 'allButManageAuthority' as const,
+    roleId: 3,
+    rent: { amount: '325120', usd: 0.05 },
+  }
+  const settlement = {
+    vm: 'evm' as const,
+    chainId: HYPER_EVM,
+    executedBy: executor,
+    calls,
+  }
+  const actions = [{ nonce: 1633493192000, agent: address }]
+
+  function planOf(
+    plan: WireQuotePlan,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const mapped = mapQuoteResponseFromWire({
+      status: 'quoted',
+      routes: [route({ plan, ...overrides })],
+    } as never)
+    return mapped.routes[0]?.plan
+  }
+
+  test('tags EVM source and destination executions with their block and converts call values', () => {
+    const plan = planOf({
+      source: [
+        {
+          vm: 'evm',
+          chainId: BASE,
+          account: evmAccount,
+          execution: { executedBy: executor, calls },
+        },
+      ],
+      destination: {
+        vm: 'evm',
+        chainId: BASE_SEPOLIA,
+        account: evmAccount,
+        execution: {
+          executedBy: { kind: 'solver', address },
+          calls: calls.slice(1),
+        },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.source[0]?.execution).toEqual({
+      vm: 'evm',
+      chainId: BASE,
+      executedBy: executor,
+      calls: mappedCalls,
+    })
+    expect(plan?.destination.execution).toEqual({
+      vm: 'evm',
+      chainId: BASE_SEPOLIA,
+      executedBy: { kind: 'solver', address },
+      calls: mappedCalls.slice(1),
+    })
+  })
+
+  test('tags Solana instructions with the block VM and chain', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'svm',
+        chainId: SOLANA,
+        account: swig,
+        execution: {
+          executedBy: { kind: 'account', address: swigAccount },
+          instructions: [instruction],
+          addressLookupTables: [swigAccount],
+        },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'svm',
+      chainId: SOLANA,
+      executedBy: { kind: 'account', address: swigAccount },
+      instructions: [instruction],
+      addressLookupTables: [swigAccount],
+    })
+  })
+
+  test('tags a Swig authority change and keeps its executor', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'svm',
+        chainId: SOLANA,
+        account: swig,
+        execution: {
+          executedBy: { kind: 'account', address: swigAccount },
+          authority,
+        },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'svm',
+      chainId: SOLANA,
+      executedBy: { kind: 'account', address: swigAccount },
+      authority,
+    })
+  })
+
+  test('tags HyperCore actions and keeps the settlement its own EVM tags', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'hypercore',
+        chainId: HYPERCORE,
+        account: { address },
+        execution: { actions, settlement },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'hypercore',
+      chainId: HYPERCORE,
+      actions,
+      settlement: { ...settlement, calls: mappedCalls },
+    })
+  })
+
+  test('leaves HyperCore settlement absent when the caller sent no HyperEVM calls', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'hypercore',
+        chainId: HYPERCORE,
+        account: { address },
+        execution: { actions },
+      },
+      deployments: [],
+    } satisfies WireQuotePlan)
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'hypercore',
+      chainId: HYPERCORE,
+      actions,
+    })
+    expect(plan?.destination.execution).not.toHaveProperty('settlement')
+  })
+
+  test('leaves execution absent on blocks and deployments that run nothing', () => {
+    const plan = planOf({
+      source: [{ vm: 'evm', chainId: BASE, account: evmAccount }],
+      destination: { vm: 'svm', chainId: SOLANA, account: swig },
+      deployments: [{ vm: 'svm', chainId: SOLANA, account: swig }],
+    } satisfies WireQuotePlan)
+
+    expect(plan).toEqual({
+      source: [{ vm: 'evm', chainId: BASE, account: evmAccount }],
+      destination: { vm: 'svm', chainId: SOLANA, account: swig },
+      deployments: [{ vm: 'svm', chainId: SOLANA, account: swig }],
+    })
+  })
+
+  test('maps a deployment route plan the same way', () => {
+    const plan = planOf(
+      {
+        source: [],
+        destination: {
+          vm: 'evm',
+          chainId: BASE,
+          account: evmAccount,
+          execution: { executedBy: executor, calls },
+        },
+        deployments: [{ vm: 'svm', chainId: SOLANA, account: swig }],
+      } satisfies WireQuotePlan,
+      { purpose: 'deployment', signingRequests: [], deploymentCosts: [] },
+    )
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'evm',
+      chainId: BASE,
+      executedBy: executor,
+      calls: mappedCalls,
+    })
+  })
+
+  // Plan disclosure is not what the user signs: a shape this SDK version does
+  // not know is tagged and passed on rather than failing the quote.
+  test('tags an unknown execution shape instead of refusing the quote', () => {
+    const plan = planOf({
+      source: [],
+      destination: {
+        vm: 'tvm',
+        chainId: 'tron:0x2b6653dc',
+        account: { address },
+        execution: { transfers: [] } as never,
+      },
+      deployments: [],
+    })
+
+    expect(plan?.destination.execution).toEqual({
+      vm: 'tvm',
+      chainId: 'tron:0x2b6653dc',
+    })
+  })
+
+  function executionsOf(executions: WireRecordedExecutions) {
+    const leg = { chainId: BASE, tokens: [], status: 'COMPLETED' }
+    return mapIntentStatusFromWire('intent-1', {
+      intentId: 'intent-1',
+      purpose: 'execution',
+      status: 'COMPLETED',
+      operations: [],
+      details: {
+        nonce: '1',
+        createdAt: 1,
+        latencyMs: 2,
+        settlementLayer: 'SAME_CHAIN',
+        source: [],
+        destination: leg,
+        executions,
+        cost: { sponsored: false },
+      },
+    }).details?.executions
+  }
+
+  test('converts recorded EVM call values to bigint', () => {
+    const executions = executionsOf({
+      source: [{ vm: 'evm', chainId: BASE, executedBy: executor, calls }],
+      destination: { vm: 'evm', chainId: BASE_SEPOLIA, calls },
+    } satisfies WireRecordedExecutions)
+
+    expect(executions).toEqual({
+      source: [
+        {
+          vm: 'evm',
+          chainId: BASE,
+          executedBy: executor,
+          calls: mappedCalls,
+        },
+      ],
+      destination: { vm: 'evm', chainId: BASE_SEPOLIA, calls: mappedCalls },
+    })
+    expect(executions?.destination).not.toHaveProperty('executedBy')
+  })
+
+  test('keeps a recorded Swig authority change without an executor', () => {
+    const executions = executionsOf({
+      source: [],
+      destination: { vm: 'svm', chainId: SOLANA, authority },
+    } satisfies WireRecordedExecutions)
+
+    expect(executions?.destination).toEqual({
+      vm: 'svm',
+      chainId: SOLANA,
+      authority,
+    })
+  })
+
+  test('keeps recorded HyperCore without settlement', () => {
+    const executions = executionsOf({
+      source: [],
+      destination: { vm: 'hypercore', chainId: HYPERCORE, actions },
+    } satisfies WireRecordedExecutions)
+
+    expect(executions?.destination).toEqual({
+      vm: 'hypercore',
+      chainId: HYPERCORE,
+      actions,
+    })
+  })
+
+  test('converts recorded HyperCore settlement call values', () => {
+    const executions = executionsOf({
+      source: [],
+      destination: {
+        vm: 'hypercore',
+        chainId: HYPERCORE,
+        actions,
+        settlement,
+      },
+    } satisfies WireRecordedExecutions)
+
+    expect(executions?.destination).toEqual({
+      vm: 'hypercore',
+      chainId: HYPERCORE,
+      actions,
+      settlement: { ...settlement, calls: mappedCalls },
+    })
   })
 })
