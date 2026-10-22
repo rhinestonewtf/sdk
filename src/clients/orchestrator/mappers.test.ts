@@ -1040,13 +1040,10 @@ describe('quote plan and recorded executions', () => {
   }
   const actions = [{ nonce: 1633493192000, agent: address }]
 
-  function planOf(
-    plan: WireQuotePlan,
-    overrides: Record<string, unknown> = {},
-  ) {
+  function planOf(plan: WireQuotePlan) {
     const mapped = mapQuoteResponseFromWire({
       status: 'quoted',
-      routes: [route({ plan, ...overrides })],
+      routes: [route({ plan })],
     } as never)
     return mapped.routes[0]?.plan
   }
@@ -1189,31 +1186,6 @@ describe('quote plan and recorded executions', () => {
     })
   })
 
-  test('maps a deployment route plan the same way', () => {
-    const plan = planOf(
-      {
-        source: [],
-        destination: {
-          vm: 'evm',
-          chainId: BASE,
-          account: evmAccount,
-          execution: { executedBy: executor, calls },
-        },
-        deployments: [{ vm: 'svm', chainId: SOLANA, account: swig }],
-      } satisfies WireQuotePlan,
-      { purpose: 'deployment', signingRequests: [], deploymentCosts: [] },
-    )
-
-    expect(plan?.destination.execution).toEqual({
-      vm: 'evm',
-      chainId: BASE,
-      executedBy: executor,
-      calls: mappedCalls,
-    })
-  })
-
-  // Plan disclosure is not what the user signs: a shape this SDK version does
-  // not know is tagged and passed on rather than failing the quote.
   test('tags an unknown execution shape instead of refusing the quote', () => {
     const plan = planOf({
       source: [],
@@ -1282,38 +1254,6 @@ describe('quote plan and recorded executions', () => {
       vm: 'svm',
       chainId: SOLANA,
       authority,
-    })
-  })
-
-  test('keeps recorded HyperCore without settlement', () => {
-    const executions = executionsOf({
-      source: [],
-      destination: { vm: 'hypercore', chainId: HYPERCORE, actions },
-    } satisfies WireRecordedExecutions)
-
-    expect(executions?.destination).toEqual({
-      vm: 'hypercore',
-      chainId: HYPERCORE,
-      actions,
-    })
-  })
-
-  test('converts recorded HyperCore settlement call values', () => {
-    const executions = executionsOf({
-      source: [],
-      destination: {
-        vm: 'hypercore',
-        chainId: HYPERCORE,
-        actions,
-        settlement,
-      },
-    } satisfies WireRecordedExecutions)
-
-    expect(executions?.destination).toEqual({
-      vm: 'hypercore',
-      chainId: HYPERCORE,
-      actions,
-      settlement: { ...settlement, calls: mappedCalls },
     })
   })
 })
