@@ -1056,7 +1056,10 @@ describe('internal core composition', () => {
         },
       },
     }
-    test('restoring a prepared intent validates the destination slot on the destination chain', async () => {
+    test.each([
+      ['an external recipient', false],
+      ['own-account destination calls', true],
+    ])('restoring a prepared intent for %s', async (_, executes) => {
       const { composition, context } = fixture()
       const workflows = composition.createAccount(context).workflows
       const account = workflows.getAddress(context, chain)
@@ -1067,8 +1070,10 @@ describe('internal core composition', () => {
       const intentInput = {
         destination,
         source: { chain, token: target },
-        recipient: { kind: 'bare' as const, address: target },
-        calls: [],
+        ...(executes
+          ? {}
+          : { recipient: { kind: 'bare' as const, address: target } }),
+        calls: executes ? [{ target, value: 0n, data: '0x' as Hex }] : [],
         signers,
       }
       const original = await workflows.prepareIntent(context, intentInput)
@@ -1084,8 +1089,9 @@ describe('internal core composition', () => {
       const slot = prepared.signing.requests[1]
       if (slot?.kind !== 'eip712') throw new Error('Expected EIP-712')
       expect(slot.payload.chain.id).toBe(1)
-      expect(slot.validationChain.id).toBe(arbitrum.id)
-      expect(slot.reuse).toBeUndefined()
+      // Only an executing destination validates the repeated payload itself.
+      expect(slot.validationChain.id).toBe(executes ? arbitrum.id : 1)
+      expect(slot.reuse?.artifactId).toBe(executes ? undefined : 'request-0')
     })
 
     function burnPayload() {
@@ -1298,33 +1304,55 @@ describe('internal core composition', () => {
       const workflows = composition.createAccount(context).workflows
       const account = workflows.getAddress(context, chain)
       const typedData = burnPayload()
+      const withDestinationOnce = {
+        ...sourceOnce,
+        byChain: {
+          ...sourceOnce.byChain,
+          [arbitrum.id]: {
+            ...signers.byChain[arbitrum.id],
+            session: toSession({
+              chain: arbitrum,
+              owners: { type: 'ecdsa', accounts: [owner] },
+              oneTimeUse: { id: 17n },
+              policyAddresses: { oneTimeUseId: target },
+            }),
+          },
+        },
+      }
+      // The repeated payload is answered by the origin proof, so the
+      // destination grant is never consulted.
+      const signed = await workflows.signIntentFromRequests(context, {
+        signingRequests: [
+          eip712Request({ chainId: 1, account, typedData }),
+          eip712Request({
+            chainId: 1,
+            account,
+            purpose: 'destinationAuthorization',
+            typedData,
+          }),
+        ],
+        targetChain: destination,
+        signers: withDestinationOnce,
+      })
+      const [origin, repeated] = signed.proofs
+      if (origin?.kind !== 'eip712' || typeof origin.signature === 'string')
+        throw new Error('Expected a Smart Session claim pair')
+      expect(repeated).toEqual({
+        kind: 'eip712',
+        signature: origin.signature.preClaim,
+      })
       await expect(
         workflows.signIntentFromRequests(context, {
           signingRequests: [
             eip712Request({ chainId: 1, account, typedData }),
             eip712Request({
-              chainId: 1,
+              chainId: arbitrum.id,
               account,
-              purpose: 'destinationAuthorization',
-              typedData,
+              purpose: 'targetExecutionAuthorization',
             }),
           ],
           targetChain: destination,
-          signers: {
-            ...sourceOnce,
-            byChain: {
-              ...sourceOnce.byChain,
-              [arbitrum.id]: {
-                ...signers.byChain[arbitrum.id],
-                session: toSession({
-                  chain: arbitrum,
-                  owners: { type: 'ecdsa', accounts: [owner] },
-                  oneTimeUse: { id: 17n },
-                  policyAddresses: { oneTimeUseId: target },
-                }),
-              },
-            },
-          },
+          signers: withDestinationOnce,
         }),
       ).rejects.toThrow(new RegExp(`chain ${arbitrum.id}.*oneTimeUse burn`))
     })

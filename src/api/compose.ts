@@ -89,7 +89,10 @@ import {
 import { requestSetId } from '../transactions/intents/proofs'
 import { sendIntent } from '../transactions/intents/send'
 import { assertSessionQuoteCompatible } from '../transactions/intents/session-quote'
-import { prepareIntentSessions } from '../transactions/intents/sessions'
+import {
+  executingDestination,
+  prepareIntentSessions,
+} from '../transactions/intents/sessions'
 import {
   assembleIntent,
   signIntent,
@@ -962,6 +965,10 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     context.account,
     dependencies,
   ).forChain(accountChain)
+  const executing = executingDestination(
+    input.intentInput,
+    runtime.identity.address,
+  )
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
   if (input.intentInput.signers?.kind === 'smart-session') {
     const prepared = await prepareIntentSessions<CompatibilityConfig>({
@@ -970,9 +977,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
       requiredChains: requiredIntentSessionChains(
         runtime,
         input.quote.signingRequests,
-        input.intentInput.destination.kind === 'evm'
-          ? input.intentInput.destination
-          : undefined,
+        executing,
       ),
       context: { checkpoints: checkpointPort(context.account, dependencies) },
     })
@@ -989,9 +994,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     runtime,
     input.quote,
     resolvedSessions,
-    input.intentInput.destination.kind === 'evm'
-      ? input.intentInput.destination
-      : undefined,
+    executing,
     input.intentInput.signers?.kind === 'owner'
       ? input.intentInput.signers.validator
       : undefined,
@@ -1046,7 +1049,6 @@ async function signIntentFromRequests<CompatibilityConfig>(
       requiredChains: requiredIntentSessionChains(
         runtime,
         input.signingRequests,
-        input.targetChain.kind === 'evm' ? input.targetChain : undefined,
       ),
       runtime,
       context: { checkpoints: checkpointPort(context.account, dependencies) },
@@ -1060,7 +1062,8 @@ async function signIntentFromRequests<CompatibilityConfig>(
     runtime,
     quote,
     resolvedSessions,
-    input.targetChain.kind === 'evm' ? input.targetChain : undefined,
+    // Direct signing runs no calls, so the origin answers its destination authorization.
+    undefined,
     input.signers?.kind === 'owner' ? input.signers.validator : undefined,
     input.signers?.kind === 'owner' ? input.signers.signerIds : undefined,
   )

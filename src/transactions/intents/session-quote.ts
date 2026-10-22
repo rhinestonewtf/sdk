@@ -37,7 +37,7 @@ export function assertSessionQuoteCompatible<C>(input: {
   const constrained = constrainSessionIntent(
     input.intent,
     input.account,
-    Object.keys(sessions.byChain).map(Number),
+    sessions.routingChainIds,
   )
   const evm = request.account.evm
   const mocks = Object.fromEntries(

@@ -381,12 +381,27 @@ quoting and binding sponsorship. One-time sessions burn before user calls, at
 most once per participating EVM chain; own destination execution burns separately
 unless it is the same chain.
 
-For external recipients, only the selected quote's authorization requirements
-add a destination session. Callers must supply that chain's explicit grant and,
-if it is not enabled, its enable data. Unused destination selections impose no
-reads, setup or routing restrictions. Missing grants and grants requiring a
-destination burn the route cannot execute are refused; preparation never derives
-a grant or inserts calls for an external recipient.
+The account **executes** on the explicit source and, when it runs the
+caller's own calls there, on the EVM destination. Those grants are resolved
+before quoting and checked strictly: present, bound to their chain, able to burn
+and enable.
+
+A cross-chain intent with an explicit source and no own-account destination
+calls (an external recipient, or the account itself without calls) only
+**authorizes** on the destination. A destination grant supplied for it — the
+single-grant form copies the source grant there — is resolved before quoting
+too. It adds its simulation mock and counts toward the signature mode, but it is
+never refused for its binding, one-time use or missing enable data, and adds no
+routing pins, enable calls or burns. It only signs destination-domain payloads
+such as ACROSS's target execution, which a cross-chain fill never consumes.
+Because every route of one prepared transaction then shares this session set, a
+fallback route selected by `intentId` signs without re-quoting.
+
+Other chains are resolved only once the selected quote needs them, under the
+strict checks; a destination-domain payload with no grant for its chain is
+refused before signing. Orchestrator-added destination operations on a route
+without caller calls still verify the reused origin proof on the destination
+(RHI-8508).
 
 If discovery changes signature mode, mocks or routing inputs, preparation
 refreshes the quote once with matching sponsorship authorization. Unstable
@@ -395,9 +410,11 @@ are never refreshed during signing: incompatible request inputs require fresh
 preparation. Direct signing resolves only the supplied authorization requests;
 a source one-time grant needs an already committed Permit2 burn.
 
-Session envelopes are chain-local, so destination authorization uses the
-account's destination grant even when its message repeats an origin's source
-domain or wire chain IDs. The signed payload, proof order and count stay
+Session envelopes are chain-local. A destination authorization repeats the
+origin's source-domain message; it is validated on the destination, with the
+destination grant, only when the account executes calls there. Otherwise —
+including direct signing — the origin proof answers it (its pre-claim half when
+the origin is a claim pair). The signed payload, proof order and count stay
 unchanged. Session-specific EVM behavior does not broaden managed/standalone
 Solana capabilities.
 
