@@ -1,7 +1,11 @@
 import type { PublicKey } from '@solana/web3.js'
 import { type Address, encodeFunctionData, erc20Abi } from 'viem'
 import { baseSepolia } from 'viem/chains'
-import type { SignedTransactionData, Transaction } from '../../../src/index'
+import type {
+  PlanExecution,
+  SignedTransactionData,
+  Transaction,
+} from '../../../src/index'
 import { solanaAddress, solanaDevnet } from '../../../src/solana/index'
 import {
   BASE_SEPOLIA_USDC,
@@ -182,23 +186,21 @@ export function assertGasSponsorship(
 }
 
 export function assertEvmCallExecution(
-  execution:
-    | {
-        vm?: string
-        executedBy?: { kind: string; address: string }
-        calls?: readonly unknown[]
-      }
-    | undefined,
+  execution: PlanExecution | undefined,
   account: Address,
+  chainId: string,
 ) {
-  // The wire plan tags its destination block with vm, not its nested execution.
+  // The SDK tags each execution with its plan block's VM and chain.
   if (
-    !execution?.calls?.length ||
+    execution?.vm !== 'evm' ||
+    execution.chainId !== chainId ||
+    !execution.calls.length ||
+    execution.calls.some((call) => typeof call.value !== 'bigint') ||
     execution.executedBy?.kind !== 'account' ||
     execution.executedBy.address.toLowerCase() !== account.toLowerCase()
   )
     throw new Error(
-      'EVM destination calls must execute through the fixture account',
+      `EVM destination calls on ${chainId} must execute through the fixture account`,
     )
 }
 

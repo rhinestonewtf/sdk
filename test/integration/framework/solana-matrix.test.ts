@@ -2,6 +2,7 @@ import { Keypair } from '@solana/web3.js'
 import { decodeFunctionData, erc20Abi } from 'viem'
 import { baseSepolia } from 'viem/chains'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { PlanExecution } from '../../../src/index'
 import { solanaDevnet } from '../../../src/solana/index'
 import {
   BASE_SEPOLIA_USDC,
@@ -126,16 +127,25 @@ describe('focused Solana live flows', () => {
 })
 
 describe('destination call disclosure', () => {
-  const execution = {
+  const chainId = 'eip155:84532'
+  const execution: PlanExecution = {
+    vm: 'evm',
+    chainId,
     executedBy: { kind: 'account', address: evmRecipient },
-    calls: [{}],
+    calls: [{ to: evmRecipient, value: 0n, data: '0x' }],
   }
-  it('accepts the wire execution without a redundant nested VM discriminator', () => {
-    expect(() => assertEvmCallExecution(execution, evmRecipient)).not.toThrow()
+  it('accepts an EVM execution tagged with the destination chain', () => {
+    expect(() =>
+      assertEvmCallExecution(execution, evmRecipient, chainId),
+    ).not.toThrow()
   })
   it.each([
     undefined,
+    { ...execution, vm: undefined },
+    { ...execution, vm: 'svm' },
+    { ...execution, chainId: 'eip155:8453' },
     { ...execution, calls: [] },
+    { ...execution, calls: [{ to: evmRecipient, value: '0', data: '0x' }] },
     { ...execution, executedBy: { kind: 'solver', address: evmRecipient } },
     {
       ...execution,
@@ -144,10 +154,10 @@ describe('destination call disclosure', () => {
         address: '0x0000000000000000000000000000000000000001',
       },
     },
-  ])('refuses missing calls or a different executor (#%#)', (value) => {
-    expect(() => assertEvmCallExecution(value, evmRecipient)).toThrow(
-      'fixture account',
-    )
+  ])('refuses an untagged, misplaced or foreign execution (#%#)', (value) => {
+    expect(() =>
+      assertEvmCallExecution(value as PlanExecution, evmRecipient, chainId),
+    ).toThrow('fixture account')
   })
 })
 

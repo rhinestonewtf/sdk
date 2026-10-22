@@ -268,11 +268,12 @@ export function authorityQuote(input: {
           swigAccount: input.swigAccount,
           authority: input.acting,
         },
-        // As the wire sends it: the block, not the execution, names VM and chain.
         execution: {
+          vm: 'svm',
+          chainId: input.chainId,
           executedBy: { kind: 'account', address: input.swigAccount },
           authority: structuredClone(input.disclosure),
-        } as unknown as NonNullable<QuotePlan['destination']['execution']>,
+        },
       },
       deployments: [],
     },

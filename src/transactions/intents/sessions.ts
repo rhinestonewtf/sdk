@@ -36,6 +36,8 @@ export interface PreparedIntentSessions {
   /** Session-enable pre-claim calls, run on the source chain before any others. */
   readonly preClaimCalls: readonly Call[]
   readonly destinationBurn?: Call
+  /** Resolved chains whose grants narrow the quoted routes. */
+  readonly routingChainIds: readonly number[]
 }
 
 export async function prepareIntentSessions<CompatibilityConfig>(input: {
@@ -56,12 +58,20 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
   const executionChains = input.authorizationOnly
     ? []
     : sessionChains(input.intent, input.runtime.identity.address)
+  // Its grant only answers destination-domain payloads that a cross-chain
+  // fill never consumes, so it is resolved for simulation parity but never
+  // refused, enabled, burned or used to narrow routes.
+  const lenient = input.authorizationOnly
+    ? undefined
+    : authorizationDestination(input.intent, input.runtime.identity.address)
+  const isLenient = (chainId: number) => chainId === lenient?.id
   const chains = [
     ...new Map(
-      [...executionChains, ...(input.requiredChains ?? [])].map((chain) => [
-        chain.id,
-        chain,
-      ]),
+      [
+        ...executionChains,
+        ...(lenient && selection.byChain[lenient.id] ? [lenient] : []),
+        ...(input.requiredChains ?? []),
+      ].map((chain) => [chain.id, chain]),
     ).values(),
   ]
   for (const chain of chains) {
@@ -70,6 +80,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       throw new Error(
         `No session configured for chain ${chain.id}. Supply an explicit grant for every required authorization chain.`,
       )
+    if (isLenient(chain.id)) continue
     if (selected.session.chain.id !== chain.id)
       throw new Error(
         `Session configured for chain ${chain.id} belongs to chain ${selected.session.chain.id}`,
@@ -90,6 +101,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       )
   }
   for (const chain of chains) {
+    if (isLenient(chain.id)) continue
     const once = selection.byChain[chain.id]?.session.oneTimeUse
     if (once?.defaultPolicy)
       assertOneTimeUseIdPolicyDeployed(once.policy, chain.id)
@@ -119,6 +131,7 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
       if (
         !enabled.enabled &&
         !selected.enableData &&
+        !isLenient(chain.id) &&
         !executionChains.some((candidate) => candidate.id === chain.id)
       )
         throw new Error(
@@ -231,6 +244,9 @@ export async function prepareIntentSessions<CompatibilityConfig>(input: {
     byChain,
     mockSignatures,
     preClaimCalls,
+    routingChainIds: resolvedEntries
+      .map(([chainId]) => chainId)
+      .filter((chainId) => !isLenient(chainId)),
   }
 }
 
@@ -328,20 +344,55 @@ function sourceBurnIsCommitted(
   )
 }
 
-// Virtual venues and other recipients do not host this account's session.
+/**
+ * The destination where this account runs the caller's own calls. Virtual
+ * venues and other recipients do not host this account's session, and without
+ * calls the destination authorization only repeats the origin.
+ */
+export function executingDestination<CompatibilityConfig>(
+  intent: IntentInput<CompatibilityConfig>,
+  account: string,
+): EvmChainReference | undefined {
+  const destination = intent.destination
+  if (
+    destination.kind !== 'evm' ||
+    isHyperCoreWireId(destination.id) ||
+    intent.calls.length === 0 ||
+    (intent.recipient &&
+      intent.recipient.address.toLowerCase() !== account.toLowerCase())
+  )
+    return undefined
+  return destination
+}
+
+/**
+ * A cross-chain destination this account only authorizes on: its grant signs
+ * destination-domain payloads, never the destination authorization.
+ */
+function authorizationDestination<CompatibilityConfig>(
+  intent: IntentInput<CompatibilityConfig>,
+  account: string,
+): EvmChainReference | undefined {
+  const destination = intent.destination
+  if (
+    !intent.source ||
+    destination.kind !== 'evm' ||
+    isHyperCoreWireId(destination.id) ||
+    destination.id === intent.source.chain.id ||
+    executingDestination(intent, account)
+  )
+    return undefined
+  return destination
+}
+
+/** The chains this account executes on: the explicit source and destination calls. */
 export function sessionChains<CompatibilityConfig>(
   intent: IntentInput<CompatibilityConfig>,
   account: string,
 ): readonly EvmChainReference[] {
   const chains = new Map<number, EvmChainReference>()
   if (intent.source) chains.set(intent.source.chain.id, intent.source.chain)
-  if (
-    intent.destination.kind === 'evm' &&
-    !isHyperCoreWireId(intent.destination.id) &&
-    (!intent.recipient ||
-      intent.recipient.address.toLowerCase() === account.toLowerCase())
-  ) {
-    chains.set(intent.destination.id, intent.destination)
-  }
+  const destination = executingDestination(intent, account)
+  if (destination) chains.set(destination.id, destination)
   return [...chains.values()]
 }

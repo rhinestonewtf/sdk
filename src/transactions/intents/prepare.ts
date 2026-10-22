@@ -36,7 +36,7 @@ import { selectIntentQuote } from './quotes'
 import { buildIntentRequest } from './request'
 import { sameSessionRequest } from './session-quote'
 import { constrainSessionIntent } from './session-routing'
-import { prepareIntentSessions } from './sessions'
+import { executingDestination, prepareIntentSessions } from './sessions'
 import type {
   IntentInput,
   IntentWorkflowContext,
@@ -47,24 +47,33 @@ export async function prepareIntent<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   input: IntentInput<CompatibilityConfig>,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
-  const originalInput = input
   const accountChain = selectAccountChain(input)
   const runtime = await context.account.forChain(accountChain)
-  input = constrainSessionIntent(input, runtime.identity.address)
   const calls = await resolveDestinationCalls(context, input, runtime)
+  // Lazy calls may resolve to nothing; the destination then only authorizes.
+  if (calls.length === 0 && input.calls.length > 0)
+    input = { ...input, calls: [] }
+  const originalInput = input
+  input = constrainSessionIntent(input, runtime.identity.address)
+  const executing = executingDestination(
+    originalInput,
+    runtime.identity.address,
+  )
   const source = await resolveSourceCalls(context, input, runtime)
   let sessions = await prepareIntentSessions({
     intent: input,
     runtime,
     context,
   })
-  const preClaimCalls = sessions?.preClaimCalls ?? []
-  if (preClaimCalls.length > 0 && !input.source) {
-    throw new UnsupportedAccountCapabilityError(
-      'Enabling the smart session runs a call on the source chain before the claim, and this transaction names no `source`. Add a `source`, or enable the session first.',
-      { field: 'source' },
-    )
+  const assertPreClaimSource = () => {
+    if (sessions?.preClaimCalls.length && !input.source)
+      throw new UnsupportedAccountCapabilityError(
+        'Enabling the smart session runs a call on the source chain before the claim, and this transaction names no `source`. Add a `source`, or enable the session first.',
+        { field: 'source' },
+      )
   }
+  assertPreClaimSource()
+  const preClaimCalls = sessions?.preClaimCalls ?? []
   const ownerSelection =
     input.signers?.kind === 'owner' ? input.signers : undefined
   const buildRequest = () =>
@@ -98,7 +107,7 @@ export async function prepareIntent<CompatibilityConfig>(
       const requiredChains = requiredIntentSessionChains(
         runtime,
         quote.signingRequests,
-        input.destination.kind === 'evm' ? input.destination : undefined,
+        executing,
       )
       sessions = await prepareIntentSessions({
         intent: originalInput,
@@ -107,10 +116,12 @@ export async function prepareIntent<CompatibilityConfig>(
         requiredChains,
         previous: sessions,
       })
+      // A destination without calls is only resolved once a quote needs it.
+      assertPreClaimSource()
       input = constrainSessionIntent(
         originalInput,
         runtime.identity.address,
-        Object.keys(sessions!.byChain).map(Number),
+        sessions!.routingChainIds,
       )
       return buildRequest()
     }
@@ -145,7 +156,7 @@ export async function prepareIntent<CompatibilityConfig>(
       runtime,
       quote,
       sessions?.byChain,
-      input.destination.kind === 'evm' ? input.destination : undefined,
+      executing,
       ownerSelection?.validator,
       ownerSelection?.signerIds,
     ),
@@ -254,7 +265,7 @@ const PURPOSE_USAGE = {
 function classifyRequests(
   requests: readonly SigningRequest[],
   sessions: PreparedIntent['resolvedSessions'],
-  destination: EvmChainReference | undefined,
+  executingDestination: EvmChainReference | undefined,
   binding: SigningRequestBinding,
 ): readonly IntentSigningRequest[] {
   const signed: {
@@ -275,14 +286,14 @@ function classifyRequests(
         const identity = signerIdentity(request)
         const artifactId = `request-${index}`
         // A destination authorization repeats the origin's source-domain
-        // message but is validated on the destination, and session envelopes
-        // are chain-local.
+        // message. It is validated on the destination only when the account
+        // executes calls there, and session envelopes are chain-local;
+        // otherwise the origin proof answers it.
         const validationChain =
           purpose === 'destinationAuthorization' &&
           sessions &&
-          destination &&
-          !isHyperCoreWireId(destination.id)
-            ? destination
+          executingDestination
+            ? executingDestination
             : chain
         const session = sessions?.[validationChain.id]
         const shape =
@@ -497,13 +508,13 @@ export function assertSupportedSigningRequests(
 export function requiredIntentSessionChains(
   runtime: AccountRuntime,
   requests: readonly SigningRequest[],
-  destination?: EvmChainReference,
+  executingDestination?: EvmChainReference,
 ): readonly EvmChainReference[] {
   assertSupportedSigningRequests(requests)
   const classified = classifyRequests(
     requests,
     {},
-    destination,
+    executingDestination,
     signingRequestBinding(runtime),
   )
   const chains = new Map<number, EvmChainReference>()
@@ -522,7 +533,7 @@ export function buildIntentSigningInput(
   runtime: AccountRuntime,
   quote: PreparedIntent['quote'],
   sessions?: PreparedIntent['resolvedSessions'],
-  destination?: EvmChainReference,
+  executingDestination?: EvmChainReference,
   ownerValidator?: import('../../modules/validators/types').ResolvedValidatorDefinition,
   selectedSignerIds?: readonly string[],
 ): IntentSigningInput {
@@ -530,7 +541,7 @@ export function buildIntentSigningInput(
   const requests = classifyRequests(
     quote.signingRequests,
     sessions,
-    destination,
+    executingDestination,
     signingRequestBinding(runtime),
   )
   if (sessions) {

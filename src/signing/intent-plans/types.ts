@@ -55,8 +55,9 @@ export type IntentSigningRequest =
       readonly payload: IntentSigningPayload
       /**
        * The chain whose account validates this proof's envelope. Equals
-       * `payload.chain` (the signing domain) except for a destination
-       * authorization signed under the destination chain's smart session.
+       * `payload.chain` (the signing domain) except for a smart-session
+       * destination authorization of an intent whose own account executes
+       * destination calls.
        */
       readonly validationChain: EvmChainReference
       readonly shape: 'hex' | 'session-claims'
