@@ -3797,7 +3797,10 @@ describe('quote-driven Smart Session API lifecycle', () => {
   function fixture(
     source: Chain = base,
     destination: Chain = arbitrum,
-    needsDestination = true,
+    // ACROSS adds a destination-domain target execution to the repeated
+    // source payload that intent-executor layers ask for.
+    best: 'origin' | 'executor' | 'across' = 'executor',
+    alternate: 'origin' | 'executor' | 'across' = 'executor',
   ) {
     function trackedSigner(account: typeof owner) {
       const signTypedData = vi.fn<
@@ -3858,17 +3861,29 @@ describe('quote-driven Smart Session API lifecycle', () => {
             ? origin.payload.typedData
             : undefined,
       })
-      const best = caucasusQuote({
-        intentId: 'best',
-        signingRequests: needsDestination
-          ? [origin, destinationRequest]
-          : [origin],
+      const targetExecution = eip712Request({
+        chainId: destination.id,
+        account,
+        purpose: 'targetExecutionAuthorization',
       })
-      const alternate = caucasusQuote({
-        intentId: 'alternate',
-        signingRequests: [origin, destinationRequest],
-      })
-      return { traceId: 'session-lifecycle', routes: [best, alternate] }
+      const route = (
+        intentId: string,
+        shape: 'origin' | 'executor' | 'across',
+      ) =>
+        caucasusQuote({
+          intentId,
+          ...(shape === 'across' ? { settlementLayer: 'ACROSS' as const } : {}),
+          signingRequests:
+            shape === 'origin'
+              ? [origin]
+              : shape === 'executor'
+                ? [origin, destinationRequest]
+                : [origin, destinationRequest, targetExecution],
+        })
+      return {
+        traceId: 'session-lifecycle',
+        routes: [route('best', best), route('alternate', alternate)],
+      }
     })
     const submitIntent = vi.fn(async () => ({
       traceId: 'submitted',
@@ -3968,11 +3983,18 @@ describe('quote-driven Smart Session API lifecycle', () => {
     }
   }
 
+  const sessionProof = (proof: unknown): Hex => {
+    const signed = proof as { kind?: string; signature?: unknown }
+    if (signed?.kind !== 'eip712' || typeof signed.signature !== 'string')
+      throw new Error('Expected an EIP-712 session proof')
+    return signed.signature as Hex
+  }
+
   test.each([
     { source: base, destination: arbitrum },
     { source: arbitrum, destination: base },
   ])(
-    'signs a restored external-recipient quote with chain-local grants ($source.id → $destination.id)',
+    'signs a restored external-recipient quote with the origin proof ($source.id → $destination.id)',
     async ({ source, destination }) => {
       const f = fixture(source, destination)
       const grantsBefore = JSON.stringify(serializeBigInts(f.signers))
@@ -3980,22 +4002,55 @@ describe('quote-driven Smart Session API lifecycle', () => {
       const signed = await f.account.signTransaction(restore(prepared))
       expect(signed.quote.intentId).toBe('best')
       expect(signed.proofs).toHaveLength(2)
-      expect(signed.proofs[1]).not.toEqual(signed.proofs[0])
-      for (const [index, session] of [
-        f.sourceSession,
-        f.destinationSession,
-      ].entries()) {
-        const proof = signed.proofs[index]
-        if (proof?.kind !== 'eip712' || typeof proof.signature !== 'string')
-          throw new Error('Expected an EIP-712 session proof')
-        expect(proof.signature).toContain(session.permissionId.slice(2))
-      }
+      expect(signed.proofs[1]).toEqual(signed.proofs[0])
+      expect(sessionProof(signed.proofs[0])).toContain(
+        f.sourceSession.permissionId.slice(2),
+      )
       expect(JSON.stringify(serializeBigInts(f.signers))).toBe(grantsBefore)
       expect(f.sourceOwner.signMessage).toHaveBeenCalledOnce()
-      expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
-      expect(f.createQuote).toHaveBeenCalledTimes(2)
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
+      expect(f.createQuote).toHaveBeenCalledOnce()
       await f.account.submitTransaction(signed)
       expect(f.submitIntent).toHaveBeenCalledOnce()
+    },
+  )
+
+  test('signs a target execution with the destination grant on its chain', async () => {
+    const f = fixture(base, arbitrum, 'across')
+    const prepared = await f.account.prepareTransaction(f.transaction)
+    const signed = await f.account.signTransaction(restore(prepared))
+    expect(signed.proofs).toHaveLength(3)
+    expect(signed.proofs[1]).toEqual(signed.proofs[0])
+    expect(sessionProof(signed.proofs[2])).toContain(
+      f.destinationSession.permissionId.slice(2),
+    )
+    expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
+    expect(f.createQuote).toHaveBeenCalledOnce()
+  })
+
+  test.each(['cached', 'restored'] as const)(
+    'signs every route of a single-grant transaction without re-quoting (%s)',
+    async (path) => {
+      const f = fixture(base, arbitrum, 'executor', 'across')
+      const signers = { type: 'session' as const, session: f.sourceSession }
+      const prepared = await f.account.prepareTransaction({
+        ...f.transaction,
+        signers,
+      })
+      const artifact = path === 'restored' ? restore(prepared) : prepared
+      for (const { intentId } of prepared.quotes.all) {
+        const signed = await f.account.signTransaction(artifact, { intentId })
+        expect(signed.quote.intentId).toBe(intentId)
+        expect(signed.proofs[1]).toEqual(signed.proofs[0])
+        if (intentId === 'alternate') {
+          expect(signed.proofs).toHaveLength(3)
+          expect(sessionProof(signed.proofs[2])).toContain(
+            f.sourceSession.permissionId.slice(2),
+          )
+        }
+      }
+      expect(f.createQuote).toHaveBeenCalledOnce()
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
     },
   )
 
@@ -4016,7 +4071,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
       const signed = await f.account.signTransaction(artifact)
       expect(signed.proofs).toHaveLength(2)
       expect(f.sourceOwner.signMessage).toHaveBeenCalledOnce()
-      expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
       expect(f.createQuote).not.toHaveBeenCalled()
     },
   )
@@ -4024,7 +4079,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
   test.each(['missing', 'wrong-chain'] as const)(
     'refuses a restored selected quote with a %s destination grant before signing',
     async (selection) => {
-      const f = fixture()
+      const f = fixture(base, arbitrum, 'across')
       const prepared = restore(
         await f.account.prepareTransaction(f.transaction),
       )
@@ -4041,15 +4096,15 @@ describe('quote-driven Smart Session API lifecycle', () => {
         },
       }
       f.createQuote.mockClear()
-      await expect(f.account.signTransaction(artifact)).rejects.toThrow(
+      // A source grant copied to the destination is accepted, but it changes
+      // the destination mock the exact quote was simulated with.
+      const reason =
         selection === 'missing'
           ? /No session configured for chain 42161/
-          : /chain 42161 belongs to chain 8453/,
-      )
+          : /exact quote is incompatible.*fresh transaction/
+      await expect(f.account.signTransaction(artifact)).rejects.toThrow(reason)
       await expect(f.account.signAuthorizations(artifact)).rejects.toThrow(
-        selection === 'missing'
-          ? /No session configured for chain 42161/
-          : /chain 42161 belongs to chain 8453/,
+        reason,
       )
       f.expectUnsigned()
       expect(f.submitIntent).not.toHaveBeenCalled()
@@ -4057,7 +4112,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
     },
   )
 
-  test.each(['mode', 'mocks', 'restrictions'] as const)(
+  test.each(['mode', 'mocks'] as const)(
     'refuses an exact restored quote with incompatible %s without re-quoting',
     async (change) => {
       const f = fixture()
@@ -4069,15 +4124,6 @@ describe('quote-driven Smart Session API lifecycle', () => {
         ...(change === 'mode' ? { hasExplicitPermissions: true } : {}),
         ...(change === 'mocks'
           ? { permissionId: `0x${'99'.repeat(32)}` as Hex }
-          : {}),
-        ...(change === 'restrictions'
-          ? {
-              access: {
-                kind: 'scoped' as const,
-                reason: 'Explicit route restriction',
-              },
-              settlementLayers: ['ACROSS' as const],
-            }
           : {}),
       }
       const artifact = {
@@ -4107,9 +4153,9 @@ describe('quote-driven Smart Session API lifecycle', () => {
   )
 
   test.each(['cached', 'restored'] as const)(
-    'does not let an unused alternative impose a destination grant (%s)',
+    'requires a destination grant only for the alternative that signs on the destination (%s)',
     async (path) => {
-      const f = fixture(base, arbitrum, false)
+      const f = fixture(base, arbitrum, 'origin', 'across')
       const prepared = await f.account.prepareTransaction({
         ...f.transaction,
         signers: {
@@ -4135,7 +4181,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
     },
   )
 
-  test.each(['missing', 'wrong-chain', 'enforcement', 'routing'] as const)(
+  test.each(['missing', 'wrong-chain', 'enforcement'] as const)(
     'revalidates a mutated destination grant despite a warm cache (%s)',
     async (change) => {
       const f = fixture()
@@ -4149,27 +4195,12 @@ describe('quote-driven Smart Session API lifecycle', () => {
               ? f.sourceSession
               : {
                   ...f.destinationSession,
-                  ...(change === 'enforcement'
-                    ? { oneTimeUse: { id: 17n, policy: recipientAddress } }
-                    : {
-                        access: {
-                          kind: 'scoped' as const,
-                          reason: 'Changed routing scope',
-                        },
-                        settlementLayers: ['ACROSS' as const],
-                      }),
+                  oneTimeUse: { id: 17n, policy: recipientAddress },
                 },
         }
       }
       f.createQuote.mockClear()
-      const reason =
-        change === 'missing'
-          ? /No session configured for chain 42161/
-          : change === 'wrong-chain'
-            ? /chain 42161 belongs to chain 8453/
-            : change === 'enforcement'
-              ? /oneTimeUse burn/
-              : /exact quote is incompatible.*fresh transaction/
+      const reason = /exact quote is incompatible.*fresh transaction/
       await expect(f.account.signTransaction(prepared)).rejects.toThrow(reason)
       await expect(f.account.signAuthorizations(prepared)).rejects.toThrow(
         reason,
@@ -4181,7 +4212,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
   )
 
   test('revalidates a changed best quote on the same cached artifact', async () => {
-    const f = fixture(base, arbitrum, false)
+    const f = fixture(base, arbitrum, 'origin', 'across')
     const prepared = await f.account.prepareTransaction({
       ...f.transaction,
       signers: {
@@ -4201,49 +4232,54 @@ describe('quote-driven Smart Session API lifecycle', () => {
   })
 
   test.each(['cached', 'restored'] as const)(
-    'refuses an alternate quote whose request lacks the required destination mock (%s)',
+    'signs an alternate quote with the destination mock of the prepared request (%s)',
     async (path) => {
-      const f = fixture(base, arbitrum, false)
+      const f = fixture(base, arbitrum, 'origin')
       const prepared = await f.account.prepareTransaction(f.transaction)
-      await expect(
-        f.account.signTransaction(
-          path === 'restored' ? restore(prepared) : prepared,
-          { intentId: 'alternate' },
-        ),
-      ).rejects.toThrow(/exact quote is incompatible.*fresh transaction/)
-      f.expectUnsigned()
+      const signed = await f.account.signTransaction(
+        path === 'restored' ? restore(prepared) : prepared,
+        { intentId: 'alternate' },
+      )
+      expect(signed.proofs).toHaveLength(2)
+      expect(signed.proofs[1]).toEqual(signed.proofs[0])
+      expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
       expect(f.createQuote).toHaveBeenCalledOnce()
-      expect(f.submitIntent).not.toHaveBeenCalled()
     },
   )
 
-  test('ignores an unused supplied destination grant with incompatible enforcement and routing', async () => {
-    const f = fixture(base, arbitrum, false)
-    const unused: Session = {
+  test('neither refuses nor pins routes for a destination grant with incompatible enforcement and routing', async () => {
+    const f = fixture(base, arbitrum, 'origin')
+    const restricted: Session = {
       ...f.destinationSession,
-      access: { kind: 'scoped', reason: 'Unused restricted grant' },
-      settlementLayers: ['ACROSS'],
+      access: { kind: 'scoped', reason: 'Restricted destination grant' },
+      settlementLayers: ['ECO'],
       oneTimeUse: { id: 17n, policy: recipientAddress },
     }
     const prepared = await f.account.prepareTransaction({
       ...f.transaction,
       signers: {
         type: 'session',
-        sessions: { ...f.signers.sessions, [arbitrum.id]: { session: unused } },
+        sessions: {
+          ...f.signers.sessions,
+          [arbitrum.id]: { session: restricted },
+        },
       },
     })
+    expect(f.createQuote.mock.calls[0]?.[0].options?.settlementLayers).toBe(
+      undefined,
+    )
     await f.account.signTransaction(restore(prepared))
     expect(f.createQuote).toHaveBeenCalledOnce()
     expect(
-      f.readContract.mock.calls.every(
-        ([context]) => context.chain.id !== arbitrum.id,
+      f.readContract.mock.calls.some(
+        ([context]) => context.chain.id === arbitrum.id,
       ),
     ).toBe(true)
     expect(f.destinationOwner.signMessage).not.toHaveBeenCalled()
   })
 
   test('direct signIntent does not prepare execution for an unused destination grant', async () => {
-    const f = fixture(base, arbitrum, false)
+    const f = fixture(base, arbitrum, 'origin')
     const prepared = await f.account.prepareTransaction(f.transaction)
     f.readContract.mockClear()
     const signed = await f.account.signIntent(
@@ -4272,15 +4308,15 @@ describe('quote-driven Smart Session API lifecycle', () => {
     expect(f.createQuote).toHaveBeenCalledOnce()
   })
 
-  test.each([false, true])(
-    'direct signIntent resolves only provided authorization requirements (destination required: %s)',
-    async (needsDestination) => {
-      const f = fixture()
+  test.each(['origin', 'repeat', 'target'] as const)(
+    'direct signIntent resolves only provided authorization requirements (%s)',
+    async (requirement) => {
+      const f = fixture(base, arbitrum, 'across')
       const prepared = await f.account.prepareTransaction(f.transaction)
       const requests = f.account.getTransactionMessages(prepared)
       f.createQuote.mockClear()
       f.forChain.mockClear()
-      if (needsDestination) {
+      if (requirement === 'target') {
         await expect(
           f.account.signIntent(requests, arbitrum, {
             type: 'session',
@@ -4290,11 +4326,13 @@ describe('quote-driven Smart Session API lifecycle', () => {
         f.expectUnsigned()
       } else {
         const signed = await f.account.signIntent(
-          requests.slice(0, 1),
+          requests.slice(0, requirement === 'origin' ? 1 : 2),
           arbitrum,
           { type: 'session', session: f.sourceSession },
         )
-        expect(signed.proofs).toHaveLength(1)
+        expect(signed.proofs).toHaveLength(requirement === 'origin' ? 1 : 2)
+        if (requirement === 'repeat')
+          expect(signed.proofs[1]).toEqual(signed.proofs[0])
         expect(
           f.forChain.mock.calls.every(([chain]) => chain.id !== arbitrum.id),
         ).toBe(true)

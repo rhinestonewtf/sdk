@@ -63,13 +63,16 @@ authority changes are not covered offline. Offline tests never execute a Solana
 mainnet transfer.
 
 Smart Session intent regressions in `src/transactions/intents/workflow.test.ts`
-cover Base ↔ Arbitrum external-recipient authorization, chain-local grants and
-enable data, repeated source-domain payloads, missing/misbound grants, unused
-destination selections, unsupported burns, and the one-refresh bound with final
+cover Base ↔ Arbitrum ACROSS and intent-executor request shapes: origin-proof
+reuse for the destination authorization, a single source grant answering the
+destination-domain target execution, lenient destination grants without routing
+pins, missing grants for destination-domain payloads, strict grants for
+own-account destination calls, and the one-refresh bound with final
 request/sponsorship consistency. `src/api/account.test.ts` and
-`src/api/compose.test.ts` cover restored and alternate quotes, warm-cache
-revalidation, exact-quote incompatibility without re-quoting, and direct signing
-without invented destination execution. These deterministic tests do not prove
+`src/api/compose.test.ts` cover restored and alternate quotes (every route of one
+prepared transaction signs without re-quoting), warm-cache revalidation,
+exact-quote incompatibility without re-quoting, and direct signing without
+invented destination execution. These deterministic tests do not prove
 live ACROSS liquidity or settlement; testnet acceptance must verify ACROSS itself
 in both directions against the exact candidate SDK, not fallback success.
 

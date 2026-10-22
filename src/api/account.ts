@@ -2645,8 +2645,13 @@ export function adaptTransaction(
         ? { settlementLayers: transaction.settlementLayers }
         : {}),
       ...(() => {
+        // The core pins cross-chain destination grants after resolving calls:
+        // lazy calls may resolve to nothing, leaving only authorization there.
+        const destinationRoutes =
+          destinationChainId !== undefined &&
+          (!sourceChain || sourceChain.id === destinationChainId)
         const derived = quoterPinFromSession(transaction.signers, [
-          ...(destinationChainId === undefined ? [] : [destinationChainId]),
+          ...(destinationRoutes ? [destinationChainId] : []),
           ...(sourceChain ? [sourceChain.id] : []),
         ])
         const quoters = narrowQuoterPin(derived, transaction.quoters)

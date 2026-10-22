@@ -38,11 +38,13 @@ const swapSession = (via: NonNullable<Session['swap']>['via']): Session => ({
   swap: { to: account.address, sell: { token }, buy: { token: other }, via },
 })
 
+// Only a destination running the account's own calls participates in routing.
 const withDestinationSession = (
   input: IntentInput,
   session: Session,
 ): IntentInput => ({
   ...input,
+  calls: [{ target: other, value: 0n, data: '0x' }],
   signers: {
     kind: 'smart-session',
     byChain: {
@@ -266,6 +268,10 @@ describe('singular session source and routing constraints', () => {
         account.address,
       ),
     ).toThrow('no settlement layer')
+    expect(
+      constrainSessionIntent({ ...input, calls: [] }, account.address).options
+        ?.settlementLayers,
+    ).toEqual({ include: ['ECO', 'CCTP'] })
   })
 
   test('open destination exclusions narrow scoped source pins', () => {
