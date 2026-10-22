@@ -965,14 +965,17 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     context.account,
     dependencies,
   ).forChain(accountChain)
-  const executing = executingDestination(
-    input.intentInput,
-    runtime.identity.address,
-  )
+  // Lazy calls may have resolved to nothing; the prepared request is what runs.
+  const destination = input.request.destination
+  const intentInput =
+    destination.vm === 'evm' && destination.execution?.calls.length
+      ? input.intentInput
+      : { ...input.intentInput, calls: [] }
+  const executing = executingDestination(intentInput, runtime.identity.address)
   let resolvedSessions: PreparedIntent<CompatibilityConfig>['resolvedSessions']
-  if (input.intentInput.signers?.kind === 'smart-session') {
+  if (intentInput.signers?.kind === 'smart-session') {
     const prepared = await prepareIntentSessions<CompatibilityConfig>({
-      intent: input.intentInput,
+      intent: intentInput,
       runtime,
       requiredChains: requiredIntentSessionChains(
         runtime,
@@ -983,7 +986,7 @@ async function reconstructPreparedIntent<CompatibilityConfig>(
     })
     if (prepared)
       assertSessionQuoteCompatible({
-        intent: input.intentInput,
+        intent: intentInput,
         account: runtime.identity.address,
         request: input.request,
         sessions: prepared,

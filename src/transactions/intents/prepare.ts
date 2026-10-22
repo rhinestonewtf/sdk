@@ -47,15 +47,18 @@ export async function prepareIntent<CompatibilityConfig>(
   context: IntentWorkflowContext<CompatibilityConfig>,
   input: IntentInput<CompatibilityConfig>,
 ): Promise<PreparedIntent<CompatibilityConfig>> {
-  const originalInput = input
   const accountChain = selectAccountChain(input)
   const runtime = await context.account.forChain(accountChain)
+  const calls = await resolveDestinationCalls(context, input, runtime)
+  // Lazy calls may resolve to nothing; the destination then only authorizes.
+  if (calls.length === 0 && input.calls.length > 0)
+    input = { ...input, calls: [] }
+  const originalInput = input
   input = constrainSessionIntent(input, runtime.identity.address)
   const executing = executingDestination(
     originalInput,
     runtime.identity.address,
   )
-  const calls = await resolveDestinationCalls(context, input, runtime)
   const source = await resolveSourceCalls(context, input, runtime)
   let sessions = await prepareIntentSessions({
     intent: input,

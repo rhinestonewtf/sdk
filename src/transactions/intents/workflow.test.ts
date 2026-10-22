@@ -1978,6 +1978,20 @@ describe('intent workflow', () => {
       expect(prepared.request.destination).not.toHaveProperty('execution')
     })
 
+    test('reuses the origin pre-claim when lazy destination calls resolve to nothing', async () => {
+      const { workflow } = crossChainWorkflow(true)
+      const prepared = await prepareCrossChain(workflow, [
+        { resolve: async () => [] },
+      ])
+
+      expect(eip712Slot(prepared.signing, 1).validationChain.id).toBe(1)
+      expect(eip712Slot(prepared.signing, 1).reuse).toEqual({
+        artifactId: 'request-0',
+        selection: 'pre-claim',
+      })
+      expect(prepared.request.destination).not.toHaveProperty('execution')
+    })
+
     test('reuses the origin signature for an owner-signed cross-chain intent', async () => {
       const { workflow } = crossChainWorkflow(true)
       const prepared = await prepareIntent(workflow, {

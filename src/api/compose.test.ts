@@ -1057,9 +1057,10 @@ describe('internal core composition', () => {
       },
     }
     test.each([
-      ['an external recipient', false],
-      ['own-account destination calls', true],
-    ])('restoring a prepared intent for %s', async (_, executes) => {
+      ['an external recipient', false, false],
+      ['own-account destination calls', true, false],
+      ['lazy destination calls that resolved to nothing', false, true],
+    ])('restoring a prepared intent for %s', async (_, executes, lazy) => {
       const { composition, context } = fixture()
       const workflows = composition.createAccount(context).workflows
       const account = workflows.getAddress(context, chain)
@@ -1070,10 +1071,14 @@ describe('internal core composition', () => {
       const intentInput = {
         destination,
         source: { chain, token: target },
-        ...(executes
+        ...(executes || lazy
           ? {}
           : { recipient: { kind: 'bare' as const, address: target } }),
-        calls: executes ? [{ target, value: 0n, data: '0x' as Hex }] : [],
+        calls: lazy
+          ? [{ resolve: async () => [] }]
+          : executes
+            ? [{ target, value: 0n, data: '0x' as Hex }]
+            : [],
         signers,
       }
       const original = await workflows.prepareIntent(context, intentInput)
