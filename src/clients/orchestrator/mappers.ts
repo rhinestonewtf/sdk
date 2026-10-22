@@ -206,8 +206,8 @@ function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
   }
 }
 
-// Plan disclosure is not what the user signs, so an unrecognised execution
-// shape is tagged and passed on rather than refused. Each field is read off the
+// Plan disclosure is not what the user signs, so an execution whose shape or
+// VM the public union does not model is omitted rather than refused. Each field is read off the
 // generated wire type, so a renamed or removed wire field fails the typecheck.
 
 type WireExecutionTag = { readonly vm: string; readonly chainId: string }
@@ -249,10 +249,16 @@ function mapPlanLegFromWire(block: WirePlanBlock): PlanLeg {
     account: block.account as IntentAccountView,
     // A quote names the VM and chain on the block only; the public execution
     // repeats them so it reads the same as a recorded one.
-    ...(block.execution
-      ? { execution: mapExecutionFromWire(block.execution, block) }
-      : {}),
+    ...mapOptionalExecutionFromWire(block.execution, block),
   }
+}
+
+function mapOptionalExecutionFromWire(
+  execution: WirePlanExecution | undefined,
+  tag: WireExecutionTag,
+): { execution?: PlanExecution } {
+  const mapped = execution && mapExecutionFromWire(execution, tag)
+  return mapped ? { execution: mapped } : {}
 }
 
 function mapRecordedExecutionsFromWire(
@@ -263,26 +269,28 @@ function mapRecordedExecutionsFromWire(
     destination:
       value.destination === null
         ? null
-        : mapExecutionFromWire(value.destination, value.destination),
+        : (mapExecutionFromWire(value.destination, value.destination) ?? null),
   }
 }
 
 function mapExecutionFromWire(
   execution: WireExecution,
-  tag: WireExecutionTag,
-): PlanExecution {
+  { vm, chainId }: WireExecutionTag,
+): PlanExecution | undefined {
   if ('calls' in execution) {
+    if (vm !== 'evm') return undefined
     return {
-      vm: tag.vm as 'evm',
-      chainId: tag.chainId,
+      vm,
+      chainId,
       ...mapExecutorFromWire(execution.executedBy),
       calls: execution.calls.map(mapExecutionCallFromWire),
     }
   }
   if ('instructions' in execution) {
+    if (vm !== 'svm') return undefined
     return {
-      vm: tag.vm as 'svm',
-      chainId: tag.chainId,
+      vm,
+      chainId,
       executedBy: {
         kind: execution.executedBy.kind,
         address: execution.executedBy.address,
@@ -292,9 +300,10 @@ function mapExecutionFromWire(
     }
   }
   if ('authority' in execution) {
+    if (vm !== 'svm') return undefined
     return {
-      vm: tag.vm as 'svm',
-      chainId: tag.chainId,
+      vm,
+      chainId,
       ...('executedBy' in execution
         ? {
             executedBy: {
@@ -306,9 +315,10 @@ function mapExecutionFromWire(
       authority: mapSolanaAuthorityFromWire(execution.authority),
     }
   }
+  if (vm !== 'hypercore') return undefined
   return {
-    vm: tag.vm as 'hypercore',
-    chainId: tag.chainId,
+    vm,
+    chainId,
     ...(execution.actions
       ? {
           actions: execution.actions.map((entry) => ({

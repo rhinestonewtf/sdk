@@ -1186,7 +1186,7 @@ describe('quote plan and recorded executions', () => {
     })
   })
 
-  test('tags an unknown execution shape instead of refusing the quote', () => {
+  test('omits an execution the public union does not model instead of refusing the quote', () => {
     const plan = planOf({
       source: [],
       destination: {
@@ -1198,9 +1198,10 @@ describe('quote plan and recorded executions', () => {
       deployments: [],
     })
 
-    expect(plan?.destination.execution).toEqual({
+    expect(plan?.destination).toEqual({
       vm: 'tvm',
       chainId: 'tron:0x2b6653dc',
+      account: { address },
     })
   })
 
@@ -1255,5 +1256,14 @@ describe('quote plan and recorded executions', () => {
       chainId: SOLANA,
       authority,
     })
+  })
+
+  test('records an unmodelled destination execution as null', () => {
+    const executions = executionsOf({
+      source: [],
+      destination: { vm: 'tvm', chainId: 'tron:0x2b6653dc', calls } as never,
+    })
+
+    expect(executions?.destination).toBeNull()
   })
 })
