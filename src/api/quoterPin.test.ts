@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { accountA } from '../../test/consts'
 import { toSession } from '../modules/validators/smart-sessions/resolve'
 import { fynd, rhinestoneSwap, zeroEx } from '../smart-sessions'
+import { constrainSessionIntent } from '../transactions/intents/session-routing'
 import { adaptTransaction } from './account'
 
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
@@ -56,6 +57,7 @@ function pinForChains(input: {
   readonly destinationVia: readonly unknown[] | undefined
   /** Without own destination calls the destination grant only authorizes. */
   readonly authorizationOnlyDestination?: boolean
+  readonly lazyEmptyDestination?: boolean
 }) {
   const sessions = {
     [input.sourceChainId]: { session: session(input.sourceVia) },
@@ -66,15 +68,21 @@ function pinForChains(input: {
     {
       destination: {
         chain: { id: input.destinationChainId },
-        calls: input.authorizationOnlyDestination
-          ? []
-          : [{ to: SETTLER, data: '0x' }],
+        calls: input.lazyEmptyDestination
+          ? [{ resolve: async () => [] }]
+          : input.authorizationOnlyDestination
+            ? []
+            : [{ to: SETTLER, data: '0x' }],
       },
       source: { chain: { id: input.sourceChainId }, token: USDC },
       signers: { type: 'session', sessions },
     } as never,
-  ) as { options?: { quoters?: unknown } }
-  return intent.options?.quoters
+  )
+  // Preparation resolves calls before applying execution-chain constraints.
+  return constrainSessionIntent(
+    input.lazyEmptyDestination ? { ...intent, calls: [] } : intent,
+    ACCOUNT,
+  ).options?.quoters
 }
 
 describe('quoter pin derived from a session venue scope', () => {
@@ -197,6 +205,18 @@ describe('quoter pin derived from a session venue scope', () => {
         destinationChainId: 10,
         destinationVia: [fynd()],
         authorizationOnlyDestination: true,
+      }),
+    ).toEqual({ include: ['0x'] })
+  })
+
+  test('lazy calls resolving empty do not leave a destination quoter pin behind', () => {
+    expect(
+      pinForChains({
+        sourceChainId: 8453,
+        sourceVia: [zeroEx({ settler: SETTLER })],
+        destinationChainId: 10,
+        destinationVia: [fynd()],
+        lazyEmptyDestination: true,
       }),
     ).toEqual({ include: ['0x'] })
   })
