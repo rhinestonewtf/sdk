@@ -42,11 +42,21 @@ export type WireQuotedResponse = Extract<
 export type WireQuote = WireQuotedResponse['routes'][number]
 export type WireQuoteResponse = GeneratedWireQuoteResponse
 
+export type WireQuotePlan = WireQuote['plan']
+export type WirePlanBlock =
+  | WireQuotePlan['source'][number]
+  | WireQuotePlan['destination']
+export type WirePlanExecution = NonNullable<WirePlanBlock['execution']>
+
 export type WireSigningRequest = WireQuote['signingRequests'][number]
 export type WireProof = WireIntentRequest['proofs'][number]
 
 export type WirePortfolioResponse = Folded<JsonResponse<'getPortfolio'>>
 export type WireIntentStatusResponse = Folded<JsonResponse<'getIntent'>>
+export type WireIntentDetails = NonNullable<WireIntentStatusResponse['details']>
+export type WireRecordedExecutions = NonNullable<
+  WireIntentDetails['executions']
+>
 export type WireIntentSubmitResponse = Folded<JsonResponse<'createIntent', 201>>
 export type WireSplitResponse = Folded<JsonResponse<'getSplit'>>
 // The `/chains` catalog: a CAIP-2-keyed map of chain facts. Not folded — the

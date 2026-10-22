@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 import {
   chainIdFromReference,
   formatCaip2,
@@ -9,11 +9,18 @@ import type {
   BridgeFill,
   Cost,
   CostTokenEntry,
+  Execution,
+  HyperCoreAction,
+  IntentAccountView,
   IntentDetails,
   IntentOperationGroup,
   IntentRequirement,
+  PlanExecution,
+  PlanLeg,
+  QuotePlan,
   SigningProof,
   SigningRequest,
+  SolanaAuthorityDisclosure,
 } from './public'
 import { serializeBigInts } from './serialization'
 import type {
@@ -29,13 +36,18 @@ import type {
   OrchestratorSplitResult,
 } from './types'
 import type {
+  WireIntentDetails,
   WireIntentRequest,
   WireIntentStatusResponse,
   WireIntentSubmitResponse,
+  WirePlanBlock,
+  WirePlanExecution,
   WirePortfolioResponse,
   WireQuote,
+  WireQuotePlan,
   WireQuoteRequest,
   WireQuoteResponse,
+  WireRecordedExecutions,
   WireSigningRequest,
   WireSingularQuoteRequest,
   WireSplitRequest,
@@ -167,7 +179,7 @@ function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
     expiresAt: value.expiresAt,
     estimatedFillTime: value.estimatedFillTime,
     settlementLayer: value.settlementLayer,
-    plan: value.plan as OrchestratorQuote['plan'],
+    plan: mapQuotePlanFromWire(value.plan),
     cost: mapCostFromWire(value.cost),
     requirements: value.requirements.map(mapRequirementFromWire),
     signingRequests: value.signingRequests.map(mapSigningRequestFromWire),
@@ -191,6 +203,174 @@ function mapQuoteFromWire(value: WireQuote): OrchestratorQuote {
           (value as { purpose?: unknown }).purpose,
         )}.`,
       )
+  }
+}
+
+// Plan disclosure is not what the user signs, so an execution whose shape or
+// VM the public union does not model is omitted rather than refused. Each field is read off the
+// generated wire type, so a renamed or removed wire field fails the typecheck.
+
+type WireExecutionTag = { readonly vm: string; readonly chainId: string }
+type WireRecordedDestination = NonNullable<
+  WireRecordedExecutions['destination']
+>
+type WireExecution = WirePlanExecution | WireRecordedDestination
+type WireCallsExecution = Extract<WireExecution, { calls: unknown }>
+type WireHyperCoreExecution = Exclude<
+  WireExecution,
+  { calls: unknown } | { instructions: unknown } | { authority: unknown }
+>
+type WireEvmExecution =
+  | NonNullable<WireHyperCoreExecution['settlement']>
+  | WireRecordedExecutions['source'][number]
+type WireExecutor = NonNullable<WireCallsExecution['executedBy']>
+type WireSolanaAuthority = Extract<
+  WireExecution,
+  { authority: unknown }
+>['authority']
+type EvmPlanExecution = Extract<PlanExecution, { vm: 'evm' }>
+
+function mapQuotePlanFromWire(plan: WireQuotePlan): QuotePlan {
+  return {
+    source: plan.source.map(mapPlanLegFromWire),
+    destination: mapPlanLegFromWire(plan.destination),
+    deployments: plan.deployments.map(({ vm, chainId, account }) => ({
+      vm,
+      chainId,
+      account: account as IntentAccountView,
+    })),
+  }
+}
+
+function mapPlanLegFromWire(block: WirePlanBlock): PlanLeg {
+  return {
+    vm: block.vm,
+    chainId: block.chainId,
+    account: block.account as IntentAccountView,
+    // A quote names the VM and chain on the block only; the public execution
+    // repeats them so it reads the same as a recorded one.
+    ...mapOptionalExecutionFromWire(block.execution, block),
+  }
+}
+
+function mapOptionalExecutionFromWire(
+  execution: WirePlanExecution | undefined,
+  tag: WireExecutionTag,
+): { execution?: PlanExecution } {
+  const mapped = execution && mapExecutionFromWire(execution, tag)
+  return mapped ? { execution: mapped } : {}
+}
+
+function mapRecordedExecutionsFromWire(
+  value: WireRecordedExecutions,
+): NonNullable<IntentDetails['executions']> {
+  return {
+    source: value.source.map(mapEvmExecutionFromWire),
+    destination:
+      value.destination === null
+        ? null
+        : (mapExecutionFromWire(value.destination, value.destination) ?? null),
+  }
+}
+
+function mapExecutionFromWire(
+  execution: WireExecution,
+  { vm, chainId }: WireExecutionTag,
+): PlanExecution | undefined {
+  if ('calls' in execution) {
+    if (vm !== 'evm') return undefined
+    return {
+      vm,
+      chainId,
+      ...mapExecutorFromWire(execution.executedBy),
+      calls: execution.calls.map(mapExecutionCallFromWire),
+    }
+  }
+  if ('instructions' in execution) {
+    if (vm !== 'svm') return undefined
+    return {
+      vm,
+      chainId,
+      executedBy: {
+        kind: execution.executedBy.kind,
+        address: execution.executedBy.address,
+      },
+      instructions: execution.instructions,
+      addressLookupTables: execution.addressLookupTables,
+    }
+  }
+  if ('authority' in execution) {
+    if (vm !== 'svm') return undefined
+    const executedBy =
+      'executedBy' in execution ? execution.executedBy : undefined
+    // Only the Swig state account runs an authority change.
+    if (executedBy && executedBy.kind !== 'account') return undefined
+    return {
+      vm,
+      chainId,
+      ...(executedBy
+        ? { executedBy: { kind: 'account', address: executedBy.address } }
+        : {}),
+      authority: mapSolanaAuthorityFromWire(execution.authority),
+    }
+  }
+  if (vm !== 'hypercore') return undefined
+  return {
+    vm,
+    chainId,
+    ...(execution.actions
+      ? {
+          actions: execution.actions.map((entry) => ({
+            ...(entry.action
+              ? { action: entry.action as unknown as HyperCoreAction }
+              : {}),
+            nonce: entry.nonce,
+            agent: entry.agent as Address,
+          })),
+        }
+      : {}),
+    ...(execution.settlement
+      ? { settlement: mapEvmExecutionFromWire(execution.settlement) }
+      : {}),
+  }
+}
+
+function mapEvmExecutionFromWire(value: WireEvmExecution): EvmPlanExecution {
+  return {
+    vm: value.vm,
+    chainId: value.chainId,
+    ...mapExecutorFromWire(value.executedBy),
+    calls: value.calls.map(mapExecutionCallFromWire),
+  }
+}
+
+function mapExecutorFromWire(value: WireExecutor | undefined): {
+  executedBy?: { kind: 'account' | 'solver'; address: Address }
+} {
+  return value
+    ? { executedBy: { kind: value.kind, address: value.address as Address } }
+    : {}
+}
+
+function mapExecutionCallFromWire(
+  value: WireCallsExecution['calls'][number],
+): Execution {
+  return {
+    to: value.to as Address,
+    value: BigInt(value.value),
+    data: value.data as Hex,
+  }
+}
+
+function mapSolanaAuthorityFromWire(
+  value: WireSolanaAuthority,
+): SolanaAuthorityDisclosure {
+  return {
+    action: value.action,
+    key: { kind: value.key.kind, publicKey: value.key.publicKey as Hex },
+    ...(value.permission === undefined ? {} : { permission: value.permission }),
+    roleId: value.roleId,
+    rent: { amount: value.rent.amount, usd: value.rent.usd },
   }
 }
 
@@ -491,9 +671,7 @@ export function mapIntentStatusFromWire(
   }
 }
 
-function mapIntentDetailsFromWire(
-  value: NonNullable<NonNullable<WireIntentStatusResponse['details']>>,
-): IntentDetails {
+function mapIntentDetailsFromWire(value: WireIntentDetails): IntentDetails {
   type Leg = NonNullable<typeof value>['destination']
   const leg = (entry: Leg) => ({
     ...entry,
@@ -506,6 +684,9 @@ function mapIntentDetailsFromWire(
     ...value,
     source: value.source.map(leg),
     destination: leg(value.destination),
+    ...(value.executions
+      ? { executions: mapRecordedExecutionsFromWire(value.executions) }
+      : {}),
     cost: {
       sponsored: value.cost.sponsored,
       ...(value.cost.sponsoredValue === undefined

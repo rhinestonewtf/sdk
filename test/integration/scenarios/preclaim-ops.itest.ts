@@ -72,6 +72,20 @@ describe.sequential('SDK integration preclaim-ops', () => {
     expect(ops?.[1].to.toLowerCase()).toBe(noopTarget.toLowerCase())
     expect(ops?.[1].data).toBe(noopSelector)
     expect(ops?.[1].value).toBe('0')
+
+    // Plan executions repeat their block's VM and chain, with bigint values.
+    const { plan } = execution.prepared.quotes.best
+    const tagged = {
+      vm: 'evm',
+      chainId: `eip155:${sourceChain.id}`,
+      calls: expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(BigInt) }),
+      ]),
+    }
+    expect(plan.destination.execution).toMatchObject(tagged)
+    if (plan.source[0]?.execution) {
+      expect(plan.source[0].execution).toMatchObject(tagged)
+    }
   })
 
   // A plain owner intent has no session to enable and no source calls, so no
