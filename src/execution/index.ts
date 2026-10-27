@@ -58,6 +58,7 @@ import {
   resolveCallInputs,
   signAuthorizationsInternal,
   signIntent,
+  signPermits,
   submitIntentInternal,
 } from './utils'
 
@@ -306,6 +307,7 @@ async function sendTransactionAsIntent(
   const authorizations = config.eoa
     ? await signAuthorizationsInternal(config, intentRoute)
     : []
+  const permitSignatures = await signPermits(config, intentRoute)
   return await submitIntentInternal(
     config,
     sourceChains,
@@ -315,6 +317,7 @@ async function sendTransactionAsIntent(
     destinationSignature,
     targetExecutionSignature,
     authorizations,
+    permitSignatures,
     false,
     intentInput,
   )

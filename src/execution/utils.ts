@@ -277,6 +277,7 @@ interface SignedTransactionData extends PreparedTransactionData {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
   targetExecutionSignature: Hex | undefined
+  permitSignatures?: SignedIntentOp['permitSignatures']
 }
 
 interface SignedUserOperationData extends PreparedUserOperationData {
@@ -428,6 +429,7 @@ async function signTransaction(
     targetChain,
     signers,
   )
+  const permitSignatures = await signPermits(config, intentRoute)
 
   return {
     intentRoute,
@@ -436,7 +438,33 @@ async function signTransaction(
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+    permitSignatures,
   }
+}
+
+async function signPermits(
+  config: RhinestoneConfig,
+  intentRoute: IntentRoute,
+): Promise<SignedIntentOp['permitSignatures']> {
+  const eoa = config.eoa
+  if (config.account?.type !== 'eoa' || !eoa?.signTypedData) {
+    return undefined
+  }
+  const signatures: NonNullable<SignedIntentOp['permitSignatures']> = {}
+  for (const [chainId, tokens] of Object.entries(
+    intentRoute.tokenRequirements ?? {},
+  )) {
+    for (const [token, requirement] of Object.entries(tokens)) {
+      if (requirement.type !== 'approval' || !requirement.permit) {
+        continue
+      }
+      signatures[Number(chainId)] = {
+        ...signatures[Number(chainId)],
+        [token]: await eoa.signTypedData(requirement.permit),
+      }
+    }
+  }
+  return Object.keys(signatures).length > 0 ? signatures : undefined
 }
 
 async function getTargetExecutionSignature(
@@ -726,6 +754,7 @@ async function submitTransaction(
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+    permitSignatures,
   } = signedTransaction
   const { sourceChains, targetChain } = getTransactionParams(transaction)
   const intentOp = intentRoute.intentOp
@@ -738,6 +767,7 @@ async function submitTransaction(
     destinationSignature,
     targetExecutionSignature,
     authorizations,
+    permitSignatures,
     dryRun,
     intentInput,
   )
@@ -1602,6 +1632,7 @@ async function submitIntent(
   destinationSignature: Hex,
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
+  permitSignatures: SignedIntentOp['permitSignatures'],
   dryRun: boolean,
   intentInput?: unknown,
 ) {
@@ -1614,6 +1645,7 @@ async function submitIntent(
     destinationSignature,
     targetExecutionSignature,
     authorizations,
+    permitSignatures,
     dryRun,
     intentInput,
   )
@@ -1625,12 +1657,14 @@ function createSignedIntentOp(
   destinationSignature: Hex,
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
+  permitSignatures: SignedIntentOp['permitSignatures'],
 ): SignedIntentOp {
   return {
     ...intentOp,
     originSignatures,
     destinationSignature,
     targetExecutionSignature,
+    permitSignatures,
     signedAuthorizations:
       authorizations.length > 0
         ? authorizations.map((authorization) => ({
@@ -1654,6 +1688,7 @@ async function submitIntentInternal(
   destinationSignature: Hex,
   targetExecutionSignature: Hex | undefined,
   authorizations: SignedAuthorizationList,
+  permitSignatures: SignedIntentOp['permitSignatures'],
   dryRun: boolean,
   intentInput?: unknown,
 ) {
@@ -1663,6 +1698,7 @@ async function submitIntentInternal(
     destinationSignature,
     targetExecutionSignature,
     authorizations,
+    permitSignatures,
   )
   const isSponsored = !!(
     intentInput as { options?: { sponsorSettings?: unknown } } | undefined
@@ -2069,6 +2105,7 @@ export {
   resolveSignatureMode,
   signAuthorizations,
   signAuthorizationsInternal,
+  signPermits,
   signIntent,
   signMessage,
   signTransaction,
