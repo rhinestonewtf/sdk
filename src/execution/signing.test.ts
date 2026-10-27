@@ -1,10 +1,11 @@
-import { type Hex, type PublicClient, zeroAddress } from 'viem'
+import { type Hex, type PublicClient, verifyTypedData, zeroAddress } from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import type {
   IntentOp,
   IntentOpElement,
+  IntentRoute,
   SettlementLayer,
 } from '../orchestrator/types'
 import type {
@@ -17,6 +18,7 @@ import {
   getTargetExecutionSignature,
   getValidatorAccount,
   signIntent,
+  signPermits,
 } from './utils'
 
 const {
@@ -701,5 +703,91 @@ describe('signIntent with permit2 claim policy', () => {
       claimPolicyData?: Hex
     }
     expect(sessionSignersArg.claimPolicyData).toBeUndefined()
+  })
+})
+
+describe('signPermits', () => {
+  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const WETH = '0x4200000000000000000000000000000000000006'
+  const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+  // As it arrives on the wire: uints as strings, EIP712Domain included.
+  const permit = {
+    domain: {
+      name: 'USD Coin',
+      version: '2',
+      chainId: 8453,
+      verifyingContract: USDC,
+    },
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    primaryType: 'Permit',
+    message: {
+      owner: accountA.address,
+      spender: PERMIT2,
+      value: (2n ** 256n - 1n).toString(),
+      nonce: '0',
+      deadline: '1800000000',
+    },
+  }
+  const route = {
+    tokenRequirements: {
+      8453: {
+        [USDC]: { type: 'approval', amount: 1n, spender: PERMIT2, permit },
+        [WETH]: { type: 'approval', amount: 1n, spender: PERMIT2 },
+      },
+    },
+  } as unknown as IntentRoute
+  const eoaConfig = {
+    account: { type: 'eoa' },
+    eoa: accountA,
+  } as unknown as RhinestoneConfig
+
+  test('signs each offered permit with the EOA, keyed by chain and token', async () => {
+    const signatures = await signPermits(eoaConfig, route)
+
+    expect(Object.keys(signatures?.[8453] ?? {})).toEqual([USDC])
+    const { EIP712Domain: _, ...types } = permit.types
+    expect(
+      await verifyTypedData({
+        address: accountA.address,
+        domain: permit.domain,
+        types,
+        primaryType: 'Permit',
+        message: {
+          ...permit.message,
+          value: BigInt(permit.message.value),
+          nonce: 0n,
+          deadline: 1800000000n,
+        },
+        signature: signatures?.[8453]?.[USDC] as Hex,
+      }),
+    ).toBe(true)
+  })
+
+  test('returns undefined when no permit is offered', async () => {
+    expect(
+      await signPermits(eoaConfig, { tokenRequirements: {} } as IntentRoute),
+    ).toBeUndefined()
+  })
+
+  test('signs nothing for a smart account', async () => {
+    const smartAccountConfig = {
+      owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+      eoa: accountA,
+    } as unknown as RhinestoneConfig
+    expect(await signPermits(smartAccountConfig, route)).toBeUndefined()
   })
 })

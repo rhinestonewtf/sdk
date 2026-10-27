@@ -6,7 +6,7 @@ import type {
   SupportedOPStackTestnet,
   SupportedTestnet,
 } from '@rhinestone/shared-configs'
-import type { Address, Chain, Hex } from 'viem'
+import type { Address, Chain, Hex, TypedDataDefinition } from 'viem'
 
 type SupportedTokenSymbol = 'ETH' | 'WETH' | 'USDC' | 'USDT' | 'USDT0'
 type SupportedToken = SupportedTokenSymbol | Address
@@ -436,6 +436,8 @@ interface ApprovalRequired {
   type: 'approval'
   amount: bigint
   spender: Address
+  /** ERC-2612 permit for `spender`; an EOA signs it instead of sending the approve. Present only where the token supports it. */
+  permit?: TypedDataDefinition
 }
 
 type TokenRequirements = {
@@ -471,6 +473,7 @@ type SignedIntentOp = IntentOp & {
     r: Hex
     s: Hex
   }[]
+  permitSignatures?: Record<number, Record<Address, Hex>>
 }
 
 interface TokenConfig {
