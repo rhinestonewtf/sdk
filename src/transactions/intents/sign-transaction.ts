@@ -1,4 +1,6 @@
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
+import { toEvmChainReference } from '../../chains/caip2'
+import type { PermitSignatures } from '../../clients/orchestrator/types'
 import {
   IndependentSigningNotSupportedError,
   InvalidOwnerSigningOptionsError,
@@ -86,6 +88,7 @@ export async function signIntent<CompatibilityConfig>(
     {},
     ...transcript.stages.map((stage) => stage.outputs),
   ) as Readonly<Record<string, SigningArtifact>>
+  const permitSignatures = await signPermits(prepared, signing)
   return {
     prepared,
     originSignatures: prepared.signing.origins.map((_origin, index) =>
@@ -95,8 +98,39 @@ export async function signIntent<CompatibilityConfig>(
     ...(prepared.signing.target
       ? { targetSignature: requireHex(outputs.target, 'target') }
       : {}),
+    ...(permitSignatures ? { permitSignatures } : {}),
     transcript,
   }
+}
+
+async function signPermits<CompatibilityConfig>(
+  prepared: PreparedIntent<CompatibilityConfig>,
+  signing: SigningContext,
+): Promise<PermitSignatures | undefined> {
+  if (signing.account.definition.kind !== 'eoa') return undefined
+  const signer = Object.values(signing.signerReferences)[0]
+  if (!signer) throw new Error('EOA signer is missing')
+  const signatures: Record<number, Record<Address, Hex>> = {}
+  for (const [chainId, tokens] of Object.entries(
+    prepared.quote.tokenRequirements ?? {},
+  )) {
+    for (const [token, requirement] of Object.entries(tokens)) {
+      if (requirement.type !== 'approval' || !requirement.permit) continue
+      const result = await signing.signerInvoker.invoke(signer, {
+        kind: 'ecdsa-sign-typed-data',
+        chain: toEvmChainReference(Number(chainId)),
+        typedData: requirement.permit,
+      })
+      if (result.kind !== 'ecdsa-signature') {
+        throw new Error('EOA permit signature must be ECDSA')
+      }
+      signatures[Number(chainId)] = {
+        ...signatures[Number(chainId)],
+        [token as Address]: result.signature,
+      }
+    }
+  }
+  return Object.keys(signatures).length > 0 ? signatures : undefined
 }
 
 export async function signIntentAsOwner<CompatibilityConfig>(

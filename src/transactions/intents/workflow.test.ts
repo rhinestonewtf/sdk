@@ -18,6 +18,7 @@ import type {
   AccountRuntimePort,
   AccountSignatureEnvelopeInput,
 } from '../../accounts/adapter'
+import { createEoaAdapter } from '../../accounts/adapters/eoa'
 import { wrapKernelMessageHash } from '../../accounts/kernel-signing'
 import type { AccountConstruction } from '../../accounts/types'
 import { toEvmChainReference } from '../../chains/caip2'
@@ -1631,5 +1632,106 @@ describe('intent workflow', () => {
         authorizations: { sponsor: [authorization] },
       }),
     )
+  })
+
+  describe('ERC-2612 permits', () => {
+    const usdc = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+    const permit: TypedDataDefinition = {
+      domain: {
+        name: 'USD Coin',
+        version: '2',
+        chainId: 8453,
+        verifyingContract: usdc,
+      },
+      types: {
+        Permit: [
+          { name: 'owner', type: 'address' },
+          { name: 'spender', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+        ],
+      },
+      primaryType: 'Permit',
+      message: {
+        owner: account.address,
+        spender: address,
+        value: '1',
+        nonce: '0',
+        deadline: '1',
+      },
+    }
+    const quoteWithPermit = (): OrchestratorQuote => ({
+      ...quote(),
+      tokenRequirements: {
+        8453: {
+          [usdc]: { type: 'approval', amount: 1n, spender: address, permit },
+        },
+      },
+    })
+    const quoteClient = {
+      createQuote: vi.fn(async () => ({
+        traceId: 'trace-1',
+        routes: [quoteWithPermit()],
+      })),
+    }
+
+    test('an EOA signs each offered permit and submits it with the intent', async () => {
+      const construction: AccountConstruction = {
+        account: { kind: 'eoa' },
+        eoa: account,
+        modules: [],
+        setup: { validators: [], executors: [], hooks: [], fallbacks: [] },
+        sessions: { enabled: false, environment: 'production' },
+        chain,
+        deployed: true,
+      }
+      const eoaRuntime: AccountRuntime = {
+        adapter: createEoaAdapter(construction),
+        construction,
+        identity: {
+          definition: construction.account,
+          address: account.address,
+        },
+      }
+      const workflow = context({
+        account: { forChain: vi.fn(async () => eoaRuntime) },
+        quoteClient,
+      })
+
+      const signed = await signIntent(
+        workflow,
+        await prepareIntent(workflow, input),
+      )
+      await submitIntent(workflow, signed)
+
+      expect(workflow.signerInvoker.invoke).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          kind: 'ecdsa-sign-typed-data',
+          typedData: permit,
+        }),
+      )
+      expect(signed.permitSignatures).toEqual({ 8453: { [usdc]: signature } })
+      expect(workflow.submissionClient.submitIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          signatures: expect.objectContaining({
+            permits: { 8453: { [usdc]: signature } },
+          }),
+        }),
+      )
+    })
+
+    test('a smart account signs no permit', async () => {
+      const workflow = context({ quoteClient })
+
+      const signed = await signIntent(
+        workflow,
+        await prepareIntent(workflow, input),
+      )
+
+      expect(signed.permitSignatures).toBeUndefined()
+      expect(workflow.signerInvoker.invoke).toHaveBeenCalledOnce()
+    })
   })
 })

@@ -108,12 +108,18 @@ export type OrchestratorOriginSignature =
   | Hex
   | { readonly preClaimSig: Hex; readonly notarizedClaimSig: Hex }
 
+/** ERC-2612 permit signatures keyed like `tokenRequirements`: chain id, then token. */
+export type PermitSignatures = Readonly<
+  Record<number, Readonly<Record<Address, Hex>>>
+>
+
 export interface OrchestratorSignedIntent {
   readonly intentId: string
   readonly signatures: {
     readonly origin: readonly OrchestratorOriginSignature[]
     readonly destination: Hex
     readonly targetExecution?: Hex
+    readonly permits?: PermitSignatures
   }
   readonly authorizations?: {
     readonly sponsor?: readonly SignedAuthorization[]
