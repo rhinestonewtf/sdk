@@ -1676,7 +1676,7 @@ describe('intent workflow', () => {
       })),
     }
 
-    test('an EOA signs each offered permit and submits it with the intent', async () => {
+    function eoaWorkflow() {
       const construction: AccountConstruction = {
         account: { kind: 'eoa' },
         eoa: account,
@@ -1694,10 +1694,14 @@ describe('intent workflow', () => {
           address: account.address,
         },
       }
-      const workflow = context({
+      return context({
         account: { forChain: vi.fn(async () => eoaRuntime) },
         quoteClient,
       })
+    }
+
+    test('an EOA signs each offered permit and submits it with the intent', async () => {
+      const workflow = eoaWorkflow()
 
       const signed = await signIntent(
         workflow,
@@ -1720,6 +1724,18 @@ describe('intent workflow', () => {
           }),
         }),
       )
+    })
+
+    // The independent-owner path carries no permits; it must stay closed to
+    // EOAs until it does.
+    test('an EOA cannot sign as an independent owner', async () => {
+      const workflow = eoaWorkflow()
+
+      await expect(
+        signIntentAsOwner(workflow, await prepareIntent(workflow, input), {
+          signerId: `ecdsa:${account.address.toLowerCase()}`,
+        }),
+      ).rejects.toThrow()
     })
 
     test('a smart account signs no permit', async () => {
