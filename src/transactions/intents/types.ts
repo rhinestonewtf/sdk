@@ -20,6 +20,7 @@ import type {
   OrchestratorIntentRequest,
   OrchestratorOriginSignature,
   OrchestratorQuote,
+  PermitSignatures,
 } from '../../clients/orchestrator/types'
 import type { Transaction } from '../../config/account'
 import type {
@@ -99,6 +100,7 @@ export interface SignedIntent<CompatibilityConfig = unknown> {
   readonly originSignatures: readonly OrchestratorOriginSignature[]
   readonly destinationSignature: Hex
   readonly targetSignature?: Hex
+  readonly permitSignatures?: PermitSignatures
   readonly transcript: SigningTranscript
   readonly authorizations?: readonly SignedAuthorization[]
   readonly dryRun?: boolean
@@ -183,6 +185,7 @@ export interface SignedTransactionData extends PreparedTransactionData {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
   targetExecutionSignature: Hex | undefined
+  permitSignatures?: PermitSignatures
 }
 
 export interface TransactionStatus {

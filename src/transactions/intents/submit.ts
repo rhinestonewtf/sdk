@@ -17,6 +17,7 @@ export async function submitIntent<CompatibilityConfig>(
       ...(signed.targetSignature
         ? { targetExecution: signed.targetSignature }
         : {}),
+      ...(signed.permitSignatures ? { permits: signed.permitSignatures } : {}),
     },
     ...(signed.authorizations && signed.authorizations.length > 0
       ? { authorizations: { sponsor: signed.authorizations } }

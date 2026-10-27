@@ -487,6 +487,9 @@ function toSignedTransactionData(
       signed.originSignatures as SignedTransactionData['originSignatures'],
     destinationSignature: signed.destinationSignature,
     targetExecutionSignature: signed.targetSignature,
+    ...(signed.permitSignatures
+      ? { permitSignatures: signed.permitSignatures }
+      : {}),
   }
   cache.set(data, signed)
   return data
@@ -705,6 +708,9 @@ export function createAccountFacade(
         destinationSignature: signedTransaction.destinationSignature,
         ...(signedTransaction.targetExecutionSignature
           ? { targetSignature: signedTransaction.targetExecutionSignature }
+          : {}),
+        ...(signedTransaction.permitSignatures
+          ? { permitSignatures: signedTransaction.permitSignatures }
           : {}),
         transcript: { planKind: 'intent-full', payloadId: '0x', stages: [] },
       }

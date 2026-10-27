@@ -622,6 +622,8 @@ interface ApprovalRequired {
   type: 'approval'
   amount: bigint
   spender: Address
+  /** ERC-2612 permit for `spender`; an EOA signs it instead of sending the approve. Present only where the token supports it. */
+  permit?: TypedDataDefinition
 }
 
 type TokenRequirements = {
