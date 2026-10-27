@@ -1,5 +1,11 @@
 # @rhinestone/sdk
 
+## 1.22.0
+
+### Minor Changes
+
+- fe851bf: EOA accounts sign the ERC-2612 permit the orchestrator offers in `tokenRequirements[chainId][token].permit` and submit it with the intent, in place of the onchain Permit2 approve. `signTransaction` returns them as `permitSignatures`, and `sendTransaction` signs them too. Where a permit is offered, skip the approve transaction.
+
 ## 1.21.0
 
 ### Minor Changes
