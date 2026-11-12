@@ -1,0 +1,547 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "EOA",
+        "address": "0x557a8848fd79ebeedb6b53340c5f042a7b530e45",
+        "setupOps": []
+      },
+      "accountAccessList": {
+        "chainIds": [84532],
+        "tokens": ["ETH"]
+      },
+      "destinationChainId": 11155420,
+      "destinationExecutions": [],
+      "options": {
+        "settlementLayers": {
+          "include": ["ACROSS"]
+        },
+        "signatureMode": 1,
+        "topupCompact": false
+      },
+      "tokenRequests": [
+        {
+          "amount": "10000000000000",
+          "token": "0x0000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 65,
+        "template": "0x<sig:PermitBatchWitnessTransferFrom@84532#0>"
+      },
+      "origin": [
+        {
+          "byteLength": 65,
+          "template": "0x<sig:PermitBatchWitnessTransferFrom@84532#0>"
+        }
+      ]
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0x<sig:PermitBatchWitnessTransferFrom@84532#0>",
+        "origin": ["0x<sig:PermitBatchWitnessTransferFrom@84532#0>"]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit [x-api-key]"],
+      "step": "submit"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "wait"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": "0xd0e30db0",
+                    "to": "0x4200000000000000000000000000000000000006",
+                    "value": "15379133708107"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0x557a8848fd79ebeedb6b53340c5f042a7b530e45",
+                "targetChain": "11155420n",
+                "tokenOut": [
+                  {
+                    "amount": "10000000000000n",
+                    "token": "0x4200000000000000000000000000000000000006"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x4200000000000000000000000000000000000006"
+              }
+            ],
+            "spender": "0xa162fabb9a0eef2736485a587aaab3d015e14224"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "origin[0]",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": "0xd0e30db0",
+                    "to": "0x4200000000000000000000000000000000000006",
+                    "value": "15379133708107"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0x557a8848fd79ebeedb6b53340c5f042a7b530e45",
+                "targetChain": "11155420n",
+                "tokenOut": [
+                  {
+                    "amount": "10000000000000n",
+                    "token": "0x4200000000000000000000000000000000000006"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x4200000000000000000000000000000000000006"
+              }
+            ],
+            "spender": "0xa162fabb9a0eef2736485a587aaab3d015e14224"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "destination",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "chainId": 84532,
+          "name": "Permit2",
+          "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+        },
+        "message": {
+          "deadline": "<time>",
+          "mandate": {
+            "destOps": {
+              "ops": [],
+              "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "minGas": "0n",
+            "originOps": {
+              "ops": [
+                {
+                  "data": "0xd0e30db0",
+                  "to": "0x4200000000000000000000000000000000000006",
+                  "value": "15379133708107"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            },
+            "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "target": {
+              "fillExpiry": "<time>",
+              "recipient": "0x557a8848fd79ebeedb6b53340c5f042a7b530e45",
+              "targetChain": "11155420n",
+              "tokenOut": [
+                {
+                  "amount": "10000000000000n",
+                  "token": "0x4200000000000000000000000000000000000006"
+                }
+              ]
+            }
+          },
+          "nonce": "<nonce>",
+          "permitted": [
+            {
+              "amount": "<~typed-data.permit-amounts>",
+              "token": "0x4200000000000000000000000000000000000006"
+            }
+          ],
+          "spender": "0xa162fabb9a0eef2736485a587aaab3d015e14224"
+        },
+        "primaryType": "PermitBatchWitnessTransferFrom",
+        "roleKey": "PermitBatchWitnessTransferFrom@84532#0",
+        "signer": "eoa",
+        "types": {
+          "Mandate": [
+            {
+              "name": "target",
+              "type": "Target"
+            },
+            {
+              "name": "minGas",
+              "type": "uint128"
+            },
+            {
+              "name": "originOps",
+              "type": "Op"
+            },
+            {
+              "name": "destOps",
+              "type": "Op"
+            },
+            {
+              "name": "q",
+              "type": "bytes32"
+            }
+          ],
+          "Op": [
+            {
+              "name": "vt",
+              "type": "bytes32"
+            },
+            {
+              "name": "ops",
+              "type": "Ops[]"
+            }
+          ],
+          "Ops": [
+            {
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "PermitBatchWitnessTransferFrom": [
+            {
+              "name": "permitted",
+              "type": "TokenPermissions[]"
+            },
+            {
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "deadline",
+              "type": "uint256"
+            },
+            {
+              "name": "mandate",
+              "type": "Mandate"
+            }
+          ],
+          "Target": [
+            {
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "name": "tokenOut",
+              "type": "Token[]"
+            },
+            {
+              "name": "targetChain",
+              "type": "uint256"
+            },
+            {
+              "name": "fillExpiry",
+              "type": "uint256"
+            }
+          ],
+          "Token": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "TokenPermissions": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint256"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
