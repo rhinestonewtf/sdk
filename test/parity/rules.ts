@@ -78,6 +78,15 @@ const RULES: Rule[] = [
       'Permit2 batch amounts an EOA approves cover the price-derived input; tokens and spender stay exact.',
   },
   {
+    id: 'typed-data.origin-op-value',
+    layer: 'typedData',
+    path: '**/message/mandate/originOps/ops/*/value',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'Native input an EOA wraps into WETH before the claim includes price-derived fees (the value steps.intent-op.pre-claim-value covers).',
+  },
+  {
     id: 'typed-data.source-amounts',
     layer: 'typedData',
     path: '**/(idsAndAmounts|spendTokens)/*/1',

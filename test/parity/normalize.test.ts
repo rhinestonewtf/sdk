@@ -184,6 +184,23 @@ describe('normalization rules', () => {
 })
 
 describe('funded execution rules', () => {
+  test('a wrapped native origin-op value compares within tolerance', () => {
+    const op = (value: string) =>
+      typedDataWith({
+        mandate: { originOps: { ops: [{ to: '0x42', value }] } },
+      })
+    const run = (a: string, b: string) =>
+      compare(
+        'typedData',
+        normalizeLayer('typedData', op(a), RULES, {}),
+        normalizeLayer('typedData', op(b), RULES, {}),
+      )
+    expect(run('15368872988263', '15364553240671')).toEqual([])
+    expect(run('15368872988263', '20000000000000')).toMatchObject([
+      { kind: 'out-of-tolerance' },
+    ])
+  })
+
   const steps = (wait: unknown, permitNonce: string) => ({
     wait: { kind: 'wait', ok: true, value: wait },
     prepare: {
