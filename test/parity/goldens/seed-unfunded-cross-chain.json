@@ -60,11 +60,11 @@
   },
   "traffic": [
     {
-      "ops": ["quote"],
+      "ops": ["quote [x-api-key]"],
       "step": "prepare"
     },
     {
-      "ops": ["submit(captured)"],
+      "ops": ["submit(captured) [x-api-key]"],
       "step": "submit"
     }
   ],

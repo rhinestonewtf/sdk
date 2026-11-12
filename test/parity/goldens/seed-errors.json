@@ -70,15 +70,15 @@
   },
   "traffic": [
     {
-      "ops": ["quote"],
+      "ops": ["quote [x-api-key]"],
       "step": "prepare-zero-balance"
     },
     {
-      "ops": ["status"],
+      "ops": ["status [x-api-key]"],
       "step": "status-not-found"
     },
     {
-      "ops": ["appFeeBalances"],
+      "ops": ["appFeeBalances [x-api-key]"],
       "step": "app-fees-invalid-key"
     }
   ]

@@ -193,9 +193,12 @@ function projectSteps(steps: StepRecord[]) {
       let value: unknown
       if (step.ok) {
         switch (step.kind) {
-          case 'prepare':
-            value = asRecord(step.value).transaction
+          case 'prepare': {
+            // intentInput echoes the quote request body, compared in quoteRequest.
+            const { transaction, intentRoute } = asRecord(step.value)
+            value = { transaction, intentRoute }
             break
+          }
           case 'submit':
           case 'wait':
           case 'other':
@@ -224,9 +227,12 @@ function projectTraffic(records: RunRecords) {
       current = { step, ops: [] }
       traffic.push(current)
     }
-    const op = record.captured ? `${record.op}(captured)` : record.op
+    const auth = Object.entries(record.authHeadersPresent)
+      .filter(([, present]) => present)
+      .map(([header]) => header)
+    const op = `${record.op}${record.captured ? '(captured)' : ''} [${auth.join(',')}]`
     // Consecutive status polls collapse into one.
-    if (op === 'status' && current.ops[current.ops.length - 1] === 'status')
+    if (record.op === 'status' && current.ops[current.ops.length - 1] === op)
       continue
     current.ops.push(op)
   }

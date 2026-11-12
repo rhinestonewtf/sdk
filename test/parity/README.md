@@ -19,8 +19,8 @@ The recordings are projected into version-neutral layers, through an alps or bla
 | `reads` | request parameters and public results of read steps |
 | `errors` | error class, name, type, status, message, context and wire status/code |
 | `cost` | inputs, outputs and USD fees; compared within tolerances |
-| `steps` | public step results not covered above |
-| `traffic` | which orchestrator operations each step called, in order |
+| `steps` | public step results not covered above, including the prepared intent route |
+| `traffic` | which orchestrator operations each step called, in order, with the auth headers each sent |
 
 ## Running
 

@@ -264,19 +264,19 @@
   },
   "traffic": [
     {
-      "ops": ["status"],
+      "ops": ["status [x-api-key]"],
       "step": "status"
     },
     {
-      "ops": ["portfolio"],
+      "ops": ["portfolio [x-api-key]"],
       "step": "portfolio"
     },
     {
-      "ops": ["splits"],
+      "ops": ["splits [x-api-key]"],
       "step": "splits"
     },
     {
-      "ops": ["appFeeBalances"],
+      "ops": ["appFeeBalances [x-api-key]"],
       "step": "appFeeBalances"
     }
   ]
