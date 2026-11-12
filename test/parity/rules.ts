@@ -199,6 +199,15 @@ const RULES: Rule[] = [
       'The bridge fill output is rounded from price-derived amounts (a max-out request receives the balance minus fees).',
   },
   {
+    id: 'steps.token-requirements.permit-nonce',
+    layer: 'steps',
+    path: '*/value/intentRoute/tokenRequirements/*/*/permit/message/nonce',
+    kind: 'mask',
+    label: 'nonce',
+    reason:
+      'The token’s ERC-2612 nonce advances with every executed permit, so each build’s quote offers the next one.',
+  },
+  {
     id: 'steps.token-requirements.permit-deadline',
     layer: 'steps',
     path: '*/value/intentRoute/tokenRequirements/*/*/permit/message/deadline',
@@ -244,7 +253,7 @@ const RULES: Rule[] = [
   {
     id: 'steps.intent-op.sponsor-fee',
     layer: 'steps',
-    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|plannedGasPrincipalMicroUsd|surchargeBaseUsd|surchargeUsd)',
+    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|plannedGasPrincipalMicroUsd|plannedFillGasPrincipalMicroUsd|surchargeBaseUsd|surchargeUsd)',
     kind: 'tolerance',
     relative: 0.1,
     presence: true,
@@ -279,6 +288,22 @@ const RULES: Rule[] = [
     kind: 'tolerance',
     relative: AMOUNT_TOLERANCE,
     reason: 'Fee token USD price at quote time.',
+  },
+  {
+    id: 'steps.wait.fill-hash',
+    layer: 'steps',
+    path: '*/value/fill/hash',
+    kind: 'mask',
+    label: 'tx-hash',
+    reason: 'Each execution lands in its own fill transaction.',
+  },
+  {
+    id: 'steps.wait.claim-hash',
+    layer: 'steps',
+    path: '*/value/claims/*/hash',
+    kind: 'ignore',
+    reason:
+      'A claim hash appears only once the claim lands; whether polling stopped at FILLED or COMPLETED is relayer timing.',
   },
   {
     id: 'cost.inputs',

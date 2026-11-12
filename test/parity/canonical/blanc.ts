@@ -151,6 +151,10 @@ const blanc: VersionAdapter = {
   submitStub(body) {
     return { status: 201, body: { intentId: String(asRecord(body).intentId) } }
   },
+  submittedIntentId(responseBody) {
+    const id = asRecord(responseBody).intentId
+    return id === undefined || id === null ? undefined : String(id)
+  },
 }
 
 export { blanc }

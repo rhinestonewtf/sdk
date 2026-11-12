@@ -23,6 +23,31 @@ const OPTIONAL_ACCOUNT_FIELDS = [
   'delegations',
 ]
 
+// Flips every bit of the last byte, which breaks any signature encoding.
+function corruptHex(value: unknown): unknown {
+  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{2,}$/.test(value))
+    return value
+  const last = Number.parseInt(value.slice(-2), 16) ^ 0xff
+  return `${value.slice(0, -2)}${last.toString(16).padStart(2, '0')}`
+}
+
+// A session origin signature is a `{ preClaimSig, notarizedClaimSig }` pair;
+// the notarized claim signature is the one the claim verifies.
+function corruptOriginSignature(origin: unknown): unknown {
+  if (!Array.isArray(origin) || origin.length === 0) return origin
+  const [first, ...rest] = origin
+  const corrupted =
+    first && typeof first === 'object'
+      ? {
+          ...first,
+          notarizedClaimSig: corruptHex(
+            (first as Record<string, unknown>).notarizedClaimSig,
+          ),
+        }
+      : corruptHex(first)
+  return [corrupted, ...rest]
+}
+
 const FAULTS: Fault[] = [
   {
     id: 'quote.bump-token-amount',
@@ -79,6 +104,22 @@ const FAULTS: Fault[] = [
       const account = body.account
       if (account && typeof account === 'object') {
         for (const key of OPTIONAL_ACCOUNT_FIELDS) delete account[key]
+      }
+      return body
+    },
+  },
+  {
+    id: 'submit.corrupt-origin-signature',
+    op: 'submit',
+    description:
+      'flips the last byte of the first origin signature; run it on one funded scenario: expect a submitRequest diff and an execution error for the candidate only',
+    transform(body, apiVersion) {
+      if (apiVersion === 'alps') {
+        const op = body?.signedIntentOp
+        if (op)
+          op.originSignatures = corruptOriginSignature(op.originSignatures)
+      } else if (body?.signatures) {
+        body.signatures.origin = corruptOriginSignature(body.signatures.origin)
       }
       return body
     },

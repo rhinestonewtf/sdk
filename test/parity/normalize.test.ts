@@ -183,6 +183,75 @@ describe('normalization rules', () => {
   })
 })
 
+describe('funded execution rules', () => {
+  const steps = (wait: unknown, permitNonce: string) => ({
+    wait: { kind: 'wait', ok: true, value: wait },
+    prepare: {
+      kind: 'prepare',
+      ok: true,
+      value: {
+        intentRoute: {
+          tokenRequirements: {
+            84532: {
+              '0x036cbd53842c5426634e7929541ec2318f3dcf7e': {
+                type: 'approval',
+                permit: { message: { nonce: permitNonce, value: '1' } },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  const run = (a: unknown, b: unknown) =>
+    compare(
+      'steps',
+      normalizeLayer('steps', a, RULES, {}),
+      normalizeLayer('steps', b, RULES, {}),
+    )
+
+  test('fill hashes, claim hashes and permit nonces vary per execution', () => {
+    const hits = {}
+    normalizeLayer(
+      'steps',
+      steps({ fill: { hash: '0xaa', chainId: 1 }, claims: [] }, '0'),
+      RULES,
+      hits,
+    )
+    expect(hits).toMatchObject({
+      'steps.wait.fill-hash': 1,
+      'steps.token-requirements.permit-nonce': 1,
+    })
+    expect(
+      run(
+        steps(
+          { fill: { hash: '0xaa', chainId: 1 }, claims: [{ chainId: 2 }] },
+          '0',
+        ),
+        steps(
+          {
+            fill: { hash: '0xbb', chainId: 1 },
+            claims: [{ hash: '0xcc', chainId: 2 }],
+          },
+          '1',
+        ),
+      ),
+    ).toEqual([])
+  })
+
+  test('the fill chain, the number of claims and the permit itself stay exact', () => {
+    expect(
+      run(
+        steps({ fill: { hash: '0xaa', chainId: 1 }, claims: [] }, '0'),
+        steps(
+          { fill: { hash: '0xaa', chainId: 2 }, claims: [{ chainId: 2 }] },
+          '0',
+        ),
+      ).map((diff) => diff.path),
+    ).toEqual(['/wait/value/claims/0', '/wait/value/fill/chainId'])
+  })
+})
+
 describe('compare', () => {
   test('reports missing, extra, type and changed', () => {
     expect(
