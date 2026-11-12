@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Address, Chain } from 'viem'
+import type { Address, Chain, Hex } from 'viem'
 import type { BuildId } from './config'
 
 // The structural surface scenarios use. Written here rather than imported so
@@ -26,6 +26,9 @@ interface SdkAccount {
     acceptsPreconfirmations?: boolean,
   ): Promise<unknown>
   getPortfolio(onTestnets?: boolean): Promise<unknown>
+  sendTransaction(transaction: unknown): Promise<unknown>
+  signAuthorizations(prepared: unknown): Promise<unknown>
+  signEip7702InitData(): Promise<Hex>
 }
 
 interface SdkInstance {
@@ -34,13 +37,15 @@ interface SdkInstance {
   splitIntents(input: {
     chain: Chain
     tokens: Record<string, bigint>
+    settlementLayers?: string[]
   }): Promise<unknown>
   getAppFeeBalances(): Promise<unknown>
 }
 
 interface SdkRoot {
   RhinestoneSDK: new (config: {
-    apiKey: string
+    apiKey?: string
+    auth?: unknown
     endpointUrl?: string
   }) => SdkInstance
   getTokenAddress(symbol: string, chainId: number): Address

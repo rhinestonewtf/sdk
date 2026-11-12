@@ -1,0 +1,461 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "ERC7579",
+        "address": "0x6903edc0ef63ee7b8f0605b11f16e2e85a8df62f",
+        "setupOps": [
+          {
+            "data": "0x1688f0b900000000000000000000000029fcb43b46531bca003ddc8fcb67ffe91900c762000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000404b63e800d0000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000100000000000000000000000075798463024bda64d83c94a64bc7d7eab41300ef00000000000000000000000000000000000000000000000000000000000001400000000000000000000000007579f2ad53b01c3d8779fe17928e0d48885b00030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da099486936000000000000000000000000000000000000000000000000000000000000028447cbbdca0000000000000000000000007579f2ad53b01c3d8779fe17928e0d48885b0003000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000002600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000013fdb5234e4e3162a810f54d9f7e98000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da09948693600000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf00000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "to": "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67"
+          }
+        ]
+      },
+      "accountAccessList": {
+        "chainIds": [84532]
+      },
+      "destinationChainId": 421614,
+      "destinationExecutions": [],
+      "options": {
+        "auxiliaryFunds": {
+          "84532": {
+            "0x036cbd53842c5426634e7929541ec2318f3dcf7e": "5000000"
+          }
+        },
+        "signatureMode": 1,
+        "topupCompact": false
+      },
+      "tokenRequests": [
+        {
+          "amount": "100000",
+          "token": "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d"
+        }
+      ]
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 85,
+        "template": "0x000000000013fdb5234e4e3162a810f54d9f7e98<sig:SingleChainOps@84532#0>"
+      },
+      "origin": [
+        {
+          "byteLength": 85,
+          "template": "0x000000000013fdb5234e4e3162a810f54d9f7e98<sig:SingleChainOps@84532#0>"
+        }
+      ]
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0x000000000013fdb5234e4e3162a810f54d9f7e98<sig:SingleChainOps@84532#0>",
+        "origin": [
+          "0x000000000013fdb5234e4e3162a810f54d9f7e98<sig:SingleChainOps@84532#0>"
+        ]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit(captured) [x-api-key]"],
+      "step": "submit"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0x6903edc0ef63ee7b8f0605b11f16e2e85a8df62f",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "spender": "0x1d7df6ddc7328ac827eb4d7f171c60afb7f9a599"
+                      },
+                      "function": "approve"
+                    }
+                  },
+                  "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "value": "0"
+                },
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "spender": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa"
+                      },
+                      "function": "approve"
+                    }
+                  },
+                  "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "value": "0"
+                },
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "burnToken": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                        "destinationCaller": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "destinationDomain": 3,
+                        "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
+                        "maxFee": "<~typed-data.op-calldata>",
+                        "minFinalityThreshold": 1000,
+                        "mintRecipient": "0x0000000000000000000000006903edc0ef63ee7b8f0605b11f16e2e85a8df62f"
+                      },
+                      "function": "depositForBurnWithHook"
+                    }
+                  },
+                  "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "origin[0]",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0x6903edc0ef63ee7b8f0605b11f16e2e85a8df62f",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "spender": "0x1d7df6ddc7328ac827eb4d7f171c60afb7f9a599"
+                      },
+                      "function": "approve"
+                    }
+                  },
+                  "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "value": "0"
+                },
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "spender": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa"
+                      },
+                      "function": "approve"
+                    }
+                  },
+                  "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "value": "0"
+                },
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "burnToken": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                        "destinationCaller": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "destinationDomain": 3,
+                        "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
+                        "maxFee": "<~typed-data.op-calldata>",
+                        "minFinalityThreshold": 1000,
+                        "mintRecipient": "0x0000000000000000000000006903edc0ef63ee7b8f0605b11f16e2e85a8df62f"
+                      },
+                      "function": "depositForBurnWithHook"
+                    }
+                  },
+                  "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "destination",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "chainId": 84532,
+          "name": "IntentExecutor",
+          "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+          "version": "v0.0.1"
+        },
+        "message": {
+          "account": "0x6903edc0ef63ee7b8f0605b11f16e2e85a8df62f",
+          "gasRefund": {
+            "exchangeRate": "<~typed-data.gas-refund>",
+            "overhead": "<~typed-data.gas-refund>",
+            "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+          },
+          "nonce": "<nonce>",
+          "op": {
+            "ops": [
+              {
+                "data": {
+                  "$calldata": {
+                    "args": {
+                      "amount": "<~typed-data.op-calldata>",
+                      "spender": "0x1d7df6ddc7328ac827eb4d7f171c60afb7f9a599"
+                    },
+                    "function": "approve"
+                  }
+                },
+                "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                "value": "0"
+              },
+              {
+                "data": {
+                  "$calldata": {
+                    "args": {
+                      "amount": "<~typed-data.op-calldata>",
+                      "spender": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa"
+                    },
+                    "function": "approve"
+                  }
+                },
+                "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                "value": "0"
+              },
+              {
+                "data": {
+                  "$calldata": {
+                    "args": {
+                      "amount": "<~typed-data.op-calldata>",
+                      "burnToken": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                      "destinationCaller": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                      "destinationDomain": 3,
+                      "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
+                      "maxFee": "<~typed-data.op-calldata>",
+                      "minFinalityThreshold": 1000,
+                      "mintRecipient": "0x0000000000000000000000006903edc0ef63ee7b8f0605b11f16e2e85a8df62f"
+                    },
+                    "function": "depositForBurnWithHook"
+                  }
+                },
+                "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
+                "value": "0"
+              }
+            ],
+            "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "primaryType": "SingleChainOps",
+        "roleKey": "SingleChainOps@84532#0",
+        "signer": "ownerA",
+        "types": {
+          "GasRefund": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "exchangeRate",
+              "type": "uint256"
+            },
+            {
+              "name": "overhead",
+              "type": "uint256"
+            }
+          ],
+          "Op": [
+            {
+              "name": "vt",
+              "type": "bytes32"
+            },
+            {
+              "name": "ops",
+              "type": "Ops[]"
+            }
+          ],
+          "Ops": [
+            {
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "SingleChainOps": [
+            {
+              "name": "account",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "op",
+              "type": "Op"
+            },
+            {
+              "name": "gasRefund",
+              "type": "GasRefund"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

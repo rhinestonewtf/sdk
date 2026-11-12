@@ -23,11 +23,14 @@ const KNOWN_CALLS = parseAbi([
   'function transfer(address to, uint256 amount)',
   // CCTP v2 TokenMessenger: the burn amount includes the fast-transfer fee.
   'function depositForBurnWithHook(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller, uint256 maxFee, uint32 minFinalityThreshold, bytes hookData)',
+  // Session destination ops cap the spend at the approved amount.
+  'function callbackAllowMaxAmount(address token, uint256 amount)',
 ])
 const PRICE_DERIVED_ARGS: Record<string, readonly string[]> = {
   approve: ['amount'],
   transfer: ['amount'],
   depositForBurnWithHook: ['amount', 'maxFee'],
+  callbackAllowMaxAmount: ['amount'],
 }
 const KNOWN_SELECTORS = new Set<string>(
   KNOWN_CALLS.map((item) => toFunctionSelector(item)),

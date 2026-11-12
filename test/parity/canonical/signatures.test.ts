@@ -1,3 +1,4 @@
+import { keccak256 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
 import { als, createRunContext, type SignerRecord } from '../context'
@@ -52,10 +53,39 @@ describe('signature templating', () => {
   test('r and s are replaced when a build re-encodes v', async () => {
     const { records, templater } = await signWrapped(1n)
     const signature = records[0].output as string
-    const reencoded = `${signature.slice(0, 130)}1f`
+    const reencoded = `${signature.slice(0, 130)}01`
     expect(templater.template(reencoded)).toBe(
-      '0x<sig:Op@84532#0.r><sig:Op@84532#0.s>1f',
+      '0x<sig:Op@84532#0.r><sig:Op@84532#0.s>01',
     )
+  })
+
+  test('an eth_sign v shift is templated, whatever the recovery bit', async () => {
+    for (const nonce of [1n, 2n, 3n, 4n]) {
+      const { records, templater } = await signWrapped(nonce)
+      const signature = records[0].output as string
+      const v = Number.parseInt(signature.slice(130), 16)
+      const shifted = `${signature.slice(0, 130)}${(v + 4).toString(16)}`
+      expect(templater.template(shifted)).toBe(
+        '0x<sig:Op@84532#0.r><sig:Op@84532#0.s><sig:Op@84532#0.v+4>',
+      )
+    }
+  })
+
+  test('raw hashes handed to signMessage are replaced', async () => {
+    const ctx = createRunContext({
+      role: 'baseline',
+      submitMode: 'capture',
+      fault: undefined,
+      origins: [],
+    })
+    const account = recordingAccount(
+      privateKeyToAccount(generatePrivateKey()),
+      'owner',
+    )
+    const raw = keccak256('0x01')
+    await als.run(ctx, () => account.signMessage({ message: { raw } }))
+    const templater = createTemplater(ctx.records.signer)
+    expect(templater.template(raw)).toBe('0x<raw:signMessage#0>')
   })
 
   test('digests are replaced', async () => {

@@ -33,7 +33,7 @@ PARITY_API_KEY=<key> bun run test:parity
 | Env | Default | |
 | --- | --- | --- |
 | `PARITY_API_KEY` | `RHINESTONE_API_KEY` | Required. |
-| `PARITY_ENV` | `prod` | `dev` targets `https://dev.v1.orchestrator.rhinestone.dev`. |
+| `PARITY_ENV` | `prod` | `dev` targets `https://dev.v1.orchestrator.rhinestone.dev` (not calibrated, see Goldens). |
 | `PARITY_BASELINE` | `published` | `published` or `working-tree`. |
 | `PARITY_CANDIDATE` | `working-tree` | `published` or `working-tree`. |
 | `PARITY_REPEAT` | `1` | Repeat the whole comparison. |
@@ -47,10 +47,28 @@ The console shows a verdict per scenario and per layer, with each diff's path an
 
 The offline tests for the harness itself (`test/parity/**/*.test.ts`) run with `bun run test`.
 
+## Scenarios
+
+| File | Covers |
+| --- | --- |
+| `seed.parity.ts` | One unfunded cross-chain quote, sign and captured submit; basic reads; basic errors. |
+| `mapping.parity.ts` | Every transaction option v1 puts in the quote request, source selection, same-chain and tokenless routes, sessions, and each account shape (Safe, Kernel, Startale, multi-owner, EOA, EIP-7702 signed with a captured submit; passkey quoted only). |
+| `reads.parity.ts` | Status of fixed past intents, portfolios of empty fixture accounts and a dormant account, splits. |
+| `errors.parity.ts` | Orchestrator quote rejections, `sendTransaction` with no balance, the SDK's own validation errors, invalid API key and JWT, read errors. |
+
+Every scenario is unfunded. Attempts inside a scenario are independent: a rejected quote or read is recorded and the next attempt runs.
+
 ## Checking the harness
 
 - **Self-check:** `PARITY_CANDIDATE=published PARITY_REPEAT=3 bun run test:parity` must match 100%. A diff here is per-quote variance that needs a rule, or a non-deterministic scenario.
-- **Fault check:** `PARITY_FAULT=quote.bump-token-amount bun run test:parity` must fail with a `quoteRequest` diff at `/prepare/tokenRequests/0/amount`.
+- **Fault checks** (`faults.ts`) must fail with `quoteRequest` diffs:
+  - `quote.bump-token-amount`: `/<step>/tokenRequests/0/amount`.
+  - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`topupCompact` and `signatureMode` on every quote).
+  - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignature`, `mockSignatures` and `delegations`, wherever a step sets them.
+
+## Harness errors
+
+A scenario that can't run as written, such as a `wait` step while submits are captured, raises a harness error. It fails the run even when both builds record it identically, and the summary lists it under its own heading.
 
 ## Submits
 
@@ -60,7 +78,7 @@ Unfunded scenarios run with capture-only submit: the submit request is recorded 
 
 Add a `defineScenario` to a `*.parity.ts` file under `scenarios/` and register it with `assertParity`. Wrap every public SDK call in `ctx.step(name, kind, fn)`; the kind decides which layers the result feeds. Use `ctx.sdk()`, `ctx.signer(label)` and `ctx.build.root` instead of importing the SDK, so the same definition runs against both builds. If the scenario needs more of the SDK surface, extend the structural types in `builds.ts`.
 
-Fixture accounts must never be funded or registered with the deposit service: their portfolios have to stay empty for the reads goldens to hold.
+Fixture accounts (every account type, owner set, EOA, 7702, sessions and passkey account built from the fixture owners) must never be funded or registered with the deposit service: their portfolios have to stay empty for the reads goldens to hold. Shared account configs, the default cross-chain request and `attempts` live in `scenarios/shared.ts`.
 
 ## Rules and accepted differences
 
@@ -71,10 +89,13 @@ Fixture accounts must never be funded or registered with the deposit service: th
 
 `goldens/<scenario>.json` holds the published baseline's normalized deterministic layers (a scenario's `goldenLayers`, minus `goldenIgnore`). They are checked only when the baseline is `published`, and a mismatch is reported as drift, separately from parity diffs. Cost is never golden, and neither are values that depend on liquidity or time.
 
+Goldens and fixed fixtures (past intent ids, the dormant account) are prod-only. On dev, those reads differ by design and the goldens drift; compare dev runs for parity only.
+
 Refresh them deliberately and review the diff:
 
 ```sh
 PARITY_UPDATE_GOLDENS=1 PARITY_CANDIDATE=published bun run test:parity
+bunx biome check --write test/parity/goldens
 ```
 
 ## Baseline version

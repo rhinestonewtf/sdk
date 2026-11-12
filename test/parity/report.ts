@@ -39,6 +39,11 @@ function formatResult(result: ScenarioResult): string {
     lines.push(`    ${layer.padEnd(14)} ${entry.status}`)
     for (const diff of entry.diffs) lines.push(diffLine(diff))
   }
+  if (result.harnessErrors.length > 0) {
+    lines.push('  harness errors (the scenario or harness is broken):')
+    for (const entry of result.harnessErrors)
+      lines.push(`    ${entry.role} ${entry.step}: ${entry.message}`)
+  }
   const accepted = LAYERS.flatMap((layer) => result.layers[layer].accepted)
   if (accepted.length > 0) {
     lines.push('  accepted differences:')
