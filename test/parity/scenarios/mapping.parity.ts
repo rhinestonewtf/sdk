@@ -35,14 +35,10 @@ function prepare(account: SdkAccount, transaction: Record<string, unknown>) {
   return () => account.prepareTransaction(transaction)
 }
 
-function tokenlessCalls() {
-  return [{ to: BURN_ADDRESS, data: '0x', value: 0n }]
-}
-
 function tokenless(ctx: ScenarioContext, overrides: Record<string, unknown>) {
   return {
     chain: ctx.chains.baseSepolia,
-    calls: tokenlessCalls(),
+    calls: [{ to: BURN_ADDRESS, data: '0x', value: 0n }],
     ...overrides,
   }
 }
