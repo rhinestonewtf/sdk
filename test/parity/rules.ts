@@ -117,6 +117,15 @@ const RULES: Rule[] = [
       'Gas and token prices the quote was priced at; which ones are listed stays exact.',
   },
   {
+    id: 'steps.intent-op.l1-fees',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/signedMetadata/opGasParams/*/(l1BaseFee|l1BlobBaseFee)',
+    kind: 'mask',
+    label: 'market',
+    reason:
+      'Live L1 base and blob fees observed at quote time; the fee scalars and calldata size stay exact.',
+  },
+  {
     id: 'steps.intent-op.gas-refund',
     layer: 'steps',
     path: '*/value/intentRoute/intentOp/**/gasRefund/(exchangeRate|overhead)',

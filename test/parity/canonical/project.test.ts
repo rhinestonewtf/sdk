@@ -42,7 +42,14 @@ function prepared(hasFulfilledAll: boolean): RunRecords {
         value: {
           intentInput: { ignored: true },
           intentRoute: {
-            intentOp: { nonce: '1' },
+            intentOp: {
+              nonce: '1',
+              signedMetadata: {
+                opGasParams: {
+                  '84532': { l1BaseFee: '17', baseFeeScalar: '1101' },
+                },
+              },
+            },
             intentCost: { hasFulfilledAll },
             tokenRequirements: {},
           },
@@ -74,7 +81,16 @@ describe('project', () => {
     expect(a.steps).toMatchObject({
       prepare: {
         value: {
-          intentRoute: { intentOp: { nonce: '<nonce>' } },
+          intentRoute: {
+            intentOp: {
+              nonce: '<nonce>',
+              signedMetadata: {
+                opGasParams: {
+                  '84532': { l1BaseFee: '<market>', baseFeeScalar: '1101' },
+                },
+              },
+            },
+          },
           transaction: { chain: 84532 },
         },
       },
