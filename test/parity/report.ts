@@ -92,4 +92,4 @@ function writeReport(dir: string, results: ScenarioResult[]): string {
   return file
 }
 
-export { createRunDir, formatResult, formatSummary, writeReport }
+export { createRunDir, formatSummary, writeReport }

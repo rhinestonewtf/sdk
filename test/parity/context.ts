@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { BuildId } from './config'
 import type { Fault } from './faults'
 import type { ApiVersion, Op } from './routing'
 import type { Plain } from './serialize'
@@ -75,9 +74,7 @@ interface RunRecords {
 }
 
 interface RunContext {
-  buildId: BuildId
   role: 'baseline' | 'candidate'
-  scenarioId: string
   step: string | undefined
   submitMode: SubmitMode
   fault: Fault | undefined

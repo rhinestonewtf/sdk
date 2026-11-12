@@ -2,7 +2,7 @@ import type { HttpRecord, RunRecords, StepRecord } from '../context'
 import type { ApiVersion, Op } from '../routing'
 import { alps } from './alps'
 import { blanc } from './blanc'
-import { asRecord, compact, lowerHex } from './common'
+import { asRecord, compact, lowerHex, type ReadOp, readParams } from './common'
 import { createTemplater, templateDeep, templateSignatures } from './signatures'
 import type { CanonicalLayers, VersionAdapter } from './types'
 
@@ -138,10 +138,11 @@ function projectReads(records: RunRecords, steps: StepRecord[]) {
           (r) => r.step === step.name && READ_OPS.has(r.op),
         )
         const params = wire
-          ? adapterFor(wire.apiVersion).readParams(
-              wire.op as 'status' | 'portfolio' | 'splits' | 'appFeeBalances',
-              { path: wire.path, query: wire.query, body: wire.requestBody },
-            )
+          ? readParams(wire.op as ReadOp, {
+              path: wire.path,
+              query: wire.query,
+              body: wire.requestBody,
+            })
           : undefined
         return {
           step: step.name,

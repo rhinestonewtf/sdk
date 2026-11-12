@@ -13,7 +13,6 @@ interface ParityConfig {
   repeat: number
   fault: Fault | undefined
   updateGoldens: boolean
-  reportDir: string
 }
 
 const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
@@ -68,7 +67,6 @@ function loadConfig(
     repeat,
     fault: env.PARITY_FAULT ? getFault(env.PARITY_FAULT) : undefined,
     updateGoldens: env.PARITY_UPDATE_GOLDENS === '1',
-    reportDir: env.PARITY_REPORT_DIR || '.parity/reports',
   }
 }
 

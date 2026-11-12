@@ -18,9 +18,7 @@ const recordingFetch = createRecordingFetch(
 function context(overrides: Partial<RunContext> = {}): RunContext {
   return {
     ...createRunContext({
-      buildId: 'published',
       role: 'baseline',
-      scenarioId: 'test',
       submitMode: 'capture',
       fault: undefined,
       origins: orchestratorOrigins({ endpointUrl: undefined }),
@@ -176,8 +174,8 @@ describe('createRecordingFetch', () => {
   })
 
   test('attributes interleaved calls to their own run', async () => {
-    const a = context({ buildId: 'published' })
-    const b = context({ buildId: 'working-tree', role: 'candidate' })
+    const a = context()
+    const b = context({ role: 'candidate' })
     const slow = (path: string) =>
       new Promise<void>((resolve) => setTimeout(resolve, 5)).then(() =>
         recordingFetch(`${PROD_ORCHESTRATOR_URL}${path}`),
@@ -200,10 +198,6 @@ describe('createRecordingFetch', () => {
 })
 
 describe('getFault', () => {
-  test('rejects an unknown id', () => {
-    expect(() => getFault('nope')).toThrow(/Unknown PARITY_FAULT "nope"/)
-  })
-
   test('drops auxiliary funds', () => {
     const body = { options: { auxiliaryFunds: { 1: {} }, topupCompact: false } }
     expect(

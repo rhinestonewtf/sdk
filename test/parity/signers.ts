@@ -86,4 +86,4 @@ function recordingAccount<T extends LocalAccount | WebAuthnAccount>(
   return wrapped as T
 }
 
-export { digestOf, recordingAccount }
+export { recordingAccount }

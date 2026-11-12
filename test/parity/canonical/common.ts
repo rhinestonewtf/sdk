@@ -1,3 +1,5 @@
+import type { CanonicalCostToken, CanonicalQuoteRequest } from './types'
+
 // Shared canonicalization helpers: lowercase hex, numeric chain ids, decimal
 // amounts and sorted keys, so both API versions project to one shape.
 
@@ -102,14 +104,165 @@ function filterList(value: unknown): unknown {
   return value
 }
 
+function account(value: unknown): Record<string, unknown> | undefined {
+  if (!value) return undefined
+  const input = asRecord(value)
+  return lowerHex(
+    compact({
+      ...input,
+      delegations: mapChainKeys(input.delegations),
+      mockSignatures: mapChainKeys(input.mockSignatures),
+    }),
+  )
+}
+
+function executions(value: unknown): unknown[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.map((execution) => {
+    const input = asRecord(execution)
+    return lowerHex(compact({ ...input, value: amount(input.value) }))
+  })
+}
+
+function authorization(value: unknown) {
+  const input = asRecord(value)
+  return lowerHex(compact({ ...input, chainId: chainIdNumber(input.chainId) }))
+}
+
+function tokenAmountRecord(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [token, entry] of Object.entries(asRecord(value))) {
+    out[token.toLowerCase()] = amount(entry) as string
+  }
+  return out
+}
+
+// The quote request shape both versions share; the version-specific parts are
+// the gas field name, the access list and the options.
+function quoteRequest(
+  body: unknown,
+  version: {
+    gasLimitKey: string
+    accessList(value: unknown): unknown
+    options(value: unknown): Record<string, unknown>
+  },
+): CanonicalQuoteRequest {
+  const {
+    account: rawAccount,
+    recipient,
+    destinationChainId,
+    destinationExecutions,
+    [version.gasLimitKey]: gasLimit,
+    tokenRequests,
+    accountAccessList,
+    options,
+    preClaimExecutions,
+    ...rest
+  } = asRecord(body)
+  return compact({
+    ...lowerHex(rest),
+    destinationChainId: chainIdNumber(destinationChainId),
+    tokenRequests: (Array.isArray(tokenRequests) ? tokenRequests : []).map(
+      (request) => {
+        const item = asRecord(request)
+        return compact({
+          token: String(item.tokenAddress).toLowerCase(),
+          amount: amount(item.amount),
+        })
+      },
+    ),
+    account: account(rawAccount) ?? {},
+    recipient: account(recipient),
+    destinationExecutions: executions(destinationExecutions) ?? [],
+    destinationGasLimit: amount(gasLimit),
+    preClaimExecutions: mapChainKeys(preClaimExecutions, executions) as
+      | Record<string, unknown[]>
+      | undefined,
+    accountAccessList: version.accessList(accountAccessList),
+    options: version.options(options),
+  })
+}
+
+function portfolioQuery(query: Record<string, string>) {
+  const tokens: Record<string, string[]> = {}
+  for (const entry of (query.tokens ?? '').split(',').filter(Boolean)) {
+    const separator = entry.lastIndexOf(':')
+    const chain = String(chainIdNumber(entry.slice(0, separator)))
+    tokens[chain] ??= []
+    tokens[chain].push(entry.slice(separator + 1).toLowerCase())
+  }
+  return compact({
+    chainIds: query.chainIds
+      ? query.chainIds.split(',').filter(Boolean).map(chainIdNumber)
+      : undefined,
+    tokens: Object.keys(tokens).length > 0 ? tokens : undefined,
+    filterEmpty: query.filterEmpty,
+  })
+}
+
+type ReadOp = 'status' | 'portfolio' | 'splits' | 'appFeeBalances'
+
+// Read requests differ between versions only in path and chain-id encoding.
+function readParams(
+  op: ReadOp,
+  request: { path: string; query: Record<string, string>; body: unknown },
+): Record<string, unknown> {
+  switch (op) {
+    case 'status':
+      return {
+        intentId: decodeURIComponent(request.path.split('/').pop() ?? ''),
+      }
+    case 'portfolio':
+      return compact({
+        account: decodeURIComponent(
+          request.path.split('/')[2] ?? '',
+        ).toLowerCase(),
+        ...portfolioQuery(request.query),
+      })
+    case 'splits': {
+      const input = asRecord(request.body)
+      return compact({
+        chainId: chainIdNumber(input.chainId),
+        tokens: tokenAmountRecord(input.tokens),
+        settlementLayers: filterList(input.settlementLayers),
+      })
+    }
+    case 'appFeeBalances':
+      return {}
+  }
+}
+
+function sumAmounts(values: unknown[]): string {
+  let total = 0n
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') continue
+    total += BigInt(String(value))
+  }
+  return total.toString()
+}
+
+function sortCostTokens(tokens: CanonicalCostToken[]): CanonicalCostToken[] {
+  return [...tokens].sort((a, b) => {
+    const left = `${a.chainId}:${a.token}`
+    const right = `${b.chainId}:${b.token}`
+    return left < right ? -1 : left > right ? 1 : 0
+  })
+}
+
+export type { ReadOp }
 export {
   amount,
   asRecord,
+  authorization,
   chainIdNumber,
-  chainKey,
   compact,
   filterList,
   lowerHex,
   mapChainKeys,
+  quoteRequest,
+  readParams,
   signatureModeNumber,
+  sortCostTokens,
+  sumAmounts,
+  tokenAmountRecord,
 }

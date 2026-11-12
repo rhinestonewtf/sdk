@@ -1,5 +1,3 @@
-import type { ApiVersion } from '../routing'
-
 const LAYERS = [
   'quoteRequest',
   'typedData',
@@ -72,22 +70,13 @@ interface CanonicalWireError {
   code?: string
 }
 
-interface CanonicalReadParams {
-  [key: string]: unknown
-}
-
 // One per API version: projects that version's wire bodies into the shared
 // canonical model, and builds the stub a captured submit returns.
 interface VersionAdapter {
-  apiVersion: ApiVersion
   quoteRequest(body: unknown): CanonicalQuoteRequest
   submitRequest(body: unknown): CanonicalSubmitRequest
   cost(responseBody: unknown, requestBody: unknown): CanonicalCost | undefined
   wireError(status: number, body: unknown): CanonicalWireError
-  readParams(
-    op: 'status' | 'portfolio' | 'splits' | 'appFeeBalances',
-    request: { path: string; query: Record<string, string>; body: unknown },
-  ): CanonicalReadParams
   submitStub(body: unknown): { status: number; body: unknown }
 }
 
@@ -97,7 +86,6 @@ export type {
   CanonicalFee,
   CanonicalLayers,
   CanonicalQuoteRequest,
-  CanonicalReadParams,
   CanonicalSubmitRequest,
   CanonicalWireError,
   Layer,

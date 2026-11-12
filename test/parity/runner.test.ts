@@ -151,7 +151,6 @@ function loader(candidate: { dropAuxiliaryFunds?: boolean }) {
     label: id,
     version: '0.0.0',
     root: fakeRoot(id === 'working-tree' ? candidate : {}),
-    subpath: async () => ({}),
   })
 }
 
@@ -194,7 +193,6 @@ function config(overrides: Partial<ParityConfig> = {}): ParityConfig {
     repeat: 1,
     fault: undefined,
     updateGoldens: false,
-    reportDir: goldenDir,
     ...overrides,
   }
 }

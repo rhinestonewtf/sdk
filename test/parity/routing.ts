@@ -13,9 +13,6 @@ type Op =
 interface Route {
   apiVersion: ApiVersion
   op: Op
-  // `path` when the endpoint only exists in one version; otherwise the header
-  // decided, or it was missing and alps (the server default) was assumed.
-  versionSource: 'path' | 'header' | 'unspecified'
 }
 
 const PATH_ROUTES: {
@@ -89,7 +86,8 @@ function versionFromHeader(header: string | undefined): ApiVersion | undefined {
   return undefined
 }
 
-// The path decides first: alps submits carry no version header.
+// The path decides first: alps submits carry no version header. Shared paths
+// fall back to the header, then to alps (the server default).
 function routeRequest(
   method: string,
   path: string,
@@ -99,22 +97,14 @@ function routeRequest(
   const trimmed = path.length > 1 ? path.replace(/\/+$/, '') : path
   for (const route of PATH_ROUTES) {
     if (route.method === upper && route.pattern.test(trimmed)) {
-      return {
-        apiVersion: route.apiVersion,
-        op: route.op,
-        versionSource: 'path',
-      }
+      return { apiVersion: route.apiVersion, op: route.op }
     }
   }
-  const fromHeader = versionFromHeader(apiVersionHeader)
-  const versionSource = fromHeader ? 'header' : 'unspecified'
-  const apiVersion = fromHeader ?? 'alps'
-  for (const route of SHARED_ROUTES) {
-    if (route.method === upper && route.pattern.test(trimmed)) {
-      return { apiVersion, op: route.op, versionSource }
-    }
-  }
-  return { apiVersion, op: 'other', versionSource }
+  const apiVersion = versionFromHeader(apiVersionHeader) ?? 'alps'
+  const shared = SHARED_ROUTES.find(
+    (route) => route.method === upper && route.pattern.test(trimmed),
+  )
+  return { apiVersion, op: shared?.op ?? 'other' }
 }
 
 export type { ApiVersion, Op, Route }

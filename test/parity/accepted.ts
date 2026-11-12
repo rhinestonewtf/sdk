@@ -13,17 +13,6 @@ interface AcceptedDifference {
 
 const ACCEPTED: AcceptedDifference[] = []
 
-function scenarioMatches(
-  pattern: string | undefined,
-  scenarioId: string,
-): boolean {
-  if (!pattern) return true
-  const regex = new RegExp(
-    `^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`,
-  )
-  return regex.test(scenarioId)
-}
-
 function applyAccepted(
   diffs: Diff[],
   scenarioId: string,
@@ -35,7 +24,7 @@ function applyAccepted(
     const entry = entries.find(
       (candidate) =>
         candidate.layer === diff.layer &&
-        scenarioMatches(candidate.scenario, scenarioId) &&
+        (!candidate.scenario || matchGlob(candidate.scenario, scenarioId)) &&
         matchGlob(candidate.path, diff.path),
     )
     if (entry) accepted.push({ ...diff, reason: entry.reason })

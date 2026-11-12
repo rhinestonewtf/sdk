@@ -17,9 +17,7 @@ function typedData(nonce: bigint, chainId = 84532) {
 
 async function signWrapped(nonce: bigint, prefix = VALIDATOR) {
   const ctx = createRunContext({
-    buildId: 'published',
     role: 'baseline',
-    scenarioId: 'test',
     submitMode: 'capture',
     fault: undefined,
     origins: [],

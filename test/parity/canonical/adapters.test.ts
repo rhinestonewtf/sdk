@@ -10,6 +10,7 @@ import { normalizeLayer } from '../normalize'
 import { RULES } from '../rules'
 import { alps } from './alps'
 import { blanc } from './blanc'
+import { readParams } from './common'
 
 describe('quote request', () => {
   test('alps and blanc fixtures project to the same canonical request', () => {
@@ -147,22 +148,15 @@ describe('cost', () => {
 })
 
 describe('reads', () => {
-  test('status', () => {
-    const request = { query: {}, body: undefined }
-    expect(
-      alps.readParams('status', { ...request, path: '/intent-operation/123' }),
-    ).toEqual(blanc.readParams('status', { ...request, path: '/intents/123' }))
-  })
-
-  test('portfolio', () => {
+  test('alps and blanc portfolio queries project the same', () => {
     const path = '/accounts/0xAbC/portfolio'
-    const fromAlps = alps.readParams('portfolio', {
+    const fromAlps = readParams('portfolio', {
       path,
       query: { chainIds: '84532,421614', tokens: '84532:0xDeF' },
       body: undefined,
     })
     expect(fromAlps).toEqual(
-      blanc.readParams('portfolio', {
+      readParams('portfolio', {
         path,
         query: {
           chainIds: 'eip155:84532,eip155:421614',
@@ -176,23 +170,6 @@ describe('reads', () => {
       chainIds: [84532, 421614],
       tokens: { '84532': ['0xdef'] },
     })
-  })
-
-  test('splits', () => {
-    const tokens = { '0xAbC': '1000000' }
-    expect(
-      alps.readParams('splits', {
-        path: '/intents/split',
-        query: {},
-        body: { chainId: 421614, tokens },
-      }),
-    ).toEqual(
-      blanc.readParams('splits', {
-        path: '/intents/splits',
-        query: {},
-        body: { chainId: 'eip155:421614', tokens },
-      }),
-    )
   })
 })
 

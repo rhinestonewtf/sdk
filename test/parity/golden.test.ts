@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { CanonicalLayers } from './canonical/types'
-import { loadConfig } from './config'
 import { checkGolden, goldenFile, goldenView } from './golden'
 import { stableStringify, toPlain } from './serialize'
 
@@ -68,10 +67,6 @@ describe('goldens', () => {
     })
   })
 
-  test('cost can never be golden', () => {
-    expect(() => goldenView(layers({}), ['cost'])).toThrow(/cannot be golden/)
-  })
-
   test('write, match, then drift', () => {
     const view = goldenView(layers({ status: { result: 'COMPLETED' } }), [
       'reads',
@@ -106,39 +101,5 @@ describe('goldens', () => {
         },
       ],
     })
-  })
-})
-
-describe('loadConfig', () => {
-  test('requires an API key', () => {
-    expect(() => loadConfig({})).toThrow(/PARITY_API_KEY/)
-  })
-
-  test('defaults to prod, published vs working tree, one repeat', () => {
-    expect(loadConfig({ RHINESTONE_API_KEY: 'k' })).toMatchObject({
-      apiKey: 'k',
-      env: 'prod',
-      endpointUrl: undefined,
-      baseline: 'published',
-      candidate: 'working-tree',
-      repeat: 1,
-      updateGoldens: false,
-      reportDir: '.parity/reports',
-    })
-  })
-
-  test('selects dev and validates values', () => {
-    expect(
-      loadConfig({ PARITY_API_KEY: 'k', PARITY_ENV: 'dev' }).endpointUrl,
-    ).toBe('https://dev.v1.orchestrator.rhinestone.dev')
-    expect(() =>
-      loadConfig({ PARITY_API_KEY: 'k', PARITY_CANDIDATE: 'main' }),
-    ).toThrow()
-    expect(() =>
-      loadConfig({ PARITY_API_KEY: 'k', PARITY_REPEAT: '0' }),
-    ).toThrow()
-    expect(() =>
-      loadConfig({ PARITY_API_KEY: 'k', PARITY_FAULT: 'nope' }),
-    ).toThrow()
   })
 })

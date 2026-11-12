@@ -7,58 +7,12 @@ type FetchFn = typeof globalThis.fetch
 
 const INSTALLED = Symbol.for('rhinestone.parity.fetchRecorder')
 
-function headerMap(headers: HeadersInit | undefined): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (!headers) return out
-  if (headers instanceof Headers) {
-    headers.forEach((value, key) => {
-      out[key.toLowerCase()] = value
-    })
-    return out
-  }
-  const entries = Array.isArray(headers) ? headers : Object.entries(headers)
-  for (const [key, value] of entries) {
-    if (value !== undefined) out[key.toLowerCase()] = String(value)
-  }
-  return out
-}
-
 function queryMap(url: URL): Record<string, string> {
   const out: Record<string, string> = {}
   for (const key of new Set(url.searchParams.keys())) {
     out[key] = url.searchParams.getAll(key).join(',')
   }
   return out
-}
-
-async function readRequest(
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-): Promise<{
-  url: string
-  method: string
-  headers: Record<string, string>
-  body: string | undefined
-}> {
-  if (input instanceof Request) {
-    return {
-      url: input.url,
-      method: init?.method ?? input.method,
-      headers: { ...headerMap(input.headers), ...headerMap(init?.headers) },
-      body:
-        typeof init?.body === 'string'
-          ? init.body
-          : input.body
-            ? await input.clone().text()
-            : undefined,
-    }
-  }
-  return {
-    url: input.toString(),
-    method: init?.method ?? 'GET',
-    headers: headerMap(init?.headers),
-    body: typeof init?.body === 'string' ? init.body : undefined,
-  }
 }
 
 // Wraps fetch so orchestrator calls made inside a parity run are recorded.
@@ -68,31 +22,32 @@ function createRecordingFetch(underlying: FetchFn): FetchFn {
   const recording = async (input: RequestInfo | URL, init?: RequestInit) => {
     const ctx = currentContext()
     if (!ctx) return underlying(input, init)
-    const request = await readRequest(input, init)
-    const url = new URL(request.url)
+    // The SDK calls fetch(url, init) with a string body.
+    const url = new URL(input instanceof Request ? input.url : input.toString())
     if (!ctx.origins.includes(url.origin)) return underlying(input, init)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const headers = new Headers(init?.headers)
+    const apiVersionHeader = headers.get('x-api-version') ?? undefined
 
-    const route = routeRequest(
-      request.method,
-      url.pathname,
-      request.headers['x-api-version'],
-    )
+    const route = routeRequest(method, url.pathname, apiVersionHeader)
     const record: HttpRecord = {
       seq: nextSeq(ctx),
       step: ctx.step,
-      method: request.method.toUpperCase(),
+      method,
       path: url.pathname,
       query: queryMap(url),
       apiVersion: route.apiVersion,
       op: route.op,
-      apiVersionHeader: request.headers['x-api-version'],
-      sdkVersionHeader: request.headers['x-sdk-version'],
+      apiVersionHeader,
+      sdkVersionHeader: headers.get('x-sdk-version') ?? undefined,
       authHeadersPresent: {
-        'x-api-key': 'x-api-key' in request.headers,
-        authorization: 'authorization' in request.headers,
-        'x-intent-extension': 'x-intent-extension' in request.headers,
+        'x-api-key': headers.has('x-api-key'),
+        authorization: headers.has('authorization'),
+        'x-intent-extension': headers.has('x-intent-extension'),
       },
-      requestBody: parseJson(request.body),
+      requestBody: parseJson(
+        typeof init?.body === 'string' ? init.body : undefined,
+      ),
       status: 0,
       responseHeaders: {},
       responseBody: undefined,
@@ -101,11 +56,7 @@ function createRecordingFetch(underlying: FetchFn): FetchFn {
     }
     ctx.records.http.push(record)
 
-    let forwardInit: RequestInit = init ?? {
-      method: request.method,
-      headers: request.headers,
-      body: request.body,
-    }
+    let forwardInit = init
     if (ctx.fault && ctx.role === 'candidate' && ctx.fault.op === route.op) {
       const mutated = ctx.fault.transform(
         structuredClone(record.requestBody),
@@ -129,10 +80,7 @@ function createRecordingFetch(underlying: FetchFn): FetchFn {
 
     let response: Response
     try {
-      response = await underlying(
-        input instanceof Request ? input.url : input,
-        forwardInit,
-      )
+      response = await underlying(input, forwardInit)
     } catch (error) {
       record.error = error instanceof Error ? error.message : String(error)
       throw error

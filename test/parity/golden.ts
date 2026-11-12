@@ -107,11 +107,4 @@ function checkGolden(
 }
 
 export type { GoldenOutcome }
-export {
-  checkGolden,
-  GOLDEN_DIR,
-  goldenFile,
-  goldenView,
-  readGolden,
-  writeGolden,
-}
+export { checkGolden, goldenFile, goldenView }

@@ -11,7 +11,6 @@ describe('routeRequest', () => {
     expect(routeRequest(method, path, '2026-01.alps')).toEqual({
       apiVersion: 'alps',
       op,
-      versionSource: 'path',
     })
   })
 
@@ -24,7 +23,6 @@ describe('routeRequest', () => {
     expect(routeRequest(method, path, '2026-04.blanc')).toEqual({
       apiVersion: 'blanc',
       op,
-      versionSource: 'path',
     })
   })
 
@@ -32,7 +30,6 @@ describe('routeRequest', () => {
     expect(routeRequest('POST', '/intent-operations', undefined)).toEqual({
       apiVersion: 'alps',
       op: 'submit',
-      versionSource: 'path',
     })
   })
 
@@ -50,17 +47,14 @@ describe('routeRequest', () => {
     expect(routeRequest(method, path, '2026-04.blanc')).toEqual({
       apiVersion: 'blanc',
       op,
-      versionSource: 'header',
     })
     expect(routeRequest(method, path, '2026-01.alps')).toEqual({
       apiVersion: 'alps',
       op,
-      versionSource: 'header',
     })
     expect(routeRequest(method, path, undefined)).toEqual({
       apiVersion: 'alps',
       op,
-      versionSource: 'unspecified',
     })
   })
 

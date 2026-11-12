@@ -46,4 +46,4 @@ function getFault(id: string): Fault {
 }
 
 export type { Fault }
-export { FAULTS, getFault }
+export { getFault }

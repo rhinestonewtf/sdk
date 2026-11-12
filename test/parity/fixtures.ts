@@ -1,5 +1,5 @@
 import type { LocalAccount } from 'viem'
-import { accountA, accountB } from '../consts'
+import { accountA } from '../consts'
 import { recordingAccount } from './signers'
 
 // Owner keys reused from the unit-test fixtures. Their default v1 accounts are
@@ -7,7 +7,6 @@ import { recordingAccount } from './signers'
 // portfolios empty and the quote path deterministic.
 const OWNERS = {
   ownerA: accountA as LocalAccount,
-  ownerB: accountB as LocalAccount,
 } as const
 
 type SignerLabel = keyof typeof OWNERS
@@ -25,4 +24,4 @@ const FIXED_INTENT_ID =
 const MISSING_INTENT_ID = 123n
 
 export type { SignerLabel }
-export { FIXED_INTENT_ID, MISSING_INTENT_ID, OWNERS, signer, USDC_BASE_SEPOLIA }
+export { FIXED_INTENT_ID, MISSING_INTENT_ID, signer, USDC_BASE_SEPOLIA }

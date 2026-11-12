@@ -91,9 +91,7 @@ async function runSide(
   const { config } = options
   const build = await (options.loadBuild ?? loadBuild)(buildId)
   const run = createRunContext({
-    buildId,
     role,
-    scenarioId: scenario.id,
     submitMode: scenario.submitMode,
     fault: role === 'candidate' ? config.fault : undefined,
     origins: orchestratorOrigins(config),

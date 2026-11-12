@@ -42,7 +42,6 @@ interface SdkRoot {
   RhinestoneSDK: new (config: {
     apiKey: string
     endpointUrl?: string
-    headers?: Record<string, string>
   }) => SdkInstance
   getTokenAddress(symbol: string, chainId: number): Address
 }
@@ -54,7 +53,6 @@ interface LoadedBuild {
   commit?: string
   dirty?: boolean
   root: SdkRoot
-  subpath(name: string): Promise<Record<string, unknown>>
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -82,7 +80,6 @@ function loadPublished(): LoadedBuild {
     label: `${manifest.name}@${manifest.version} (npm)`,
     version: manifest.version,
     root: repoRequire(BASELINE_PACKAGE) as SdkRoot,
-    subpath: async (name) => repoRequire(`${BASELINE_PACKAGE}/${name}`),
   }
 }
 
@@ -106,18 +103,6 @@ async function loadWorkingTree(): Promise<LoadedBuild> {
     commit,
     dirty,
     root,
-    subpath: async (name) => {
-      const target = manifest.exports?.[`./${name}`]?.import as
-        | string
-        | undefined
-      if (!target) throw new Error(`@rhinestone/sdk has no "./${name}" export`)
-      // `./dist/src/x/index.js` is built from `src/x/index.ts` at the repo root.
-      const source = join(
-        REPO_ROOT,
-        target.replace(/^\.\/dist\//, '').replace(/\.js$/, '.ts'),
-      )
-      return import(/* @vite-ignore */ source)
-    },
   }
 }
 

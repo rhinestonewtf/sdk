@@ -1,50 +1,25 @@
 import {
   amount,
   asRecord,
+  authorization,
   chainIdNumber,
   compact,
   filterList,
   lowerHex,
   mapChainKeys,
+  quoteRequest,
   signatureModeNumber,
+  sortCostTokens,
+  sumAmounts,
+  tokenAmountRecord,
 } from './common'
-import { sortCostTokens, sumAmounts } from './cost'
 import type {
   CanonicalCost,
-  CanonicalQuoteRequest,
   CanonicalSubmitRequest,
   VersionAdapter,
 } from './types'
 
 // Version `2026-01.alps`: what v1 1.22.0 speaks.
-
-function account(value: unknown): Record<string, unknown> | undefined {
-  if (!value) return undefined
-  const input = asRecord(value)
-  return lowerHex(
-    compact({
-      ...input,
-      delegations: mapChainKeys(input.delegations),
-      mockSignatures: mapChainKeys(input.mockSignatures),
-    }),
-  )
-}
-
-function executions(value: unknown): unknown[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  return value.map((execution) => {
-    const input = asRecord(execution)
-    return lowerHex(compact({ ...input, value: amount(input.value) }))
-  })
-}
-
-function tokenAmountRecord(value: unknown): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [token, entry] of Object.entries(asRecord(value))) {
-    out[token.toLowerCase()] = amount(entry) as string
-  }
-  return out
-}
 
 function accessList(value: unknown): unknown {
   if (value === undefined || value === null) return undefined
@@ -103,48 +78,6 @@ function options(value: unknown): Record<string, unknown> {
       auxiliaryFunds: mapChainKeys(input.auxiliaryFunds, tokenAmountRecord),
     }),
   )
-}
-
-function quoteRequest(body: unknown): CanonicalQuoteRequest {
-  const {
-    account: rawAccount,
-    recipient,
-    destinationChainId,
-    destinationExecutions,
-    destinationGasUnits,
-    tokenRequests,
-    accountAccessList,
-    options: rawOptions,
-    preClaimExecutions,
-    ...rest
-  } = asRecord(body)
-  return compact({
-    ...lowerHex(rest),
-    destinationChainId: chainIdNumber(destinationChainId),
-    tokenRequests: (Array.isArray(tokenRequests) ? tokenRequests : []).map(
-      (request) => {
-        const item = asRecord(request)
-        return compact({
-          token: String(item.tokenAddress).toLowerCase(),
-          amount: amount(item.amount),
-        })
-      },
-    ),
-    account: account(rawAccount) ?? {},
-    recipient: account(recipient),
-    destinationExecutions: executions(destinationExecutions) ?? [],
-    destinationGasLimit: amount(destinationGasUnits),
-    preClaimExecutions: mapChainKeys(preClaimExecutions, executions) as
-      | Record<string, unknown[]>
-      | undefined,
-    accountAccessList: accessList(accountAccessList),
-    options: options(rawOptions),
-  })
-}
-
-function authorization(value: unknown) {
-  const input = asRecord(value)
-  return lowerHex(compact({ ...input, chainId: chainIdNumber(input.chainId) }))
 }
 
 function submitRequest(body: unknown): CanonicalSubmitRequest {
@@ -250,49 +183,16 @@ function wireError(status: number, body: unknown) {
   return compact({ status, code: typeof code === 'string' ? code : undefined })
 }
 
-function portfolioQuery(query: Record<string, string>) {
-  const tokens: Record<string, string[]> = {}
-  for (const entry of (query.tokens ?? '').split(',').filter(Boolean)) {
-    const separator = entry.lastIndexOf(':')
-    const chain = String(chainIdNumber(entry.slice(0, separator)))
-    tokens[chain] ??= []
-    tokens[chain].push(entry.slice(separator + 1).toLowerCase())
-  }
-  return compact({
-    chainIds: query.chainIds
-      ? query.chainIds.split(',').filter(Boolean).map(chainIdNumber)
-      : undefined,
-    tokens: Object.keys(tokens).length > 0 ? tokens : undefined,
-  })
-}
-
 const alps: VersionAdapter = {
-  apiVersion: 'alps',
-  quoteRequest,
+  quoteRequest: (body) =>
+    quoteRequest(body, {
+      gasLimitKey: 'destinationGasUnits',
+      accessList,
+      options,
+    }),
   submitRequest,
   cost,
   wireError,
-  readParams(op, { path, query, body }) {
-    switch (op) {
-      case 'status':
-        return { intentId: decodeURIComponent(path.split('/').pop() ?? '') }
-      case 'portfolio':
-        return compact({
-          account: decodeURIComponent(path.split('/')[2] ?? '').toLowerCase(),
-          ...portfolioQuery(query),
-        })
-      case 'splits': {
-        const input = asRecord(body)
-        return compact({
-          chainId: chainIdNumber(input.chainId),
-          tokens: tokenAmountRecord(input.tokens),
-          settlementLayers: filterList(input.settlementLayers),
-        })
-      }
-      case 'appFeeBalances':
-        return {}
-    }
-  },
   submitStub(body) {
     const nonce = asRecord(asRecord(body).signedIntentOp).nonce
     return {
@@ -302,4 +202,4 @@ const alps: VersionAdapter = {
   },
 }
 
-export { alps, portfolioQuery, tokenAmountRecord }
+export { alps }

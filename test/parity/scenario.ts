@@ -18,12 +18,8 @@ import { toPlain } from './serialize'
 interface ScenarioContext {
   build: LoadedBuild
   env: ParityEnv
-  run: RunContext
   chains: typeof chains
-  sdk(overrides?: {
-    apiKey?: string
-    headers?: Record<string, string>
-  }): SdkInstance
+  sdk(overrides?: { apiKey?: string }): SdkInstance
   signer(label: SignerLabel): LocalAccount
   step<T>(name: string, kind: StepKind, fn: () => Promise<T> | T): Promise<T>
 }
@@ -90,13 +86,11 @@ function createScenarioContext(
   return {
     build,
     env: config.env,
-    run,
     chains,
     sdk(overrides) {
       return new build.root.RhinestoneSDK({
         apiKey: overrides?.apiKey ?? config.apiKey,
         ...(config.endpointUrl ? { endpointUrl: config.endpointUrl } : {}),
-        ...(overrides?.headers ? { headers: overrides.headers } : {}),
       })
     },
     signer,
