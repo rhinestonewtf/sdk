@@ -11,6 +11,7 @@ import type { ApiVersion } from './routing'
 import {
   createScenarioContext,
   describeError,
+  HarnessError,
   type Scenario,
   wasRecorded,
 } from './scenario'
@@ -35,11 +36,19 @@ interface LayerResult {
   drift: Diff[]
 }
 
+interface HarnessErrorEntry {
+  role: Role
+  step: string
+  message: string
+}
+
 interface ScenarioResult {
   scenarioId: string
   iteration: number
   verdict: 'match' | 'diff'
   fault?: string
+  // Scenario or harness defects; any entry fails the run.
+  harnessErrors: HarnessErrorEntry[]
   baseline: BuildMeta
   candidate: BuildMeta
   layers: Record<Layer, LayerResult>
@@ -108,10 +117,21 @@ async function runSide(
         kind: 'other',
         ok: false,
         error: describeError(error),
+        ...(error instanceof HarnessError ? { harness: true as const } : {}),
       })
     }
   }
   return { meta: buildMeta(build, run.records), records: run.records }
+}
+
+function harnessErrorsOf(role: Role, records: RunRecords): HarnessErrorEntry[] {
+  return records.steps
+    .filter((step) => step.harness)
+    .map((step) => ({
+      role,
+      step: step.name,
+      message: step.error?.message ?? '',
+    }))
 }
 
 function emptyLayerResult(): LayerResult {
@@ -185,11 +205,17 @@ async function runOnce(
 
   const hasDiff = LAYERS.some((layer) => layers[layer].diffs.length > 0)
   const goldenOk = golden.status !== 'drift' && golden.status !== 'missing'
+  const harnessErrors = [
+    ...harnessErrorsOf('baseline', baseline.records),
+    ...harnessErrorsOf('candidate', candidate.records),
+  ]
   return {
     scenarioId: scenario.id,
     iteration,
-    verdict: !hasDiff && goldenOk ? 'match' : 'diff',
+    verdict:
+      !hasDiff && goldenOk && harnessErrors.length === 0 ? 'match' : 'diff',
     fault: config.fault?.id,
+    harnessErrors,
     baseline: baseline.meta,
     candidate: candidate.meta,
     layers,
@@ -212,6 +238,7 @@ async function runParity(
 
 export type {
   BuildMeta,
+  HarnessErrorEntry,
   LayerResult,
   LayerStatus,
   RunnerOptions,

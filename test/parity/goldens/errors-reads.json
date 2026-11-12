@@ -1,0 +1,109 @@
+{
+  "errors": {
+    "splits-insufficient-liquidity": {
+      "context": {},
+      "ctor": "InsufficientLiquidityError",
+      "errorType": "Unprocessable Entity",
+      "message": "Insufficient liquidity to fill the requested amounts. Partial splits available.",
+      "name": "Error",
+      "statusCode": 422,
+      "wire": {
+        "code": "INSUFFICIENT_LIQUIDITY",
+        "status": 422
+      }
+    },
+    "splits-unsupported-chain": {
+      "context": {
+        "path": "body"
+      },
+      "ctor": "OrchestratorError",
+      "errorType": "Bad Request",
+      "message": "Invalid CAIP-2 chain id (no chain carries this id): 17000",
+      "name": "Error",
+      "statusCode": 400,
+      "wire": {
+        "status": 400
+      }
+    },
+    "splits-unsupported-token": {
+      "context": {
+        "chainId": 421614,
+        "tokenAddress": "0x1111111111111111111111111111111111111111"
+      },
+      "ctor": "TokenNotSupportedError",
+      "errorType": "Bad Request",
+      "message": "Token 0x1111111111111111111111111111111111111111 is not supported on chain 421614",
+      "name": "Error",
+      "statusCode": 400,
+      "wire": {
+        "status": 400
+      }
+    },
+    "status-malformed-id": {
+      "context": {
+        "path": "id"
+      },
+      "ctor": "OrchestratorError",
+      "errorType": "Bad Request",
+      "message": "Intent ID must be a valid number",
+      "name": "Error",
+      "statusCode": 400,
+      "wire": {
+        "status": 400
+      }
+    }
+  },
+  "reads": {
+    "splits-insufficient-liquidity": {
+      "op": "splits",
+      "params": {
+        "chainId": 421614,
+        "tokens": {
+          "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "10000000000000000"
+        }
+      }
+    },
+    "splits-unsupported-chain": {
+      "op": "splits",
+      "params": {
+        "chainId": 17000,
+        "tokens": {
+          "0x1111111111111111111111111111111111111111": "1000000"
+        }
+      }
+    },
+    "splits-unsupported-token": {
+      "op": "splits",
+      "params": {
+        "chainId": 421614,
+        "tokens": {
+          "0x1111111111111111111111111111111111111111": "1000000"
+        }
+      }
+    },
+    "status-malformed-id": {
+      "op": "status",
+      "params": {
+        "intentId": "0"
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "status-malformed-id"
+    },
+    {
+      "ops": ["splits [x-api-key]"],
+      "step": "splits-insufficient-liquidity"
+    },
+    {
+      "ops": ["splits [x-api-key]"],
+      "step": "splits-unsupported-token"
+    },
+    {
+      "ops": ["splits [x-api-key]"],
+      "step": "splits-unsupported-chain"
+    }
+  ]
+}

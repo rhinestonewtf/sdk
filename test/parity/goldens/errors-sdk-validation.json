@@ -1,0 +1,38 @@
+{
+  "errors": {
+    "eip7702-missing-init-signature": {
+      "context": {},
+      "ctor": "Eip7702InitSignatureRequiredError",
+      "errorType": "Unknown",
+      "message": "EIP-7702 initialization signature is required for 7702 accounts. This signature is needed during transaction preparation, even if your account is already deployed on all chains. Use `getEip7702InitSignature()` to generate it.",
+      "name": "Error"
+    },
+    "guardians-signer": {
+      "context": {},
+      "ctor": "SignerNotSupportedError",
+      "errorType": "Unknown",
+      "message": "Sending a transaction is not supported for this type of signers. Use user operations instead.",
+      "name": "Error"
+    },
+    "missing-auth": {
+      "ctor": "Error",
+      "message": "RhinestoneSDK requires either `apiKey` or `auth` in config",
+      "name": "Error"
+    },
+    "source-calls-unknown-chain": {
+      "context": {},
+      "ctor": "InvalidSourceCallsError",
+      "errorType": "Unknown",
+      "message": "sourceCalls includes chainId 11155420 which is not in sourceChains (or the target chain for same-chain transactions)",
+      "name": "Error"
+    },
+    "unknown-token-symbol": {
+      "context": {},
+      "ctor": "UnsupportedTokenError",
+      "errorType": "Unknown",
+      "message": "Unsupported token USDT0 for chain 421614",
+      "name": "Error"
+    }
+  },
+  "traffic": []
+}

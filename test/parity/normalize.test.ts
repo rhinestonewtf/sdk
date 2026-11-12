@@ -127,6 +127,34 @@ describe('normalization rules', () => {
     expect(decoded.ops[1].data).toBe('0xdeadbeef')
   })
 
+  test('a session spend cap compares its amount within tolerance and its token exactly', () => {
+    const cap = parseAbi([
+      'function callbackAllowMaxAmount(address token, uint256 amount)',
+    ])
+    const op = (token: `0x${string}`, amount: bigint) => ({
+      op: {
+        ops: [
+          {
+            data: encodeFunctionData({
+              abi: cap,
+              functionName: 'callbackAllowMaxAmount',
+              args: [token, amount],
+            }),
+          },
+        ],
+      },
+    })
+    expect(diffTypedData(op(SPENDER, 66726n), op(SPENDER, 66691n))).toEqual([])
+    expect(
+      diffTypedData(
+        op(SPENDER, 1n),
+        op(SPENDER.replace('1d', '2d') as `0x${string}`, 1n),
+      ),
+    ).toMatchObject([
+      { path: '/public/messages/0/message/op/ops/0/data/$calldata/args/token' },
+    ])
+  })
+
   test('presence: a fee that appears is a diff even within the absolute tolerance', () => {
     const cost = (usd: number) => ({ q: { fees: { gas: { usd } } } })
     const run = (a: number, b: number) =>

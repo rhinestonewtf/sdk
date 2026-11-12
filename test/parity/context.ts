@@ -65,6 +65,8 @@ interface StepRecord {
   ok: boolean
   value?: Plain
   error?: StepError
+  // Set when the error is a harness defect, which fails the run.
+  harness?: true
 }
 
 interface RunRecords {

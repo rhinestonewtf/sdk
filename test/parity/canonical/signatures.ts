@@ -50,13 +50,31 @@ function signatureParts(hex: string, roleKey: string): Replacement[] {
   ]
   // 65-byte ECDSA (r ‖ s ‖ v) and 64-byte P-256 (r ‖ s) signatures.
   if (body.length === 130 || body.length === 128) {
-    parts.push({ needle: body.slice(0, 64), placeholder: `<sig:${roleKey}.r>` })
-    parts.push({
-      needle: body.slice(64, 128),
-      placeholder: `<sig:${roleKey}.s>`,
-    })
+    const r = `<sig:${roleKey}.r>`
+    const s = `<sig:${roleKey}.s>`
+    parts.push({ needle: body.slice(0, 64), placeholder: r })
+    parts.push({ needle: body.slice(64, 128), placeholder: s })
+    // Owners signing a raw hash shift v by 4 so validators apply the
+    // eth_sign prefix; v itself is a per-signature recovery bit.
+    const v = Number.parseInt(body.slice(128), 16)
+    if (v === 27 || v === 28) {
+      parts.push({
+        needle: body.slice(0, 128) + (v + 4).toString(16),
+        placeholder: `${r}${s}<sig:${roleKey}.v+4>`,
+      })
+    }
   }
   return parts
+}
+
+// The raw hash an owner signs for message-signing accounts commits to the
+// per-quote intent, like a typed-data digest.
+function rawHash(record: SignerRecord): string | undefined {
+  if (record.method !== 'signMessage') return undefined
+  const raw = asRecord(asRecord(record.payload).message).raw
+  return typeof raw === 'string' && /^0x[0-9a-fA-F]{64}$/.test(raw)
+    ? raw
+    : undefined
 }
 
 function createTemplater(records: SignerRecord[]): Templater {
@@ -76,6 +94,13 @@ function createTemplater(records: SignerRecord[]): Templater {
       replacements.push({
         needle: record.digest.slice(2).toLowerCase(),
         placeholder: `<digest:${roleKey}>`,
+      })
+    }
+    const raw = rawHash(record)
+    if (raw) {
+      replacements.push({
+        needle: raw.slice(2).toLowerCase(),
+        placeholder: `<raw:${roleKey}>`,
       })
     }
   }

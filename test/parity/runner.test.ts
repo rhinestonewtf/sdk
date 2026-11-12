@@ -9,7 +9,7 @@ import { getFault } from './faults'
 import { goldenFile } from './golden'
 import { createRecordingFetch } from './recorder'
 import { formatSummary, writeReport } from './report'
-import { runParity } from './runner'
+import { runParity, type ScenarioResult } from './runner'
 import { defineScenario } from './scenario'
 
 const TOKEN = '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d'
@@ -180,6 +180,10 @@ const scenario = defineScenario({
   },
 })
 
+function layerDiffs(result: ScenarioResult) {
+  return Object.values(result.layers).flatMap((layer) => layer.diffs)
+}
+
 let goldenDir: string
 let originalFetch: typeof fetch
 
@@ -288,6 +292,41 @@ describe('runParity', () => {
     expect(result.verdict).toBe('diff')
     expect(result.layers.traffic).toMatchObject({ status: 'drift', diffs: [] })
     expect(formatSummary([result])).toContain('golden drift')
+  })
+
+  test('waiting for execution in capture mode is a harness error', async () => {
+    const waiting = defineScenario({
+      ...scenario,
+      id: 'test/capture-wait',
+      goldenLayers: [],
+      async run(ctx) {
+        await scenario.run(ctx)
+        await ctx.step('wait', 'wait', () => ({}))
+      },
+    })
+    const [result] = await runParity(waiting, {
+      config: config({ updateGoldens: true }),
+      loadBuild: loader({}),
+      goldenDir,
+    })
+    expect(layerDiffs(result)).toEqual([])
+    expect(result.verdict).toBe('diff')
+    expect(result.harnessErrors).toEqual([
+      {
+        role: 'baseline',
+        step: 'wait',
+        message: 'Step "wait" waits for execution, but submits are captured',
+      },
+      {
+        role: 'candidate',
+        step: 'wait',
+        message: 'Step "wait" waits for execution, but submits are captured',
+      },
+    ])
+    expect(
+      result.raw.candidate.http.find((r) => r.op === 'submit')?.captured,
+    ).toBe(true)
+    expect(formatSummary([result])).toContain('harness errors')
   })
 
   test('the report contains no credential', async () => {

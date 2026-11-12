@@ -44,10 +44,11 @@ const RULES: Rule[] = [
   {
     id: 'typed-data.time',
     layer: 'typedData',
-    path: '**/message/**/(expires|fillDeadline|deadline)',
+    path: '**/message/**/(expires|fillDeadline|fillExpiry|deadline)',
     kind: 'mask',
     label: 'time',
-    reason: 'Expiry and fill deadlines are derived from the quote time.',
+    reason:
+      'Expiry, fill and permit deadlines are derived from the quote time.',
   },
   {
     id: 'typed-data.gas-refund',
@@ -66,6 +67,15 @@ const RULES: Rule[] = [
     relative: AMOUNT_TOLERANCE,
     reason:
       'Origin-op amounts (ERC-20 approve/transfer, CCTP burn amount and max fee) are price-derived; the function and other arguments stay exact.',
+  },
+  {
+    id: 'typed-data.permit-amounts',
+    layer: 'typedData',
+    path: '**/message/permitted/*/amount',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'Permit2 batch amounts an EOA approves cover the price-derived input; tokens and spender stay exact.',
   },
   {
     id: 'typed-data.source-amounts',
@@ -126,6 +136,33 @@ const RULES: Rule[] = [
       'Live L1 base and blob fees observed at quote time; the fee scalars and calldata size stay exact.',
   },
   {
+    id: 'steps.intent-op.relayer-quote-id',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/elements/*/mandate/qualifier/settlementContext/relayerQuotes/*/quoteId',
+    kind: 'mask',
+    label: 'quote-id',
+    reason:
+      'The relayer issues a fresh quote id per quote; client and connection ids stay exact.',
+  },
+  {
+    id: 'steps.intent-op.prefund',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/elements/*/mandate/qualifier/settlementContext/erc20Prefund/*/amount',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'The amount prefunded to the relayer on sponsored routes includes price-derived fees.',
+  },
+  {
+    id: 'steps.intent-op.pre-claim-value',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/elements/*/mandate/preClaimOps/ops/*/value',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'Native input wrapped into WETH before the claim includes price-derived fees.',
+  },
+  {
     id: 'steps.intent-op.gas-refund',
     layer: 'steps',
     path: '*/value/intentRoute/intentOp/**/gasRefund/(exchangeRate|overhead)',
@@ -153,6 +190,23 @@ const RULES: Rule[] = [
       'Source-side amounts include price-derived fees (the values typed-data.source-amounts covers).',
   },
   {
+    id: 'steps.intent-op.bridge-fill-out',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/signedMetadata/accounting/bridgeFill/tokensOut/*/amount',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'The bridge fill output is rounded from price-derived amounts (a max-out request receives the balance minus fees).',
+  },
+  {
+    id: 'steps.token-requirements.permit-deadline',
+    layer: 'steps',
+    path: '*/value/intentRoute/tokenRequirements/*/*/permit/message/deadline',
+    kind: 'mask',
+    label: 'time',
+    reason: 'The ERC-2612 permit deadline is derived from the quote time.',
+  },
+  {
     id: 'steps.token-requirements',
     layer: 'steps',
     path: '*/value/intentRoute/tokenRequirements/*/*/amount',
@@ -167,6 +221,35 @@ const RULES: Rule[] = [
     kind: 'tolerance',
     relative: AMOUNT_TOLERANCE,
     reason: 'Amounts spent include fees priced at quote time.',
+  },
+  {
+    id: 'steps.intent-cost.received',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentCost/tokensReceived/*/destinationAmount',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'A max-out request receives the balance minus price-derived fees; requested amounts are compared exactly in quoteRequest.',
+  },
+  {
+    id: 'steps.intent-cost.sponsor-fee',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentCost/sponsorFee/(protocol|relayer)',
+    kind: 'tolerance',
+    relative: 0.1,
+    presence: true,
+    reason:
+      'USD sponsor fees follow live gas prices; whether one is charged must match.',
+  },
+  {
+    id: 'steps.intent-op.sponsor-fee',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|plannedGasPrincipalMicroUsd|surchargeBaseUsd|surchargeUsd)',
+    kind: 'tolerance',
+    relative: 0.1,
+    presence: true,
+    reason:
+      'Sponsored gas and its surcharge follow live gas prices; the surcharge rate and subsidies stay exact.',
   },
   {
     id: 'steps.intent-cost.fees',
@@ -204,6 +287,15 @@ const RULES: Rule[] = [
     kind: 'tolerance',
     relative: 0.05,
     reason: 'Input amounts include fees priced at quote time.',
+  },
+  {
+    id: 'cost.outputs',
+    layer: 'cost',
+    path: '*/outputs/*/amount',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'A max-out request receives the balance minus price-derived fees; requested amounts are compared exactly in quoteRequest.',
   },
   {
     id: 'cost.fees-usd',
