@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "esnext"
+  },
+  "include": ["test/parity", "src", "vitest.config.parity.ts"],
+  "exclude": ["src/dist", "src/examples", "src/**/*.test.ts"]
+}

@@ -1,0 +1,84 @@
+{
+  "routes": [
+    {
+      "cost": {
+        "executionPayment": {
+          "paidBy": "wallet",
+          "walletDebit": {
+            "amount": "22519",
+            "chainId": "eip155:84532",
+            "decimals": 6,
+            "price": {
+              "usd": 1.0011
+            },
+            "symbol": "USDC",
+            "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+          }
+        },
+        "fees": {
+          "breakdown": {
+            "app": {
+              "sponsored": false,
+              "usd": 0
+            },
+            "bridge": {
+              "sponsored": false,
+              "usd": 0.1015776126
+            },
+            "gas": {
+              "sponsored": false,
+              "usd": 0.0225437709
+            },
+            "protocol": {
+              "sponsored": false,
+              "usd": 0
+            },
+            "sponsorSurcharge": {
+              "sponsored": false,
+              "usd": 0
+            },
+            "swap": {
+              "sponsored": false,
+              "usd": 0
+            }
+          },
+          "total": {
+            "usd": 0.1241213835
+          }
+        },
+        "input": [
+          {
+            "amount": "223986",
+            "chainId": "eip155:84532",
+            "decimals": 6,
+            "price": {
+              "usd": 1.0011
+            },
+            "symbol": "USDC",
+            "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+          }
+        ],
+        "output": [
+          {
+            "amount": "100000",
+            "chainId": "eip155:421614",
+            "decimals": 6,
+            "price": {
+              "usd": 1.0011
+            },
+            "symbol": "USDC",
+            "tokenAddress": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+          }
+        ]
+      },
+      "expiresAt": 1794500000,
+      "intentId": "4359868436423806039205364468300640460163971340546114380487482393269981275",
+      "settlementLayer": "CCTP",
+      "signData": {
+        "destination": null,
+        "origin": [],
+        "targetExecution": null
+      }
+    }
+  ]
+}
