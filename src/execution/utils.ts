@@ -1207,7 +1207,7 @@ async function signIntent(
     origin.length > 1 &&
     (!signers || (signers.type === 'owner' && signers.kind === 'quorum'))
   ) {
-    const { originSignatures } = await signQuorumIntentOrigins(
+    const originSignatures = await signQuorumIntentOrigins(
       config,
       origin,
       validator,
@@ -1326,10 +1326,7 @@ async function signQuorumIntentOrigins(
       ),
     ),
   )
-  return {
-    originSignatures,
-    destinationSignature: originSignatures.at(-1) as Hex,
-  }
+  return originSignatures
 }
 
 async function getDestinationSignature(
