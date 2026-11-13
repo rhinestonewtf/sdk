@@ -8,11 +8,13 @@ import {
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
 import { zeroEx } from '../modules/validators/smart-sessions'
+import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
 import {
   type IntentInput,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
 } from '../orchestrator/types'
+import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import { OrderPathRequiredForIntentsError } from './error'
 import {
@@ -1399,8 +1401,18 @@ describe('quote, sign and submit through blanc', () => {
     )
   })
 
-  test('refuses a chain-agnostic payload before signing', async () => {
-    const chainless = { ...MOCK_PAYLOAD, domain: { name: 'MultiChainOps' } }
+  test('prepares the recorded multi-chain route for owners', async () => {
+    const quote = quoteFromBlanc(
+      recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
+    )
+    mockCreateQuote.mockResolvedValue([quote])
+    expect((await prepareTransaction(config, { chain: base })).quote).toBe(
+      quote,
+    )
+  })
+
+  test('refuses a payload naming no chain', async () => {
+    const chainless = { ...MOCK_PAYLOAD, domain: {} }
     mockCreateQuote.mockResolvedValue([
       {
         ...MOCK_QUOTE,
@@ -1408,9 +1420,45 @@ describe('quote, sign and submit through blanc', () => {
       },
     ])
     await expect(prepareTransaction(config, { chain: base })).rejects.toThrow(
-      'This quote asks for one signature over several chains (MultiChainOps), which this SDK version cannot sign yet',
+      'Intent payload "Test" names no chain',
     )
   })
+
+  test.each([false, true])(
+    'session prepare with same-chain leaves: %s',
+    async (sameChain) => {
+      const quote = quoteFromBlanc(
+        recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
+      )
+      if (sameChain) {
+        const payload = quote.signData.origin[0]
+        const message = payload.message as { ops: { chainId: bigint }[] }
+        message.ops[1].chainId = message.ops[0].chainId
+        quote.signData.destination = payload
+      }
+      mockCreateQuote.mockResolvedValue([quote])
+      const enabled = vi
+        .spyOn(validators, 'isSessionEnabled')
+        .mockResolvedValue(true)
+      const signers: SessionSignerSet = {
+        type: 'experimental_session',
+        session: {
+          chain: base,
+          owners: { type: 'ecdsa', accounts: [accountA] },
+        },
+      }
+      try {
+        const result = prepareTransaction(config, { chain: base, signers })
+        if (sameChain) expect((await result).quote).toBe(quote)
+        else
+          await expect(result).rejects.toThrow(
+            'Cannot sign a chain-agnostic intent payload with a smart session',
+          )
+      } finally {
+        enabled.mockRestore()
+      }
+    },
+  )
 
   test('submits signatures by role against the quote id', async () => {
     mockCreateIntent.mockResolvedValue({ intentId: '77' })

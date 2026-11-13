@@ -7,6 +7,9 @@ import {
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import { getEip712Domain, getTypedDataPackedSignature } from '../accounts'
+import { getOwnerValidator } from '../modules/validators'
+import { supportsEip712 } from '../modules/validators/core'
 import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
 import { getChainById } from '../orchestrator/registry'
 import type { Quote, SettlementLayer } from '../orchestrator/types'
@@ -231,6 +234,16 @@ const ownerSigners: SignerSet = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(supportsEip712).mockReset().mockReturnValue(false)
+  vi.mocked(getOwnerValidator)
+    .mockReset()
+    .mockReturnValue({
+      address: MOCK_VALIDATOR,
+      type: 1,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+    } as never)
   mockGetEmissarySignature.mockResolvedValue(MOCK_EMISSARY)
   mockGetEip1271Signature.mockResolvedValue(MOCK_EIP1271)
   mockIsSessionEnabled.mockResolvedValue(true)
@@ -389,6 +402,121 @@ describe('getTargetExecutionSignature', () => {
     expect(result).toBe(MOCK_EMISSARY)
     expect(mockGetEmissarySignature).toHaveBeenCalledTimes(1)
     expect(mockGetEip1271Signature).not.toHaveBeenCalled()
+  })
+})
+
+describe('multi-chain intent signing', () => {
+  const recorded = () =>
+    quoteFromBlanc(
+      recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
+    )
+  const quorumConfig: RhinestoneConfig = {
+    ...config,
+    owners: {
+      type: 'quorum',
+      module: MOCK_VALIDATOR,
+      owners: [{ account: accountA, weight: 1n }],
+      thresholdWeight: 1n,
+    },
+  }
+  const quorumSigners: SignerSet = {
+    type: 'owner',
+    kind: 'quorum',
+    accounts: [accountA],
+  }
+
+  test('signs the recorded route once using the first leaf chain', async () => {
+    const result = await signIntent(config, recorded(), base, ownerSigners)
+    expect(result.originSignatures).toHaveLength(1)
+    expect(result.destinationSignature).toBe(result.originSignatures[0])
+    expect(getChainById).toHaveBeenCalledWith(421614)
+  })
+
+  test.each(['session', 'quorum', 'K1'] as const)(
+    'rejects %s before signing',
+    async (kind) => {
+      if (kind === 'K1') {
+        vi.mocked(getOwnerValidator).mockReturnValueOnce({
+          address: '0x0000000000000000000000000000000000000000',
+        } as never)
+        vi.mocked(supportsEip712).mockReturnValueOnce(true)
+      }
+      const signers =
+        kind === 'session'
+          ? makeSessionSigners(sessionNoActions)
+          : kind === 'quorum'
+            ? quorumSigners
+            : ownerSigners
+      const expected =
+        kind === 'session'
+          ? 'smart session'
+          : kind === 'quorum'
+            ? 'quorum validator'
+            : "Startale's K1 validator"
+      await expect(
+        signIntent(
+          kind === 'quorum' ? quorumConfig : config,
+          recorded(),
+          base,
+          signers,
+        ),
+      ).rejects.toThrow(expected)
+      expect(mockGetEip1271Signature).not.toHaveBeenCalled()
+      expect(mockGetEmissarySignature).not.toHaveBeenCalled()
+      expect(mockSignQuorumHash).not.toHaveBeenCalled()
+      expect(getTypedDataPackedSignature).not.toHaveBeenCalled()
+    },
+  )
+
+  test('signs two same-chain chainless payloads with the quorum Merkle path', async () => {
+    const quote = recorded()
+    const payload = quote.signData.origin[0]
+    const message = payload.message as { ops: { chainId: bigint }[] }
+    message.ops[1].chainId = message.ops[0].chainId
+    quote.signData.origin = [payload, payload]
+    quote.signData.destination = payload
+    const result = await signIntent(quorumConfig, quote, base, quorumSigners)
+    expect(result.originSignatures).toHaveLength(2)
+    expect(mockSignQuorumHash).toHaveBeenCalledOnce()
+  })
+
+  test('signs same-chain chainless payload with Startale K1', async () => {
+    vi.mocked(getOwnerValidator).mockReturnValue({
+      address: '0x0000000000000000000000000000000000000000',
+    } as never)
+    vi.mocked(supportsEip712).mockReturnValue(true)
+    vi.mocked(getEip712Domain).mockReturnValue({
+      name: 'Startale',
+      version: '1',
+      chainId: base.id,
+      verifyingContract: MOCK_ACCOUNT,
+      salt: `0x${'00'.repeat(32)}`,
+    })
+    const quote = recorded()
+    const payload = quote.signData.origin[0]
+    const message = payload.message as { ops: { chainId: bigint }[] }
+    for (const op of message.ops) op.chainId = BigInt(base.id)
+    quote.signData.destination = payload
+    const result = await signIntent(config, quote, base, ownerSigners)
+    expect(result.originSignatures).toHaveLength(1)
+    expect(mockGetEip1271Signature).toHaveBeenCalledTimes(2)
+    expect(getEip712Domain).toHaveBeenCalledWith(config, base)
+  })
+
+  test('signs same-chain chainless payload with a session', async () => {
+    const quote = recorded()
+    const payload = quote.signData.origin[0]
+    const message = payload.message as { ops: { chainId: bigint }[] }
+    message.ops[1].chainId = message.ops[0].chainId
+    quote.signData.destination = payload
+    const result = await signIntent(
+      config,
+      quote,
+      base,
+      makeSessionSigners(sessionNoActions),
+    )
+    expect(result.originSignatures).toHaveLength(1)
+    expect(mockGetEip1271Signature).toHaveBeenCalled()
   })
 })
 
