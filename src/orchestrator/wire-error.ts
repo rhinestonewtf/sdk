@@ -91,6 +91,7 @@ function normalizeErrorResponse(input: {
     isPlainObject(body) && typeof body.traceId === 'string'
       ? body.traceId
       : undefined
+  // Browsers can't read the header unless the server exposes it over CORS.
   const traceId = traceIdHeader || bodyTraceId || undefined
   if (!isBlancEnvelope(body)) {
     return { body, traceId, blanc: false }

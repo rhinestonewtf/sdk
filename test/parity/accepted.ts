@@ -15,7 +15,8 @@ const LIQUIDITY_TRACE_ID =
   'The candidate reads the trace id from the x-trace-id header; the alps liquidity body has none, so 1.22.0 reports an empty trace id.'
 
 // Entries on the errors layer name one scenario and one exact path: never a
-// glob over messages or contexts (enforced by accepted.test.ts).
+// glob over messages or contexts. The runner checks every entry it merges,
+// scenario-local ones included; accepted.test.ts checks this list needs a scenario.
 const ACCEPTED: AcceptedDifference[] = [
   {
     layer: 'errors',
@@ -31,6 +32,20 @@ const ACCEPTED: AcceptedDifference[] = [
     reason: LIQUIDITY_TRACE_ID,
   },
 ]
+
+// Every glob construct glob.ts supports: wildcards and alternation.
+const GLOB_CHARS = /[*(|)]/
+
+function assertExactErrorEntries(entries: AcceptedDifference[]): void {
+  for (const entry of entries) {
+    if (entry.layer !== 'errors') continue
+    if (GLOB_CHARS.test(entry.path) || GLOB_CHARS.test(entry.scenario ?? '')) {
+      throw new Error(
+        `Accepted difference on the errors layer must be exact, not a glob: ${entry.scenario ?? '(scenario)'} ${entry.path}`,
+      )
+    }
+  }
+}
 
 function applyAccepted(
   diffs: Diff[],
@@ -53,4 +68,4 @@ function applyAccepted(
 }
 
 export type { AcceptedDifference }
-export { ACCEPTED, applyAccepted }
+export { ACCEPTED, applyAccepted, assertExactErrorEntries }

@@ -1,4 +1,9 @@
-import { ACCEPTED, type AcceptedDifference, applyAccepted } from './accepted'
+import {
+  ACCEPTED,
+  type AcceptedDifference,
+  applyAccepted,
+  assertExactErrorEntries,
+} from './accepted'
 import { type BuildLoader, type LoadedBuild, loadBuild } from './builds'
 import { adapterFor, project } from './canonical/project'
 import { LAYERS, type Layer } from './canonical/types'
@@ -358,6 +363,7 @@ async function runOnce(
       ...(options.accepted ?? ACCEPTED),
       ...(scenario.accepted ?? []),
     ]
+    assertExactErrorEntries(entries)
     for (const layer of LAYERS) {
       const diffs = compare(layer, a.layers[layer], b.layers[layer])
       const { unaccepted, accepted } = applyAccepted(
