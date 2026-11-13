@@ -6,12 +6,23 @@ import {
   importJWK,
   jwtVerify,
 } from 'jose'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  ACCOUNT,
+  LEGACY_DIGEST,
+  LEGACY_INPUT,
+  USDC,
+} from '../../test/fixtures/sponsorship-input'
 import { createAuthProvider } from '../auth/provider'
-import { computeIntentInputDigest } from './digest'
+import {
+  computeBlancIntentInputDigest,
+  computeIntentInputDigest,
+} from './digest'
+import { createExpressRouter } from './express'
 import { jcsCanonicalise } from './jcs'
 import { createJwtSigner } from './signer'
 import { SponsorshipDeniedError, shouldSponsor } from './sponsorship'
+import { createExtensionTokenHandler } from './web'
 
 describe('createAuthProvider routing', () => {
   it('resolves api key mode from apiKey field', async () => {
@@ -151,6 +162,13 @@ describe('jcsCanonicalise', () => {
 })
 
 describe('computeIntentInputDigest', () => {
+  it('retains the generic JCS hash contract without Blanc normalization', async () => {
+    expect(await computeIntentInputDigest({ a: 1 })).toBe(
+      '015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862',
+    )
+    expect(await computeIntentInputDigest(LEGACY_INPUT)).not.toBe(LEGACY_DIGEST)
+  })
+
   it('produces deterministic hex digest for a given input', async () => {
     const input = { transfers: [{ token: 'USDC', amount: '1000000' }] }
     const digest1 = await computeIntentInputDigest(input)
@@ -326,7 +344,7 @@ describe('createJwtSigner', () => {
   it('getIntentExtensionToken returns a JWT with digest in policy', async () => {
     const config = await makeTestConfig()
     const signer = createJwtSigner(config)
-    const intentInput = { amount: '1000', token: 'USDC' }
+    const intentInput = structuredClone(LEGACY_INPUT)
     const token = await signer.getIntentExtensionToken(intentInput)
 
     const payload = decodeJwt(token) as any
@@ -334,9 +352,11 @@ describe('createJwtSigner', () => {
     expect(payload.app_id).toBe('test-app')
     expect(payload.jti).toBeDefined()
     expect(payload.policy.sponsorship.scope).toBe('intent')
-    expect(payload.policy.sponsorship.intent_input.digest).toMatch(
-      /^[0-9a-f]{64}$/,
+    expect(payload.policy.sponsorship.intent_input.digest).toBe(LEGACY_DIGEST)
+    expect(payload.policy.sponsorship.intent_input.digest).toBe(
+      await computeBlancIntentInputDigest(intentInput),
     )
+    expect(intentInput).toEqual(LEGACY_INPUT)
   })
 
   it('uses custom audience when provided', async () => {
@@ -425,6 +445,174 @@ describe('createJwtSigner', () => {
     )
   })
 
+  it('keeps chain/account/calls filter inputs unchanged before normalizing', async () => {
+    const chain = vi.fn(() => true)
+    const account = vi.fn(() => true)
+    const calls = vi.fn(() => true)
+    const signer = createJwtSigner({
+      ...(await makeTestConfig()),
+      shouldSponsor: { chain, account, calls },
+    })
+    const input = structuredClone(LEGACY_INPUT)
+    const first = decodeJwt(await signer.getIntentExtensionToken(input))
+    const second = decodeJwt(await signer.getIntentExtensionToken(input))
+    expect(chain).toHaveBeenCalledWith({ id: 8453 })
+    expect(account).toHaveBeenCalledWith(ACCOUNT)
+    expect(calls).toHaveBeenCalledWith([
+      { to: USDC, value: 900719925474099312345n, data: '0xabcd' },
+    ])
+    expect(input).toEqual(LEGACY_INPUT)
+    expect(first.policy).toEqual(second.policy)
+    expect(first.jti).not.toBe(second.jti)
+  })
+
+  it('denies before normalization/key import and short-circuits later filters', async () => {
+    const config = await makeTestConfig()
+    const calls = vi.fn(() => true)
+    const signer = createJwtSigner({
+      ...config,
+      jwt: { ...config.jwt, privateKey: { kty: 'RSA' } },
+      shouldSponsor: { chain: () => false, calls },
+    })
+    await expect(
+      signer.getIntentExtensionToken({ ...LEGACY_INPUT, ignored: Infinity }),
+    ).rejects.toThrow(SponsorshipDeniedError)
+    expect(calls).not.toHaveBeenCalled()
+  })
+
+  it.each([NaN, Infinity, -Infinity])(
+    'rejects nested non-finite %s before signing',
+    async (value) => {
+      const signer = createJwtSigner(await makeTestConfig())
+      await expect(
+        signer.getIntentExtensionToken({
+          ...LEGACY_INPUT,
+          options: { ...LEGACY_INPUT.options, feeToken: { dropped: [value] } },
+        }),
+      ).rejects.toThrow(/non-finite/)
+    },
+  )
+
+  it('Web handler accepts unchanged JSON callback input and preserves filters/statuses', async () => {
+    const calls = vi.fn(() => true)
+    const config = { ...(await makeTestConfig()), shouldSponsor: { calls } }
+    const handler = createExtensionTokenHandler(config)
+    const input = structuredClone(LEGACY_INPUT)
+    const response = await handler(
+      new Request('https://signer.test/extension-token', {
+        method: 'POST',
+        body: JSON.stringify({ intentInput: input }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(Object.keys(body)).toEqual(['token'])
+    expect(decodeJwt(body.token).policy).toEqual({
+      sponsorship: { scope: 'intent', intent_input: { digest: LEGACY_DIGEST } },
+    })
+    expect(calls).toHaveBeenCalledWith([
+      { to: USDC, value: 900719925474099312345n, data: '0xabcd' },
+    ])
+    expect(input).toEqual(LEGACY_INPUT)
+    const request = (body: string) =>
+      new Request('https://signer.test/extension-token', {
+        method: 'POST',
+        body,
+      })
+    expect((await handler(request('{'))).status).toBe(400)
+    expect((await handler(request('{}'))).status).toBe(400)
+    expect((await handler(request('{"intentInput":42}'))).status).toBe(500)
+    const denied = createExtensionTokenHandler({
+      ...config,
+      shouldSponsor: { chain: () => false },
+    })
+    const refusal = await denied(
+      request(JSON.stringify({ intentInput: input })),
+    )
+    expect(refusal.status).toBe(403)
+    expect(await refusal.json()).toEqual({ error: 'Sponsorship denied' })
+    // HTTP has already turned non-finite values into null: bind what was received.
+    const received = JSON.parse(
+      JSON.stringify({ ...input, unknown: [Infinity] }),
+    )
+    const parsedResponse = await handler(
+      request(JSON.stringify({ intentInput: received })),
+    )
+    const parsedBody = await parsedResponse.json()
+    expect(decodeJwt(parsedBody.token).policy).toEqual({
+      sponsorship: {
+        scope: 'intent',
+        intent_input: { digest: await computeBlancIntentInputDigest(received) },
+      },
+    })
+  })
+
+  it('Express adapter passes the JSON legacy body to the same signer and preserves statuses', async () => {
+    // Exercise the optional Express boundary without adding Express as a dependency.
+    const module = require('node:module')
+    const original = module._load
+    type Handler = (
+      req: { body?: unknown },
+      res: { status: (code: number) => unknown; json: (body: unknown) => void },
+    ) => Promise<void>
+    const routes: Record<string, Handler> = {}
+    const router = {
+      get: (path: string, handler: Handler) => {
+        routes[path] = handler
+        return router
+      },
+      post: (path: string, handler: Handler) => {
+        routes[path] = handler
+        return router
+      },
+    }
+    const loader = vi
+      .spyOn(module, '_load')
+      .mockImplementation((...args: unknown[]) =>
+        args[0] === 'express'
+          ? { Router: () => router }
+          : original.apply(module, args),
+      )
+    try {
+      const config = await makeTestConfig()
+      createExpressRouter(config)
+      const invoke = async (body?: unknown) => {
+        let status = 0
+        let result: Record<string, unknown> = {}
+        const res = {
+          status: (code: number) => {
+            status = code
+            return res
+          },
+          json: (body: unknown) => {
+            result = body as Record<string, unknown>
+          },
+        }
+        await routes['/extension-token']({ body }, res)
+        return { status, body: result }
+      }
+      const input = JSON.parse(JSON.stringify(LEGACY_INPUT))
+      const response = await invoke({ intentInput: input })
+      expect(response.status).toBe(200)
+      expect(decodeJwt(response.body.token as string).policy).toEqual({
+        sponsorship: {
+          scope: 'intent',
+          intent_input: { digest: LEGACY_DIGEST },
+        },
+      })
+      expect(input).toEqual(LEGACY_INPUT)
+      expect((await invoke()).status).toBe(400)
+      expect((await invoke({ intentInput: 42 })).status).toBe(500)
+      createExpressRouter({ ...config, shouldSponsor: { chain: () => false } })
+      expect(await invoke({ intentInput: input })).toEqual({
+        status: 403,
+        body: { error: 'Sponsorship denied' },
+      })
+    } finally {
+      loader.mockRestore()
+    }
+  })
+
   async function makeEcTestConfig(alg: 'ES256' | 'ES384' | 'ES512') {
     const { privateKey, publicKey } = await generateKeyPair(alg, {
       extractable: true,
@@ -466,7 +654,7 @@ describe('createJwtSigner', () => {
   it('mints an ES256-signed intent extension token', async () => {
     const { config } = await makeEcTestConfig('ES256')
     const signer = createJwtSigner(config)
-    const token = await signer.getIntentExtensionToken({ amount: '1' })
+    const token = await signer.getIntentExtensionToken(LEGACY_INPUT)
 
     const header = decodeProtectedHeader(token)
     expect(header.alg).toBe('ES256')

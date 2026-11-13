@@ -2,6 +2,7 @@ import { zeroAddress } from 'viem'
 import { arbitrum, base, mainnet, optimism, sepolia } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
+import { createAuthProvider } from '../auth/provider'
 import * as validators from '../modules/validators'
 import {
   DUMMY_PRECLAIMOP_SELECTOR,
@@ -9,11 +10,13 @@ import {
 } from '../modules/validators'
 import { zeroEx } from '../modules/validators/smart-sessions'
 import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
+import { Orchestrator } from '../orchestrator/client'
 import {
   type IntentInput,
   SIG_MODE_EMISSARY_EXECUTION_ERC1271,
   SIG_MODE_ERC1271,
 } from '../orchestrator/types'
+import { convertBigIntFields } from '../orchestrator/utils'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import { OrderPathRequiredForIntentsError } from './error'
@@ -24,6 +27,7 @@ import {
   prepareTransactionAsIntent,
   resolveSessionForChain,
   resolveSignatureMode,
+  signTransaction,
   submitTransaction,
 } from './utils'
 
@@ -1394,6 +1398,103 @@ describe('quote, sign and submit through blanc', () => {
     ])
   })
 
+  test.each([
+    undefined,
+    true,
+    false,
+    { gas: true, bridging: false, swaps: false },
+    { gas: false, bridging: true, swaps: false },
+    { gas: false, bridging: false, swaps: true },
+    { gas: false, bridging: false, swaps: false, protocolFees: true },
+    { gas: false, bridging: false, swaps: false, protocolFees: false },
+  ])(
+    'retains serialized intentInput across prepare, sign and submit (%j)',
+    async (sponsored) => {
+      mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
+      mockCreateIntent.mockResolvedValue({ intentId: '1' })
+      const prepared = await prepareTransaction(config, {
+        chain: base,
+        sponsored,
+      })
+      const legacyInput = convertBigIntFields(mockCreateQuote.mock.calls[0][0])
+      expect(prepared.intentInput).toStrictEqual(legacyInput)
+      expect(prepared.intentInput).not.toBe(mockCreateQuote.mock.calls[0][0])
+      const eoaConfig: RhinestoneConfig = {
+        ...config,
+        account: { type: 'eoa' },
+        eoa: accountA,
+      }
+      const signed = await signTransaction(eoaConfig, prepared)
+      expect(signed.intentInput).toBe(prepared.intentInput)
+      expect(signed.intentInput).toStrictEqual(legacyInput)
+      expect(mockCreateQuote).toHaveBeenCalledTimes(1)
+      await submitTransaction(eoaConfig, signed, [])
+      expect(mockCreateIntent).toHaveBeenCalledTimes(1)
+      expect(mockCreateIntent.mock.calls[0]).toHaveLength(1)
+      expect(signed.intentInput).toStrictEqual(legacyInput)
+    },
+  )
+
+  test('high-level preparation approves once; signing and submitting never approve again', async () => {
+    const approve = vi.fn(async (_input: unknown) => 'extension')
+    const auth = createAuthProvider({
+      auth: {
+        mode: 'experimental_jwt',
+        accessToken: 'access',
+        getIntentExtensionToken: approve,
+      },
+    })
+    const client = new Orchestrator('https://example.test', auth)
+    const fetchMock = vi.fn(
+      async (url: string, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify(
+            url.endsWith('/quotes')
+              ? { routes: [recordedQuotes.devMultiChainOpsRoute] }
+              : { intentId: '77' },
+          ),
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    mockCreateQuote.mockImplementation((input) => client.createQuote(input))
+    mockCreateIntent.mockImplementation((request) =>
+      client.createIntent(request),
+    )
+    const jwtConfig: RhinestoneConfig = { ...config, _authProvider: auth }
+    try {
+      const prepared = await prepareTransaction(jwtConfig, {
+        chain: base,
+        sponsored: true,
+      })
+      const legacyInput = convertBigIntFields(mockCreateQuote.mock.calls[0][0])
+      expect(approve).toHaveBeenCalledExactlyOnceWith(legacyInput)
+      expect(prepared.intentInput).toStrictEqual(legacyInput)
+      const signed = await signTransaction(
+        { ...jwtConfig, account: { type: 'eoa' }, eoa: accountA },
+        prepared,
+      )
+      expect(signed.intentInput).toBe(prepared.intentInput)
+      const result = await submitTransaction(jwtConfig, signed, [])
+      expect(result).toMatchObject({ type: 'intent', id: 77n })
+      expect(approve).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+        'X-Intent-Extension': 'Bearer extension',
+      })
+      expect(fetchMock.mock.calls[1][1]?.headers).toMatchObject({
+        Authorization: 'Bearer access',
+        'x-api-version': '2026-04.blanc',
+      })
+      expect(fetchMock.mock.calls[1][1]?.headers).not.toHaveProperty(
+        'X-Intent-Extension',
+      )
+      expect(mockCreateIntent.mock.calls[0]).toHaveLength(1)
+      expect(signed.intentInput).toStrictEqual(legacyInput)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   test('refuses a quote without routes', async () => {
     mockCreateQuote.mockResolvedValue([])
     await expect(prepareTransaction(config, { chain: base })).rejects.toThrow(
@@ -1476,14 +1577,11 @@ describe('quote, sign and submit through blanc', () => {
       [],
       true,
     )
-    expect(mockCreateIntent).toHaveBeenCalledWith(
-      {
-        intentId: '1',
-        signatures: { origin: ['0x01'], destination: '0x01' },
-        options: { dryRun: true },
-      },
-      { intentInput, isSponsored: true },
-    )
+    expect(mockCreateIntent).toHaveBeenCalledWith({
+      intentId: '1',
+      signatures: { origin: ['0x01'], destination: '0x01' },
+      options: { dryRun: true },
+    })
     expect(result).toEqual({
       type: 'intent',
       id: 77n,

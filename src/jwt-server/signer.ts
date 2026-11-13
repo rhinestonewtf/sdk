@@ -1,5 +1,5 @@
 import { importJWK, SignJWT } from 'jose'
-import { computeIntentInputDigest } from './digest'
+import { computeBlancIntentInputDigest } from './digest'
 import {
   shouldSponsor as checkSponsor,
   SponsorshipDeniedError,
@@ -81,8 +81,8 @@ export function createJwtSigner(config: JwtSignerConfig): {
       }
     }
 
+    const digest = await computeBlancIntentInputDigest(intentInput)
     const key = await getKey()
-    const digest = await computeIntentInputDigest(intentInput)
     return new SignJWT({
       typ: 'intent_extension',
       app_id: appId,
