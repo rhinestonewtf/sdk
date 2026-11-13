@@ -25,6 +25,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",

@@ -28,6 +28,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -51,6 +56,9 @@
           "84532": {
             "0x036cbd53842c5426634e7929541ec2318f3dcf7e": "200000"
           }
+        },
+        "chainTokens": {
+          "84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"]
         }
       },
       "destinationChainId": 421614,
@@ -63,6 +71,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -83,10 +96,8 @@
         ]
       },
       "accountAccessList": {
-        "chainTokenAmounts": {
-          "84532": {
-            "0x036cbd53842c5426634e7929541ec2318f3dcf7e": null
-          }
+        "chainTokens": {
+          "84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"]
         }
       },
       "destinationChainId": 421614,
@@ -99,6 +110,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -133,6 +149,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -165,6 +186,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -193,6 +219,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {

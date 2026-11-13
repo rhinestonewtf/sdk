@@ -21,6 +21,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -52,6 +57,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -87,6 +97,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -202,6 +217,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -242,6 +262,11 @@
             "value": "0"
           }
         ]
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {

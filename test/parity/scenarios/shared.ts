@@ -77,6 +77,18 @@ function crossChain(
   }
 }
 
+const PAYEE_ADDRESS = '0x000000000000000000000000000000000000beef'
+
+// Blanc delivers CCTP into the sender's own account through Rhinestone's
+// relayer, a different plan from alps; a payee other than the account keeps
+// both versions on Circle forwarding, so the comparison isolates the SDK.
+function crossChainToPayee(
+  ctx: ScenarioContext,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return crossChain(ctx, { recipient: PAYEE_ADDRESS, ...overrides })
+}
+
 function auxiliaryUsdc(ctx: ScenarioContext) {
   return {
     [ctx.chains.baseSepolia.id]: { [USDC_BASE_SEPOLIA]: AUXILIARY_USDC },
@@ -108,5 +120,7 @@ export {
   auxiliaryUsdc,
   CUSTOM_DEADLINE,
   crossChain,
+  crossChainToPayee,
   fixtureAccount,
+  PAYEE_ADDRESS,
 }

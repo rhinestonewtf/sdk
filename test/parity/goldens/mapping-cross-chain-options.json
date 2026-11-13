@@ -29,6 +29,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -61,6 +66,11 @@
         "feeToken": "USDC",
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -95,6 +105,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -127,6 +142,11 @@
         "signatureMode": 1,
         "topupCompact": true
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -158,6 +178,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
@@ -193,6 +218,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -214,7 +244,7 @@
       "accountAccessList": {
         "chainIds": [84532]
       },
-      "destinationChainId": 421614,
+      "destinationChainId": 84532,
       "destinationExecutions": [],
       "options": {
         "auxiliaryFunds": {
@@ -231,10 +261,15 @@
         },
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
-          "token": "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d"
+          "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
         }
       ]
     },
@@ -252,7 +287,7 @@
       "accountAccessList": {
         "chainIds": [84532]
       },
-      "destinationChainId": 421614,
+      "destinationChainId": 84532,
       "destinationExecutions": [],
       "options": {
         "auxiliaryFunds": {
@@ -269,10 +304,15 @@
         },
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
-          "token": "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d"
+          "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
         }
       ]
     },
@@ -300,6 +340,11 @@
         },
         "signatureMode": 1,
         "topupCompact": false
+      },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
       },
       "tokenRequests": [
         {
