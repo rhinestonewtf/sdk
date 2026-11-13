@@ -15,6 +15,7 @@ import {
   attempts,
   auxiliaryUsdc,
   CUSTOM_DEADLINE,
+  crossChain,
   crossChainToPayee,
   type FixtureKind,
   fixtureAccount,
@@ -452,6 +453,53 @@ const accountEip7702 = defineScenario({
   },
 })
 
+// Into the account itself, the 7702 flow that also needs the target chain
+// authorized. Over Across to OP Sepolia both versions plan the same route,
+// unlike CCTP self-delivery, so authorizations are compared on equal plans.
+const accountEip7702Self = defineScenario({
+  id: 'mapping/account-eip7702-self',
+  description:
+    "Nexus via EIP-7702 on ownerA's EOA: Across quote into the account itself on OP Sepolia, sign, authorizations for the origin and target chains, captured submit",
+  goldenLayers: SIGNED_LAYERS,
+  async run(ctx) {
+    const { optimismSepolia } = ctx.chains
+    const account = await fixtureAccount(ctx, 'eip7702')
+    const eip7702InitSignature = await ctx.step('init-signature', 'other', () =>
+      account.signEip7702InitData(),
+    )
+    const prepared = await ctx.step(
+      'prepare',
+      'prepare',
+      prepare(
+        account,
+        crossChain(ctx, {
+          targetChain: optimismSepolia,
+          tokenRequests: [
+            {
+              address: ctx.build.root.getTokenAddress(
+                'USDC',
+                optimismSepolia.id,
+              ),
+              amount: 100_000n,
+            },
+          ],
+          settlementLayers: ['ACROSS'],
+          eip7702InitSignature,
+        }),
+      ),
+    )
+    const signed = await ctx.step('sign', 'sign', () =>
+      account.signTransaction(prepared),
+    )
+    const authorizations = await ctx.step('authorizations', 'other', () =>
+      account.signAuthorizations(prepared),
+    )
+    await ctx.step('submit', 'submit', () =>
+      account.submitTransaction(signed, authorizations),
+    )
+  },
+})
+
 const accountPasskey = defineScenario({
   id: 'mapping/account-passkey',
   description:
@@ -485,6 +533,7 @@ const SCENARIOS = [
     'Plain EOA (ERC-2612 permit signatures in the submission)',
   ),
   accountEip7702,
+  accountEip7702Self,
   accountPasskey,
 ]
 
