@@ -291,7 +291,7 @@ async function sendTransactionAsIntent(
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const { quote, intentInput } = prepared
+  const { quote } = prepared
   const { originSignatures, destinationSignature } = await signIntent(
     config,
     quote,
@@ -322,7 +322,6 @@ async function sendTransactionAsIntent(
     authorizations,
     permitSignatures,
     false,
-    intentInput,
   )
 }
 

@@ -768,7 +768,6 @@ async function submitTransaction(
 ): Promise<TransactionResult> {
   const {
     quote,
-    intentInput,
     transaction,
     originSignatures,
     destinationSignature,
@@ -787,7 +786,6 @@ async function submitTransaction(
     authorizations,
     permitSignatures,
     dryRun,
-    intentInput,
   )
 }
 
@@ -1677,7 +1675,6 @@ async function submitIntentInternal(
   authorizations: SignedAuthorizationList,
   permitSignatures: SignedTransactionData['permitSignatures'],
   dryRun: boolean,
-  intentInput?: unknown,
 ) {
   const request = blancSubmitRequest({
     quote,
@@ -1688,18 +1685,12 @@ async function submitIntentInternal(
     authorizations,
     dryRun,
   })
-  const isSponsored = !!(
-    intentInput as { options?: { sponsorSettings?: unknown } } | undefined
-  )?.options?.sponsorSettings
   const orchestrator = getOrchestrator(
     config._authProvider ?? createAuthProvider(config),
     config.endpointUrl,
     config.headers,
   )
-  const response = await orchestrator.createIntent(
-    request,
-    intentInput ? { intentInput, isSponsored } : undefined,
-  )
+  const response = await orchestrator.createIntent(request)
   return {
     type: 'intent',
     id: BigInt(response.intentId ?? quote.intentId),

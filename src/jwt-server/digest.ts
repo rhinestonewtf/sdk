@@ -1,4 +1,16 @@
+import { normalizeBlancSponsorshipInput } from '../orchestrator/sponsorship-input'
 import { jcsCanonicalise } from './jcs'
+
+/**
+ * Digest the legacy v1 callback input for a Blanc quote sponsorship approval.
+ * Uses the same wire lowering as the client, then the sdk-2.16.2-blanc projection.
+ * Accepts legacy input (including serialized bigints), not a Blanc wire request.
+ */
+export async function computeBlancIntentInputDigest(
+  intentInput: unknown,
+): Promise<string> {
+  return computeIntentInputDigest(normalizeBlancSponsorshipInput(intentInput))
+}
 
 /**
  * Compute a deterministic hex-encoded SHA-256 digest of an intent input object.

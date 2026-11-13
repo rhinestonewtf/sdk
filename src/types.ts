@@ -372,9 +372,10 @@ interface JwtAuth {
   /** Static access token, or async getter for refreshable tokens. */
   accessToken: string | (() => Promise<string>)
   /**
-   * Called at submitIntent time when the intent is sponsored.
-   * Receives the raw intent input object.
-   * Must return a signed intent_extension_token JWT.
+   * Called once per sponsored quote attempt during preparation, before wallet signing.
+   * Receives the legacy v1 intent input with numeric chain IDs and serialized bigints.
+   * Return a fresh signed intent_extension_token JWT; submission does not resend it.
+   * Upgrade the client and signing-backend SDK together for Blanc binding.
    */
   getIntentExtensionToken?: (intentInput: unknown) => Promise<string>
 }

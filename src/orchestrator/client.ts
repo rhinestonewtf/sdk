@@ -121,12 +121,32 @@ export class Orchestrator {
 
   /** Quotes the intent on blanc; the first quote is the recommended route. */
   async createQuote(input: IntentInput): Promise<Quote[]> {
+    const snapshot = convertBigIntFields(input)
+    const wire = blancQuoteRequest(snapshot)
+    const body = JSON.stringify(wire)
+    const sponsorship = (
+      wire.options as
+        | {
+            sponsorSettings?: Record<string, unknown>
+          }
+        | undefined
+    )?.sponsorSettings
+    const isSponsored =
+      sponsorship?.gas === true ||
+      sponsorship?.bridgeFees === true ||
+      sponsorship?.swapFees === true ||
+      sponsorship?.protocolFees === true
+    const headers = await this.getSubmitHeaders(
+      convertBigIntFields(snapshot),
+      isSponsored,
+      BLANC_API_VERSION,
+    )
     const json: { routes?: BlancRoute[] } = await this.fetch(
       `${this.serverUrl}/quotes`,
       {
         method: 'POST',
-        headers: await this.getHeaders(BLANC_API_VERSION),
-        body: JSON.stringify(blancQuoteRequest(input)),
+        headers,
+        body,
       },
       'quote',
     )
@@ -158,15 +178,9 @@ export class Orchestrator {
       }
       options?: { dryRun: true }
     },
-    policyContext?: { intentInput: unknown; isSponsored: boolean },
+    _policyContext?: { intentInput: unknown; isSponsored: boolean },
   ): Promise<{ intentId: string }> {
-    const headers = policyContext
-      ? await this.getSubmitHeaders(
-          policyContext.intentInput,
-          policyContext.isSponsored,
-          BLANC_API_VERSION,
-        )
-      : await this.getHeaders(BLANC_API_VERSION)
+    const headers = await this.getHeaders(BLANC_API_VERSION)
     return await this.fetch(
       `${this.serverUrl}/intents`,
       {

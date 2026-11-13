@@ -52,6 +52,16 @@ const rhinestone = new RhinestoneSDK({
 
 JWT authentication uses RS256-signed tokens for fine-grained access control. There are two integration patterns depending on your architecture:
 
+#### Sponsorship approval and upgrades
+
+For Blanc, approval is requested during preparation/quotation, before wallet signing, only when at least one sponsorship category is enabled. Submission uses ordinary access authentication: do not request or resend an extension there. The callback remains optional; without it, the server decides whether the request can proceed and may return a user-paid route.
+
+**Upgrade both client and signing-backend SDK installations together, and set `apiVersion: 'blanc'` on the signing backend.** This opt-in is mandatory for Blanc with `createJwtSigner`, `createExtensionTokenHandler` (Web), and `createExpressRouter`. They default to `apiVersion: 'alps'`, preserving the raw callback digest used by legacy Alps `submitIntent` approval. With `'blanc'`, the signer normalizes the legacy v1 input to Blanc's quote-binding contract internally. Pass-through callbacks, endpoint payloads and sponsorship-filter inputs stay unchanged.
+
+For Blanc, custom signers that previously hashed the raw callback input must instead use `computeBlancIntentInputDigest` from `@rhinestone/sdk/jwt-server`. Pass it the unchanged legacy callback input, not a Blanc wire request. The existing `computeIntentInputDigest` remains a generic hash helper and does not perform this normalization.
+
+Every quote attempt needs a fresh extension/JTI. An extension may be consumed even if quote planning subsequently fails; never cache or replay it for retries. Filters still inspect only destination chain, account and calls: binding the other request fields cryptographically does not add application-policy checks for them.
+
 #### Client-server (SDK runs in browser/client)
 
 When the SDK runs on the client and a separate backend holds the signing key, fetch tokens via HTTP:
@@ -89,6 +99,7 @@ When the SDK runs server-side with access to the private key, use `createJwtSign
 import { createJwtSigner } from '@rhinestone/sdk/jwt-server'
 
 const signer = createJwtSigner({
+  apiVersion: 'blanc',
   jwt: {
     privateKey: myJwk, // RS256 private key in JWK format
     integratorId: 'int_abc',
