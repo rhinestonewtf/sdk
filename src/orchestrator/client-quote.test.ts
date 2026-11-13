@@ -1,5 +1,11 @@
+import { decodeJwt, exportJWK, generateKeyPair } from 'jose'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createAuthProvider } from '../auth/provider'
+import {
+  computeBlancIntentInputDigest,
+  computeIntentInputDigest,
+  createJwtSigner,
+} from '../jwt-server'
 import envelopes from './__fixtures__/error-envelopes.json'
 import recorded from './__fixtures__/quote-responses.json'
 import { Orchestrator } from './client'
@@ -433,6 +439,79 @@ describe('quote authentication lifecycle', () => {
       ),
     ).toEqual(['Bearer extension-1', 'Bearer extension-2'])
   })
+})
+
+describe('transport with actual JWT signer', () => {
+  test.each([undefined, 'alps', 'blanc'] as const)(
+    'binds apiVersion %s to the unchanged callback input',
+    async (apiVersion) => {
+      const fixture = byId('planned/unfunded/nexus')
+      const input = structuredClone(
+        fixture.alps.request,
+      ) as unknown as IntentInput
+      input.options = {
+        ...input.options,
+        sponsorSettings: { gasSponsored: true },
+      }
+      const original = structuredClone(input)
+      const { privateKey } = await generateKeyPair('ES256', {
+        extractable: true,
+      })
+      const signer = createJwtSigner({
+        apiVersion,
+        jwt: {
+          privateKey: await exportJWK(privateKey),
+          integratorId: 'integrator',
+          projectId: 'project',
+          appId: 'app',
+          keyId: 'key',
+        },
+      })
+      const approve = vi.fn(signer.getIntentExtensionToken)
+      const client = new Orchestrator(
+        ENDPOINT,
+        createAuthProvider({
+          auth: {
+            mode: 'experimental_jwt',
+            ...signer,
+            getIntentExtensionToken: approve,
+          },
+        }),
+      )
+      const fetchMock = stubFetch(
+        200,
+        apiVersion === 'blanc' ? fixture.blanc.body : {},
+      )
+      if (apiVersion === 'blanc') {
+        await client.createQuote(input)
+      } else {
+        await client.submitIntent({} as never, false, {
+          intentInput: input,
+          isSponsored: true,
+        })
+      }
+      expect(approve).toHaveBeenCalledExactlyOnceWith(input)
+      expect(input).toEqual(original)
+      const rawDigest = await computeIntentInputDigest(input)
+      const normalizedDigest = await computeBlancIntentInputDigest(input)
+      expect(rawDigest).not.toBe(normalizedDigest)
+      const token = sentHeaders(fetchMock)['X-Intent-Extension'].replace(
+        'Bearer ',
+        '',
+      )
+      expect(decodeJwt(token).policy).toEqual({
+        sponsorship: {
+          scope: 'intent',
+          intent_input: {
+            digest: apiVersion === 'blanc' ? normalizedDigest : rawDigest,
+          },
+        },
+      })
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `${ENDPOINT}/${apiVersion === 'blanc' ? 'quotes' : 'intent-operations'}`,
+      )
+    },
+  )
 })
 
 describe('legacy alps methods', () => {

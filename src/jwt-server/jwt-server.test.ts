@@ -341,9 +341,9 @@ describe('createJwtSigner', () => {
     expect(payload.exp).toBeDefined()
   })
 
-  it('getIntentExtensionToken returns a JWT with digest in policy', async () => {
+  it('Blanc getIntentExtensionToken returns a JWT with normalized digest in policy', async () => {
     const config = await makeTestConfig()
-    const signer = createJwtSigner(config)
+    const signer = createJwtSigner({ ...config, apiVersion: 'blanc' })
     const intentInput = structuredClone(LEGACY_INPUT)
     const token = await signer.getIntentExtensionToken(intentInput)
 
@@ -358,6 +358,28 @@ describe('createJwtSigner', () => {
     )
     expect(intentInput).toEqual(LEGACY_INPUT)
   })
+
+  it.each([undefined, 'alps'] as const)(
+    'uses the raw digest for apiVersion %s, including arbitrary legacy input',
+    async (apiVersion) => {
+      const signer = createJwtSigner({
+        ...(await makeTestConfig()),
+        apiVersion,
+      })
+      for (const input of [LEGACY_INPUT, { legacy: 'raw callback input' }]) {
+        const payload = decodeJwt(await signer.getIntentExtensionToken(input))
+        expect(payload.policy).toEqual({
+          sponsorship: {
+            scope: 'intent',
+            intent_input: { digest: await computeIntentInputDigest(input) },
+          },
+        })
+      }
+      expect(await computeIntentInputDigest(LEGACY_INPUT)).not.toBe(
+        LEGACY_DIGEST,
+      )
+    },
+  )
 
   it('uses custom audience when provided', async () => {
     const config = await makeTestConfig()
@@ -451,6 +473,7 @@ describe('createJwtSigner', () => {
     const calls = vi.fn(() => true)
     const signer = createJwtSigner({
       ...(await makeTestConfig()),
+      apiVersion: 'blanc',
       shouldSponsor: { chain, account, calls },
     })
     const input = structuredClone(LEGACY_INPUT)
@@ -472,6 +495,7 @@ describe('createJwtSigner', () => {
     const signer = createJwtSigner({
       ...config,
       jwt: { ...config.jwt, privateKey: { kty: 'RSA' } },
+      apiVersion: 'blanc',
       shouldSponsor: { chain: () => false, calls },
     })
     await expect(
@@ -483,7 +507,10 @@ describe('createJwtSigner', () => {
   it.each([NaN, Infinity, -Infinity])(
     'rejects nested non-finite %s before signing',
     async (value) => {
-      const signer = createJwtSigner(await makeTestConfig())
+      const signer = createJwtSigner({
+        ...(await makeTestConfig()),
+        apiVersion: 'blanc',
+      })
       await expect(
         signer.getIntentExtensionToken({
           ...LEGACY_INPUT,
@@ -493,9 +520,43 @@ describe('createJwtSigner', () => {
     },
   )
 
+  it.each([undefined, 'alps', 'blanc'] as const)(
+    'Web handler selects the digest for apiVersion %s',
+    async (apiVersion) => {
+      const handler = createExtensionTokenHandler({
+        ...(await makeTestConfig()),
+        apiVersion,
+      })
+      const input = structuredClone(LEGACY_INPUT)
+      const response = await handler(
+        new Request('https://signer.test/extension-token', {
+          method: 'POST',
+          body: JSON.stringify({ intentInput: input }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      const { token } = await response.json()
+      expect(decodeJwt(token).policy).toEqual({
+        sponsorship: {
+          scope: 'intent',
+          intent_input: {
+            digest: await (apiVersion === 'blanc'
+              ? computeBlancIntentInputDigest(input)
+              : computeIntentInputDigest(input)),
+          },
+        },
+      })
+      expect(input).toEqual(LEGACY_INPUT)
+    },
+  )
+
   it('Web handler accepts unchanged JSON callback input and preserves filters/statuses', async () => {
     const calls = vi.fn(() => true)
-    const config = { ...(await makeTestConfig()), shouldSponsor: { calls } }
+    const config = {
+      ...(await makeTestConfig()),
+      apiVersion: 'blanc' as const,
+      shouldSponsor: { calls },
+    }
     const handler = createExtensionTokenHandler(config)
     const input = structuredClone(LEGACY_INPUT)
     const response = await handler(
@@ -574,7 +635,10 @@ describe('createJwtSigner', () => {
           : original.apply(module, args),
       )
     try {
-      const config = await makeTestConfig()
+      const config = {
+        ...(await makeTestConfig()),
+        apiVersion: 'blanc' as const,
+      }
       createExpressRouter(config)
       const invoke = async (body?: unknown) => {
         let status = 0
@@ -603,6 +667,22 @@ describe('createJwtSigner', () => {
       expect(input).toEqual(LEGACY_INPUT)
       expect((await invoke()).status).toBe(400)
       expect((await invoke({ intentInput: 42 })).status).toBe(500)
+      for (const apiVersion of [undefined, 'alps', 'blanc'] as const) {
+        createExpressRouter({ ...config, apiVersion })
+        const response = await invoke({ intentInput: input })
+        expect(response.status).toBe(200)
+        expect(decodeJwt(response.body.token as string).policy).toEqual({
+          sponsorship: {
+            scope: 'intent',
+            intent_input: {
+              digest: await (apiVersion === 'blanc'
+                ? computeBlancIntentInputDigest(input)
+                : computeIntentInputDigest(input)),
+            },
+          },
+        })
+        expect(input).toEqual(LEGACY_INPUT)
+      }
       createExpressRouter({ ...config, shouldSponsor: { chain: () => false } })
       expect(await invoke({ intentInput: input })).toEqual({
         status: 403,

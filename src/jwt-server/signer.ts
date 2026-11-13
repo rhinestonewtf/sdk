@@ -1,5 +1,8 @@
 import { importJWK, SignJWT } from 'jose'
-import { computeBlancIntentInputDigest } from './digest'
+import {
+  computeBlancIntentInputDigest,
+  computeIntentInputDigest,
+} from './digest'
 import {
   shouldSponsor as checkSponsor,
   SponsorshipDeniedError,
@@ -17,6 +20,8 @@ export interface JwtCredentials {
 
 export interface JwtSignerConfig {
   jwt: JwtCredentials
+  /** Defaults to 'alps' (raw digest). Blanc clients must opt in to normalized quote binding. */
+  apiVersion?: 'alps' | 'blanc'
   shouldSponsor?: SponsorshipFilter
 }
 
@@ -81,7 +86,9 @@ export function createJwtSigner(config: JwtSignerConfig): {
       }
     }
 
-    const digest = await computeBlancIntentInputDigest(intentInput)
+    const digest = await (config.apiVersion === 'blanc'
+      ? computeBlancIntentInputDigest(intentInput)
+      : computeIntentInputDigest(intentInput))
     const key = await getKey()
     return new SignJWT({
       typ: 'intent_extension',
