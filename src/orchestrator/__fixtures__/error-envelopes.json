@@ -1,0 +1,197 @@
+[
+  {
+    "id": "status-invalid-api-key",
+    "operation": "status",
+    "source": "observed, prod, 2026-11-13",
+    "alps": {
+      "status": 401,
+      "traceId": "3dd6bfc35ee36e0e7f6c989d1666532a",
+      "body": {
+        "message": "Invalid API key",
+        "code": "UNAUTHORIZED",
+        "traceId": "3dd6bfc35ee36e0e7f6c989d1666532a"
+      }
+    },
+    "blanc": {
+      "status": 401,
+      "traceId": "8356f79d5a369842a7ef24186ebdb262",
+      "body": {
+        "message": "Invalid API key",
+        "code": "UNAUTHORIZED",
+        "traceId": "8356f79d5a369842a7ef24186ebdb262"
+      }
+    }
+  },
+  {
+    "id": "quote-unsupported-chain",
+    "operation": "quote",
+    "source": "observed, prod, 2026-11-13",
+    "alps": {
+      "status": 400,
+      "traceId": "23d0d5f266a635aee9e50b32a426fa3f",
+      "body": {
+        "errors": [
+          {
+            "message": "Unsupported chain id: 17000",
+            "context": {
+              "path": "destinationChainId"
+            }
+          }
+        ],
+        "traceId": "23d0d5f266a635aee9e50b32a426fa3f"
+      }
+    },
+    "blanc": {
+      "status": 400,
+      "traceId": "c9a4845cfc197470804c15a48abddff1",
+      "body": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid CAIP-2 chain id (unknown eip155 reference): \"eip155:17000\"",
+        "details": [
+          {
+            "message": "Invalid CAIP-2 chain id (unknown eip155 reference): \"eip155:17000\""
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "splits-insufficient-liquidity",
+    "operation": "splits",
+    "source": "observed, prod, 2026-11-13",
+    "alps": {
+      "status": 422,
+      "traceId": "fba70606b6225518eb6c47de23133e2b",
+      "body": {
+        "error": "INSUFFICIENT_LIQUIDITY",
+        "message": "Insufficient liquidity to fill the requested amounts. Partial splits available.",
+        "availableIntents": [
+          {
+            "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "250075022506"
+          }
+        ],
+        "unfillable": {
+          "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "9999749924977494"
+        }
+      }
+    },
+    "blanc": {
+      "status": 422,
+      "traceId": "1b9c8bd63c9690ced315738a53aca87a",
+      "body": {
+        "code": "INSUFFICIENT_LIQUIDITY",
+        "message": "Insufficient liquidity to fill the requested amounts. Partial splits available.",
+        "details": {
+          "availableIntents": [
+            {
+              "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "250075022506"
+            }
+          ],
+          "unfillable": {
+            "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "9999749924977494"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "quote-insufficient-balance-cross-chain",
+    "operation": "quote",
+    "source": "observed, prod, 2026-11-13",
+    "alps": {
+      "status": 422,
+      "traceId": "39d6cdc35ec39e2cf1dc2bea270434c8",
+      "body": {
+        "errors": [
+          {
+            "message": "Insufficient balance after exhausting all candidates",
+            "context": {
+              "remaining": "8087343",
+              "requestedAmount": "10000000",
+              "domain": "planning",
+              "code": "INSUFFICIENT_BALANCE"
+            }
+          }
+        ],
+        "traceId": "39d6cdc35ec39e2cf1dc2bea270434c8"
+      }
+    },
+    "blanc": {
+      "status": 422,
+      "traceId": "9bb57a09fb71d4a886ae71ad46445182",
+      "body": {
+        "code": "UNPROCESSABLE_CONTENT",
+        "message": "Insufficient balance after exhausting all candidates",
+        "details": [
+          {
+            "message": "Insufficient balance after exhausting all candidates",
+            "context": {
+              "remaining": "8087343",
+              "requestedAmount": "10000000",
+              "domain": "planning",
+              "code": "INSUFFICIENT_BALANCE"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "submit-refused-signature",
+    "operation": "submit",
+    "source": "alps observed (funded parity run, 2026-11-13, simulations trimmed); blanc derived from the orchestrator error handler (SIMULATION_FAILED, details = the same object, chain ids assumed CAIP-2)",
+    "alps": {
+      "status": 400,
+      "traceId": "ac5048600e4b418022f4fa85c504189f",
+      "body": {
+        "errors": [
+          {
+            "context": {
+              "category": "INVALID_SIGNATURE",
+              "errorName": "InvalidSignature()",
+              "errorSelector": "0x8baa579f",
+              "retryable": false
+            },
+            "message": "Simulation failed: InvalidSignature()"
+          }
+        ],
+        "traceId": "ac5048600e4b418022f4fa85c504189f"
+      }
+    },
+    "blanc": {
+      "status": 400,
+      "traceId": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "body": {
+        "code": "SIMULATION_FAILED",
+        "message": "Simulation failed: InvalidSignature()",
+        "details": {
+          "category": "INVALID_SIGNATURE",
+          "errorName": "InvalidSignature()",
+          "errorSelector": "0x8baa579f",
+          "retryable": false
+        }
+      }
+    }
+  },
+  {
+    "id": "rate-limited",
+    "operation": "status",
+    "source": "derived from orchestrator source (middleware/errors.ts) or the Traefik edge; Traefik answers 429 in plain text, the same for both versions",
+    "alps": {
+      "status": 429,
+      "traceId": null,
+      "retryAfter": "2",
+      "body": {
+        "__text": "Too Many Requests"
+      }
+    },
+    "blanc": {
+      "status": 429,
+      "traceId": null,
+      "retryAfter": "2",
+      "body": {
+        "__text": "Too Many Requests"
+      }
+    }
+  }
+]

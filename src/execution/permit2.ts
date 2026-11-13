@@ -21,6 +21,7 @@ function toToken(id: bigint): Address {
   return `0x${(id & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`
 }
 
+/** @deprecated Builds from an Alps element for compatibility; use quote.signData or getTransactionMessages for Blanc. */
 function getTypedData(
   element: IntentOpElement,
   nonce: bigint,
@@ -184,6 +185,8 @@ function getPermit2Address(): Address {
 }
 
 /**
+ * @deprecated Signs Alps bundles for compatibility; use the high-level SDK for Blanc intent signing.
+ *
  * Signs permit2 calls across multiple chains using batch approach.
  * Collects all signatures first, then returns them all at once.
  *
@@ -271,6 +274,8 @@ async function signPermit2Batch(
 }
 
 /**
+ * @deprecated Signs Alps bundles for compatibility; use the high-level SDK for Blanc intent signing.
+ *
  * Signs permit2 calls across multiple chains sequentially.
  * Signs one by one, useful for frontend applications to avoid memory issues.
  *

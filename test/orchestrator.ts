@@ -142,6 +142,21 @@ export function createOrchestratorMock() {
         status: 'PENDING',
       },
     }),
+    createQuote: vi.fn().mockResolvedValue([
+      {
+        intentId:
+          '5155984005891081751907744166694346796440695583636245585396069902646285172736',
+        expiresAt: 1783443744,
+        estimatedFillTime: { seconds: 10 },
+        settlementLayer: 'SAME_CHAIN',
+        signData: { origin: [], destination: undefined },
+        cost: { input: [], output: [], fees: {} },
+      },
+    ]),
+    createIntent: vi.fn().mockResolvedValue({
+      intentId:
+        '5155984005891081751907744166694346796440695583636245585396069902646285172736',
+    }),
     getIntentOpStatus: vi.fn().mockResolvedValue({
       status: 'COMPLETED',
       claims: [

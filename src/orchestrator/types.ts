@@ -210,6 +210,7 @@ interface GasCostBreakdown {
   totalUSD: number
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeeBreakdown {
   gasFee: string
   bridgeFee: string
@@ -219,11 +220,13 @@ interface FeeBreakdown {
   appFee: string
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeesByTokenEntry {
   amount: string
   breakdown: FeeBreakdown
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeeBreakdownUSD {
   gasFeeUSD: number
   bridgeFeeUSD: number
@@ -234,6 +237,7 @@ interface FeeBreakdownUSD {
   totalFeeUSD: number
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
@@ -265,16 +269,19 @@ interface IntentCost {
   feeBreakdownUSD?: FeeBreakdownUSD
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 export interface Op {
   vt: Hex
   ops: Execution[]
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 export interface ExecutionWithPlaceholders extends Execution {
   senderAddressPlaceholder?: Address
   recipientAddressPlaceholder?: Address
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 export interface ElementSwapDestination {
   tokenIn: Address
   amountIn: string
@@ -286,6 +293,7 @@ export interface ElementSwapDestination {
   outputSymbol: string
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 export interface ElementSwapOrigin {
   tokenIn: Address
   tokenOut: Address
@@ -297,6 +305,7 @@ export interface ElementSwapOrigin {
   price: number
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
@@ -323,6 +332,7 @@ interface IntentOpElementMandate {
   minGas: string
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 interface IntentOpElement {
   arbiter: Address
   chainId: string
@@ -334,6 +344,7 @@ interface IntentOpElement {
   mandate: IntentOpElementMandate
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 interface IntentOp {
   sponsor: Address
   nonce: string
@@ -446,12 +457,67 @@ type TokenRequirements = {
   }
 }
 
+/** @deprecated Alps route retained for compatibility; use Quote for Blanc flows. */
 interface IntentRoute {
   intentOp: IntentOp
   intentCost: IntentCost
   tokenRequirements?: TokenRequirements
 }
 
+/** A token amount debited or delivered by a quoted route. */
+interface QuoteCostToken {
+  chainId: number
+  tokenAddress: Address
+  symbol: string | null
+  decimals: number | null
+  price: { usd: number } | null
+  amount: bigint
+}
+
+type QuoteFeeCategory =
+  | 'gas'
+  | 'bridge'
+  | 'swap'
+  | 'app'
+  | 'protocol'
+  | 'sponsorSurcharge'
+
+/** What a quoted route costs. */
+interface QuoteCost {
+  /** Tokens debited from the account, coalesced per chain and token. */
+  input: QuoteCostToken[]
+  /** Tokens delivered on the destination. */
+  output: QuoteCostToken[]
+  fees: {
+    total: { usd: number }
+    /**
+     * Per category: `usd` is the full cost whoever pays it; `sponsored` is
+     * whether a sponsor covers it.
+     */
+    breakdown: Record<QuoteFeeCategory, { usd: number; sponsored: boolean }>
+  }
+}
+
+/** A route the orchestrator quoted for the intent; v1 uses the recommended one. */
+interface Quote {
+  /** Identifies the quote at submit; equals the submitted intent's id. */
+  intentId: string
+  /** Unix seconds; a submit after this is refused. */
+  expiresAt: number
+  estimatedFillTime: { seconds: number }
+  settlementLayer: SettlementLayer
+  /** The payloads to sign, with uint fields as bigints. */
+  signData: {
+    origin: TypedDataDefinition[]
+    destination: TypedDataDefinition
+    targetExecution?: TypedDataDefinition
+  }
+  cost: QuoteCost
+  /** Approvals, wraps and permits the account needs first. EOA accounts only. */
+  tokenRequirements?: TokenRequirements
+}
+
+/** @deprecated Alps submit result retained for compatibility; use Blanc transaction results for new flows. */
 interface IntentResult {
   result: {
     id: string
@@ -461,6 +527,7 @@ interface IntentResult {
 
 type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
 
+/** @deprecated Signed Alps bundle retained for compatibility; use Blanc transaction results for new flows. */
 type SignedIntentOp = IntentOp & {
   originSignatures: OriginSignature[]
   destinationSignature: Hex
@@ -549,9 +616,8 @@ interface IntentOpStatus {
    * refund is recorded only where a settlement layer evidences it with a
    * transaction, so presence is a fact and absence is not a claim.
    *
-   * Typed only: `getIntentOpStatus` returns the response body as-is, so the
-   * value has always arrived once the orchestrator sends it. This is what
-   * lets a caller read it without a cast.
+   * `getIntentOpStatus` passes the orchestrator's refunds through verbatim
+   * and omits the field when the orchestrator does.
    */
   refunds?: IntentRefund[]
 }
@@ -606,6 +672,8 @@ export type {
   PortfolioResponse,
   PortfolioToken,
   PortfolioTokenResponse,
+  Quote,
+  QuoteCost,
   SettlementLayer,
   SignatureMode,
   SignedIntentOp,

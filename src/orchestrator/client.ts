@@ -1,6 +1,6 @@
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 import type { AuthProvider } from '../auth/provider'
-import { API_VERSION, SDK_VERSION } from './consts'
+import { API_VERSION, BLANC_API_VERSION, SDK_VERSION } from './consts'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -32,13 +32,32 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  OriginSignature,
   Portfolio,
-  PortfolioResponse,
+  Quote,
   SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
 } from './types'
 import { convertBigIntFields } from './utils'
+import {
+  firstIssue,
+  isUnknownChainOnQuote,
+  type NormalizedError,
+  normalizeErrorResponse,
+  type OrchestratorOperation,
+} from './wire-error'
+import {
+  type BlancRoute,
+  blancQuoteRequest,
+  quotesFromBlanc,
+} from './wire-quote'
+import {
+  blancPortfolioQuery,
+  intentOpStatusFromBlanc,
+  portfolioFromBlanc,
+  toCaip2,
+} from './wire-read'
 
 function parseTokenAmountsRecord(
   record: Record<string, string>,
@@ -75,68 +94,112 @@ export class Orchestrator {
       }
     },
   ): Promise<Portfolio> {
-    const params = new URLSearchParams()
-    if (filter?.chainIds) {
-      params.set('chainIds', filter.chainIds.join(','))
-    }
-    if (filter?.tokens) {
-      params.set(
-        'tokens',
-        Object.entries(filter.tokens)
-          .flatMap(([chainId, tokens]) =>
-            tokens.map((token) => `${chainId}:${token}`),
-          )
-          .join(','),
-      )
-    }
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
-    url.search = params.toString()
-    const json = await this.fetch(url.toString(), {
-      headers: await this.getHeaders(),
-    })
-    const portfolioResponse = json.portfolio as PortfolioResponse
-    const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
-      symbol: tokenResponse.tokenName,
-      decimals: tokenResponse.tokenDecimals,
-      balances: {
-        locked: BigInt(tokenResponse.balance.locked),
-        unlocked: BigInt(tokenResponse.balance.unlocked),
+    url.search = blancPortfolioQuery(filter).toString()
+    const json = await this.fetch(
+      url.toString(),
+      {
+        headers: await this.getHeaders(BLANC_API_VERSION),
       },
-      chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
-        chain: chainBalance.chainId,
-        address: chainBalance.tokenAddress,
-        locked: BigInt(chainBalance.balance.locked),
-        unlocked: BigInt(chainBalance.balance.unlocked),
-      })) as [
-        {
-          isAccountDeployed: boolean
-          chain: number
-          address: Address
-          locked: bigint
-          unlocked: bigint
-        },
-      ],
-    }))
-
-    return portfolio
+      'portfolio',
+    )
+    return portfolioFromBlanc(json)
   }
 
+  /** @deprecated Alps compatibility route; use createQuote or high-level prepare/sign/submit for Blanc. */
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
     const body = convertBigIntFields(input)
-    return await this.fetch(`${this.serverUrl}/intents/route`, {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(body),
-    })
+    return await this.fetch(
+      `${this.serverUrl}/intents/route`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(),
+        body: JSON.stringify(body),
+      },
+      'quote',
+    )
+  }
+
+  /** Quotes the intent on blanc; the first quote is the recommended route. */
+  async createQuote(input: IntentInput): Promise<Quote[]> {
+    const snapshot = convertBigIntFields(input)
+    const wire = blancQuoteRequest(snapshot)
+    const body = JSON.stringify(wire)
+    const sponsorship = (
+      wire.options as
+        | {
+            sponsorSettings?: Record<string, unknown>
+          }
+        | undefined
+    )?.sponsorSettings
+    const isSponsored =
+      sponsorship?.gas === true ||
+      sponsorship?.bridgeFees === true ||
+      sponsorship?.swapFees === true ||
+      sponsorship?.protocolFees === true
+    const headers = await this.getSubmitHeaders(
+      convertBigIntFields(snapshot),
+      isSponsored,
+      BLANC_API_VERSION,
+    )
+    const json: { routes?: BlancRoute[] } = await this.fetch(
+      `${this.serverUrl}/quotes`,
+      {
+        method: 'POST',
+        headers,
+        body,
+      },
+      'quote',
+    )
+    return quotesFromBlanc(json)
+  }
+
+  /**
+   * Submits a signed quote on blanc. Origin signatures follow the quote's
+   * `signData.origin` order; authorization chains are CAIP-2 (`eip155:<id>`).
+   */
+  async createIntent(
+    request: {
+      intentId: string
+      signatures: {
+        origin: OriginSignature[]
+        destination: Hex
+        targetExecution?: Hex
+        permits?: Record<number, Record<Address, Hex>>
+      }
+      authorizations?: {
+        sponsor: {
+          chainId: 0 | string
+          address: Address
+          nonce: number
+          yParity: number
+          r: Hex
+          s: Hex
+        }[]
+      }
+      options?: { dryRun: true }
+    },
+    _policyContext?: { intentInput: unknown; isSponsored: boolean },
+  ): Promise<{ intentId: string }> {
+    const headers = await this.getHeaders(BLANC_API_VERSION)
+    return await this.fetch(
+      `${this.serverUrl}/intents`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(request),
+      },
+      'submit',
+    )
   }
 
   async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
-    const response = await fetch(`${this.serverUrl}/intents/split`, {
+    const response = await fetch(`${this.serverUrl}/intents/splits`, {
       method: 'POST',
-      headers: await this.getHeaders(),
+      headers: await this.getHeaders(BLANC_API_VERSION),
       body: JSON.stringify(
         convertBigIntFields({
-          chainId: input.chain.id,
+          chainId: toCaip2(input.chain.id),
           tokens: input.tokens,
           settlementLayers: input.settlementLayers,
         }),
@@ -162,30 +225,27 @@ export class Orchestrator {
       } catch {}
     }
 
-    if (
-      response.status === 422 &&
-      errorData.error === 'INSUFFICIENT_LIQUIDITY'
-    ) {
+    const normalized = normalizeErrorResponse({
+      body: errorData,
+      traceIdHeader: response.headers?.get?.('x-trace-id'),
+    })
+    const { body } = normalized
+    if (response.status === 422 && body?.error === 'INSUFFICIENT_LIQUIDITY') {
       throw new InsufficientLiquidityError({
         availableIntents: (
-          errorData.availableIntents as Record<string, string>[]
+          body.availableIntents as Record<string, string>[]
         ).map(parseTokenAmountsRecord),
-        unfillable: parseTokenAmountsRecord(errorData.unfillable),
-        traceId: errorData.traceId,
+        unfillable: parseTokenAmountsRecord(body.unfillable),
+        traceId: normalized.traceId,
         statusCode: 422,
       })
     }
 
-    this.parseError({
-      response: {
-        status: response.status,
-        data: errorData,
-        headers: {},
-      },
-    })
+    this.throwResponseError(response.status, normalized, 'splits')
     throw new OrchestratorError({ message: 'Unexpected error' })
   }
 
+  /** @deprecated Submits an Alps bundle and requests sponsorship approval at submit time. Use createIntent or high-level prepare/sign/submit for Blanc. */
   async submitIntent(
     signedIntentOpUnformatted: SignedIntentOp,
     dryRun: boolean,
@@ -204,46 +264,59 @@ export class Orchestrator {
           policyContext.isSponsored,
         )
       : await this.getHeaders()
-    return await this.fetch(`${this.serverUrl}/intent-operations`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-  }
-
-  async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
     return await this.fetch(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}`,
+      `${this.serverUrl}/intent-operations`,
       {
-        headers: await this.getHeaders(),
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
       },
+      'submit',
     )
   }
 
+  async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
+    const json = await this.fetch(
+      `${this.serverUrl}/intents/${intentId.toString()}`,
+      {
+        headers: await this.getHeaders(BLANC_API_VERSION),
+      },
+      'status',
+    )
+    return intentOpStatusFromBlanc(json)
+  }
+
   async getAppFeeBalances(): Promise<AppFeeBalances> {
-    const json = await this.fetch(`${this.serverUrl}/app-fees/balances`, {
-      headers: await this.getHeaders(),
-    })
+    const json = await this.fetch(
+      `${this.serverUrl}/app-fees/balances`,
+      {
+        headers: await this.getHeaders(BLANC_API_VERSION),
+      },
+      'appFees',
+    )
     return {
       withdrawableUsd: json.withdrawableUsd,
       pendingUsd: json.pendingUsd,
     }
   }
 
-  private async getHeaders(): Promise<Record<string, string>> {
+  private async getHeaders(
+    apiVersion?: string,
+  ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getHeaders()
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
-      'x-api-version': API_VERSION,
+      'x-api-version': apiVersion ?? API_VERSION,
       ...auth,
-      ...this.extraHeaders,
+      ...this.headersFor(apiVersion),
     }
   }
 
   private async getSubmitHeaders(
     intentInput: unknown,
     isSponsored: boolean,
+    apiVersion?: string,
   ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getSubmitHeaders(
       intentInput,
@@ -252,12 +325,28 @@ export class Orchestrator {
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
+      ...(apiVersion ? { 'x-api-version': apiVersion } : {}),
       ...auth,
-      ...this.extraHeaders,
+      ...this.headersFor(apiVersion),
     }
   }
 
-  private async fetch(url: string, options?: RequestInit): Promise<any> {
+  // Operations that pick their own version must not be redirected by a
+  // custom `x-api-version` header (header names are case-insensitive).
+  private headersFor(apiVersion?: string): Record<string, string> | undefined {
+    if (!apiVersion) return this.extraHeaders
+    return Object.fromEntries(
+      Object.entries(this.extraHeaders ?? {}).filter(
+        ([name]) => name.toLowerCase() !== 'x-api-version',
+      ),
+    )
+  }
+
+  private async fetch(
+    url: string,
+    options: RequestInit,
+    operation: OrchestratorOperation,
+  ): Promise<any> {
     const response = await fetch(url, options)
 
     if (!response.ok) {
@@ -272,24 +361,52 @@ export class Orchestrator {
       }
       const retryAfterHeader =
         response.headers?.get?.('retry-after') || undefined
-      this.parseError({
-        response: {
-          status: response.status,
-          data: errorData,
-          headers: {
-            retryAfter: retryAfterHeader,
-          },
-        },
+      const normalized = normalizeErrorResponse({
+        body: errorData,
+        traceIdHeader: response.headers?.get?.('x-trace-id'),
       })
+      this.throwResponseError(
+        response.status,
+        normalized,
+        operation,
+        retryAfterHeader,
+      )
     }
     return response.json()
+  }
+
+  private throwResponseError(
+    status: number,
+    normalized: NormalizedError,
+    operation: OrchestratorOperation,
+    retryAfter?: string,
+  ) {
+    if (isUnknownChainOnQuote(normalized, operation, status)) {
+      const { traceId } = normalized
+      const context = firstIssue(normalized).context
+      throw new UnsupportedChainIdError({
+        context: { ...(context as object), traceId },
+        errorType: 'Bad Request',
+        traceId,
+        statusCode: status,
+      })
+    }
+    this.parseError({
+      response: {
+        status,
+        data: normalized.body,
+        headers: { retryAfter, traceId: normalized.traceId },
+      },
+    })
   }
 
   private parseError(error: any) {
     if (error.response) {
       const status: number | undefined = error.response.status
       const { headers } = error.response
-      const { errors = [], traceId, message } = error.response.data || {}
+      const data = error.response.data || {}
+      const { errors = [], message } = data
+      const traceId = headers?.traceId ?? data.traceId
 
       let errorType: string = 'Unknown'
       switch (status) {
@@ -403,7 +520,7 @@ export class Orchestrator {
     ) {
       throw new UnsupportedChainIdError(errorParams)
     } else if (message.startsWith('Unsupported chain ')) {
-      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+      const chainIdMatch = message.match(/Unsupported chain (?:eip155:)?(\d+)/)
       if (chainIdMatch) {
         const chainId = parseInt(chainIdMatch[1], 10)
         throw new UnsupportedChainError(chainId, errorParams)
@@ -414,7 +531,7 @@ export class Orchestrator {
       message.includes('for chain')
     ) {
       const tokenMatch = message.match(
-        /Unsupported token (\w+) for chain (\d+)/,
+        /Unsupported token (\w+) for chain (?:eip155:)?(\d+)/,
       )
       if (tokenMatch) {
         const tokenSymbol = tokenMatch[1]
@@ -427,7 +544,7 @@ export class Orchestrator {
       throw new BadRequestError({ message, ...errorParams })
     } else if (message.includes('not supported on chain')) {
       const tokenMatch = message.match(
-        /Token (.+) not supported on chain (\d+)/,
+        /Token (.+) not supported on chain (?:eip155:)?(\d+)/,
       )
       if (tokenMatch) {
         const tokenAddress = tokenMatch[1]

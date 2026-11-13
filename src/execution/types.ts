@@ -7,7 +7,8 @@ interface TokenPermissions {
 }
 
 /**
- * Multi-chain permit2 signing configuration
+ * Multi-chain permit2 signing configuration.
+ * @deprecated Configuration for Alps bundle signing, retained for compatibility; use the high-level SDK for Blanc intents.
  */
 interface MultiChainPermit2Config {
   chain: Chain
@@ -16,7 +17,8 @@ interface MultiChainPermit2Config {
 }
 
 /**
- * Result of a multi-chain permit2 signing operation
+ * Result of a multi-chain permit2 signing operation.
+ * @deprecated Result of Alps bundle signing, retained for compatibility; use the high-level SDK for Blanc intents.
  */
 interface MultiChainPermit2Result {
   chainId: number
@@ -27,7 +29,8 @@ interface MultiChainPermit2Result {
 }
 
 /**
- * Batch permit2 signing result
+ * Batch permit2 signing result.
+ * @deprecated Result of Alps bundle signing, retained for compatibility; use the high-level SDK for Blanc intents.
  */
 interface BatchPermit2Result {
   results: MultiChainPermit2Result[]

@@ -1,0 +1,212 @@
+[
+  {
+    "id": "reads-intent-status.status-failed-cross-chain",
+    "operation": "status",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/intent-operation/4109734322649134165915266808227797040135362929957450305308521571507605438"
+      },
+      "status": 200,
+      "body": {
+        "status": "FAILED",
+        "claims": [
+          {
+            "chainId": 84532,
+            "status": "COMPLETED",
+            "claimTimestamp": 1785008500,
+            "claimTransactionHash": "0x5fef88687d4b4c9fba301f888de57c659b0f3c0d59aed8b1fec42edb4e252ef7"
+          }
+        ],
+        "destinationChainId": 421614,
+        "userAddress": "0xe426056646c8eabd8bb0caf82f19d66762dfe52a"
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/intents/4109734322649134165915266808227797040135362929957450305308521571507605438"
+      },
+      "status": 200,
+      "body": {
+        "status": "FAILED",
+        "accountAddress": "0xe426056646c8eabd8bb0caf82f19d66762dfe52a",
+        "operations": [
+          {
+            "chain": 84532,
+            "items": [
+              {
+                "type": "CLAIM",
+                "status": "COMPLETED",
+                "debitsAccount": true,
+                "txHash": "0x5fef88687d4b4c9fba301f888de57c659b0f3c0d59aed8b1fec42edb4e252ef7",
+                "timestamp": 1785008500
+              }
+            ]
+          },
+          {
+            "chain": 421614,
+            "items": [
+              {
+                "type": "BRIDGE_FILL",
+                "status": "FAILED",
+                "failureReason": "EXPIRED"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "reads-splits.splits-multi-token",
+    "operation": "splits",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "POST",
+        "path": "/intents/split",
+        "body": {
+          "chainId": 421614,
+          "tokens": {
+            "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d": "1000000",
+            "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73": "1000000000000"
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "intents": [
+          {
+            "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "1000000"
+          },
+          {
+            "0x980b62da83eff3d4576c647993b0c1d7faf17c73": "1000000000000"
+          }
+        ]
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "POST",
+        "path": "/intents/splits",
+        "body": {
+          "chainId": "eip155:421614",
+          "tokens": {
+            "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d": "1000000",
+            "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73": "1000000000000"
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "intents": [
+          {
+            "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d": "1000000"
+          },
+          {
+            "0x980b62da83eff3d4576c647993b0c1d7faf17c73": "1000000000000"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "extra.tokens-filter",
+    "operation": "portfolio",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?chainIds=84532%2C11155420&tokens=84532%3A0x036CbD53842c5426634e7929541eC2318f3dCF7e%2C11155420%3A0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+      },
+      "status": 200,
+      "body": {
+        "portfolio": [
+          {
+            "balance": {
+              "locked": "0",
+              "unlocked": "2289131"
+            },
+            "tokenName": "USDC",
+            "tokenDecimals": 6,
+            "tokenChainBalance": [
+              {
+                "chainId": 84532,
+                "balance": {
+                  "locked": "0",
+                  "unlocked": "1789130"
+                },
+                "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+              },
+              {
+                "chainId": 11155420,
+                "balance": {
+                  "locked": "0",
+                  "unlocked": "500001"
+                },
+                "tokenAddress": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?chainIds=eip155%3A84532&chainIds=eip155%3A11155420&tokens=eip155%3A84532%3A0x036CbD53842c5426634e7929541eC2318f3dCF7e&tokens=eip155%3A11155420%3A0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+      },
+      "status": 200,
+      "body": {
+        "portfolio": [
+          {
+            "symbol": "USDC",
+            "chains": [
+              {
+                "chainId": "eip155:84532",
+                "address": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                "decimals": 6,
+                "amount": "1789130"
+              },
+              {
+                "chainId": "eip155:11155420",
+                "address": "0x5fd84259d66cd46123540766be93dfe6d43130d7",
+                "decimals": 6,
+                "amount": "500001"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "seed-reads.appFeeBalances",
+    "operation": "appFees",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/app-fees/balances"
+      },
+      "status": 200,
+      "body": {
+        "withdrawableUsd": 0.01272632,
+        "pendingUsd": 0
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/app-fees/balances"
+      },
+      "status": 200,
+      "body": {
+        "withdrawableUsd": 0.01272632,
+        "pendingUsd": 0
+      }
+    }
+  }
+]

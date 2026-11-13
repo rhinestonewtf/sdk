@@ -13,6 +13,7 @@
         "@size-limit/preset-small-lib": "^11.2.0",
         "@types/bun": "^1.2.8",
         "jose": "^6.2.2",
+        "ox": "0.14.30",
         "prool": "^0.0.24",
         "rimraf": "^6.0.1",
         "size-limit": "^11.2.0",
@@ -25,7 +26,7 @@
     },
     "src": {
       "name": "@rhinestone/sdk",
-      "version": "1.19.0",
+      "version": "1.22.0",
       "dependencies": {
         "@rhinestone/shared-configs": "2.16.0",
         "solady": "^0.1.26",

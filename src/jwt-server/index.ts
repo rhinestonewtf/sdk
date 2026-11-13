@@ -1,5 +1,8 @@
 // biome-ignore lint/performance/noBarrelFile: subpath entry point for @rhinestone/sdk/jwt-server
-export { computeIntentInputDigest } from './digest'
+export {
+  computeBlancIntentInputDigest,
+  computeIntentInputDigest,
+} from './digest'
 export { createExpressRouter } from './express'
 export type { JwtHandlerConfig } from './handlers'
 export { jcsCanonicalise } from './jcs'
