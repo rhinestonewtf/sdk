@@ -3,7 +3,7 @@ import type { WebAuthnAccount } from 'viem/account-abstraction'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import * as chains from 'viem/chains'
 import type { AcceptedDifference } from './accepted'
-import type { LoadedBuild, SdkInstance } from './builds'
+import type { LoadedBuild, SdkInstance, SdkOrchestratorClient } from './builds'
 import type { Layer } from './canonical/types'
 import type { ParityConfig, ParityEnv } from './config'
 import {
@@ -27,6 +27,8 @@ interface ScenarioContext {
   chains: typeof chains
   // `auth` replaces the API key; an empty `apiKey` stays empty.
   sdk(overrides?: { apiKey?: string; auth?: unknown }): SdkInstance
+  // The exported low-level orchestrator client, with the run's API key.
+  client(): SdkOrchestratorClient
   signer(label: SignerLabel): LocalAccount
   passkey(): WebAuthnAccount
   step<T>(name: string, kind: StepKind, fn: () => Promise<T> | T): Promise<T>
@@ -149,6 +151,13 @@ function createScenarioContext(
         apiKey: overrides?.apiKey ?? config.apiKey,
         ...shared,
       })
+    },
+    client() {
+      const headers = async () => ({ 'x-api-key': config.apiKey })
+      return build.orchestrator.getOrchestrator(
+        { getHeaders: headers, getSubmitHeaders: headers },
+        config.endpointUrl,
+      )
     },
     signer,
     passkey,

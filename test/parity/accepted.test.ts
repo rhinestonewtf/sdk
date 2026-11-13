@@ -39,18 +39,20 @@ describe('accepted differences', () => {
     ).not.toThrow()
   })
 
-  test('the splits liquidity error may gain a trace id', () => {
-    expect(
-      errors.map(({ scenario, path }) => ({ scenario, path })),
-    ).toContainEqual({
-      scenario: 'errors/reads',
-      path: '/splits-insufficient-liquidity/hasTraceId',
-    })
-    expect(
-      errors.map(({ scenario, path }) => ({ scenario, path })),
-    ).toContainEqual({
-      scenario: 'reads/splits',
-      path: '/splits-settlement-layers/hasTraceId',
-    })
+  test('the expected entries exist, and no others', () => {
+    expect(errors.map(({ scenario, path }) => ({ scenario, path }))).toEqual([
+      // The splits liquidity error may gain a trace id.
+      {
+        scenario: 'errors/reads',
+        path: '/splits-insufficient-liquidity/hasTraceId',
+      },
+      {
+        scenario: 'reads/splits',
+        path: '/splits-settlement-layers/hasTraceId',
+      },
+      // Blanc words an unknown chain id differently.
+      { scenario: 'errors/reads', path: '/splits-unsupported-chain/message' },
+      { scenario: 'reads/client', path: '/portfolio-unknown-chain/message' },
+    ])
   })
 })

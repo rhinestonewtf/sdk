@@ -161,6 +161,11 @@ function loader(candidate: { dropAuxiliaryFunds?: boolean }) {
     label: id,
     version: '0.0.0',
     root: fakeRoot(id === 'working-tree' ? candidate : {}),
+    orchestrator: {
+      getOrchestrator: () => {
+        throw new Error('not used')
+      },
+    },
   })
 }
 

@@ -56,6 +56,29 @@ interface SdkRoot {
   getTokenAddress(symbol: string, chainId: number): Address
 }
 
+interface SdkOrchestratorClient {
+  getIntentOpStatus(intentId: bigint): Promise<unknown>
+  getPortfolio(
+    address: string,
+    filter?: { chainIds?: number[]; tokens?: Record<number, string[]> },
+  ): Promise<unknown>
+}
+
+// The exported low-level client (`@rhinestone/sdk/dist/src/orchestrator`).
+interface SdkOrchestratorModule {
+  getOrchestrator(
+    auth: {
+      getHeaders(): Promise<Record<string, string>>
+      getSubmitHeaders(
+        intentInput: unknown,
+        isSponsored: boolean,
+      ): Promise<Record<string, string>>
+    },
+    url?: string,
+    headers?: Record<string, string>,
+  ): SdkOrchestratorClient
+}
+
 interface LoadedBuild {
   id: BuildId
   label: string
@@ -63,6 +86,7 @@ interface LoadedBuild {
   commit?: string
   dirty?: boolean
   root: SdkRoot
+  orchestrator: SdkOrchestratorModule
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -90,6 +114,9 @@ function loadPublished(): LoadedBuild {
     label: `${manifest.name}@${manifest.version} (npm)`,
     version: manifest.version,
     root: repoRequire(BASELINE_PACKAGE) as SdkRoot,
+    orchestrator: repoRequire(
+      `${BASELINE_PACKAGE}/dist/src/orchestrator`,
+    ) as SdkOrchestratorModule,
   }
 }
 
@@ -104,6 +131,9 @@ async function loadWorkingTree(): Promise<LoadedBuild> {
     readFileSync(join(REPO_ROOT, 'src/package.json'), 'utf8'),
   )
   const root = (await import('../../src/index')) as unknown as SdkRoot
+  const orchestrator = (await import(
+    '../../src/orchestrator/index'
+  )) as unknown as SdkOrchestratorModule
   const commit = git('rev-parse HEAD')
   const dirty = git('status --porcelain').length > 0
   return {
@@ -113,6 +143,7 @@ async function loadWorkingTree(): Promise<LoadedBuild> {
     commit,
     dirty,
     root,
+    orchestrator,
   }
 }
 
@@ -158,6 +189,8 @@ export type {
   LoadedBuild,
   SdkAccount,
   SdkInstance,
+  SdkOrchestratorClient,
+  SdkOrchestratorModule,
   SdkRoot,
   TokenRequirements,
 }
