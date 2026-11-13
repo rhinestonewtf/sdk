@@ -35,11 +35,27 @@ const SUCCESSES = CASES.filter((c) => c.alps.status < 400)
 const ERRORS = CASES.filter((c) => c.alps.status >= 400)
 const LIVE = CASES.filter((c) => c.blanc.request)
 
-// Blanc words an unknown chain id differently; everything else is identical.
-const MESSAGE_DIFFERS = new Set([
-  'errors-reads.splits-unsupported-chain',
-  'extra.unknown-chain-filter',
-])
+// Where blanc's error differs from alps: the exact message and/or context
+// path it reports. Class, status and every other field are identical. The
+// path differs only for inputs `account.getPortfolio()` cannot send; field
+// paths and server wording are not translated.
+const BLANC_DIFFERENCES: Record<string, { message?: string; path?: string }> = {
+  'errors-reads.splits-unsupported-chain': {
+    message:
+      'Invalid CAIP-2 chain id (unknown eip155 reference): "eip155:17000"',
+  },
+  'extra.unknown-chain-filter': {
+    message:
+      'Invalid CAIP-2 chain id (unknown eip155 reference): "eip155:17000"',
+  },
+  'extra.malformed-account-address': { path: 'accountAddress' },
+  'extra.zero-chain-id': {
+    message:
+      'Invalid CAIP-2 chain id (reference is not a positive integer): "eip155:0"',
+    path: 'query',
+  },
+  'extra.malformed-token-address': { message: 'Invalid input' },
+}
 
 const authProvider = {
   getHeaders: async () => ({}),
@@ -222,15 +238,12 @@ describe('read responses', () => {
     async (_id, c) => {
       const expected = await captureError(c, c.alps)
       const actual = await captureError(c, c.blanc)
-      if (MESSAGE_DIFFERS.has(c.id)) {
-        expect(actual.message).not.toBe(expected.message)
-        expect({ ...actual, message: '' }).toStrictEqual({
-          ...expected,
-          message: '',
-        })
-      } else {
-        expect(actual).toStrictEqual(expected)
-      }
+      const { message, path } = BLANC_DIFFERENCES[c.id] ?? {}
+      expect(actual).toStrictEqual({
+        ...expected,
+        message: message ?? expected.message,
+        context: { ...expected.context, ...(path && { path }) },
+      })
     },
   )
 

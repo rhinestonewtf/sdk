@@ -7325,6 +7325,129 @@
     }
   },
   {
+    "id": "extra.malformed-account-address",
+    "operation": "portfolio",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0x1234/portfolio"
+      },
+      "status": 400,
+      "body": {
+        "errors": [
+          {
+            "message": "Invalid ethereum address",
+            "context": {
+              "path": "userAddress"
+            }
+          }
+        ]
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0x1234/portfolio"
+      },
+      "status": 400,
+      "body": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid ethereum address",
+        "details": [
+          {
+            "message": "Invalid ethereum address",
+            "context": {
+              "path": "accountAddress"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "extra.zero-chain-id",
+    "operation": "portfolio",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?chainIds=0"
+      },
+      "status": 400,
+      "body": {
+        "errors": [
+          {
+            "message": "Invalid chain ID: 0. Must be a positive number",
+            "context": {
+              "path": "chainIds"
+            }
+          }
+        ]
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?chainIds=eip155%3A0"
+      },
+      "status": 400,
+      "body": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid CAIP-2 chain id (reference is not a positive integer): \"eip155:0\"",
+        "details": [
+          {
+            "message": "Invalid CAIP-2 chain id (reference is not a positive integer): \"eip155:0\"",
+            "context": {
+              "path": "query"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "extra.malformed-token-address",
+    "operation": "portfolio",
+    "source": "live prod 2026-11-13 (testnets, read-only)",
+    "alps": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?tokens=84532%3A0x12"
+      },
+      "status": 400,
+      "body": {
+        "errors": [
+          {
+            "message": "Invalid token address: 0x12. Must be a valid Ethereum address",
+            "context": {
+              "path": "tokens"
+            }
+          }
+        ]
+      }
+    },
+    "blanc": {
+      "request": {
+        "method": "GET",
+        "path": "/accounts/0xF2EF721498c691a5fCc84Adf03e8676F7fe594c3/portfolio?tokens=eip155%3A84532%3A0x12"
+      },
+      "status": 400,
+      "body": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid input",
+        "details": [
+          {
+            "message": "Invalid input",
+            "context": {
+              "path": "tokens"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
     "id": "extra.tokens-only-filter",
     "operation": "portfolio",
     "source": "live prod 2026-11-13 (testnets, read-only)",
