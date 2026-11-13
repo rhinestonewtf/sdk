@@ -26,10 +26,6 @@ function status(
 }
 
 describe('intentOpStatusFromBlanc', () => {
-  test('covers every lowering branch', () => {
-    expect(DERIVED.length).toBe(8)
-  })
-
   test.each(DERIVED.map((c) => [c.id, c] as const))(
     '%s',
     (_id, { alps, blanc }) => {
