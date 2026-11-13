@@ -25,6 +25,11 @@
         "signatureMode": 1,
         "topupCompact": false
       },
+      "recipient": {
+        "accountType": "EOA",
+        "address": "0x000000000000000000000000000000000000beef",
+        "setupOps": []
+      },
       "tokenRequests": [
         {
           "amount": "100000",
@@ -99,7 +104,7 @@
                     }
                   },
                   "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                  "value": "0"
+                  "value": "0n"
                 },
                 {
                   "data": {
@@ -112,7 +117,7 @@
                     }
                   },
                   "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                  "value": "0"
+                  "value": "0n"
                 },
                 {
                   "data": {
@@ -125,13 +130,13 @@
                         "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
                         "maxFee": "<~typed-data.op-calldata>",
                         "minFinalityThreshold": 1000,
-                        "mintRecipient": "0x00000000000000000000000063ade81e8e3aa4aed3094c4bf8a42bdfb60e4799"
+                        "mintRecipient": "0x000000000000000000000000000000000000000000000000000000000000beef"
                       },
                       "function": "depositForBurnWithHook"
                     }
                   },
                   "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
-                  "value": "0"
+                  "value": "0n"
                 }
               ],
               "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
@@ -226,7 +231,7 @@
                     }
                   },
                   "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                  "value": "0"
+                  "value": "0n"
                 },
                 {
                   "data": {
@@ -239,7 +244,7 @@
                     }
                   },
                   "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                  "value": "0"
+                  "value": "0n"
                 },
                 {
                   "data": {
@@ -252,13 +257,13 @@
                         "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
                         "maxFee": "<~typed-data.op-calldata>",
                         "minFinalityThreshold": 1000,
-                        "mintRecipient": "0x00000000000000000000000063ade81e8e3aa4aed3094c4bf8a42bdfb60e4799"
+                        "mintRecipient": "0x000000000000000000000000000000000000000000000000000000000000beef"
                       },
                       "function": "depositForBurnWithHook"
                     }
                   },
                   "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
-                  "value": "0"
+                  "value": "0n"
                 }
               ],
               "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
@@ -356,7 +361,7 @@
                   }
                 },
                 "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                "value": "0"
+                "value": "0n"
               },
               {
                 "data": {
@@ -369,7 +374,7 @@
                   }
                 },
                 "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-                "value": "0"
+                "value": "0n"
               },
               {
                 "data": {
@@ -382,13 +387,13 @@
                       "hookData": "0x636374702d666f72776172640000000000000000000000000000000000000000",
                       "maxFee": "<~typed-data.op-calldata>",
                       "minFinalityThreshold": 1000,
-                      "mintRecipient": "0x00000000000000000000000063ade81e8e3aa4aed3094c4bf8a42bdfb60e4799"
+                      "mintRecipient": "0x000000000000000000000000000000000000000000000000000000000000beef"
                     },
                     "function": "depositForBurnWithHook"
                   }
                 },
                 "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
-                "value": "0"
+                "value": "0n"
               }
             ],
             "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"

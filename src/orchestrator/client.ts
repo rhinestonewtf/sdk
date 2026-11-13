@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { API_VERSION, BLANC_API_VERSION, SDK_VERSION } from './consts'
 import {
@@ -32,7 +32,9 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  OriginSignature,
   Portfolio,
+  Quote,
   SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
@@ -45,6 +47,11 @@ import {
   normalizeErrorResponse,
   type OrchestratorOperation,
 } from './wire-error'
+import {
+  type BlancRoute,
+  blancQuoteRequest,
+  quotesFromBlanc,
+} from './wire-quote'
 import {
   blancPortfolioQuery,
   intentOpStatusFromBlanc,
@@ -109,6 +116,65 @@ export class Orchestrator {
         body: JSON.stringify(body),
       },
       'quote',
+    )
+  }
+
+  /** Quotes the intent on blanc; the first quote is the recommended route. */
+  async createQuote(input: IntentInput): Promise<Quote[]> {
+    const json: { routes?: BlancRoute[] } = await this.fetch(
+      `${this.serverUrl}/quotes`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(BLANC_API_VERSION),
+        body: JSON.stringify(blancQuoteRequest(input)),
+      },
+      'quote',
+    )
+    return quotesFromBlanc(json)
+  }
+
+  /**
+   * Submits a signed quote on blanc. Origin signatures follow the quote's
+   * `signData.origin` order; authorization chains are CAIP-2 (`eip155:<id>`).
+   */
+  async createIntent(
+    request: {
+      intentId: string
+      signatures: {
+        origin: OriginSignature[]
+        destination: Hex
+        targetExecution?: Hex
+        permits?: Record<number, Record<Address, Hex>>
+      }
+      authorizations?: {
+        sponsor: {
+          chainId: 0 | string
+          address: Address
+          nonce: number
+          yParity: number
+          r: Hex
+          s: Hex
+        }[]
+      }
+      options?: { dryRun: true }
+    },
+    policyContext?: { intentInput: unknown; isSponsored: boolean },
+  ): Promise<{ intentId: string }> {
+    const headers = policyContext
+      ? await this.getSubmitHeaders(
+          policyContext.intentInput,
+          policyContext.isSponsored,
+          BLANC_API_VERSION,
+        )
+      : await this.getHeaders(BLANC_API_VERSION)
+    return await this.fetch(
+      `${this.serverUrl}/intents`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(request),
+      },
+      'submit',
     )
   }
 
@@ -222,27 +288,19 @@ export class Orchestrator {
     apiVersion?: string,
   ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getHeaders()
-    // Operations that pick their own version must not be redirected by a
-    // custom `x-api-version` header (header names are case-insensitive).
-    const extra = apiVersion
-      ? Object.fromEntries(
-          Object.entries(this.extraHeaders ?? {}).filter(
-            ([name]) => name.toLowerCase() !== 'x-api-version',
-          ),
-        )
-      : this.extraHeaders
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
       'x-api-version': apiVersion ?? API_VERSION,
       ...auth,
-      ...extra,
+      ...this.headersFor(apiVersion),
     }
   }
 
   private async getSubmitHeaders(
     intentInput: unknown,
     isSponsored: boolean,
+    apiVersion?: string,
   ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getSubmitHeaders(
       intentInput,
@@ -251,9 +309,21 @@ export class Orchestrator {
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
+      ...(apiVersion ? { 'x-api-version': apiVersion } : {}),
       ...auth,
-      ...this.extraHeaders,
+      ...this.headersFor(apiVersion),
     }
+  }
+
+  // Operations that pick their own version must not be redirected by a
+  // custom `x-api-version` header (header names are case-insensitive).
+  private headersFor(apiVersion?: string): Record<string, string> | undefined {
+    if (!apiVersion) return this.extraHeaders
+    return Object.fromEntries(
+      Object.entries(this.extraHeaders ?? {}).filter(
+        ([name]) => name.toLowerCase() !== 'x-api-version',
+      ),
+    )
   }
 
   private async fetch(

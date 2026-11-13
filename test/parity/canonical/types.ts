@@ -46,8 +46,9 @@ interface CanonicalCostToken {
   amount: string
 }
 
+// `usd` for a category the request pays, `sponsored` for one it sponsors.
 interface CanonicalFee {
-  usd: number
+  usd?: number
   sponsored?: boolean
 }
 

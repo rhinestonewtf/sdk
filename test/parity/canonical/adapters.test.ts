@@ -6,6 +6,7 @@ import alpsSubmitRequest from '../__fixtures__/alps/submit-request.json'
 import blancQuoteRequest from '../__fixtures__/blanc/quote-request.json'
 import blancQuoteResponse from '../__fixtures__/blanc/quote-response.json'
 import blancSubmitRequest from '../__fixtures__/blanc/submit-request.json'
+import costPairs from '../__fixtures__/cost-pairs.json'
 import { compare } from '../compare'
 import { normalizeLayer } from '../normalize'
 import { RULES } from '../rules'
@@ -245,9 +246,52 @@ const EQUIVALENT: [string, Record<string, unknown>, Record<string, unknown>][] =
       },
       {
         accountAccessList: {
+          chainTokens: { 'eip155:84532': [USDC_BASE] },
           chainTokenAmounts: { 'eip155:84532': { [USDC_BASE]: '200000' } },
         },
       },
+    ],
+    [
+      'exact-input access list without amounts',
+      { accountAccessList: [{ chainId: 84532, tokenAddress: USDC_BASE }] },
+      { accountAccessList: { chainTokens: { 'eip155:84532': [USDC_BASE] } } },
+    ],
+    [
+      'exact-input access list with a repeated token and mixed amounts',
+      {
+        accountAccessList: [
+          { chainId: 84532, tokenAddress: USDC_BASE },
+          { chainId: 84532, tokenAddress: NATIVE, amount: '7' },
+          { chainId: 84532, tokenAddress: USDC_BASE, amount: '5' },
+          { chainId: 421614, tokenAddress: USDC_ARB },
+        ],
+      },
+      {
+        accountAccessList: {
+          chainTokens: {
+            'eip155:84532': [USDC_BASE, NATIVE],
+            'eip155:421614': [USDC_ARB],
+          },
+          chainTokenAmounts: {
+            'eip155:84532': { [NATIVE]: '7', [USDC_BASE]: '5' },
+          },
+        },
+      },
+    ],
+    [
+      'singular session mock signature',
+      { account: { mockSignature: '0xAA', mockSignatures: { 84532: '0xBB' } } },
+      { account: { mockSignatures: { 0: '0xaa', 84532: '0xbb' } } },
+    ],
+    [
+      'singular mock signature behind an explicit cross-chain fallback',
+      { account: { mockSignature: '0xAA', mockSignatures: { 0: '0xCC' } } },
+      { account: { mockSignatures: { 0: '0xcc' } } },
+    ],
+    [
+      'singular mock signature on an account recipient',
+      { recipient: { ...RECIPIENT_ACCOUNT, mockSignature: '0xAA' } },
+      { recipient: { ...RECIPIENT_ACCOUNT, mockSignatures: { 0: '0xaa' } } },
     ],
     [
       'EIP-7702 delegation',
@@ -307,8 +351,8 @@ describe('quote request options', () => {
     },
   )
 
-  // Encodings with no blanc counterpart. They stay visible as diffs until the
-  // blanc mapping decides them.
+  // v1 does not send feeToken (nor topupCompact) on blanc; neither version
+  // defines it, so it stays visible as a diff the run must accept.
   test('feeToken exists only in alps', () => {
     const fromAlps = alps.quoteRequest(
       alpsRequest({ options: { feeToken: 'USDC' } }),
@@ -322,44 +366,6 @@ describe('quote request options', () => {
         a: 'USDC',
         b: undefined,
       },
-    ])
-  })
-
-  test('the deprecated singular mock signature is a diff when dropped', () => {
-    const fromAlps = alps.quoteRequest(
-      alpsRequest({ account: { mockSignature: '0xAA' } }),
-    )
-    const fromBlanc = blanc.quoteRequest(blancRequest({}))
-    expect(compare('quoteRequest', fromAlps, fromBlanc)).toEqual([
-      {
-        layer: 'quoteRequest',
-        path: '/account/mockSignature',
-        kind: 'missing',
-        a: '0xaa',
-        b: undefined,
-      },
-    ])
-  })
-
-  test('an amountless exact-input access list has no blanc amount form', () => {
-    const fromAlps = alps.quoteRequest(
-      alpsRequest({
-        accountAccessList: [{ chainId: 84532, tokenAddress: USDC_BASE }],
-      }),
-    )
-    expect(fromAlps.accountAccessList).toEqual({
-      chainTokenAmounts: { '84532': { [USDC_BASE]: null } },
-    })
-    const fromBlanc = blanc.quoteRequest(
-      blancRequest({
-        accountAccessList: { chainTokens: { 'eip155:84532': [USDC_BASE] } },
-      }),
-    )
-    expect(
-      compare('quoteRequest', fromAlps, fromBlanc).map((diff) => diff.path),
-    ).toEqual([
-      '/accountAccessList/chainTokenAmounts',
-      '/accountAccessList/chainTokens',
     ])
   })
 })
@@ -395,6 +401,23 @@ describe('submit request', () => {
     })
   })
 
+  test('reads blanc permit signatures from the signatures object', () => {
+    const permits = { 84532: { [USDC_BASE]: '0xAB' } }
+    const fromAlps = alps.submitRequest({
+      signedIntentOp: {
+        originSignatures: ['0x01'],
+        destinationSignature: '0x01',
+        permitSignatures: permits,
+      },
+    })
+    const fromBlanc = blanc.submitRequest({
+      intentId: '1',
+      signatures: { origin: ['0x01'], destination: '0x01', permits },
+    })
+    expect(fromBlanc).toEqual(fromAlps)
+    expect(fromBlanc.permits).toEqual({ '84532': { [USDC_BASE]: '0xab' } })
+  })
+
   test('submit stubs echo the version-specific id', () => {
     expect(alps.submitStub({ signedIntentOp: { nonce: '7' } })).toEqual({
       status: 200,
@@ -416,6 +439,75 @@ describe('cost', () => {
     const a = normalizeLayer('cost', { prepare: fromAlps }, RULES, {})
     const b = normalizeLayer('cost', { prepare: fromBlanc }, RULES, {})
     expect(compare('cost', a, b)).toEqual([])
+  })
+
+  // Recorded on prod: alps reports what the user pays per category, blanc the
+  // full cost; a sponsored category compares by the served outcome.
+  test.each(costPairs)('$id: recorded alps and blanc costs agree', (pair) => {
+    const fromAlps = alps.cost(pair.alps.body, pair.alps.request)
+    const fromBlanc = blanc.cost(pair.blanc.body, pair.blanc.request)
+    const a = normalizeLayer('cost', { prepare: fromAlps }, RULES, {})
+    const b = normalizeLayer('cost', { prepare: fromBlanc }, RULES, {})
+    expect(compare('cost', a, b)).toEqual([])
+  })
+
+  test('a sponsored category carries no USD, an unsponsored one does', () => {
+    const sponsored = costPairs.find(
+      (pair) => pair.id === 'planned/options/sponsored-partial',
+    )!
+    const fees = blanc.cost(sponsored.blanc.body, sponsored.blanc.request)!.fees
+    expect(fees.gas).toEqual({ sponsored: true })
+    // Requested at $0: blanc's flag is false, there being nothing to cover.
+    expect(fees.swap).toEqual({ sponsored: true })
+    expect(fees.bridge).toEqual({ usd: 0 })
+    expect(fees.app).toEqual({ usd: 0 })
+    expect(
+      alps.cost(sponsored.alps.body, sponsored.alps.request)!.fees,
+    ).toEqual(fees)
+  })
+
+  function sponsoredPartial() {
+    return structuredClone(
+      costPairs.find(
+        (pair) => pair.id === 'planned/options/sponsored-partial',
+      )!,
+    )
+  }
+
+  function costDiffPaths(pair: (typeof costPairs)[number]) {
+    const a = normalizeLayer(
+      'cost',
+      { prepare: alps.cost(pair.alps.body, pair.alps.request) },
+      RULES,
+      {},
+    )
+    const b = normalizeLayer(
+      'cost',
+      { prepare: blanc.cost(pair.blanc.body, pair.blanc.request) },
+      RULES,
+      {},
+    )
+    return compare('cost', a, b).map((diff) => diff.path)
+  }
+
+  test('a sponsorship blanc drops is a diff', () => {
+    const pair = sponsoredPartial()
+    const gas = (pair.blanc.body as any).routes[0].cost.fees.breakdown.gas
+    expect(gas).toMatchObject({ sponsored: true })
+    gas.sponsored = false
+    expect(costDiffPaths(pair)).toEqual([
+      '/prepare/fees/gas/sponsored',
+      '/prepare/fees/gas/usd',
+    ])
+  })
+
+  test('a sponsorship alps drops is a diff', () => {
+    const pair = sponsoredPartial()
+    ;(pair.alps.body as any).intentCost.feeBreakdownUSD.gasFeeUSD = 0.0198
+    expect(costDiffPaths(pair)).toEqual([
+      '/prepare/fees/gas/sponsored',
+      '/prepare/fees/gas/usd',
+    ])
   })
 
   test('a fee category present in one version only is a diff', () => {

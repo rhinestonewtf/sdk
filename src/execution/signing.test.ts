@@ -1,13 +1,16 @@
-import { type Hex, type PublicClient, verifyTypedData, zeroAddress } from 'viem'
+import {
+  type Hex,
+  type PublicClient,
+  type TypedDataDefinition,
+  verifyTypedData,
+} from 'viem'
 import { base } from 'viem/chains'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
-import type {
-  IntentOp,
-  IntentOpElement,
-  IntentRoute,
-  SettlementLayer,
-} from '../orchestrator/types'
+import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
+import { getChainById } from '../orchestrator/registry'
+import type { Quote, SettlementLayer } from '../orchestrator/types'
+import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type {
   RhinestoneConfig,
   Session,
@@ -160,69 +163,40 @@ vi.mock('../orchestrator/registry', () => ({
   resolveTokenAddress: vi.fn(),
 }))
 
-vi.mock('./singleChainOps', () => ({
-  getTypedData: vi.fn().mockReturnValue(MOCK_TYPED_DATA),
-}))
-
-vi.mock('./compact', () => ({
-  getCompactTypedData: vi.fn().mockReturnValue(MOCK_TYPED_DATA),
-}))
-
 vi.mock('./error', () => ({
   Eip7702InitSignatureRequiredError: class extends Error {},
+  OrderPathRequiredForIntentsError: class extends Error {},
   SignerNotSupportedError: class extends Error {},
-}))
-
-vi.mock('./permit2', () => ({
-  getTypedData: vi.fn().mockReturnValue(MOCK_TYPED_DATA),
 }))
 
 // --- Helpers ---
 
-const makeElement = (settlementLayer: SettlementLayer): IntentOpElement =>
+// One payload per origin; the destination is the last origin payload and the
+// target execution is served unless `targetExecution` is false.
+const makeQuote = (
+  settlementLayer: SettlementLayer,
+  {
+    origins = 1,
+    origin = MOCK_TYPED_DATA as TypedDataDefinition,
+    targetExecution = true,
+  }: {
+    origins?: number
+    origin?: TypedDataDefinition
+    targetExecution?: boolean
+  } = {},
+): Quote =>
   ({
-    mandate: {
-      destinationChainId: base.id,
-      destinationOps: {
-        vt: `0x${'00'.repeat(32)}` as Hex,
-        ops: [],
-      },
-      preClaimOps: {
-        vt: `0x${'00'.repeat(32)}` as Hex,
-        ops: [],
-      },
-      qualifier: {
-        settlementContext: {
-          settlementLayer,
-          fundingMethod: 'NO_FUNDING',
-          using7579: true,
-          gasRefund: {
-            token: zeroAddress,
-            exchangeRate: 0n,
-            overhead: 0n,
-          },
-        },
-      },
+    intentId: '100',
+    expiresAt: 9999999999,
+    estimatedFillTime: { seconds: 1 },
+    settlementLayer,
+    signData: {
+      origin: Array.from({ length: origins }, () => origin),
+      destination: origin,
+      targetExecution: targetExecution ? MOCK_TYPED_DATA : undefined,
     },
-  }) as unknown as IntentOpElement
-
-const makeIntentOp = (
-  settlementLayer: SettlementLayer | SettlementLayer[],
-  targetExecutionNonce = '200',
-): IntentOp => {
-  const layers = Array.isArray(settlementLayer)
-    ? settlementLayer
-    : [settlementLayer]
-  return {
-    sponsor: MOCK_ACCOUNT,
-    nonce: '100',
-    targetExecutionNonce,
-    expires: '9999999999',
-    elements: layers.map(makeElement),
-    serverSignature: '0x',
-    signedMetadata: { fees: {} },
-  } as unknown as IntentOp
-}
+    cost: { input: [], output: [], fees: {} },
+  }) as unknown as Quote
 
 // verifyExecutions auto-derived as true when session.actions is non-empty
 const sessionWithActions: Session = {
@@ -288,10 +262,10 @@ describe('getValidatorAccount', () => {
 
 describe('getTargetExecutionSignature', () => {
   test('undefined signers returns undefined', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       undefined,
     )
@@ -299,10 +273,10 @@ describe('getTargetExecutionSignature', () => {
   })
 
   test('non-session signers returns undefined', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       ownerSigners,
     )
@@ -310,11 +284,11 @@ describe('getTargetExecutionSignature', () => {
   })
 
   test('SAME_CHAIN + verifyExecutions: true returns emissary sig', async () => {
-    const intentOp = makeIntentOp('SAME_CHAIN')
+    const quote = makeQuote('SAME_CHAIN')
     const signers = makeSessionSigners(sessionWithActions)
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -322,11 +296,11 @@ describe('getTargetExecutionSignature', () => {
   })
 
   test('INTENT_EXECUTOR + verifyExecutions: false (no actions) returns undefined', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionNoActions)
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -334,7 +308,7 @@ describe('getTargetExecutionSignature', () => {
   })
 
   test('explicit verifyExecutions: false on signers overrides session with actions', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions,
@@ -342,7 +316,7 @@ describe('getTargetExecutionSignature', () => {
     }
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -350,7 +324,7 @@ describe('getTargetExecutionSignature', () => {
   })
 
   test('explicit verifyExecutions: true on signers overrides session without actions', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionNoActions,
@@ -358,7 +332,7 @@ describe('getTargetExecutionSignature', () => {
     }
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -367,35 +341,48 @@ describe('getTargetExecutionSignature', () => {
 
   test('session not yet enabled still resolves verifyExecutions from actions', async () => {
     mockIsSessionEnabled.mockResolvedValueOnce(false)
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionWithActions)
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
     expect(result).toBe(MOCK_EMISSARY)
   })
 
-  test('mixed INTENT_EXECUTOR + SAME_CHAIN elements returns emissary sig', async () => {
-    const intentOp = makeIntentOp(['INTENT_EXECUTOR', 'SAME_CHAIN'])
+  test('ACROSS with a served payload returns undefined', async () => {
+    const quote = makeQuote('ACROSS')
     const signers = makeSessionSigners(sessionWithActions)
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
-    expect(result).toBe(MOCK_EMISSARY)
+    expect(result).toBeUndefined()
+  })
+
+  test('INTENT_EXECUTOR without a served payload returns undefined', async () => {
+    const quote = makeQuote('INTENT_EXECUTOR', { targetExecution: false })
+    const signers = makeSessionSigners(sessionWithActions)
+    const result = await getTargetExecutionSignature(
+      config,
+      quote,
+      base,
+      signers,
+    )
+    expect(result).toBeUndefined()
+    expect(mockGetEmissarySignature).not.toHaveBeenCalled()
   })
 
   test('INTENT_EXECUTOR + verifyExecutions: true returns emissary sig', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionWithActions)
     const result = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -407,10 +394,10 @@ describe('getTargetExecutionSignature', () => {
 
 describe('signIntent with owner signers', () => {
   test('gives EIP-1271 destinationSignature, not emissary', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const { destinationSignature, originSignatures } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       ownerSigners,
     )
@@ -440,7 +427,7 @@ describe('signIntent with quorum owners', () => {
 
     const { originSignatures, destinationSignature } = await signIntent(
       quorumConfig,
-      makeIntentOp(['INTENT_EXECUTOR', 'INTENT_EXECUTOR']),
+      makeQuote('INTENT_EXECUTOR', { origins: 2 }),
       base,
       quorumSigners,
     )
@@ -458,11 +445,11 @@ describe('signIntent with quorum owners', () => {
 
 describe('signIntent destinationSignature', () => {
   test('verifyExecutions: true + INTENT_EXECUTOR — emissary destinationSignature, both sigs generated', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionWithActions)
     const { destinationSignature, originSignatures } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -475,11 +462,11 @@ describe('signIntent destinationSignature', () => {
   })
 
   test('verifyExecutions: false + INTENT_EXECUTOR — EIP-1271 destinationSignature only', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionNoActions)
     const { destinationSignature, originSignatures } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -489,11 +476,11 @@ describe('signIntent destinationSignature', () => {
   })
 
   test('verifyExecutions: true + SAME_CHAIN — emissary destinationSignature', async () => {
-    const intentOp = makeIntentOp('SAME_CHAIN')
+    const quote = makeQuote('SAME_CHAIN')
     const signers = makeSessionSigners(sessionWithActions)
     const { destinationSignature } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -501,32 +488,27 @@ describe('signIntent destinationSignature', () => {
   })
 
   test('multi-element op produces one originSignature per element', async () => {
-    const intentOp = makeIntentOp(['INTENT_EXECUTOR', 'INTENT_EXECUTOR'])
+    const quote = makeQuote('INTENT_EXECUTOR', { origins: 2 })
     const signers = makeSessionSigners(sessionWithActions)
-    const { originSignatures } = await signIntent(
-      config,
-      intentOp,
-      base,
-      signers,
-    )
+    const { originSignatures } = await signIntent(config, quote, base, signers)
     expect(originSignatures).toHaveLength(2)
   })
 })
 
 describe('signIntent + getTargetExecutionSignature routing', () => {
   test('INTENT_EXECUTOR + verifyExecutions: true — EMISSARY for both', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionWithActions)
 
     const { destinationSignature } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
     const targetExecutionSignature = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -536,18 +518,18 @@ describe('signIntent + getTargetExecutionSignature routing', () => {
   })
 
   test('INTENT_EXECUTOR + verifyExecutions: false — EIP-1271 destination, undefined target', async () => {
-    const intentOp = makeIntentOp('INTENT_EXECUTOR')
+    const quote = makeQuote('INTENT_EXECUTOR')
     const signers = makeSessionSigners(sessionNoActions)
 
     const { destinationSignature } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
     const targetExecutionSignature = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -557,18 +539,18 @@ describe('signIntent + getTargetExecutionSignature routing', () => {
   })
 
   test('SAME_CHAIN + verifyExecutions: true — EMISSARY for both destination and target', async () => {
-    const intentOp = makeIntentOp('SAME_CHAIN')
+    const quote = makeQuote('SAME_CHAIN')
     const signers = makeSessionSigners(sessionWithActions)
 
     const { destinationSignature } = await signIntent(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
     const targetExecutionSignature = await getTargetExecutionSignature(
       config,
-      intentOp,
+      quote,
       base,
       signers,
     )
@@ -607,31 +589,10 @@ const MOCK_PERMIT2_TYPED_DATA = {
   },
 }
 
-const makePermit2IntentOp = (): IntentOp =>
-  ({
-    sponsor: MOCK_ACCOUNT,
-    nonce: '100',
-    targetExecutionNonce: '200',
-    expires: '9999999999',
-    elements: [
-      {
-        mandate: {
-          destinationChainId: base.id,
-          destinationOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
-          preClaimOps: { vt: `0x${'00'.repeat(32)}` as Hex, ops: [] },
-          qualifier: {
-            settlementContext: {
-              // SAME_CHAIN avoids the INTENT_EXECUTOR branch so the PERMIT2 funding path is taken
-              settlementLayer: 'SAME_CHAIN',
-              fundingMethod: 'PERMIT2',
-              using7579: true,
-              gasRefund: { token: zeroAddress, exchangeRate: 0n, overhead: 0n },
-            },
-          },
-        },
-      },
-    ],
-  }) as unknown as IntentOp
+const makePermit2Quote = () =>
+  makeQuote('SAME_CHAIN', {
+    origin: MOCK_PERMIT2_TYPED_DATA as unknown as TypedDataDefinition,
+  })
 
 const sessionWithClaimPolicy: Session = {
   chain: base,
@@ -642,20 +603,13 @@ const sessionWithClaimPolicy: Session = {
 
 describe('signIntent with permit2 claim policy', () => {
   test('Permit2 typed data + claimPolicies → getEip1271Signature called with claimPolicyData', async () => {
-    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
-    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
-      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
-        typeof mockPermit2GetTypedData
-      >,
-    )
-
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithClaimPolicy,
       verifyExecutions: true,
     }
 
-    await signIntent(config, makePermit2IntentOp(), base, signers)
+    await signIntent(config, makePermit2Quote(), base, signers)
 
     expect(mockGetEip1271Signature).toHaveBeenCalled()
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
@@ -666,14 +620,14 @@ describe('signIntent with permit2 claim policy', () => {
   })
 
   test('non-Permit2 typed data + claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
-    // Default mock returns MOCK_TYPED_DATA (primaryType: 'Test'), not Permit2
+    // MOCK_TYPED_DATA (primaryType: 'Test') is not Permit2
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithClaimPolicy,
       verifyExecutions: true,
     }
 
-    await signIntent(config, makeIntentOp('INTENT_EXECUTOR'), base, signers)
+    await signIntent(config, makeQuote('INTENT_EXECUTOR'), base, signers)
 
     expect(mockGetEip1271Signature).toHaveBeenCalled()
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
@@ -683,20 +637,13 @@ describe('signIntent with permit2 claim policy', () => {
   })
 
   test('Permit2 typed data without claimPolicies → getEip1271Signature called without claimPolicyData', async () => {
-    const { getTypedData: mockPermit2GetTypedData } = await import('./permit2')
-    vi.mocked(mockPermit2GetTypedData).mockReturnValueOnce(
-      MOCK_PERMIT2_TYPED_DATA as unknown as ReturnType<
-        typeof mockPermit2GetTypedData
-      >,
-    )
-
     const signers: SessionSignerSet = {
       type: 'experimental_session',
       session: sessionWithActions, // no claimPolicies
       verifyExecutions: true,
     }
 
-    await signIntent(config, makePermit2IntentOp(), base, signers)
+    await signIntent(config, makePermit2Quote(), base, signers)
 
     expect(mockGetEip1271Signature).toHaveBeenCalled()
     const sessionSignersArg = mockGetEip1271Signature.mock.calls[0][1] as {
@@ -742,21 +689,21 @@ describe('signPermits', () => {
       deadline: '1800000000',
     },
   }
-  const route = {
+  const quote = {
     tokenRequirements: {
       8453: {
         [USDC]: { type: 'approval', amount: 1n, spender: PERMIT2, permit },
         [WETH]: { type: 'approval', amount: 1n, spender: PERMIT2 },
       },
     },
-  } as unknown as IntentRoute
+  } as unknown as Quote
   const eoaConfig = {
     account: { type: 'eoa' },
     eoa: accountA,
   } as unknown as RhinestoneConfig
 
   test('signs each offered permit with the EOA, keyed by chain and token', async () => {
-    const signatures = await signPermits(eoaConfig, route)
+    const signatures = await signPermits(eoaConfig, quote)
 
     expect(Object.keys(signatures?.[8453] ?? {})).toEqual([USDC])
     const { EIP712Domain: _, ...types } = permit.types
@@ -779,7 +726,9 @@ describe('signPermits', () => {
 
   test('returns undefined when no permit is offered', async () => {
     expect(
-      await signPermits(eoaConfig, { tokenRequirements: {} } as IntentRoute),
+      await signPermits(eoaConfig, {
+        tokenRequirements: {},
+      } as unknown as Quote),
     ).toBeUndefined()
   })
 
@@ -788,6 +737,79 @@ describe('signPermits', () => {
       owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
       eoa: accountA,
     } as unknown as RhinestoneConfig
-    expect(await signPermits(smartAccountConfig, route)).toBeUndefined()
+    expect(await signPermits(smartAccountConfig, quote)).toBeUndefined()
+  })
+})
+
+describe('signIntent destination payload', () => {
+  const recorded = (id: string) => {
+    const found = (
+      recordedQuotes as unknown as {
+        cases: { id: string; blanc: { body?: { routes: BlancRoute[] } } }[]
+      }
+    ).cases.find((entry) => entry.id === id)
+    return quoteFromBlanc(found!.blanc.body!.routes[0])
+  }
+
+  beforeEach(() => {
+    let call = 0
+    mockGetEip1271Signature.mockImplementation(
+      async () => `0x0${++call}` as Hex,
+    )
+  })
+
+  test('reuses the origin signature over the same payload (relayer-delivered CCTP)', async () => {
+    // A destination-chain child payload, then the burn, which is the
+    // destination.
+    const quote = recorded('unfunded/nexus')
+    expect(quote.signData.origin).toHaveLength(2)
+    const { originSignatures, destinationSignature } = await signIntent(
+      config,
+      quote,
+      base,
+      ownerSigners,
+    )
+    expect(originSignatures).toEqual(['0x01', '0x02'])
+    expect(destinationSignature).toBe('0x02')
+  })
+
+  test('reuses the matching origin signature even when it is not the last', async () => {
+    const other = {
+      ...MOCK_TYPED_DATA,
+      message: { value: 2n },
+    } as TypedDataDefinition
+    const quote = makeQuote('INTENT_EXECUTOR')
+    quote.signData = {
+      origin: [MOCK_TYPED_DATA as TypedDataDefinition, other],
+      destination: MOCK_TYPED_DATA as TypedDataDefinition,
+    }
+    const { destinationSignature } = await signIntent(
+      config,
+      quote,
+      base,
+      ownerSigners,
+    )
+    expect(destinationSignature).toBe('0x01')
+  })
+
+  test('signs a destination no origin payload matches on its own chain', async () => {
+    const destination = {
+      ...MOCK_TYPED_DATA,
+      domain: { ...MOCK_TYPED_DATA.domain, chainId: 10 },
+    } as TypedDataDefinition
+    const quote = makeQuote('INTENT_EXECUTOR')
+    quote.signData = {
+      origin: [MOCK_TYPED_DATA as TypedDataDefinition],
+      destination,
+    }
+    const { originSignatures, destinationSignature } = await signIntent(
+      config,
+      quote,
+      base,
+      ownerSigners,
+    )
+    expect(originSignatures).toEqual(['0x01'])
+    expect(destinationSignature).toBe('0x02')
+    expect(vi.mocked(getChainById)).toHaveBeenCalledWith(10)
   })
 })

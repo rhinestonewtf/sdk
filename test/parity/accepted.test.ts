@@ -3,6 +3,7 @@ import {
   ACCEPTED,
   type AcceptedDifference,
   assertExactErrorEntries,
+  SCENARIO_ACCEPTED,
 } from './accepted'
 
 describe('accepted differences', () => {
@@ -41,6 +42,15 @@ describe('accepted differences', () => {
 
   test('the expected entries exist, and no others', () => {
     expect(errors.map(({ scenario, path }) => ({ scenario, path }))).toEqual([
+      // Blanc words an unknown quote token and chain differently.
+      {
+        scenario: 'errors/quote-rejections',
+        path: '/unsupported-token/message',
+      },
+      {
+        scenario: 'errors/quote-rejections',
+        path: '/unsupported-chain/context/path',
+      },
       // The splits liquidity error may gain a trace id.
       {
         scenario: 'errors/reads',
@@ -54,5 +64,38 @@ describe('accepted differences', () => {
       { scenario: 'errors/reads', path: '/splits-unsupported-chain/message' },
       { scenario: 'reads/client', path: '/portfolio-unknown-chain/message' },
     ])
+  })
+
+  test('quote requests differ only by the two options v1 no longer sends', () => {
+    expect(
+      ACCEPTED.filter((entry) => entry.layer === 'quoteRequest').map(
+        ({ scenario, path }) => ({ scenario, path }),
+      ),
+    ).toEqual([
+      { scenario: undefined, path: '/*/options/topupCompact' },
+      {
+        scenario: 'mapping/cross-chain-options',
+        path: '/fee-asset/options/feeToken',
+      },
+    ])
+  })
+
+  test('scenario-local entries are exact paths with a reason', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(SCENARIO_ACCEPTED).map(([id, entries]) => [
+          id,
+          entries.length,
+        ]),
+      ),
+    ).toEqual({
+      'funded/session-verify-executions': 3,
+      'funded/cctp-safe': 21,
+    })
+    for (const entry of Object.values(SCENARIO_ACCEPTED).flat()) {
+      expect(entry.path).not.toMatch(/[*(|)]/)
+      expect(entry.scenario).toBeUndefined()
+      expect(entry.reason.trim()).not.toBe('')
+    }
   })
 })

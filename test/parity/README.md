@@ -13,13 +13,13 @@ The recordings are projected into version-neutral layers, through an alps or bla
 | Layer | What it holds |
 | --- | --- |
 | `quoteRequest` | the quote request body |
-| `typedData` | messages returned by `getTransactionMessages` and typed data handed to signers |
+| `typedData` | messages returned by `getTransactionMessages` and typed data handed to signers; integer fields compare by value, whether built as bigints or served as decimal strings |
 | `signatures` | signatures returned by `signTransaction`, templated by role, with byte lengths |
 | `submitRequest` | the submit body: signatures by role, authorizations, permits |
 | `reads` | request parameters and public results of read steps |
 | `errors` | error class, name, type, status, message, context, trace id presence and wire status/domain code |
-| `cost` | inputs, outputs and USD fees; compared within tolerances |
-| `steps` | public step results not covered above, including the prepared intent route |
+| `cost` | inputs, outputs and USD fees; compared within tolerances. Alps reports what the user pays per category, blanc the full cost, and only their totals agree, so a sponsored category is compared by the served outcome alone: on alps, a requested category the user pays nothing for; on blanc, the category's `sponsored` flag wherever it costs anything. A sponsorship one version drops is a diff |
+| `steps` | public step results not covered above; for `prepare`, the transaction and an EOA's token requirements (the quote's content is compared on `typedData`, `cost` and `submitRequest`) |
 | `traffic` | which orchestrator operations each step called, in order, with the auth headers each sent |
 
 ## Running
@@ -56,11 +56,11 @@ The offline tests for the harness itself (`test/parity/**/*.test.ts`) run with `
 | File | Covers |
 | --- | --- |
 | `seed.parity.ts` | One unfunded cross-chain quote, sign and captured submit; basic reads; basic errors. |
-| `mapping.parity.ts` | Every transaction option v1 puts in the quote request, source selection, same-chain and tokenless routes, sessions, and each account shape (Safe, Kernel, Startale, multi-owner, EOA, EIP-7702 signed with a captured submit; passkey quoted only). |
+| `mapping.parity.ts` | Every transaction option v1 puts in the quote request, source selection, same-chain and tokenless routes, sessions, and each account shape (Safe, Kernel, Startale, multi-owner, multi-factor, quorum, EOA, EIP-7702 signed with a captured submit; passkey quoted only). Cross-chain transfers pay `0x…beef` rather than the account, and sponsorship is compared on a same-chain transfer: blanc delivers CCTP into the sender's own account, and sponsored CCTP, through Rhinestone's relayer, a different plan from alps. The EIP-7702 transfer into the account itself goes over Across to OP Sepolia, which both versions plan alike, so the target-chain authorization is compared. |
 | `reads.parity.ts` | Status of fixed past intents, portfolios of empty fixture accounts and a dormant account, splits, and the exported low-level client's status and portfolio (raw shapes, token filter). |
 | `errors.parity.ts` | Orchestrator quote rejections, `sendTransaction` with no balance, the SDK's own validation errors, invalid API key and JWT, read errors. |
 | `funded-tokenless.parity.ts` | Funded: sponsored no-op calls that execute each signing path without moving funds, and a non-owner signature the orchestrator refuses. |
-| `funded-transfers.parity.ts` | Funded: smart-account transfers over Across, CCTP and same-chain, paired so principal comes back. |
+| `funded-transfers.parity.ts` | Funded: smart-account transfers over Across, CCTP and same-chain, paired so principal comes back. The candidate's sponsored CCTP is delivered by Rhinestone's relayer. |
 | `funded-eoa.parity.ts` | Funded: the plain EOA with an ERC-2612 permit, an existing Permit2 approval and an ETH wrap. |
 | `funded-reads.parity.ts` | Funded: portfolios with non-zero balances, and quotes for more than a fixture holds. |
 
@@ -71,8 +71,8 @@ Attempts inside a scenario are independent: a rejected quote or read is recorded
 - **Self-check:** `PARITY_CANDIDATE=published PARITY_REPEAT=3 bun run test:parity` must match 100%. A diff here is per-quote variance that needs a rule, or a non-deterministic scenario.
 - **Fault checks** (`faults.ts`) must fail with `quoteRequest` diffs:
   - `quote.bump-token-amount`: `/<step>/tokenRequests/0/amount`.
-  - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`topupCompact` and `signatureMode` on every quote).
-  - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignature`, `mockSignatures` and `delegations`, wherever a step sets them.
+  - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`signatureMode` on every quote; the working tree no longer sends `topupCompact`).
+  - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignatures` and `delegations`, wherever a step sets them.
 
 ## Harness errors
 
@@ -93,9 +93,19 @@ A funded scenario sets `funded: true` and declares what it needs: its per-side s
 ## Rules and accepted differences
 
 - **Rules** (`rules.ts`) mask, ignore, decode or tolerance-compare values that vary per quote. Add one only for variance a repeated self-check shows, scope it to the narrowest path, and give it a reason that names what varies. Never mask a field that is deterministic in the request. Each report lists the rules that fired. Scenarios can override tolerances with `tolerances`.
+- **Adapters** project what the orchestrator plans from: the alps adapter folds a session's singular `mockSignature` into `mockSignatures['0']` (unless set) and the flat exact-input access list into `chainTokens` and `chainTokenAmounts`, as the orchestrator lowers alps requests.
 - **Accepted differences** (`accepted.ts`, or `accepted` on a scenario) are differences the migration intends. Each needs a reason, and the report lists them under their own heading.
 - **Reads**: the candidate reads status, portfolio, splits and app-fee balances through blanc, while the baseline reads them through alps; the read results must match exactly.
 - **Errors** are compared strictly: class, name, type, status, message, context, the wire's domain code and whether the error carries a trace id. The wire code is the domain code on both versions (`ZERO_BALANCE`, `INSUFFICIENT_BALANCE`, …), not blanc's coarse envelope code (`UNPROCESSABLE_CONTENT`, `VALIDATION_ERROR`). When blanc's own wording of one error differs from alps's, accept that difference with one entry for that scenario, that step and that field (e.g. `/<step>/message`), with the reason. Never a wildcard or alternation on the errors layer: the runner rejects any such entry, global or on a scenario, and `accepted.test.ts` requires the global ones to name a scenario. Never rewritten text in the SDK.
+
+## Quote, sign and submit
+
+The candidate quotes (`POST /quotes`) and submits (`POST /intents`) through blanc; the baseline through alps (`/intents/route`, `/intent-operations`). Where the orchestrator plans the same route on both versions, blanc serves the payloads 1.22.0 built locally, so typed data, signatures and submits compare exactly. CCTP into the sender's own account, and sponsored CCTP, are planned differently by API version (Rhinestone relayer delivery on blanc), so the unfunded transfers pay a payee and compare sponsorship same-chain; `funded/cctp-safe` keeps exercising relayer delivery on the candidate. Accepted differences (`accepted.ts`):
+
+- `options.topupCompact` (every quote) and `options.feeToken` (the fee-asset step): v1 no longer sends them; neither version defines them.
+- `errors/quote-rejections`: blanc's wording of an unknown token (CAIP-2 chain) and no field path for an unknown destination chain.
+- `funded/session-verify-executions`: no target-execution signature on IntentExecutor routes, where blanc serves none and the orchestrator reads none.
+- `funded/cctp-safe`: the relayer-delivered burn's amount, fee cap and hook data, and the total cost.
 
 ## Goldens
 

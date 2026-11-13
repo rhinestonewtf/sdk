@@ -452,6 +452,59 @@ interface IntentRoute {
   tokenRequirements?: TokenRequirements
 }
 
+/** A token amount debited or delivered by a quoted route. */
+interface QuoteCostToken {
+  chainId: number
+  tokenAddress: Address
+  symbol: string | null
+  decimals: number | null
+  price: { usd: number } | null
+  amount: bigint
+}
+
+type QuoteFeeCategory =
+  | 'gas'
+  | 'bridge'
+  | 'swap'
+  | 'app'
+  | 'protocol'
+  | 'sponsorSurcharge'
+
+/** What a quoted route costs. */
+interface QuoteCost {
+  /** Tokens debited from the account, coalesced per chain and token. */
+  input: QuoteCostToken[]
+  /** Tokens delivered on the destination. */
+  output: QuoteCostToken[]
+  fees: {
+    total: { usd: number }
+    /**
+     * Per category: `usd` is the full cost whoever pays it; `sponsored` is
+     * whether a sponsor covers it.
+     */
+    breakdown: Record<QuoteFeeCategory, { usd: number; sponsored: boolean }>
+  }
+}
+
+/** A route the orchestrator quoted for the intent; v1 uses the recommended one. */
+interface Quote {
+  /** Identifies the quote at submit; equals the submitted intent's id. */
+  intentId: string
+  /** Unix seconds; a submit after this is refused. */
+  expiresAt: number
+  estimatedFillTime: { seconds: number }
+  settlementLayer: SettlementLayer
+  /** The payloads to sign, with uint fields as bigints. */
+  signData: {
+    origin: TypedDataDefinition[]
+    destination: TypedDataDefinition
+    targetExecution?: TypedDataDefinition
+  }
+  cost: QuoteCost
+  /** Approvals, wraps and permits the account needs first. EOA accounts only. */
+  tokenRequirements?: TokenRequirements
+}
+
 interface IntentResult {
   result: {
     id: string
@@ -605,6 +658,8 @@ export type {
   PortfolioResponse,
   PortfolioToken,
   PortfolioTokenResponse,
+  Quote,
+  QuoteCost,
   SettlementLayer,
   SignatureMode,
   SignedIntentOp,

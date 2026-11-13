@@ -1,4 +1,8 @@
-import type { CanonicalCostToken, CanonicalQuoteRequest } from './types'
+import type {
+  CanonicalCostToken,
+  CanonicalFee,
+  CanonicalQuoteRequest,
+} from './types'
 
 // Shared canonicalization helpers: lowercase hex, numeric chain ids, decimal
 // amounts and sorted keys, so both API versions project to one shape.
@@ -258,12 +262,60 @@ function sortCostTokens(tokens: CanonicalCostToken[]): CanonicalCostToken[] {
   })
 }
 
-export type { ReadOp }
+type FeeCategory = 'gas' | 'bridge' | 'swap' | 'app' | 'protocol'
+
+// Which fee categories the quote request asked a sponsor to cover, read from
+// either version's sponsor-setting names. App fees are never sponsored.
+function requestSponsorship(
+  requestBody: unknown,
+): Record<FeeCategory, boolean> {
+  const settings = asRecord(
+    asRecord(asRecord(requestBody).options).sponsorSettings,
+  )
+  return {
+    gas: (settings.gas ?? settings.gasSponsored) === true,
+    bridge: (settings.bridgeFees ?? settings.bridgeFeesSponsored) === true,
+    swap: (settings.swapFees ?? settings.swapFeesSponsored) === true,
+    app: false,
+    protocol:
+      (settings.protocolFees ?? settings.protocolFeesSponsored) === true,
+  }
+}
+
+// Alps reports what the user pays per category, with a sponsor's coverage
+// subtracted, and blanc the full cost with whether a sponsor covers any of it;
+// only their totals agree. So a sponsored category compares by the served
+// outcome alone, any other by its USD.
+
+// Alps serves no flag: a requested category the user pays nothing for was
+// sponsored, one the user still pays for was not.
+function alpsCategoryFee(
+  userPaidUsd: unknown,
+  requested: boolean,
+): CanonicalFee {
+  const usd = typeof userPaidUsd === 'number' ? userPaidUsd : 0
+  return requested && usd === 0 ? { sponsored: true } : { usd }
+}
+
+// Blanc's flag means "a sponsor covers some of a non-zero cost", so it is
+// always false for a free category; there the request is all there is to say.
+function blancCategoryFee(
+  entry: Record<string, unknown>,
+  requested: boolean,
+): CanonicalFee {
+  const usd = typeof entry.usd === 'number' ? entry.usd : 0
+  const sponsored = usd > 0 ? entry.sponsored === true : requested
+  return sponsored ? { sponsored: true } : { usd }
+}
+
+export type { FeeCategory, ReadOp }
 export {
   alpsWireCode,
   amount,
+  alpsCategoryFee,
   asRecord,
   authorization,
+  blancCategoryFee,
   chainIdNumber,
   compact,
   filterList,
@@ -271,6 +323,7 @@ export {
   mapChainKeys,
   quoteRequest,
   readParams,
+  requestSponsorship,
   signatureModeNumber,
   sortCostTokens,
   sumAmounts,

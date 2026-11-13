@@ -1,5 +1,6 @@
 import { baseSepolia, optimismSepolia } from 'viem/chains'
 import { describe } from 'vitest'
+import { SCENARIO_ACCEPTED } from '../accepted'
 import {
   FIXTURES,
   NOOP_CALL,
@@ -157,6 +158,7 @@ const cctpSafe = defineScenario({
     'Safe 2-of-3: 0.05 USDC Base Sepolia → OP Sepolia over CCTP, sponsored per category',
   funded: true,
   goldenLayers: FUNDED_LAYERS,
+  accepted: SCENARIO_ACCEPTED['funded/cctp-safe'],
   steady: [
     { kind: 'deployed', fixture: 'safe-multisig', chainId: baseSepolia.id },
   ],

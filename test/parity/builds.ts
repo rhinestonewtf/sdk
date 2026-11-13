@@ -175,13 +175,17 @@ type TokenRequirements = Record<
   Record<string, { type: string; amount?: bigint | string }>
 >
 
-// Reads the alps-shaped `prepared.intentRoute.tokenRequirements` (wrap and
-// approval requirements an EOA must meet before submitting). RHI-9152 changes
-// the prepared shape and must keep this working for blanc candidates.
+// Wrap and approval requirements an EOA must meet before submitting: the
+// working tree serves them on `prepared.quote` (bigint amounts), 1.22.0 on
+// `prepared.intentRoute` (string amounts).
 function tokenRequirementsOf(prepared: unknown): TokenRequirements {
-  const route = (prepared as { intentRoute?: { tokenRequirements?: unknown } })
-    ?.intentRoute
-  return (route?.tokenRequirements ?? {}) as TokenRequirements
+  const { quote, intentRoute } = (prepared ?? {}) as {
+    quote?: { tokenRequirements?: unknown }
+    intentRoute?: { tokenRequirements?: unknown }
+  }
+  return (quote?.tokenRequirements ??
+    intentRoute?.tokenRequirements ??
+    {}) as TokenRequirements
 }
 
 export type {

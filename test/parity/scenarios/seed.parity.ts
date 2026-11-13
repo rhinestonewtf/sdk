@@ -7,6 +7,7 @@ import {
 } from '../fixtures'
 import { assertParity } from '../harness'
 import { defineScenario, type ScenarioContext } from '../scenario'
+import { PAYEE_ADDRESS } from './shared'
 
 const INVALID_API_KEY = 'invalid-parity-key'
 
@@ -30,9 +31,12 @@ function crossChainTransaction(
         amount: 100_000n,
       },
     ],
-    // Pinned settlement layers lack testnet capacity; the unpinned route is stable.
+    // Pinned settlement layers lack testnet capacity; the unpinned route is
+    // stable. The payee keeps both API versions on the same CCTP plan
+    // (`crossChainToPayee`).
     ...(withAuxiliaryFunds
       ? {
+          recipient: PAYEE_ADDRESS,
           auxiliaryFunds: {
             [baseSepolia.id]: { [USDC_BASE_SEPOLIA]: 5_000_000n },
           },
@@ -44,7 +48,7 @@ function crossChainTransaction(
 const unfundedCrossChain = defineScenario({
   id: 'seed/unfunded-cross-chain',
   description:
-    'Unfunded Base Sepolia → Arbitrum Sepolia USDC quote via auxiliary funds; sign; captured submit',
+    'Unfunded Base Sepolia → Arbitrum Sepolia USDC quote to a payee via auxiliary funds; sign; captured submit',
   goldenLayers: [
     'quoteRequest',
     'typedData',

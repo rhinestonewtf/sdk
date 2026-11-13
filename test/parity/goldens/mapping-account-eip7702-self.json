@@ -1,0 +1,655 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "ERC7579",
+        "address": "0xf6c02c78ded62973b43bfa523b247da099486936",
+        "delegations": {
+          "0": {
+            "contract": "0x000000000032ddc454c3bdcba80484ad5a798705"
+          }
+        },
+        "setupOps": [
+          {
+            "data": "0x4b6a1419000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003e119dbeecce3718867ec75666251610c1319e8dc5ac1399b82e96be60c52567e2420c1592bc4394d57b27befc79ce82fd5ec4253e439516483c2071dc717cdc2011c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da09948693600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "to": "0xf6c02c78ded62973b43bfa523b247da099486936"
+          }
+        ]
+      },
+      "accountAccessList": {
+        "chainIds": [84532]
+      },
+      "destinationChainId": 11155420,
+      "destinationExecutions": [],
+      "options": {
+        "auxiliaryFunds": {
+          "84532": {
+            "0x036cbd53842c5426634e7929541ec2318f3dcf7e": "5000000"
+          }
+        },
+        "settlementLayers": {
+          "include": ["ACROSS"]
+        },
+        "signatureMode": 1,
+        "topupCompact": false
+      },
+      "tokenRequests": [
+        {
+          "amount": "100000",
+          "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+        }
+      ]
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 85,
+        "template": "0x0000000000000000000000000000000000000000<sig:PermitBatchWitnessTransferFrom@84532#0>"
+      },
+      "origin": [
+        {
+          "byteLength": 85,
+          "template": "0x0000000000000000000000000000000000000000<sig:PermitBatchWitnessTransferFrom@84532#0>"
+        }
+      ]
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "authorizations": {
+        "sponsor": [
+          {
+            "address": "0x000000000032ddc454c3bdcba80484ad5a798705",
+            "chainId": 84532,
+            "nonce": 0,
+            "r": "0x<sig:signAuthorization#0>",
+            "s": "0x<sig:signAuthorization#0>",
+            "yParity": 1
+          },
+          {
+            "address": "0x000000000032ddc454c3bdcba80484ad5a798705",
+            "chainId": 11155420,
+            "nonce": 0,
+            "r": "0x<sig:signAuthorization#1>",
+            "s": "0x<sig:signAuthorization#1>",
+            "yParity": 0
+          }
+        ]
+      },
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0x0000000000000000000000000000000000000000<sig:PermitBatchWitnessTransferFrom@84532#0>",
+        "origin": [
+          "0x0000000000000000000000000000000000000000<sig:PermitBatchWitnessTransferFrom@84532#0>"
+        ]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit(captured) [x-api-key]"],
+      "step": "submit"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": {
+                      "$calldata": {
+                        "args": {
+                          "amount": "<~typed-data.op-calldata>",
+                          "spender": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+                        },
+                        "function": "approve"
+                      }
+                    },
+                    "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                    "value": "<~typed-data.origin-op-value>"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0xf6c02c78ded62973b43bfa523b247da099486936",
+                "targetChain": "11155420n",
+                "tokenOut": [
+                  {
+                    "amount": "100000n",
+                    "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+              }
+            ],
+            "spender": "0x28a4d41776968c1201a807ec51ffb405362b8882"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "origin[0]",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": {
+                      "$calldata": {
+                        "args": {
+                          "amount": "<~typed-data.op-calldata>",
+                          "spender": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+                        },
+                        "function": "approve"
+                      }
+                    },
+                    "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                    "value": "<~typed-data.origin-op-value>"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0xf6c02c78ded62973b43bfa523b247da099486936",
+                "targetChain": "11155420n",
+                "tokenOut": [
+                  {
+                    "amount": "100000n",
+                    "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+              }
+            ],
+            "spender": "0x28a4d41776968c1201a807ec51ffb405362b8882"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "destination",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "name": "Nexus",
+          "version": "1.2.0"
+        },
+        "message": {
+          "chainIds": ["0n"],
+          "initData": "0x00000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea7000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002c441bede0300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f6c02c78ded62973b43bfa523b247da09948693600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "nexus": "0x000000000032ddc454c3bdcba80484ad5a798705"
+        },
+        "primaryType": "Initialize",
+        "roleKey": "Initialize@-#0",
+        "signer": "ownerA",
+        "types": {
+          "Initialize": [
+            {
+              "name": "nexus",
+              "type": "address"
+            },
+            {
+              "name": "chainIds",
+              "type": "uint256[]"
+            },
+            {
+              "name": "initData",
+              "type": "bytes"
+            }
+          ]
+        }
+      },
+      {
+        "domain": {
+          "chainId": 84532,
+          "name": "Permit2",
+          "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+        },
+        "message": {
+          "deadline": "<time>",
+          "mandate": {
+            "destOps": {
+              "ops": [],
+              "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "minGas": "0n",
+            "originOps": {
+              "ops": [
+                {
+                  "data": {
+                    "$calldata": {
+                      "args": {
+                        "amount": "<~typed-data.op-calldata>",
+                        "spender": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+                      },
+                      "function": "approve"
+                    }
+                  },
+                  "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "value": "<~typed-data.origin-op-value>"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            },
+            "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "target": {
+              "fillExpiry": "<time>",
+              "recipient": "0xf6c02c78ded62973b43bfa523b247da099486936",
+              "targetChain": "11155420n",
+              "tokenOut": [
+                {
+                  "amount": "100000n",
+                  "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+                }
+              ]
+            }
+          },
+          "nonce": "<nonce>",
+          "permitted": [
+            {
+              "amount": "<~typed-data.permit-amounts>",
+              "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+            }
+          ],
+          "spender": "0x28a4d41776968c1201a807ec51ffb405362b8882"
+        },
+        "primaryType": "PermitBatchWitnessTransferFrom",
+        "roleKey": "PermitBatchWitnessTransferFrom@84532#0",
+        "signer": "ownerA",
+        "types": {
+          "Mandate": [
+            {
+              "name": "target",
+              "type": "Target"
+            },
+            {
+              "name": "minGas",
+              "type": "uint128"
+            },
+            {
+              "name": "originOps",
+              "type": "Op"
+            },
+            {
+              "name": "destOps",
+              "type": "Op"
+            },
+            {
+              "name": "q",
+              "type": "bytes32"
+            }
+          ],
+          "Op": [
+            {
+              "name": "vt",
+              "type": "bytes32"
+            },
+            {
+              "name": "ops",
+              "type": "Ops[]"
+            }
+          ],
+          "Ops": [
+            {
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "PermitBatchWitnessTransferFrom": [
+            {
+              "name": "permitted",
+              "type": "TokenPermissions[]"
+            },
+            {
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "deadline",
+              "type": "uint256"
+            },
+            {
+              "name": "mandate",
+              "type": "Mandate"
+            }
+          ],
+          "Target": [
+            {
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "name": "tokenOut",
+              "type": "Token[]"
+            },
+            {
+              "name": "targetChain",
+              "type": "uint256"
+            },
+            {
+              "name": "fillExpiry",
+              "type": "uint256"
+            }
+          ],
+          "Token": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "TokenPermissions": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint256"
+            }
+          ]
+        }
+      }
+    ],
+    "signedRaw": [
+      {
+        "method": "signAuthorization",
+        "payload": {
+          "address": "0x000000000032ddc454c3bdcba80484ad5a798705",
+          "chainId": 84532,
+          "nonce": 0
+        },
+        "roleKey": "signAuthorization#0",
+        "signer": "ownerA"
+      },
+      {
+        "method": "signAuthorization",
+        "payload": {
+          "address": "0x000000000032ddc454c3bdcba80484ad5a798705",
+          "chainId": 11155420,
+          "nonce": 0
+        },
+        "roleKey": "signAuthorization#1",
+        "signer": "ownerA"
+      }
+    ]
+  }
+}

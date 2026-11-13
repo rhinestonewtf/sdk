@@ -8,6 +8,7 @@ import {
   USDC_BASE_SEPOLIA,
   WETH_BASE_SEPOLIA,
 } from '../fixtures'
+import { fixturePasskey } from '../funded/fixtures'
 import { assertParity } from '../harness'
 import { defineScenario, type ScenarioContext } from '../scenario'
 import {
@@ -15,12 +16,18 @@ import {
   auxiliaryUsdc,
   CUSTOM_DEADLINE,
   crossChain,
+  crossChainToPayee,
   type FixtureKind,
   fixtureAccount,
+  PAYEE_ADDRESS,
 } from './shared'
 
 // Every mapping scenario quotes against empty fixture accounts with declared
-// auxiliary funds; submits are captured.
+// auxiliary funds; submits are captured. Cross-chain transfers go to a payee
+// so both API versions plan the same route (`crossChainToPayee`).
+
+// No Quorum Signer validator on testnets; quoted and captured only.
+const QUORUM_MODULE = '0x0000000000000000000000000000000000000001'
 
 const REQUEST_LAYERS: Layer[] = ['quoteRequest', 'errors', 'traffic']
 const SIGNED_LAYERS: Layer[] = [
@@ -65,12 +72,22 @@ async function signAndCapture(
 const crossChainOptions = defineScenario({
   id: 'mapping/cross-chain-options',
   description:
-    'Cross-chain quotes setting one transaction option each: token by symbol, max-out, full and partial sponsorship, app and protocol fees, fee asset, lock funds, gas limit',
+    'Quotes setting one transaction option each: cross-chain to a payee with token by symbol, max-out, app and protocol fees, fee asset, lock funds and gas limit; full and partial sponsorship on a same-chain transfer to the payee',
   goldenLayers: REQUEST_LAYERS,
   async run(ctx) {
     const account = await fixtureAccount(ctx, 'nexus')
     const tx = (overrides: Record<string, unknown>) =>
-      prepare(account, crossChain(ctx, overrides))
+      prepare(account, crossChainToPayee(ctx, overrides))
+    // Blanc delivers sponsored CCTP through Rhinestone's relayer even to a
+    // payee, so sponsorship is compared on a same-chain transfer.
+    const sponsoredTx = (sponsored: unknown) =>
+      prepare(account, {
+        chain: ctx.chains.baseSepolia,
+        recipient: PAYEE_ADDRESS,
+        tokenRequests: [{ address: USDC_BASE_SEPOLIA, amount: 100_000n }],
+        auxiliaryFunds: auxiliaryUsdc(ctx),
+        sponsored,
+      })
     await attempts(ctx, [
       [
         'token-symbol',
@@ -91,17 +108,15 @@ const crossChainOptions = defineScenario({
           ],
         }),
       ],
-      ['sponsored-all', 'prepare', tx({ sponsored: true })],
+      ['sponsored-all', 'prepare', sponsoredTx(true)],
       [
         'sponsored-partial',
         'prepare',
-        tx({
-          sponsored: {
-            gas: true,
-            bridging: false,
-            swaps: true,
-            protocolFees: false,
-          },
+        sponsoredTx({
+          gas: true,
+          bridging: false,
+          swaps: true,
+          protocolFees: false,
         }),
       ],
       ['app-fees', 'prepare', tx({ appFees: { feeBps: 10 } })],
@@ -116,13 +131,13 @@ const crossChainOptions = defineScenario({
 const crossChainRouting = defineScenario({
   id: 'mapping/cross-chain-routing',
   description:
-    'Cross-chain quotes setting recipient (address and account), a CCTP settlement-layer pin, a quoter filter, source calls, an account setup-ops override and a native-token request',
+    'Cross-chain quotes to a payee setting recipient (address and account), a CCTP settlement-layer pin, a quoter filter, source calls, an account setup-ops override and a native-token request',
   goldenLayers: REQUEST_LAYERS,
   async run(ctx) {
     const { baseSepolia, arbitrumSepolia } = ctx.chains
     const account = await fixtureAccount(ctx, 'nexus')
     const tx = (overrides: Record<string, unknown>) =>
-      prepare(account, crossChain(ctx, overrides))
+      prepare(account, crossChainToPayee(ctx, overrides))
     await attempts(ctx, [
       ['recipient-address', 'prepare', tx({ recipient: BURN_ADDRESS })],
       [
@@ -184,13 +199,13 @@ const crossChainRouting = defineScenario({
 const sourceSelection = defineScenario({
   id: 'mapping/source-selection',
   description:
-    'Cross-chain quotes for each way of choosing sources: no source chains, a token list with and without chains, a per-chain token map and exact inputs with and without an amount',
+    'Cross-chain quotes to a payee for each way of choosing sources: no source chains, a token list with and without chains, a per-chain token map and exact inputs with and without an amount',
   goldenLayers: REQUEST_LAYERS,
   async run(ctx) {
     const { baseSepolia } = ctx.chains
     const account = await fixtureAccount(ctx, 'nexus')
     const tx = (overrides: Record<string, unknown>) =>
-      prepare(account, crossChain(ctx, overrides))
+      prepare(account, crossChainToPayee(ctx, overrides))
     await attempts(ctx, [
       ['source-chains-omitted', 'prepare', tx({ sourceChains: undefined })],
       ['source-assets-list', 'prepare', tx({ sourceAssets: ['USDC'] })],
@@ -302,7 +317,7 @@ const tokenlessSignSubmit = defineScenario({
 const sessions = defineScenario({
   id: 'mapping/sessions',
   description:
-    'Session signers on a sessions-enabled account: one session on the target chain, and per-chain sessions with execution verification and enable data (pre-claim operations, per-chain mock signatures, signature mode 5)',
+    'Session signers on a sessions-enabled account, paying a payee cross-chain: one session on the target chain, and per-chain sessions with execution verification and enable data (pre-claim operations, per-chain mock signatures, signature mode 5)',
   goldenLayers: REQUEST_LAYERS,
   async run(ctx) {
     const { baseSepolia, arbitrumSepolia } = ctx.chains
@@ -317,7 +332,7 @@ const sessions = defineScenario({
         'prepare',
         prepare(
           account,
-          crossChain(ctx, {
+          crossChainToPayee(ctx, {
             signers: {
               type: 'experimental_session',
               session: session(arbitrumSepolia),
@@ -330,7 +345,7 @@ const sessions = defineScenario({
         'prepare',
         prepare(
           account,
-          crossChain(ctx, {
+          crossChainToPayee(ctx, {
             signers: {
               type: 'experimental_session',
               verifyExecutions: true,
@@ -356,53 +371,139 @@ const sessions = defineScenario({
 function accountShape(kind: FixtureKind, label: string) {
   return defineScenario({
     id: `mapping/account-${kind === 'multiOwner' ? 'multi-owner' : kind}`,
-    description: `${label}: cross-chain quote, messages, local signature and captured submit`,
+    description: `${label}: cross-chain quote to a payee, messages, local signature and captured submit`,
     goldenLayers: SIGNED_LAYERS,
     async run(ctx) {
       const account = await fixtureAccount(ctx, kind)
-      await signAndCapture(ctx, account, crossChain(ctx))
+      await signAndCapture(ctx, account, crossChainToPayee(ctx))
     },
   })
 }
 
-const accountEip7702 = defineScenario({
-  id: 'mapping/account-eip7702',
+const accountMultiFactor = defineScenario({
+  id: 'mapping/account-multi-factor',
   description:
-    "Nexus via EIP-7702 on ownerA's EOA: init signature, quote with delegation, messages, sign, authorizations and captured submit",
+    'Nexus with a 2-of-2 multi-factor owner (ECDSA and a software passkey): cross-chain quote to a payee, messages, local signature and captured submit',
   goldenLayers: SIGNED_LAYERS,
   async run(ctx) {
-    const account = await fixtureAccount(ctx, 'eip7702')
-    const eip7702InitSignature = await ctx.step('init-signature', 'other', () =>
-      account.signEip7702InitData(),
-    )
-    const prepared = await ctx.step(
-      'prepare',
-      'prepare',
-      prepare(account, crossChain(ctx, { eip7702InitSignature })),
-    )
-    await ctx.step('messages', 'messages', () =>
-      account.getTransactionMessages(prepared),
-    )
-    const signed = await ctx.step('sign', 'sign', () =>
-      account.signTransaction(prepared),
-    )
-    const authorizations = await ctx.step('authorizations', 'other', () =>
-      account.signAuthorizations(prepared),
-    )
-    await ctx.step('submit', 'submit', () =>
-      account.submitTransaction(signed, authorizations),
-    )
+    // The software passkey signs deterministically; `ctx.passkey()` cannot
+    // sign in Node.
+    const account = await ctx.sdk().createAccount({
+      owners: {
+        type: 'multi-factor',
+        validators: [
+          { type: 'ecdsa', accounts: [ctx.signer('ownerA')] },
+          { type: 'passkey', accounts: [fixturePasskey()] },
+        ],
+        threshold: 2,
+      },
+    })
+    await signAndCapture(ctx, account, crossChainToPayee(ctx))
   },
 })
+
+const accountQuorum = defineScenario({
+  id: 'mapping/account-quorum',
+  description:
+    'Nexus with a 2-of-2 quorum owner set: cross-chain quote to a payee, messages, local signature and captured submit',
+  goldenLayers: SIGNED_LAYERS,
+  async run(ctx) {
+    const account = await ctx.sdk().createAccount({
+      owners: {
+        type: 'quorum',
+        owners: [
+          { account: ctx.signer('ownerA'), weight: 1n },
+          { account: ctx.signer('ownerB'), weight: 1n },
+        ],
+        thresholdWeight: 2n,
+        module: QUORUM_MODULE,
+      },
+    })
+    await signAndCapture(ctx, account, crossChainToPayee(ctx))
+  },
+})
+
+function accountEip7702(
+  id: string,
+  description: string,
+  transaction: (
+    ctx: ScenarioContext,
+    eip7702InitSignature: unknown,
+  ) => Record<string, unknown>,
+) {
+  return defineScenario({
+    id,
+    description,
+    goldenLayers: SIGNED_LAYERS,
+    async run(ctx) {
+      const account = await fixtureAccount(ctx, 'eip7702')
+      const eip7702InitSignature = await ctx.step(
+        'init-signature',
+        'other',
+        () => account.signEip7702InitData(),
+      )
+      const prepared = await ctx.step(
+        'prepare',
+        'prepare',
+        prepare(account, transaction(ctx, eip7702InitSignature)),
+      )
+      await ctx.step('messages', 'messages', () =>
+        account.getTransactionMessages(prepared),
+      )
+      const signed = await ctx.step('sign', 'sign', () =>
+        account.signTransaction(prepared),
+      )
+      const authorizations = await ctx.step('authorizations', 'other', () =>
+        account.signAuthorizations(prepared),
+      )
+      await ctx.step('submit', 'submit', () =>
+        account.submitTransaction(signed, authorizations),
+      )
+    },
+  })
+}
+
+const accountEip7702ToPayee = accountEip7702(
+  'mapping/account-eip7702',
+  "Nexus via EIP-7702 on ownerA's EOA: init signature, quote to a payee with delegation, messages, sign, authorizations and captured submit",
+  (ctx, eip7702InitSignature) =>
+    crossChainToPayee(ctx, { eip7702InitSignature }),
+)
+
+// Into the account itself, the 7702 flow that also needs the target chain
+// authorized. Over Across to OP Sepolia both versions plan the same route,
+// unlike CCTP self-delivery, so authorizations are compared on equal plans.
+const accountEip7702Self = accountEip7702(
+  'mapping/account-eip7702-self',
+  "Nexus via EIP-7702 on ownerA's EOA: Across quote into the account itself on OP Sepolia, messages, sign, authorizations for the origin and target chains, captured submit",
+  (ctx, eip7702InitSignature) => {
+    const { optimismSepolia } = ctx.chains
+    return crossChain(ctx, {
+      targetChain: optimismSepolia,
+      tokenRequests: [
+        {
+          address: ctx.build.root.getTokenAddress('USDC', optimismSepolia.id),
+          amount: 100_000n,
+        },
+      ],
+      settlementLayers: ['ACROSS'],
+      eip7702InitSignature,
+    })
+  },
+)
 
 const accountPasskey = defineScenario({
   id: 'mapping/account-passkey',
   description:
-    'Nexus with a passkey owner: cross-chain quote only (passkey signing is covered by the funded scenarios)',
+    'Nexus with a passkey owner: cross-chain quote to a payee only (passkey signing is covered by the funded scenarios)',
   goldenLayers: ['quoteRequest', 'traffic'],
   async run(ctx) {
     const account = await fixtureAccount(ctx, 'passkey')
-    await ctx.step('prepare', 'prepare', prepare(account, crossChain(ctx)))
+    await ctx.step(
+      'prepare',
+      'prepare',
+      prepare(account, crossChainToPayee(ctx)),
+    )
   },
 })
 
@@ -417,11 +518,14 @@ const SCENARIOS = [
   accountShape('kernel', 'Kernel'),
   accountShape('startale', 'Startale'),
   accountShape('multiOwner', 'Nexus with a 2-of-2 ECDSA owner set'),
+  accountMultiFactor,
+  accountQuorum,
   accountShape(
     'eoa',
     'Plain EOA (ERC-2612 permit signatures in the submission)',
   ),
-  accountEip7702,
+  accountEip7702ToPayee,
+  accountEip7702Self,
   accountPasskey,
 ]
 
