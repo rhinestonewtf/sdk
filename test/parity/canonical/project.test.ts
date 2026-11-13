@@ -100,6 +100,7 @@ describe('project', () => {
       '/prepare/value/intentRoute/intentCost/hasFulfilledAll',
     ])
   })
+
   test('errors record whether the error carries a trace id', () => {
     const failed = (traceId: string): RunRecords => ({
       http: [],
