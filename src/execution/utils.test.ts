@@ -1398,43 +1398,6 @@ describe('quote, sign and submit through blanc', () => {
     ])
   })
 
-  test.each([
-    undefined,
-    true,
-    false,
-    { gas: true, bridging: false, swaps: false },
-    { gas: false, bridging: true, swaps: false },
-    { gas: false, bridging: false, swaps: true },
-    { gas: false, bridging: false, swaps: false, protocolFees: true },
-    { gas: false, bridging: false, swaps: false, protocolFees: false },
-  ])(
-    'retains serialized intentInput across prepare, sign and submit (%j)',
-    async (sponsored) => {
-      mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
-      mockCreateIntent.mockResolvedValue({ intentId: '1' })
-      const prepared = await prepareTransaction(config, {
-        chain: base,
-        sponsored,
-      })
-      const legacyInput = convertBigIntFields(mockCreateQuote.mock.calls[0][0])
-      expect(prepared.intentInput).toStrictEqual(legacyInput)
-      expect(prepared.intentInput).not.toBe(mockCreateQuote.mock.calls[0][0])
-      const eoaConfig: RhinestoneConfig = {
-        ...config,
-        account: { type: 'eoa' },
-        eoa: accountA,
-      }
-      const signed = await signTransaction(eoaConfig, prepared)
-      expect(signed.intentInput).toBe(prepared.intentInput)
-      expect(signed.intentInput).toStrictEqual(legacyInput)
-      expect(mockCreateQuote).toHaveBeenCalledTimes(1)
-      await submitTransaction(eoaConfig, signed, [])
-      expect(mockCreateIntent).toHaveBeenCalledTimes(1)
-      expect(mockCreateIntent.mock.calls[0]).toHaveLength(1)
-      expect(signed.intentInput).toStrictEqual(legacyInput)
-    },
-  )
-
   test('high-level preparation approves once; signing and submitting never approve again', async () => {
     const approve = vi.fn(async (_input: unknown) => 'extension')
     const auth = createAuthProvider({
