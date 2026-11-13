@@ -320,6 +320,39 @@ const EXPECTED_ALPS: Record<
   },
 }
 
+// The only fields where blanc's answer differs from alps's, with both values
+// pinned. Every other field must be equal.
+const BLANC_DIFFERS: Record<
+  string,
+  {
+    reason: string
+    field: 'message' | 'context'
+    alps: unknown
+    blanc: unknown
+  }
+> = {
+  'quote-unsupported-chain': {
+    reason:
+      'Blanc rejects the unknown chain in chain-id validation, which names no field path.',
+    field: 'context',
+    alps: { path: 'destinationChainId' },
+    blanc: {},
+  },
+  'quote-unsupported-token': {
+    reason: "Blanc's message names the chain in CAIP-2 form.",
+    field: 'message',
+    alps: 'Token 0x1111111111111111111111111111111111111111 on chain 421614 is not a valid ERC-20 or is not supported',
+    blanc:
+      'Token 0x1111111111111111111111111111111111111111 on chain eip155:421614 is not a valid ERC-20 or is not supported',
+  },
+  'splits-unsupported-chain': {
+    reason: "Blanc's chain-id validator words the message differently.",
+    field: 'message',
+    alps: 'Invalid CAIP-2 chain id (no chain carries this id): 17000',
+    blanc: 'Invalid CAIP-2 chain id (unknown eip155 reference): "eip155:17000"',
+  },
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -342,15 +375,43 @@ describe('recorded orchestrator error envelopes', () => {
       }).toEqual(EXPECTED_ALPS[envelope.id])
     })
 
-    test('alps trace id comes from the response', async () => {
-      const { error, traceId, contextTraceId } = await capture(
-        envelope.operation,
-        envelope.alps,
-      )
-      const bodyTraceId = (envelope.alps.body as { traceId?: string })?.traceId
-      expect(traceId).toBe(bodyTraceId ?? '')
-      if (!(error instanceof InsufficientLiquidityError)) {
-        expect(contextTraceId).toBe(bodyTraceId)
+    test.each(['alps', 'blanc'] as const)(
+      '%s trace id comes from the x-trace-id header',
+      async (side) => {
+        const recorded = envelope[side]
+        const { error, traceId, contextTraceId } = await capture(
+          envelope.operation,
+          recorded,
+        )
+        expect(traceId).toBe(recorded.traceId ?? '')
+        // InsufficientLiquidityError carries no server context.
+        if (!(error instanceof InsufficientLiquidityError)) {
+          expect(contextTraceId).toBe(recorded.traceId ?? undefined)
+        }
+      },
+    )
+
+    test('blanc gives what alps gives', async () => {
+      const alps = await capture(envelope.operation, envelope.alps)
+      const blanc = await capture(envelope.operation, envelope.blanc)
+      const differs = BLANC_DIFFERS[envelope.id]
+      if (differs) {
+        expect(alps.view[differs.field]).toEqual(differs.alps)
+        expect(blanc.view[differs.field]).toEqual(differs.blanc)
+        expect({ ...blanc.view, [differs.field]: null }).toEqual({
+          ...alps.view,
+          [differs.field]: null,
+        })
+      } else {
+        expect(blanc.view).toEqual(alps.view)
+      }
+      for (const helper of [
+        isRateLimited,
+        isRetryable,
+        isValidationError,
+        isAuthError,
+      ]) {
+        expect(helper(blanc.error)).toBe(helper(alps.error))
       }
     })
 
