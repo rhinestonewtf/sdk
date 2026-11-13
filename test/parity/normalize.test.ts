@@ -184,6 +184,37 @@ describe('normalization rules', () => {
 })
 
 describe('funded execution rules', () => {
+  test('sponsored gas fees compare within an absolute floor, and must both be charged or not', () => {
+    const quote = (usd: number, microUsd: number) => ({
+      prepare: {
+        value: {
+          intentRoute: {
+            intentCost: { sponsorFee: { relayer: usd } },
+            intentOp: {
+              signedMetadata: {
+                accounting: {
+                  sponsorFee: {
+                    surchargeUsd: usd,
+                    plannedGasPrincipalMicroUsd: microUsd,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const run = (a: unknown, b: unknown) =>
+      compare(
+        'steps',
+        normalizeLayer('steps', a, RULES, {}),
+        normalizeLayer('steps', b, RULES, {}),
+      )
+    expect(run(quote(0.0139, 5918), quote(0.0159, 7932))).toEqual([])
+    expect(run(quote(0.0139, 5918), quote(0.05, 40_000))).toHaveLength(3)
+    expect(run(quote(0, 0), quote(0.001, 1000))).toHaveLength(3)
+  })
+
   test('a wrapped native origin-op value compares within tolerance', () => {
     const op = (value: string) =>
       typedDataWith({

@@ -255,19 +255,32 @@ const RULES: Rule[] = [
     path: '*/value/intentRoute/intentCost/sponsorFee/(protocol|relayer)',
     kind: 'tolerance',
     relative: 0.1,
+    absolute: 0.02,
     presence: true,
     reason:
-      'USD sponsor fees follow live gas prices; whether one is charged must match.',
+      'USD sponsor fees follow live gas prices, which move between two funded sides; whether one is charged must match.',
   },
   {
     id: 'steps.intent-op.sponsor-fee',
     layer: 'steps',
-    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|plannedGasPrincipalMicroUsd|plannedFillGasPrincipalMicroUsd|surchargeBaseUsd|surchargeUsd)',
+    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|surchargeBaseUsd|surchargeUsd)',
     kind: 'tolerance',
     relative: 0.1,
+    absolute: 0.02,
     presence: true,
     reason:
-      'Sponsored gas and its surcharge follow live gas prices; the surcharge rate and subsidies stay exact.',
+      'Sponsored gas and its surcharge in USD follow live gas prices, which move between two funded sides; the surcharge rate and subsidies stay exact.',
+  },
+  {
+    id: 'steps.intent-op.sponsor-gas-principal',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/signedMetadata/accounting/sponsorFee/(plannedGasPrincipalMicroUsd|plannedFillGasPrincipalMicroUsd)',
+    kind: 'tolerance',
+    relative: 0.1,
+    absolute: 20_000,
+    presence: true,
+    reason:
+      'Planned sponsored gas in micro-USD follows live gas prices; the floor matches the 0.02 USD of the other fee rules.',
   },
   {
     id: 'steps.intent-cost.fees',
