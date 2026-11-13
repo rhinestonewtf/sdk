@@ -1,0 +1,356 @@
+[
+  {
+    "id": "funded/same-chain-fees",
+    "alps": {
+      "request": {
+        "destinationChainId": 84532,
+        "options": {
+          "topupCompact": false,
+          "appFees": {
+            "feeBps": 50
+          },
+          "protocolFees": {
+            "feeBps": 50
+          },
+          "signatureMode": 1
+        }
+      },
+      "body": {
+        "intentCost": {
+          "hasFulfilledAll": true,
+          "tokensSpent": {
+            "84532": {
+              "0x036cbd53842c5426634e7929541ec2318f3dcf7e": {
+                "locked": "0",
+                "unlocked": "65060"
+              }
+            }
+          },
+          "tokensReceived": [
+            {
+              "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+              "amountSpent": "65060",
+              "destinationAmount": "50000",
+              "fee": "15060",
+              "feeBreakdown": {
+                "gasFee": "14560",
+                "bridgeFee": "0",
+                "protocolFee": "250",
+                "swapFee": "0",
+                "settlementFee": "0",
+                "appFee": "250",
+                "hyperCoreActivationFee": "0"
+              },
+              "feesByToken": {},
+              "hasFulfilled": true
+            }
+          ],
+          "sponsorFee": {
+            "relayer": 0,
+            "protocol": 0
+          },
+          "appFee": {
+            "feeBps": 50,
+            "baseAmount": "50000",
+            "amount": "250",
+            "chainId": 84532,
+            "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "collector": "0x86db034a82072141d286e4e8dfce653b75b3b5bd",
+            "usdValue": 0.000249925
+          },
+          "protocolFee": {
+            "collection": "CARVE",
+            "feeBps": 50,
+            "baseAmount": "50000",
+            "amount": "250",
+            "chainId": 84532,
+            "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "collector": "0x86db034a82072141d286e4e8dfce653b75b3b5bd",
+            "usdValue": 0.000249925,
+            "source": "request"
+          },
+          "gasCost": {
+            "originChains": [
+              {
+                "chainId": 84532,
+                "gasUSD": 0.014555632
+              }
+            ],
+            "destination": {
+              "chainId": 84532,
+              "gasUSD": 0
+            },
+            "totalUSD": 0.014555632
+          },
+          "feeBreakdownUSD": {
+            "gasFeeUSD": 0.022055632,
+            "bridgeFeeUSD": 0,
+            "protocolFeeUSD": 0.000249925,
+            "swapFeeUSD": 0,
+            "settlementFeeUSD": 0,
+            "appFeeUSD": 0.000249925,
+            "hyperCoreActivationFeeUSD": 0,
+            "totalFeeUSD": 0.022555482
+          },
+          "feeTokens": [
+            {
+              "chainId": 84532,
+              "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+              "tokenSymbol": "USDC",
+              "tokenDecimals": 6,
+              "gasFee": "14560",
+              "bridgeFee": "0",
+              "swapFee": "0",
+              "usdPrice": 0.9997
+            }
+          ]
+        }
+      }
+    },
+    "blanc": {
+      "request": {
+        "destinationChainId": "eip155:84532",
+        "options": {
+          "appFees": {
+            "feeBps": 50
+          },
+          "protocolFees": {
+            "feeBps": 50
+          },
+          "signatureMode": 1
+        }
+      },
+      "body": {
+        "routes": [
+          {
+            "cost": {
+              "input": [
+                {
+                  "chainId": "eip155:84532",
+                  "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "symbol": "USDC",
+                  "decimals": 6,
+                  "price": {
+                    "usd": 0.9997
+                  },
+                  "amount": "65060"
+                }
+              ],
+              "output": [
+                {
+                  "chainId": "eip155:84532",
+                  "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "symbol": "USDC",
+                  "decimals": 6,
+                  "price": {
+                    "usd": 0.9997
+                  },
+                  "amount": "50000"
+                }
+              ],
+              "fees": {
+                "total": {
+                  "usd": 0.022555482
+                },
+                "breakdown": {
+                  "gas": {
+                    "usd": 0.022055632,
+                    "sponsored": false
+                  },
+                  "bridge": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "swap": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "app": {
+                    "usd": 0.000249925,
+                    "sponsored": false
+                  },
+                  "protocol": {
+                    "usd": 0.000249925,
+                    "sponsored": false
+                  },
+                  "sponsorSurcharge": {
+                    "usd": 0,
+                    "sponsored": false
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "planned/options/sponsored-partial",
+    "alps": {
+      "request": {
+        "destinationChainId": 84532,
+        "options": {
+          "topupCompact": false,
+          "sponsorSettings": {
+            "gasSponsored": true,
+            "bridgeFeesSponsored": false,
+            "swapFeesSponsored": true,
+            "protocolFeesSponsored": false
+          },
+          "signatureMode": 1,
+          "auxiliaryFunds": {
+            "84532": {
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e": "5000000"
+            }
+          }
+        }
+      },
+      "body": {
+        "intentCost": {
+          "hasFulfilledAll": true,
+          "tokensSpent": {
+            "84532": {
+              "0x036cbd53842c5426634e7929541ec2318f3dcf7e": {
+                "locked": "0",
+                "unlocked": "100000"
+              }
+            }
+          },
+          "tokensReceived": [
+            {
+              "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+              "amountSpent": "100000",
+              "destinationAmount": "100000",
+              "fee": "0",
+              "feeBreakdown": {
+                "gasFee": "0",
+                "bridgeFee": "0",
+                "protocolFee": "0",
+                "swapFee": "0",
+                "settlementFee": "0",
+                "appFee": "0",
+                "hyperCoreActivationFee": "0"
+              },
+              "feesByToken": {},
+              "hasFulfilled": true
+            }
+          ],
+          "sponsorFee": {
+            "relayer": 0.0198060564,
+            "protocol": 0.00198060564,
+            "providerSubsidy": 0
+          },
+          "appFee": null,
+          "protocolFee": null,
+          "gasCost": {
+            "originChains": [
+              {
+                "chainId": 84532,
+                "gasUSD": 0.0198060564
+              }
+            ],
+            "destination": {
+              "chainId": 84532,
+              "gasUSD": 0
+            },
+            "totalUSD": 0.0198060564
+          },
+          "feeBreakdownUSD": {
+            "gasFeeUSD": 0,
+            "bridgeFeeUSD": 0,
+            "protocolFeeUSD": 0,
+            "swapFeeUSD": 0,
+            "settlementFeeUSD": 0,
+            "appFeeUSD": 0,
+            "hyperCoreActivationFeeUSD": 0,
+            "totalFeeUSD": 0.02178666204
+          },
+          "feeTokens": []
+        }
+      }
+    },
+    "blanc": {
+      "request": {
+        "destinationChainId": "eip155:84532",
+        "options": {
+          "signatureMode": 1,
+          "sponsorSettings": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": true,
+            "protocolFees": false
+          },
+          "auxiliaryFunds": {
+            "eip155:84532": {
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e": "5000000"
+            }
+          }
+        }
+      },
+      "body": {
+        "routes": [
+          {
+            "cost": {
+              "input": [
+                {
+                  "chainId": "eip155:84532",
+                  "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "symbol": "USDC",
+                  "decimals": 6,
+                  "price": {
+                    "usd": 0.9997
+                  },
+                  "amount": "100000"
+                }
+              ],
+              "output": [
+                {
+                  "chainId": "eip155:84532",
+                  "tokenAddress": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+                  "symbol": "USDC",
+                  "decimals": 6,
+                  "price": {
+                    "usd": 0.9997
+                  },
+                  "amount": "100000"
+                }
+              ],
+              "fees": {
+                "total": {
+                  "usd": 0.02178666204
+                },
+                "breakdown": {
+                  "gas": {
+                    "usd": 0.0198060564,
+                    "sponsored": true
+                  },
+                  "bridge": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "swap": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "app": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "protocol": {
+                    "usd": 0,
+                    "sponsored": false
+                  },
+                  "sponsorSurcharge": {
+                    "usd": 0.00198060564,
+                    "sponsored": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+]

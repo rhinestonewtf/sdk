@@ -13,13 +13,13 @@ The recordings are projected into version-neutral layers, through an alps or bla
 | Layer | What it holds |
 | --- | --- |
 | `quoteRequest` | the quote request body |
-| `typedData` | messages returned by `getTransactionMessages` and typed data handed to signers |
+| `typedData` | messages returned by `getTransactionMessages` and typed data handed to signers; integer fields compare by value, whether built as bigints or served as decimal strings |
 | `signatures` | signatures returned by `signTransaction`, templated by role, with byte lengths |
 | `submitRequest` | the submit body: signatures by role, authorizations, permits |
 | `reads` | request parameters and public results of read steps |
 | `errors` | error class, name, type, status, message, context, trace id presence and wire status/domain code |
-| `cost` | inputs, outputs and USD fees; compared within tolerances |
-| `steps` | public step results not covered above, including the prepared intent route |
+| `cost` | inputs, outputs and USD fees; compared within tolerances. A fee category the request sponsors is compared by that fact alone: alps reports what the user pays per category, blanc the full cost, and only their totals agree |
+| `steps` | public step results not covered above; for `prepare`, the transaction and an EOA's token requirements (the quote's content is compared on `typedData`, `cost` and `submitRequest`) |
 | `traffic` | which orchestrator operations each step called, in order, with the auth headers each sent |
 
 ## Running
@@ -72,7 +72,7 @@ Attempts inside a scenario are independent: a rejected quote or read is recorded
 - **Fault checks** (`faults.ts`) must fail with `quoteRequest` diffs:
   - `quote.bump-token-amount`: `/<step>/tokenRequests/0/amount`.
   - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`topupCompact` and `signatureMode` on every quote).
-  - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignature`, `mockSignatures` and `delegations`, wherever a step sets them.
+  - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignatures` and `delegations`, wherever a step sets them.
 
 ## Harness errors
 
@@ -93,6 +93,7 @@ A funded scenario sets `funded: true` and declares what it needs: its per-side s
 ## Rules and accepted differences
 
 - **Rules** (`rules.ts`) mask, ignore, decode or tolerance-compare values that vary per quote. Add one only for variance a repeated self-check shows, scope it to the narrowest path, and give it a reason that names what varies. Never mask a field that is deterministic in the request. Each report lists the rules that fired. Scenarios can override tolerances with `tolerances`.
+- **Adapters** project what the orchestrator plans from: the alps adapter folds a session's singular `mockSignature` into `mockSignatures['0']` (unless set) and the flat exact-input access list into `chainTokens` and `chainTokenAmounts`, as the orchestrator lowers alps requests.
 - **Accepted differences** (`accepted.ts`, or `accepted` on a scenario) are differences the migration intends. Each needs a reason, and the report lists them under their own heading.
 - **Reads**: the candidate reads status, portfolio, splits and app-fee balances through blanc, while the baseline reads them through alps; the read results must match exactly.
 - **Errors** are compared strictly: class, name, type, status, message, context, the wire's domain code and whether the error carries a trace id. The wire code is the domain code on both versions (`ZERO_BALANCE`, `INSUFFICIENT_BALANCE`, …), not blanc's coarse envelope code (`UNPROCESSABLE_CONTENT`, `VALIDATION_ERROR`). When blanc's own wording of one error differs from alps's, accept that difference with one entry for that scenario, that step and that field (e.g. `/<step>/message`), with the reason. Never a wildcard or alternation on the errors layer: the runner rejects any such entry, global or on a scenario, and `accepted.test.ts` requires the global ones to name a scenario. Never rewritten text in the SDK.

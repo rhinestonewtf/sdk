@@ -1,4 +1,8 @@
-import type { CanonicalCostToken, CanonicalQuoteRequest } from './types'
+import type {
+  CanonicalCostToken,
+  CanonicalFee,
+  CanonicalQuoteRequest,
+} from './types'
 
 // Shared canonicalization helpers: lowercase hex, numeric chain ids, decimal
 // amounts and sorted keys, so both API versions project to one shape.
@@ -258,12 +262,42 @@ function sortCostTokens(tokens: CanonicalCostToken[]): CanonicalCostToken[] {
   })
 }
 
-export type { ReadOp }
+type FeeCategory = 'gas' | 'bridge' | 'swap' | 'app' | 'protocol'
+
+// Which fee categories the quote request asked a sponsor to cover, read from
+// either version's sponsor-setting names. App fees are never sponsored.
+function requestSponsorship(
+  requestBody: unknown,
+): Record<FeeCategory, boolean> {
+  const settings = asRecord(
+    asRecord(asRecord(requestBody).options).sponsorSettings,
+  )
+  return {
+    gas: (settings.gas ?? settings.gasSponsored) === true,
+    bridge: (settings.bridgeFees ?? settings.bridgeFeesSponsored) === true,
+    swap: (settings.swapFees ?? settings.swapFeesSponsored) === true,
+    app: false,
+    protocol:
+      (settings.protocolFees ?? settings.protocolFeesSponsored) === true,
+  }
+}
+
+// Alps reports what the user pays per category and blanc the full cost
+// whoever pays it; only their totals agree. A category the request sponsors
+// is compared by that fact alone, any other by its USD.
+function categoryFee(usd: unknown, sponsored: boolean): CanonicalFee {
+  return sponsored
+    ? { sponsored: true }
+    : { usd: typeof usd === 'number' ? usd : 0 }
+}
+
+export type { FeeCategory, ReadOp }
 export {
   alpsWireCode,
   amount,
   asRecord,
   authorization,
+  categoryFee,
   chainIdNumber,
   compact,
   filterList,
@@ -271,6 +305,7 @@ export {
   mapChainKeys,
   quoteRequest,
   readParams,
+  requestSponsorship,
   signatureModeNumber,
   sortCostTokens,
   sumAmounts,

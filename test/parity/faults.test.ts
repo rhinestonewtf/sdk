@@ -105,10 +105,10 @@ describe('quote.drop-options', () => {
 })
 
 describe('quote.drop-optional-fields', () => {
+  // Alps's singular mock signature projects into `mockSignatures['0']`.
   test.each(ENCODINGS)('names every dropped field ($version)', (encoding) => {
     const expected = [
       '/account/delegations',
-      ...(encoding.version === 'alps' ? ['/account/mockSignature'] : []),
       '/account/mockSignatures',
       '/accountAccessList',
       '/destinationExecutions/0',

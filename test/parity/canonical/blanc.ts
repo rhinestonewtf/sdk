@@ -3,19 +3,21 @@ import {
   amount,
   asRecord,
   authorization,
+  categoryFee,
   chainIdNumber,
   compact,
+  type FeeCategory,
   filterList,
   lowerHex,
   mapChainKeys,
   quoteRequest,
+  requestSponsorship,
   signatureModeNumber,
   sortCostTokens,
   tokenAmountRecord,
 } from './common'
 import type {
   CanonicalCost,
-  CanonicalFee,
   CanonicalSubmitRequest,
   VersionAdapter,
 } from './types'
@@ -58,7 +60,6 @@ function submitRequest(body: unknown): CanonicalSubmitRequest {
     intentId: _intentId,
     signatures,
     authorizations,
-    permitSignatures,
     ...rest
   } = asRecord(body)
   const sigs = asRecord(signatures)
@@ -83,8 +84,8 @@ function submitRequest(body: unknown): CanonicalSubmitRequest {
             : undefined,
         })
       : undefined,
-    permits: permitSignatures
-      ? (lowerHex(mapChainKeys(permitSignatures)) as Record<
+    permits: sigs.permits
+      ? (lowerHex(mapChainKeys(sigs.permits)) as Record<
           string,
           Record<string, string>
         >)
@@ -101,32 +102,41 @@ function costToken(value: unknown) {
   }
 }
 
-function fee(value: unknown): CanonicalFee {
-  const input = asRecord(value)
-  return { usd: input.usd ?? 0, sponsored: input.sponsored === true }
-}
-
 // v1 always takes the recommended route, `routes[0]`.
-function cost(responseBody: unknown): CanonicalCost | undefined {
+function cost(
+  responseBody: unknown,
+  requestBody: unknown,
+): CanonicalCost | undefined {
   const routes = asRecord(responseBody).routes
   const route = Array.isArray(routes) ? asRecord(routes[0]) : undefined
   if (!route?.cost) return undefined
   const routeCost = asRecord(route.cost)
   const fees = asRecord(routeCost.fees)
   const breakdown = asRecord(fees.breakdown)
+  const sponsored = requestSponsorship(requestBody)
+  const fee = (category: FeeCategory) =>
+    categoryFee(asRecord(breakdown[category]).usd, sponsored[category])
   return {
     inputs: sortCostTokens((routeCost.input ?? []).map(costToken)),
     outputs: sortCostTokens((routeCost.output ?? []).map(costToken)),
     fees: {
       totalUsd: asRecord(fees.total).usd ?? 0,
-      gas: fee(breakdown.gas),
-      bridge: fee(breakdown.bridge),
-      swap: fee(breakdown.swap),
-      app: fee(breakdown.app),
-      protocol: fee(breakdown.protocol),
+      gas: fee('gas'),
+      bridge: fee('bridge'),
+      swap: fee('swap'),
+      app: fee('app'),
+      protocol: fee('protocol'),
     },
     versionOnly: {
       blanc: compact({
+        sponsored: Object.fromEntries(
+          (['gas', 'bridge', 'swap', 'app', 'protocol'] as const).map(
+            (category) => [
+              category,
+              asRecord(breakdown[category]).sponsored === true,
+            ],
+          ),
+        ),
         sponsorSurcharge: breakdown.sponsorSurcharge,
         executionPayment: routeCost.executionPayment,
       }),

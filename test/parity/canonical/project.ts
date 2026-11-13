@@ -7,7 +7,14 @@ import type {
 import type { ApiVersion, Op } from '../routing'
 import { alps } from './alps'
 import { blanc } from './blanc'
-import { asRecord, compact, lowerHex, type ReadOp, readParams } from './common'
+import {
+  amount,
+  asRecord,
+  compact,
+  lowerHex,
+  type ReadOp,
+  readParams,
+} from './common'
 import {
   createTemplater,
   signerIdentities,
@@ -59,14 +66,101 @@ function withoutTraceId(value: unknown): unknown {
   return value
 }
 
+type TypedDataTypes = Record<string, { name: string; type: string }[]>
+
+// The signed value of a uint/int field, whatever its representation: local
+// builders and normalized quotes hold bigints (`"5n"` once serialized), the
+// wire decimal strings.
+function canonicalInteger(value: unknown): unknown {
+  try {
+    if (typeof value === 'string') {
+      const digits = /^-?\d+n$/.test(value) ? value.slice(0, -1) : value
+      return `${BigInt(digits).toString()}n`
+    }
+    if (typeof value === 'number') return `${BigInt(value).toString()}n`
+  } catch {}
+  return value
+}
+
+function canonicalField(
+  types: TypedDataTypes,
+  type: string,
+  value: unknown,
+): unknown {
+  if (value === null || value === undefined) return value
+  const array = /^(.+)\[\d*\]$/.exec(type)
+  if (array) {
+    return Array.isArray(value)
+      ? value.map((item) => canonicalField(types, array[1], item))
+      : value
+  }
+  if (/^u?int\d*$/.test(type)) return canonicalInteger(value)
+  return types[type] ? canonicalStruct(types, type, value) : value
+}
+
+function canonicalStruct(
+  types: TypedDataTypes,
+  type: string,
+  value: unknown,
+): unknown {
+  const fields = types[type]
+  if (!fields || !value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value).map(([name, entry]) => {
+      const field = fields.find((candidate) => candidate.name === name)
+      return [name, field ? canonicalField(types, field.type, entry) : entry]
+    }),
+  )
+}
+
 function typedDataEntry(value: unknown) {
   const input = asRecord(value)
+  const types = asRecord(input.types) as TypedDataTypes
   return lowerHex({
     domain: input.domain,
     primaryType: input.primaryType,
     types: input.types,
-    message: input.message,
+    message:
+      typeof input.primaryType === 'string'
+        ? canonicalStruct(types, input.primaryType, input.message)
+        : input.message,
   })
+}
+
+// Blanc returns token requirements for EOA accounts only (its route renderer
+// checks the account type); alps also returned them for smart accounts, where
+// nothing reads them. An empty map and no map both mean nothing is required.
+function tokenRequirements(prepared: Record<string, any>): unknown {
+  const { quote, intentRoute } = prepared
+  const route = asRecord(intentRoute)
+  const requirements = quote
+    ? asRecord(quote).tokenRequirements
+    : asRecord(asRecord(asRecord(route.intentOp).signedMetadata).account)
+          .accountType === 'EOA'
+      ? route.tokenRequirements
+      : undefined
+  const chains = Object.entries(asRecord(requirements))
+  if (chains.length === 0) return undefined
+  return lowerHex(
+    Object.fromEntries(
+      chains.map(([chainId, tokens]) => [
+        chainId,
+        Object.fromEntries(
+          Object.entries(asRecord(tokens)).map(([token, requirement]) => {
+            const input = asRecord(requirement)
+            return [
+              token,
+              compact({
+                ...input,
+                amount: amount(input.amount),
+                permit: input.permit ? typedDataEntry(input.permit) : undefined,
+              }),
+            ]
+          }),
+        ),
+      ]),
+    ),
+  )
 }
 
 function isOk(record: HttpRecord): boolean {
@@ -209,9 +303,14 @@ function projectSteps(steps: StepRecord[]) {
       if (step.ok) {
         switch (step.kind) {
           case 'prepare': {
-            // intentInput echoes the quote request body, compared in quoteRequest.
-            const { transaction, intentRoute } = asRecord(step.value)
-            value = { transaction, intentRoute }
+            // Version-neutral: the quote itself (alps bundle and cost, blanc
+            // quote) is compared on typedData, cost and submitRequest, and
+            // intentInput echoes the request compared on quoteRequest.
+            const prepared = asRecord(step.value)
+            value = compact({
+              transaction: prepared.transaction,
+              tokenRequirements: tokenRequirements(prepared),
+            })
             break
           }
           case 'submit':

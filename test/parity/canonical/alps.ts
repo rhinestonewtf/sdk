@@ -3,12 +3,14 @@ import {
   amount,
   asRecord,
   authorization,
+  categoryFee,
   chainIdNumber,
   compact,
   filterList,
   lowerHex,
   mapChainKeys,
   quoteRequest,
+  requestSponsorship,
   signatureModeNumber,
   sortCostTokens,
   sumAmounts,
@@ -22,19 +24,33 @@ import type {
 
 // Version `2026-01.alps`: what v1 1.22.0 speaks.
 
+// The orchestrator lowers alps's flat exact-input list to per-chain tokens
+// (deduplicated, first-seen order) plus the amounts of the entries that carry
+// one (`alpsQuoteBodyToInternal`); project what it plans from.
 function accessList(value: unknown): unknown {
   if (value === undefined || value === null) return undefined
   if (Array.isArray(value)) {
-    // Legacy `[{ chainId, tokenAddress, amount? }]` → per-chain token amounts.
-    const chainTokenAmounts: Record<string, Record<string, string | null>> = {}
+    const chainTokens: Record<string, string[]> = {}
+    const chainTokenAmounts: Record<string, Record<string, string>> = {}
     for (const entry of value) {
       const item = asRecord(entry)
       const chain = String(chainIdNumber(item.chainId))
-      chainTokenAmounts[chain] ??= {}
-      chainTokenAmounts[chain][String(item.tokenAddress).toLowerCase()] =
-        amount(item.amount) ?? null
+      const token = String(item.tokenAddress).toLowerCase()
+      chainTokens[chain] ??= []
+      if (!chainTokens[chain].includes(token)) chainTokens[chain].push(token)
+      const itemAmount = amount(item.amount)
+      if (itemAmount !== undefined) {
+        chainTokenAmounts[chain] ??= {}
+        chainTokenAmounts[chain][token] = itemAmount
+      }
     }
-    return { chainTokenAmounts }
+    return compact({
+      chainTokens,
+      chainTokenAmounts:
+        Object.keys(chainTokenAmounts).length > 0
+          ? chainTokenAmounts
+          : undefined,
+    })
   }
   const input = asRecord(value)
   return lowerHex(
@@ -46,6 +62,23 @@ function accessList(value: unknown): unknown {
       chainTokens: mapChainKeys(input.chainTokens),
     }),
   )
+}
+
+// The orchestrator folds alps's singular mock signature into the cross-chain
+// fallback `mockSignatures['0']` unless that is set; project what it plans
+// from.
+function foldMockSignature(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+  const { mockSignature, ...rest } = asRecord(value)
+  if (mockSignature === undefined) return value
+  const mockSignatures = asRecord(rest.mockSignatures)
+  return {
+    ...rest,
+    mockSignatures:
+      '0' in mockSignatures
+        ? mockSignatures
+        : { ...mockSignatures, '0': mockSignature },
+  }
 }
 
 function sponsorSettings(value: unknown): unknown {
@@ -113,8 +146,6 @@ function submitRequest(body: unknown): CanonicalSubmitRequest {
   })
 }
 
-// Alps reports sponsorship as relayer/protocol USD totals, not per category,
-// so the per-category flags come from what the request asked to sponsor.
 function cost(
   responseBody: unknown,
   requestBody: unknown,
@@ -123,7 +154,7 @@ function cost(
   if (!intentCost) return undefined
   const request = asRecord(requestBody)
   const destinationChainId = chainIdNumber(request.destinationChainId)
-  const sponsor = asRecord(asRecord(request.options).sponsorSettings)
+  const sponsored = requestSponsorship(requestBody)
   const inputs = Object.entries(asRecord(intentCost.tokensSpent)).flatMap(
     ([chainId, tokens]) =>
       Object.entries(asRecord(tokens)).map(([token, spent]) => ({
@@ -148,25 +179,16 @@ function cost(
     outputs: sortCostTokens(outputs),
     fees: {
       totalUsd: usd.totalFeeUSD ?? 0,
-      gas: {
-        usd: usd.gasFeeUSD ?? 0,
-        sponsored: sponsor.gasSponsored === true,
-      },
+      gas: categoryFee(usd.gasFeeUSD, sponsored.gas),
       // Blanc has no settlement category; the settlement layer's fee is
       // part of what it reports as the bridge fee.
-      bridge: {
-        usd: (usd.bridgeFeeUSD ?? 0) + (usd.settlementFeeUSD ?? 0),
-        sponsored: sponsor.bridgeFeesSponsored === true,
-      },
-      swap: {
-        usd: usd.swapFeeUSD ?? 0,
-        sponsored: sponsor.swapFeesSponsored === true,
-      },
-      app: { usd: usd.appFeeUSD ?? 0, sponsored: false },
-      protocol: {
-        usd: usd.protocolFeeUSD ?? 0,
-        sponsored: sponsor.protocolFeesSponsored === true,
-      },
+      bridge: categoryFee(
+        (usd.bridgeFeeUSD ?? 0) + (usd.settlementFeeUSD ?? 0),
+        sponsored.bridge,
+      ),
+      swap: categoryFee(usd.swapFeeUSD, sponsored.swap),
+      app: categoryFee(usd.appFeeUSD, sponsored.app),
+      protocol: categoryFee(usd.protocolFeeUSD, sponsored.protocol),
     },
     versionOnly: {
       alps: compact({
@@ -183,11 +205,18 @@ function wireError(status: number, body: unknown) {
 
 const alps: VersionAdapter = {
   quoteRequest: (body) =>
-    quoteRequest(body, {
-      gasLimitKey: 'destinationGasUnits',
-      accessList,
-      options,
-    }),
+    quoteRequest(
+      compact({
+        ...asRecord(body),
+        account: foldMockSignature(asRecord(body).account),
+        recipient: foldMockSignature(asRecord(body).recipient),
+      }),
+      {
+        gasLimitKey: 'destinationGasUnits',
+        accessList,
+        options,
+      },
+    ),
   submitRequest,
   cost,
   wireError,
