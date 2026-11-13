@@ -2,4 +2,4 @@
 "@rhinestone/sdk": patch
 ---
 
-Sign intents whose legs the orchestrator covers with one payload. On the `2026-04.blanc` API version, the orchestrator can serve multi-leg intents as one payload whose signing domain names no chain. Such intents are now signed once, and EIP-7702 accounts authorize every chain a leg runs on. Smart sessions, quorum owners and Startale's K1 validator bind the chain into what they sign, so they refuse payloads whose legs span multiple chains when preparing, before anything is signed.
+Support chain-agnostic multi-leg intent payloads on `2026-04.blanc`, signing once and authorizing every leg chain for EIP-7702 accounts. Smart sessions, quorum owners and Startale's K1 validator reject payloads spanning multiple chains during preparation, before signing, because their signatures bind to one chain.

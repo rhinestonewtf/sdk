@@ -1142,17 +1142,11 @@ async function prepareTransactionAsIntent(
   if (!quote) {
     throw new OrderPathRequiredForIntentsError()
   }
-  // Refuse payloads this version cannot sign before any signing prompt.
-  for (const typedData of [
-    ...quote.signData.origin,
-    quote.signData.destination,
-  ]) {
+  const payloads = [...quote.signData.origin, quote.signData.destination]
+  for (const typedData of payloads) {
     payloadChainId(typedData)
   }
-  assertSignableAcrossChains(config, signers, [
-    ...quote.signData.origin,
-    quote.signData.destination,
-  ])
+  assertSignableAcrossChains(config, signers, payloads)
   return { quote, intentInput: serializedIntent }
 }
 

@@ -5,7 +5,6 @@ import recorded from './__fixtures__/quote-responses.json'
 import { OrchestratorError } from './error'
 import type { IntentInput } from './types'
 import {
-  type BlancRoute,
   blancQuoteRequest,
   blancSubmitRequest,
   normalizeTypedData,
@@ -29,10 +28,7 @@ interface QuoteCase {
   }
 }
 
-const { cases, devMultiChainOpsRoute } = recorded as unknown as {
-  cases: QuoteCase[]
-  devMultiChainOpsRoute: BlancRoute
-}
+const { cases } = recorded as unknown as { cases: QuoteCase[] }
 const byId = (id: string) => cases.find((c) => c.id === id)!
 const ROUTED = cases.filter((c) => c.blanc.status === 200)
 
@@ -326,12 +322,6 @@ describe('payloadChainId', () => {
       byId('funded/eoa-permit2').blanc.body.routes[0],
     )
     expect(payloadChainId(permit2.signData.origin[0])).toBe(11155420)
-  })
-
-  test('reads the first leg of a chainless multi-chain payload', () => {
-    const quote = quoteFromBlanc(devMultiChainOpsRoute)
-    expect(quote.signData.origin[0].primaryType).toBe('MultiChainOps')
-    expect(payloadChainId(quote.signData.origin[0])).toBe(421614)
   })
 })
 

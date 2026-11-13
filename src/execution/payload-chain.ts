@@ -1,10 +1,8 @@
 import type { TypedDataDefinition } from 'viem'
 
-// MultiChainOps verifies with _hashTypedDataSansChainId: the domain deliberately
-// omits the chain and each ChainOps leaf names its own. The first leaf supplies
-// deterministic signer context because leaves are in signed order.
-// Chainless does not imply spanning: same-chain legs can have distinct nonces,
-// and a chain-bound wrapper still validates on every leg of such a payload.
+// MultiChainOps uses _hashTypedDataSansChainId; its first signed leaf supplies
+// deterministic signer context. Chainless payloads can still have all legs on
+// one chain, where chain-bound wrappers remain valid.
 function readChainId(value: unknown): number | undefined {
   if (
     typeof value !== 'bigint' &&
