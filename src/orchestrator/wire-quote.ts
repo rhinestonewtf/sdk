@@ -225,7 +225,8 @@ function normalizeTypedData(typedData: unknown): TypedDataDefinition {
   } as TypedDataDefinition
 }
 
-// The one place v1 reads a payload's chain. RHI-9153 replaces the refusal.
+// The one place v1 reads a payload's chain, so supporting chain-agnostic
+// payloads replaces only this refusal.
 function originChainId(typedData: TypedDataDefinition): number {
   const chainId = typedData.domain?.chainId
   if (chainId === undefined || chainId === null) {

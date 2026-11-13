@@ -500,17 +500,15 @@ async function getTargetExecutionSignature(
   }
   const ownerValidator = getOwnerValidator(config)
   const isRoot = validator.address === ownerValidator.address
-  const signature = await getDestinationSignature(
+  return await signDestinationSeparately(
     config,
     resolvedSigners,
     validator,
     isRoot,
     targetChain,
     destination,
-    [],
     true,
   )
-  return signature
 }
 
 async function signUserOperation(
@@ -1338,7 +1336,7 @@ async function getDestinationSignature(
   destination: TypedDataDefinition,
   originSignatures: OriginSignature[],
   targetExecution: boolean,
-  matchingOrigin = originSignatures.length - 1,
+  matchingOrigin: number,
 ): Promise<Hex> {
   // Smart sessions require a separate destination signature because the
   // session enable data differs per chain
@@ -1386,7 +1384,7 @@ async function getDestinationSignature(
   const originSignature = originSignatures[matchingOrigin]
   return typeof originSignature === 'object'
     ? originSignature.preClaimSig
-    : (originSignature ?? '0x')
+    : originSignature
 }
 
 async function signDestinationSeparately(
@@ -2037,7 +2035,6 @@ export type {
   UserOperationResult,
 }
 export {
-  authorizationChainIds,
   getIntentAccount,
   getTargetExecutionSignature,
   getTokenRequests,

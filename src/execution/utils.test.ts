@@ -16,7 +16,6 @@ import {
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
 import { OrderPathRequiredForIntentsError } from './error'
 import {
-  authorizationChainIds,
   hashErc7739TypedDataForSolady,
   parseCalls,
   prepareTransaction,
@@ -1443,37 +1442,5 @@ describe('quote, sign and submit through blanc', () => {
       sourceChains: [arbitrum.id],
       targetChain: base.id,
     })
-  })
-})
-
-describe('authorizationChainIds', () => {
-  const payload = (chainId: number) => ({
-    ...MOCK_PAYLOAD,
-    domain: { chainId },
-  })
-  const quote = (...chainIds: number[]) =>
-    ({
-      signData: {
-        origin: chainIds.map(payload),
-        destination: payload(chainIds.at(-1)!),
-      },
-    }) as never
-
-  test('covers every origin chain and the target, ascending', () => {
-    expect(
-      authorizationChainIds(quote(base.id, arbitrum.id, base.id), {
-        sourceChains: [base, arbitrum],
-        targetChain: optimism,
-      }),
-    ).toEqual([optimism.id, base.id, arbitrum.id])
-  })
-
-  test('leaves the target out when a recipient receives the output', () => {
-    expect(
-      authorizationChainIds(quote(base.id), {
-        targetChain: optimism,
-        recipient: zeroAddress,
-      }),
-    ).toEqual([base.id])
   })
 })

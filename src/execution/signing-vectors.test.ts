@@ -8,7 +8,6 @@ import { RhinestoneSDK } from '../index'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type { RhinestoneAccountConfig } from '../types'
 import recorded from './__fixtures__/signing-vectors.json'
-import { authorizationChainIds } from './utils'
 
 // Signatures 1.22.0 produced over payloads recorded from the prod
 // orchestrator, one vector per signer kind. The served blanc payloads were
@@ -193,9 +192,6 @@ describe('signing vectors', () => {
     const quote = quoteFromBlanc(vector.blancRoutePatched as BlancRoute)
     const transaction = toTransaction(vector)
     const expected = vector.expected.authorizations!
-    expect(authorizationChainIds(quote, transaction)).toEqual(
-      expected.map(({ chainId }) => chainId),
-    )
     const sdk = new RhinestoneSDK({ apiKey: 'offline' })
     const account = await sdk.createAccount(
       CONFIGS.eip7702() as RhinestoneAccountConfig,
