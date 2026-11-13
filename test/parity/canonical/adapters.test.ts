@@ -442,7 +442,7 @@ describe('cost', () => {
   })
 
   // Recorded on prod: alps reports what the user pays per category, blanc the
-  // full cost; a category the request sponsors compares by that fact.
+  // full cost; a sponsored category compares by the served outcome.
   test.each(costPairs)('$id: recorded alps and blanc costs agree', (pair) => {
     const fromAlps = alps.cost(pair.alps.body, pair.alps.request)
     const fromBlanc = blanc.cost(pair.blanc.body, pair.blanc.request)
@@ -457,11 +457,57 @@ describe('cost', () => {
     )!
     const fees = blanc.cost(sponsored.blanc.body, sponsored.blanc.request)!.fees
     expect(fees.gas).toEqual({ sponsored: true })
+    // Requested at $0: blanc's flag is false, there being nothing to cover.
+    expect(fees.swap).toEqual({ sponsored: true })
     expect(fees.bridge).toEqual({ usd: 0 })
     expect(fees.app).toEqual({ usd: 0 })
     expect(
       alps.cost(sponsored.alps.body, sponsored.alps.request)!.fees,
     ).toEqual(fees)
+  })
+
+  function sponsoredPartial() {
+    return structuredClone(
+      costPairs.find(
+        (pair) => pair.id === 'planned/options/sponsored-partial',
+      )!,
+    )
+  }
+
+  function costDiffPaths(pair: (typeof costPairs)[number]) {
+    const a = normalizeLayer(
+      'cost',
+      { prepare: alps.cost(pair.alps.body, pair.alps.request) },
+      RULES,
+      {},
+    )
+    const b = normalizeLayer(
+      'cost',
+      { prepare: blanc.cost(pair.blanc.body, pair.blanc.request) },
+      RULES,
+      {},
+    )
+    return compare('cost', a, b).map((diff) => diff.path)
+  }
+
+  test('a sponsorship blanc drops is a diff', () => {
+    const pair = sponsoredPartial()
+    const gas = (pair.blanc.body as any).routes[0].cost.fees.breakdown.gas
+    expect(gas).toMatchObject({ sponsored: true })
+    gas.sponsored = false
+    expect(costDiffPaths(pair)).toEqual([
+      '/prepare/fees/gas/sponsored',
+      '/prepare/fees/gas/usd',
+    ])
+  })
+
+  test('a sponsorship alps drops is a diff', () => {
+    const pair = sponsoredPartial()
+    ;(pair.alps.body as any).intentCost.feeBreakdownUSD.gasFeeUSD = 0.0198
+    expect(costDiffPaths(pair)).toEqual([
+      '/prepare/fees/gas/sponsored',
+      '/prepare/fees/gas/usd',
+    ])
   })
 
   test('a fee category present in one version only is a diff', () => {

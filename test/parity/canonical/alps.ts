@@ -1,9 +1,9 @@
 import {
+  alpsCategoryFee,
   alpsWireCode,
   amount,
   asRecord,
   authorization,
-  categoryFee,
   chainIdNumber,
   compact,
   filterList,
@@ -179,16 +179,16 @@ function cost(
     outputs: sortCostTokens(outputs),
     fees: {
       totalUsd: usd.totalFeeUSD ?? 0,
-      gas: categoryFee(usd.gasFeeUSD, sponsored.gas),
+      gas: alpsCategoryFee(usd.gasFeeUSD, sponsored.gas),
       // Blanc has no settlement category; the settlement layer's fee is
       // part of what it reports as the bridge fee.
-      bridge: categoryFee(
+      bridge: alpsCategoryFee(
         (usd.bridgeFeeUSD ?? 0) + (usd.settlementFeeUSD ?? 0),
         sponsored.bridge,
       ),
-      swap: categoryFee(usd.swapFeeUSD, sponsored.swap),
-      app: categoryFee(usd.appFeeUSD, sponsored.app),
-      protocol: categoryFee(usd.protocolFeeUSD, sponsored.protocol),
+      swap: alpsCategoryFee(usd.swapFeeUSD, sponsored.swap),
+      app: alpsCategoryFee(usd.appFeeUSD, sponsored.app),
+      protocol: alpsCategoryFee(usd.protocolFeeUSD, sponsored.protocol),
     },
     versionOnly: {
       alps: compact({

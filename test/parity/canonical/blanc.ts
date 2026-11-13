@@ -3,7 +3,7 @@ import {
   amount,
   asRecord,
   authorization,
-  categoryFee,
+  blancCategoryFee,
   chainIdNumber,
   compact,
   type FeeCategory,
@@ -115,7 +115,7 @@ function cost(
   const breakdown = asRecord(fees.breakdown)
   const sponsored = requestSponsorship(requestBody)
   const fee = (category: FeeCategory) =>
-    categoryFee(asRecord(breakdown[category]).usd, sponsored[category])
+    blancCategoryFee(asRecord(breakdown[category]), sponsored[category])
   return {
     inputs: sortCostTokens((routeCost.input ?? []).map(costToken)),
     outputs: sortCostTokens((routeCost.output ?? []).map(costToken)),
@@ -129,14 +129,6 @@ function cost(
     },
     versionOnly: {
       blanc: compact({
-        sponsored: Object.fromEntries(
-          (['gas', 'bridge', 'swap', 'app', 'protocol'] as const).map(
-            (category) => [
-              category,
-              asRecord(breakdown[category]).sponsored === true,
-            ],
-          ),
-        ),
         sponsorSurcharge: breakdown.sponsorSurcharge,
         executionPayment: routeCost.executionPayment,
       }),

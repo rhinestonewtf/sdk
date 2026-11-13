@@ -18,7 +18,7 @@ The recordings are projected into version-neutral layers, through an alps or bla
 | `submitRequest` | the submit body: signatures by role, authorizations, permits |
 | `reads` | request parameters and public results of read steps |
 | `errors` | error class, name, type, status, message, context, trace id presence and wire status/domain code |
-| `cost` | inputs, outputs and USD fees; compared within tolerances. A fee category the request sponsors is compared by that fact alone: alps reports what the user pays per category, blanc the full cost, and only their totals agree |
+| `cost` | inputs, outputs and USD fees; compared within tolerances. Alps reports what the user pays per category, blanc the full cost, and only their totals agree, so a sponsored category is compared by the served outcome alone: on alps, a requested category the user pays nothing for; on blanc, the category's `sponsored` flag wherever it costs anything. A sponsorship one version drops is a diff |
 | `steps` | public step results not covered above; for `prepare`, the transaction and an EOA's token requirements (the quote's content is compared on `typedData`, `cost` and `submitRequest`) |
 | `traffic` | which orchestrator operations each step called, in order, with the auth headers each sent |
 

@@ -282,22 +282,41 @@ function requestSponsorship(
   }
 }
 
-// Alps reports what the user pays per category and blanc the full cost
-// whoever pays it; only their totals agree. A category the request sponsors
-// is compared by that fact alone, any other by its USD.
-function categoryFee(usd: unknown, sponsored: boolean): CanonicalFee {
-  return sponsored
-    ? { sponsored: true }
-    : { usd: typeof usd === 'number' ? usd : 0 }
+// Alps reports what the user pays per category, with a sponsor's coverage
+// subtracted, and blanc the full cost with whether a sponsor covers any of it;
+// only their totals agree. So a sponsored category compares by the served
+// outcome alone, any other by its USD.
+function sponsoredFee(): CanonicalFee {
+  return { sponsored: true }
+}
+
+function chargedFee(usd: unknown): CanonicalFee {
+  return { usd: typeof usd === 'number' ? usd : 0 }
+}
+
+// Alps serves no flag: a requested category the user pays nothing for was
+// sponsored, one the user still pays for was not.
+function alpsCategoryFee(userPaidUsd: unknown, requested: boolean) {
+  const usd = typeof userPaidUsd === 'number' ? userPaidUsd : 0
+  return requested && usd === 0 ? sponsoredFee() : chargedFee(usd)
+}
+
+// Blanc's flag means "a sponsor covers some of a non-zero cost", so it is
+// always false for a free category; there the request is all there is to say.
+function blancCategoryFee(entry: Record<string, unknown>, requested: boolean) {
+  const usd = typeof entry.usd === 'number' ? entry.usd : 0
+  const sponsored = usd > 0 ? entry.sponsored === true : requested
+  return sponsored ? sponsoredFee() : chargedFee(usd)
 }
 
 export type { FeeCategory, ReadOp }
 export {
   alpsWireCode,
   amount,
+  alpsCategoryFee,
   asRecord,
   authorization,
-  categoryFee,
+  blancCategoryFee,
   chainIdNumber,
   compact,
   filterList,
