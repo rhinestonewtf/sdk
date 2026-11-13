@@ -1,14 +1,13 @@
 import { type Hex, hashTypedData, type TypedDataDefinition } from 'viem'
 import { describe, expect, test } from 'vitest'
+import { payloadChainId } from '../execution/payload-chain'
 import recorded from './__fixtures__/quote-responses.json'
 import { OrchestratorError } from './error'
 import type { IntentInput } from './types'
 import {
-  type BlancRoute,
   blancQuoteRequest,
   blancSubmitRequest,
   normalizeTypedData,
-  originChainId,
   quoteFromBlanc,
   quotesFromBlanc,
 } from './wire-quote'
@@ -29,10 +28,7 @@ interface QuoteCase {
   }
 }
 
-const { cases, devMultiChainOpsRoute } = recorded as unknown as {
-  cases: QuoteCase[]
-  devMultiChainOpsRoute: BlancRoute
-}
+const { cases } = recorded as unknown as { cases: QuoteCase[] }
 const byId = (id: string) => cases.find((c) => c.id === id)!
 const ROUTED = cases.filter((c) => c.blanc.status === 200)
 
@@ -315,25 +311,17 @@ describe('normalizeTypedData', () => {
   })
 })
 
-describe('originChainId', () => {
+describe('payloadChainId', () => {
   test('reads the signing domain chain', () => {
     const intentExecutor = quoteFromBlanc(
       byId('funded/undeployed-nexus').blanc.body.routes[0],
     )
     expect(intentExecutor.signData.origin[0].primaryType).toBe('SingleChainOps')
-    expect(originChainId(intentExecutor.signData.origin[0])).toBe(84532)
+    expect(payloadChainId(intentExecutor.signData.origin[0])).toBe(84532)
     const permit2 = quoteFromBlanc(
       byId('funded/eoa-permit2').blanc.body.routes[0],
     )
-    expect(originChainId(permit2.signData.origin[0])).toBe(11155420)
-  })
-
-  test('refuses a chainless multi-chain payload', () => {
-    const quote = quoteFromBlanc(devMultiChainOpsRoute)
-    expect(quote.signData.origin[0].primaryType).toBe('MultiChainOps')
-    expect(() => originChainId(quote.signData.origin[0])).toThrow(
-      'This quote asks for one signature over several chains (MultiChainOps), which this SDK version cannot sign yet',
-    )
+    expect(payloadChainId(permit2.signData.origin[0])).toBe(11155420)
   })
 })
 

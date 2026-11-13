@@ -111,7 +111,7 @@ import {
   type SwapQuoterFilter,
 } from '../orchestrator/types'
 import { convertBigIntFields } from '../orchestrator/utils'
-import { blancSubmitRequest, originChainId } from '../orchestrator/wire-quote'
+import { blancSubmitRequest } from '../orchestrator/wire-quote'
 import type {
   AccountProviderConfig,
   Call,
@@ -138,6 +138,11 @@ import {
   OrderPathRequiredForIntentsError,
   SignerNotSupportedError,
 } from './error'
+import {
+  payloadChainId,
+  payloadChainIds,
+  signatureSpansMultipleChains,
+} from './payload-chain'
 import { narrowQuoterPin, quoterPinFromSession } from './quoters'
 
 type InternalSignerSet =
@@ -693,13 +698,13 @@ async function signTypedDataWithSession<
   return await toErc6492Signature(config, signature, chain)
 }
 
-// The orchestrator's own rule: every origin payload's chain, plus the target
-// chain unless a recipient receives the output. Ascending, as 1.22.0 signed.
+// The orchestrator requires every leg's chain, carried in multi-leg payload
+// leaves, plus the target unless a recipient receives the output.
 function authorizationChainIds(
   quote: Pick<Quote, 'signData'>,
   transaction: Transaction,
 ): number[] {
-  const chainIds = new Set(quote.signData.origin.map(originChainId))
+  const chainIds = new Set(quote.signData.origin.flatMap(payloadChainIds))
   if (!transaction.recipient) {
     chainIds.add(
       'chain' in transaction
@@ -1137,13 +1142,11 @@ async function prepareTransactionAsIntent(
   if (!quote) {
     throw new OrderPathRequiredForIntentsError()
   }
-  // Refuse payloads this version cannot sign before any signing prompt.
-  for (const typedData of [
-    ...quote.signData.origin,
-    quote.signData.destination,
-  ]) {
-    originChainId(typedData)
+  const payloads = [...quote.signData.origin, quote.signData.destination]
+  for (const typedData of payloads) {
+    payloadChainId(typedData)
   }
+  assertSignableAcrossChains(config, signers, payloads)
   return { quote, intentInput: serializedIntent }
 }
 
@@ -1161,6 +1164,40 @@ function destinationIndex(
   return -1
 }
 
+// Chain-bound signatures would validate on only one leg after user approval.
+function assertSignableAcrossChains(
+  config: RhinestoneConfig,
+  signers: SignerSet | undefined,
+  payloads: TypedDataDefinition[],
+): void {
+  const payload = payloads.find(signatureSpansMultipleChains)
+  if (!payload || config.account?.type === 'eoa') return
+  if (signers?.type === 'experimental_session') {
+    throw new Error(
+      'Cannot sign a chain-agnostic intent payload with a smart session: a session is enabled per chain, so the signature would validate only on the leg it was resolved against',
+    )
+  }
+  const chainBoundError = (validator: string) =>
+    new Error(
+      `Cannot sign a multi-chain intent payload with ${validator}: it binds the chain id into the signed hash, so the signature would validate only on chain ${payloadChainId(payload)} and fail on the intent's legs on other chains`,
+    )
+  if (
+    config.owners?.type === 'quorum' &&
+    (!signers || (signers.type === 'owner' && signers.kind === 'quorum'))
+  ) {
+    throw chainBoundError('a quorum validator')
+  }
+  const validator = getValidator(config, signers)
+  if (
+    validator &&
+    supportsEip712(validator) &&
+    validator.address.toLowerCase() ===
+      K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase()
+  ) {
+    throw chainBoundError("Startale's K1 validator")
+  }
+}
+
 async function signIntent(
   config: RhinestoneConfig,
   quote: Pick<Quote, 'signData'>,
@@ -1169,6 +1206,7 @@ async function signIntent(
   targetExecution?: boolean,
 ) {
   const { origin, destination } = quote.signData
+  assertSignableAcrossChains(config, signers, [...origin, destination])
   const matchingOrigin = destinationIndex(origin, destination)
   if (config.account?.type === 'eoa') {
     const eoa = config.eoa
@@ -1220,7 +1258,7 @@ async function signIntent(
             signers,
             validator,
             isRoot,
-            getChainById(originChainId(destination)),
+            getChainById(payloadChainId(destination)),
             destination,
             false,
           )
@@ -1229,7 +1267,7 @@ async function signIntent(
 
   const originSignatures: OriginSignature[] = []
   for (const typedData of origin) {
-    const chain = getChainById(originChainId(typedData))
+    const chain = getChainById(payloadChainId(typedData))
     const originSigners = await resolveSignersForChain(
       config,
       signers,
@@ -1284,7 +1322,7 @@ async function signQuorumIntentOrigins(
   const address = getAddress(config)
   const account = getAccountProvider(config)
   const chains = origins.map((typedData) =>
-    getChainById(originChainId(typedData)),
+    getChainById(payloadChainId(typedData)),
   )
   const quorumSigners = signers ?? convertOwnerSetToSignerSet(config.owners)
   if (quorumSigners.type !== 'owner' || quorumSigners.kind !== 'quorum') {
@@ -1376,7 +1414,7 @@ async function getDestinationSignature(
       signers,
       validator,
       isRoot,
-      getChainById(originChainId(destination)),
+      getChainById(payloadChainId(destination)),
       destination,
       targetExecution,
     )

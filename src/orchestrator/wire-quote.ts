@@ -225,18 +225,6 @@ function normalizeTypedData(typedData: unknown): TypedDataDefinition {
   } as TypedDataDefinition
 }
 
-// The one place v1 reads a payload's chain, so supporting chain-agnostic
-// payloads replaces only this refusal.
-function originChainId(typedData: TypedDataDefinition): number {
-  const chainId = typedData.domain?.chainId
-  if (chainId === undefined || chainId === null) {
-    throw new Error(
-      'This quote asks for one signature over several chains (MultiChainOps), which this SDK version cannot sign yet',
-    )
-  }
-  return Number(chainId)
-}
-
 function signPayload(payload: unknown): TypedDataDefinition {
   if ((payload as { kind?: unknown }).kind === 'personalSign') {
     throw new OrchestratorError({
@@ -355,7 +343,6 @@ export {
   blancQuoteRequest,
   blancSubmitRequest,
   normalizeTypedData,
-  originChainId,
   quoteFromBlanc,
   quotesFromBlanc,
 }
