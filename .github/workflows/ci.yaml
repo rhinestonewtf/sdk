@@ -22,9 +22,6 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Packed v1 surface
-        run: bun run test:surface
-
       - name: Check
         run: bun run check
 

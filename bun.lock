@@ -9,7 +9,6 @@
       "devDependencies": {
         "@biomejs/biome": "^2.1.0",
         "@changesets/cli": "^2.28.1",
-        "@rhinestone/sdk-v1-baseline": "https://registry.npmjs.org/@rhinestone/sdk/-/sdk-1.22.0.tgz",
         "@size-limit/esbuild-why": "^11.2.0",
         "@size-limit/preset-small-lib": "^11.2.0",
         "@types/bun": "^1.2.8",
@@ -179,8 +178,6 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@rhinestone/sdk": ["@rhinestone/sdk@workspace:src"],
-
-    "@rhinestone/sdk-v1-baseline": ["@rhinestone/sdk@https://registry.npmjs.org/@rhinestone/sdk/-/sdk-1.22.0.tgz", { "dependencies": { "@rhinestone/shared-configs": "2.16.0", "solady": "^0.1.26" }, "peerDependencies": { "express": ">=4", "jose": ">=5.0.0", "viem": "^2.55.0" }, "optionalPeers": ["express", "jose"] }, "sha512-Gw0AWePktnw7OLgdYrUuQLohGLtpPRXzA8tGuvTMca1ZFkAU7NqZknJYG6v8ZsmOWVBAsT3kLe0ZHygEhCHBVw=="],
 
     "@rhinestone/shared-configs": ["@rhinestone/shared-configs@2.16.0", "", { "peerDependencies": { "typescript": ">=5", "viem": "^2.55.0" }, "optionalPeers": ["typescript"] }, "sha512-wOh6BxflNxMaY2KucCy5zHg6JnfknQ8IN7q/CiXd8R87yjf+NeqsZQ/JIv1y/Tt11BoJZtE2UU9cSu4NqRq+Dw=="],
 

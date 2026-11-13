@@ -10,7 +10,6 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 
 - `bun run build` - Build the project (clean + tsc)
 - `bun run test` - Run tests (vitest).
-- `bun run test:parity` - Run the live v1 parity harness (needs `PARITY_API_KEY`)
 - `bun run check` - Lint and format (biome)
 - `bun run typecheck` - Type check without emit
 
@@ -33,7 +32,6 @@ Docs: https://docs.rhinestone.dev/smart-wallet
 - `/src/modules` - Module validators and chain abstraction
 - `/src/orchestrator` - Rhinestone API client
 - `/test` - Integration tests
-- `/test/parity` - v1 parity harness
 
 ## Branching
 
@@ -65,7 +63,3 @@ The release process: push `main` for a v2 dev release, `release` for a v2 releas
 - Tests use prool for local chain testing
 - Integration tests in `/test` require `.env` configuration
 - Make sure to remove the `src/dist` build folder before running integration tests
-
-## Parity harness
-
-`test/parity/` runs one scenario against the published v1 baseline and the working tree and diffs orchestrator traffic, signer payloads and step results per layer. It supports the v1 move from the alps to the blanc API, developed on the `v1-blanc` integration branch and merged into `v1` when done. The live suite needs an orchestrator API key and runs manually; its offline tests run with `bun run test`. Its funded scenarios submit real intents on prod testnets from funded fixture accounts (check them with `bun run parity:funding`; `PARITY_FUNDED=0` skips them). See [test/parity/README.md](test/parity/README.md).
