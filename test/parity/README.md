@@ -60,7 +60,7 @@ The offline tests for the harness itself (`test/parity/**/*.test.ts`) run with `
 | `reads.parity.ts` | Status of fixed past intents, portfolios of empty fixture accounts and a dormant account, splits, and the exported low-level client's status and portfolio (raw shapes, token filter). |
 | `errors.parity.ts` | Orchestrator quote rejections, `sendTransaction` with no balance, the SDK's own validation errors, invalid API key and JWT, read errors. |
 | `funded-tokenless.parity.ts` | Funded: sponsored no-op calls that execute each signing path without moving funds, and a non-owner signature the orchestrator refuses. |
-| `funded-transfers.parity.ts` | Funded: smart-account transfers over Across, CCTP and same-chain, paired so principal comes back. |
+| `funded-transfers.parity.ts` | Funded: smart-account transfers over Across, CCTP and same-chain, paired so principal comes back. The candidate's sponsored CCTP is delivered by Rhinestone's relayer. |
 | `funded-eoa.parity.ts` | Funded: the plain EOA with an ERC-2612 permit, an existing Permit2 approval and an ETH wrap. |
 | `funded-reads.parity.ts` | Funded: portfolios with non-zero balances, and quotes for more than a fixture holds. |
 
@@ -71,7 +71,7 @@ Attempts inside a scenario are independent: a rejected quote or read is recorded
 - **Self-check:** `PARITY_CANDIDATE=published PARITY_REPEAT=3 bun run test:parity` must match 100%. A diff here is per-quote variance that needs a rule, or a non-deterministic scenario.
 - **Fault checks** (`faults.ts`) must fail with `quoteRequest` diffs:
   - `quote.bump-token-amount`: `/<step>/tokenRequests/0/amount`.
-  - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`topupCompact` and `signatureMode` on every quote).
+  - `quote.drop-options`: `/<step>/options/<key>` for every option a step sets (`signatureMode` on every quote; the working tree no longer sends `topupCompact`).
   - `quote.drop-optional-fields`: `recipient`, `accountAccessList`, `preClaimExecutions`, `destinationGasLimit`, `destinationExecutions` and the account's `mockSignatures` and `delegations`, wherever a step sets them.
 
 ## Harness errors
@@ -97,6 +97,15 @@ A funded scenario sets `funded: true` and declares what it needs: its per-side s
 - **Accepted differences** (`accepted.ts`, or `accepted` on a scenario) are differences the migration intends. Each needs a reason, and the report lists them under their own heading.
 - **Reads**: the candidate reads status, portfolio, splits and app-fee balances through blanc, while the baseline reads them through alps; the read results must match exactly.
 - **Errors** are compared strictly: class, name, type, status, message, context, the wire's domain code and whether the error carries a trace id. The wire code is the domain code on both versions (`ZERO_BALANCE`, `INSUFFICIENT_BALANCE`, …), not blanc's coarse envelope code (`UNPROCESSABLE_CONTENT`, `VALIDATION_ERROR`). When blanc's own wording of one error differs from alps's, accept that difference with one entry for that scenario, that step and that field (e.g. `/<step>/message`), with the reason. Never a wildcard or alternation on the errors layer: the runner rejects any such entry, global or on a scenario, and `accepted.test.ts` requires the global ones to name a scenario. Never rewritten text in the SDK.
+
+## Quote, sign and submit
+
+The candidate quotes (`POST /quotes`) and submits (`POST /intents`) through blanc; the baseline through alps (`/intents/route`, `/intent-operations`). Where the orchestrator plans the same route on both versions, blanc serves the payloads 1.22.0 built locally, so typed data, signatures and submits compare exactly. CCTP into the sender's own account, and sponsored CCTP, are planned differently by API version (Rhinestone relayer delivery on blanc), so the unfunded transfers pay a payee and compare sponsorship same-chain; `funded/cctp-safe` keeps exercising relayer delivery on the candidate. Accepted differences (`accepted.ts`):
+
+- `options.topupCompact` (every quote) and `options.feeToken` (the fee-asset step): v1 no longer sends them; neither version defines them.
+- `errors/quote-rejections`: blanc's wording of an unknown token (CAIP-2 chain) and no field path for an unknown destination chain.
+- `funded/session-verify-executions`: no target-execution signature on IntentExecutor routes, where blanc serves none and the orchestrator reads none.
+- `funded/cctp-safe`: the relayer-delivered burn's amount, fee cap and hook data, and the total cost.
 
 ## Goldens
 

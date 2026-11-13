@@ -5,13 +5,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA, accountB } from '../../test/consts'
 import { fixturePasskey } from '../../test/parity/funded/fixtures'
 import { RhinestoneSDK } from '../index'
+import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type { RhinestoneAccountConfig } from '../types'
 import recorded from './__fixtures__/signing-vectors.json'
+import { authorizationChainIds } from './utils'
 
 // Signatures 1.22.0 produced over payloads recorded from the prod
 // orchestrator, one vector per signer kind. The served blanc payloads were
 // aligned with the alps quote's per-quote values, so both versions sign
-// byte-identical typed data and every signature must be reproduced exactly.
+// byte-identical typed data and every signature must be reproduced exactly
+// from the blanc quote.
 
 interface Vector {
   id: string
@@ -131,9 +134,23 @@ function plain(value: unknown): unknown {
   return value
 }
 
+// Only the two reads EIP-7702 authorization signing makes are answered: the
+// account has no code yet and its nonce is 0, as when the vector was recorded.
+const RPC_RESULTS: Record<string, string> = {
+  eth_getCode: '0x',
+  eth_getTransactionCount: '0x0',
+}
+
 beforeEach(() => {
-  vi.stubGlobal('fetch', async (input: unknown) => {
-    throw new Error(`network blocked: ${String(input)}`)
+  vi.stubGlobal('fetch', async (input: unknown, init?: { body?: string }) => {
+    const { id, method } = JSON.parse(init?.body ?? '{}')
+    if (!(method in RPC_RESULTS)) {
+      throw new Error(`network blocked: ${String(input)}`)
+    }
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id, result: RPC_RESULTS[method] }),
+      { headers: { 'content-type': 'application/json' } },
+    )
   })
 })
 
@@ -156,7 +173,7 @@ describe('signing vectors', () => {
         CONFIGS[id]() as RhinestoneAccountConfig,
       )
       const signed = await account.signTransaction({
-        intentRoute: vector.alpsResponse,
+        quote: quoteFromBlanc(vector.blancRoutePatched as BlancRoute),
         intentInput: vector.alpsRequest,
         transaction: toTransaction(vector),
       })
@@ -170,4 +187,24 @@ describe('signing vectors', () => {
       ).toEqual(plain({ ...vector.expected, authorizations: undefined }))
     },
   )
+
+  test('eip7702 authorizes the chains 1.22.0 did', async () => {
+    const vector = VECTORS.find(({ id }) => id === 'eip7702')!
+    const quote = quoteFromBlanc(vector.blancRoutePatched as BlancRoute)
+    const transaction = toTransaction(vector)
+    const expected = vector.expected.authorizations!
+    expect(authorizationChainIds(quote, transaction)).toEqual(
+      expected.map(({ chainId }) => chainId),
+    )
+    const sdk = new RhinestoneSDK({ apiKey: 'offline' })
+    const account = await sdk.createAccount(
+      CONFIGS.eip7702() as RhinestoneAccountConfig,
+    )
+    const authorizations = await account.signAuthorizations({
+      quote,
+      intentInput: vector.alpsRequest,
+      transaction,
+    })
+    expect(plain(authorizations)).toEqual(plain(expected))
+  })
 })

@@ -48,7 +48,6 @@ import {
 } from './execution/permit2'
 import {
   getTransactionMessages as getTransactionMessagesInternal,
-  type IntentRoute,
   type PreparedTransactionData,
   type PreparedUserOperationData,
   prepareTransaction as prepareTransactionInternal,
@@ -93,7 +92,10 @@ import {
   type IntentOp,
   type IntentOpStatus,
   type IntentRefund,
+  type IntentRoute,
   type Portfolio,
+  type Quote,
+  type QuoteCost,
   type SettlementLayer,
   type SignedIntentOp,
   type SplitIntentsInput,
@@ -298,14 +300,14 @@ async function createRhinestoneAccount(
   /**
    * Prepare a transaction data
    * @param transaction Transaction to prepare
-   * @returns prepared transaction data
+   * @returns prepared transaction data, with the orchestrator's recommended quote
    */
   function prepareTransaction(transaction: Transaction) {
     return prepareTransactionInternal(config, transaction)
   }
 
   /**
-   * Get the transaction typed data message to sign
+   * Get the transaction typed data message to sign, as the orchestrator's quote serves it
    * @param preparedTransaction Prepared transaction data
    * @see {@link prepareTransaction} to prepare the transaction data for signing
    */
@@ -697,6 +699,8 @@ export type {
   ProviderConfig,
   QuorumOwner,
   QuorumValidatorConfig,
+  Quote,
+  QuoteCost,
   Recovery,
   RhinestoneAccount,
   RhinestoneAccountConfig,

@@ -291,28 +291,31 @@ async function sendTransactionAsIntent(
   if (!prepared) {
     throw new OrderPathRequiredForIntentsError()
   }
-  const { intentRoute, intentInput } = prepared
+  const { quote, intentInput } = prepared
   const { originSignatures, destinationSignature } = await signIntent(
     config,
-    intentRoute.intentOp,
+    quote,
     targetChain,
     signers,
   )
   const targetExecutionSignature = await getTargetExecutionSignature(
     config,
-    intentRoute.intentOp,
+    quote,
     targetChain,
     signers,
   )
   const authorizations = config.eoa
-    ? await signAuthorizationsInternal(config, intentRoute)
+    ? await signAuthorizationsInternal(config, {
+        quote,
+        transaction: { targetChain, recipient, eip7702InitSignature },
+      })
     : []
-  const permitSignatures = await signPermits(config, intentRoute)
+  const permitSignatures = await signPermits(config, quote)
   return await submitIntentInternal(
     config,
     sourceChains,
     targetChain,
-    intentRoute.intentOp,
+    quote,
     originSignatures,
     destinationSignature,
     targetExecutionSignature,

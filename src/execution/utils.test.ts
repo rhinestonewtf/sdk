@@ -14,22 +14,38 @@ import {
   SIG_MODE_ERC1271,
 } from '../orchestrator/types'
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
+import { OrderPathRequiredForIntentsError } from './error'
 import {
+  authorizationChainIds,
   hashErc7739TypedDataForSolady,
   parseCalls,
   prepareTransaction,
   prepareTransactionAsIntent,
   resolveSessionForChain,
   resolveSignatureMode,
+  submitTransaction,
 } from './utils'
 
-const mockGetIntentRoute = vi.fn()
+const mockCreateQuote = vi.fn()
+const mockCreateIntent = vi.fn()
 
 vi.mock('../orchestrator', () => ({
   getOrchestrator: () => ({
-    getIntentRoute: mockGetIntentRoute,
+    createQuote: mockCreateQuote,
+    createIntent: mockCreateIntent,
   }),
 }))
+
+const MOCK_PAYLOAD = {
+  domain: { chainId: base.id },
+  types: { Test: [{ name: 'value', type: 'uint256' }] },
+  primaryType: 'Test',
+  message: { value: 1n },
+}
+const MOCK_QUOTE = {
+  intentId: '1',
+  signData: { origin: [MOCK_PAYLOAD], destination: MOCK_PAYLOAD },
+}
 
 describe('hashErc7739TypedDataForSolady', () => {
   const verifierDomain = {
@@ -162,7 +178,7 @@ describe('parseCalls', () => {
 
 describe('prepareTransactionAsIntent', () => {
   beforeEach(() => {
-    mockGetIntentRoute.mockReset()
+    mockCreateQuote.mockReset()
   })
 
   test('includes auxiliaryFunds in options when provided', async () => {
@@ -172,10 +188,7 @@ describe('prepareTransactionAsIntent', () => {
       } as Record<`0x${string}`, bigint>,
     }
 
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -200,16 +213,13 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toEqual(auxiliaryFunds)
   })
 
   test('does not include auxiliaryFunds in options when not provided', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -234,16 +244,13 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.auxiliaryFunds).toBeUndefined()
   })
 
   test('forwards the public transaction quoter filter to the wire', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransaction(
       {
@@ -256,15 +263,12 @@ describe('prepareTransactionAsIntent', () => {
       },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.quoters).toEqual({ exclude: ['relay'] })
   })
 
   test('derives and narrows a session quoter filter on the wire', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
     const enabled = vi
       .spyOn(validators, 'isSessionEnabled')
       .mockResolvedValue(true)
@@ -320,15 +324,12 @@ describe('prepareTransactionAsIntent', () => {
       enabled.mockRestore()
     }
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.quoters).toEqual({ include: ['0x'] })
   })
 
   test('preserves an empty quoter include filter on the wire', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -357,15 +358,12 @@ describe('prepareTransactionAsIntent', () => {
       { include: [] },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.quoters).toEqual({ include: [] })
   })
 
   test('includes appFees in options when provided', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -391,16 +389,13 @@ describe('prepareTransactionAsIntent', () => {
       { feeBps: 100 },
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.appFees).toEqual({ feeBps: 100 })
   })
 
   test('includes customDeadline in options when provided', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     const customDeadline = 9_999_999_999
 
@@ -429,16 +424,13 @@ describe('prepareTransactionAsIntent', () => {
       customDeadline,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.customDeadline).toBe(customDeadline)
   })
 
   test('omits customDeadline from options when not provided', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -464,16 +456,13 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.customDeadline).toBeUndefined()
   })
 
   test('includes protocolFees in options when provided (RHI-4904)', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -501,17 +490,14 @@ describe('prepareTransactionAsIntent', () => {
       { feeBps: 35 },
     )
 
-    expect(mockGetIntentRoute).toHaveBeenCalledOnce()
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    expect(mockCreateQuote).toHaveBeenCalledOnce()
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.protocolFees).toEqual({ feeBps: 35 })
     expect(intentInput.options.appFees).toBeUndefined()
   })
 
   test('maps sponsored.protocolFees onto sponsorSettings (RHI-4904)', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -539,7 +525,7 @@ describe('prepareTransactionAsIntent', () => {
       { feeBps: 35 },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.sponsorSettings).toEqual({
       gasSponsored: false,
       bridgeFeesSponsored: false,
@@ -549,10 +535,7 @@ describe('prepareTransactionAsIntent', () => {
   })
 
   test('boolean sponsored: true enables protocolFeesSponsored too (RHI-4904)', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
 
     await prepareTransactionAsIntent(
       {
@@ -578,7 +561,7 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.sponsorSettings).toEqual({
       gasSponsored: true,
       bridgeFeesSponsored: true,
@@ -588,10 +571,7 @@ describe('prepareTransactionAsIntent', () => {
   })
 
   test('claim-only session sends SIG_MODE_ERC1271 in routing request', async () => {
-    mockGetIntentRoute.mockResolvedValue({
-      intentOp: {},
-      intentCost: {},
-    })
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
     vi.spyOn(validators, 'isSessionEnabled').mockResolvedValue(false)
 
     const signers: SessionSignerSet = {
@@ -630,7 +610,7 @@ describe('prepareTransactionAsIntent', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.options.signatureMode).toBe(SIG_MODE_ERC1271)
   })
 })
@@ -720,8 +700,8 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
   let isSessionEnabledSpy: any
 
   beforeEach(() => {
-    mockGetIntentRoute.mockReset()
-    mockGetIntentRoute.mockResolvedValue({ intentOp: {}, intentCost: {} })
+    mockCreateQuote.mockReset()
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
     isSessionEnabledSpy = vi
       .spyOn(validators, 'isSessionEnabled')
       .mockResolvedValue(false)
@@ -767,7 +747,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeDefined()
     expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
     expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
@@ -820,7 +800,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -864,7 +844,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -902,7 +882,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -961,7 +941,7 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeDefined()
     expect(intentInput.preClaimExecutions![base.id]).toHaveLength(1)
     expect(intentInput.preClaimExecutions![base.id][0].to).toBe(
@@ -977,8 +957,8 @@ describe('prepareTransactionAsIntent — preClaimExecutions', () => {
 
 describe('prepareTransactionAsIntent — sourceCalls', () => {
   beforeEach(() => {
-    mockGetIntentRoute.mockReset()
-    mockGetIntentRoute.mockResolvedValue({ intentOp: {}, intentCost: {} })
+    mockCreateQuote.mockReset()
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE])
   })
 
   const callA = {
@@ -1016,7 +996,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       { [arbitrum.id]: [callA, callB] },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeDefined()
     expect(intentInput.preClaimExecutions![arbitrum.id]).toEqual([callA, callB])
   })
@@ -1045,7 +1025,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       { [base.id]: [callA] },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions![base.id]).toEqual([callA])
   })
 
@@ -1113,7 +1093,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
     const chainIds = resolve.mock.calls.map((c: any[]) => c[0].chain.id).sort()
     expect(chainIds).toEqual([arbitrum.id, optimism.id].sort())
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions![arbitrum.id]).toHaveLength(1)
     expect(intentInput.preClaimExecutions![optimism.id]).toHaveLength(1)
   })
@@ -1160,7 +1140,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       { [base.id]: [callA] },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     const ops = intentInput.preClaimExecutions![base.id]
     expect(ops).toHaveLength(2)
     expect(ops[0].to).toBe(DUMMY_PRECLAIMOP_TARGET)
@@ -1192,7 +1172,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       undefined,
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 
@@ -1220,7 +1200,7 @@ describe('prepareTransactionAsIntent — sourceCalls', () => {
       { [arbitrum.id]: [] },
     )
 
-    const intentInput: IntentInput = mockGetIntentRoute.mock.calls[0][0]
+    const intentInput: IntentInput = mockCreateQuote.mock.calls[0][0]
     expect(intentInput.preClaimExecutions).toBeUndefined()
   })
 })
@@ -1385,5 +1365,115 @@ describe('resolveSignatureMode', () => {
       base,
     )
     expect(mode).toBe(SIG_MODE_EMISSARY_EXECUTION_ERC1271)
+  })
+})
+
+describe('quote, sign and submit through blanc', () => {
+  const config: RhinestoneConfig = {
+    owners: { type: 'ecdsa', accounts: [accountA], threshold: 1 },
+    apiKey: 'test',
+  }
+
+  beforeEach(() => {
+    mockCreateQuote.mockReset()
+    mockCreateIntent.mockReset()
+  })
+
+  test('prepares the recommended quote', async () => {
+    const alternative = { ...MOCK_QUOTE, intentId: '2' }
+    mockCreateQuote.mockResolvedValue([MOCK_QUOTE, alternative])
+    const transaction = { chain: base }
+    const prepared = await prepareTransaction(config, transaction)
+    expect(prepared.quote).toBe(MOCK_QUOTE)
+    expect(prepared.transaction).toBe(transaction)
+    expect(Object.keys(prepared)).toEqual([
+      'quote',
+      'intentInput',
+      'transaction',
+    ])
+  })
+
+  test('refuses a quote without routes', async () => {
+    mockCreateQuote.mockResolvedValue([])
+    await expect(prepareTransaction(config, { chain: base })).rejects.toThrow(
+      OrderPathRequiredForIntentsError,
+    )
+  })
+
+  test('refuses a chain-agnostic payload before signing', async () => {
+    const chainless = { ...MOCK_PAYLOAD, domain: { name: 'MultiChainOps' } }
+    mockCreateQuote.mockResolvedValue([
+      {
+        ...MOCK_QUOTE,
+        signData: { origin: [chainless], destination: chainless },
+      },
+    ])
+    await expect(prepareTransaction(config, { chain: base })).rejects.toThrow(
+      'This quote asks for one signature over several chains (MultiChainOps), which this SDK version cannot sign yet',
+    )
+  })
+
+  test('submits signatures by role against the quote id', async () => {
+    mockCreateIntent.mockResolvedValue({ intentId: '77' })
+    const intentInput = { options: { sponsorSettings: { gasSponsored: true } } }
+    const result = await submitTransaction(
+      config,
+      {
+        quote: MOCK_QUOTE as never,
+        intentInput,
+        transaction: { sourceChains: [arbitrum], targetChain: base },
+        originSignatures: ['0x01'],
+        destinationSignature: '0x01',
+        targetExecutionSignature: undefined,
+      },
+      [],
+      true,
+    )
+    expect(mockCreateIntent).toHaveBeenCalledWith(
+      {
+        intentId: '1',
+        signatures: { origin: ['0x01'], destination: '0x01' },
+        options: { dryRun: true },
+      },
+      { intentInput, isSponsored: true },
+    )
+    expect(result).toEqual({
+      type: 'intent',
+      id: 77n,
+      sourceChains: [arbitrum.id],
+      targetChain: base.id,
+    })
+  })
+})
+
+describe('authorizationChainIds', () => {
+  const payload = (chainId: number) => ({
+    ...MOCK_PAYLOAD,
+    domain: { chainId },
+  })
+  const quote = (...chainIds: number[]) =>
+    ({
+      signData: {
+        origin: chainIds.map(payload),
+        destination: payload(chainIds.at(-1)!),
+      },
+    }) as never
+
+  test('covers every origin chain and the target, ascending', () => {
+    expect(
+      authorizationChainIds(quote(base.id, arbitrum.id, base.id), {
+        sourceChains: [base, arbitrum],
+        targetChain: optimism,
+      }),
+    ).toEqual([optimism.id, base.id, arbitrum.id])
+  })
+
+  test('leaves the target out when a recipient receives the output', () => {
+    expect(
+      authorizationChainIds(quote(base.id), {
+        targetChain: optimism,
+        recipient: zeroAddress,
+      }),
+    ).toEqual([base.id])
   })
 })

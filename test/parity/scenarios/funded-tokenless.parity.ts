@@ -1,5 +1,6 @@
 import { arbitrumSepolia, baseSepolia, optimismSepolia } from 'viem/chains'
 import { describe } from 'vitest'
+import { SCENARIO_ACCEPTED } from '../accepted'
 import {
   FIXTURES,
   fixtureSigner,
@@ -128,9 +129,10 @@ const startale = defineScenario({
 const sessionVerifyExecutions = defineScenario({
   id: 'funded/session-verify-executions',
   description:
-    'Nexus session scoped to the no-op call (execution verification: signature mode 5 and a target-execution signature), sponsored on Base Sepolia',
+    'Nexus session scoped to the no-op call (execution verification: signature mode 5; 1.22.0 also signs a target execution), sponsored on Base Sepolia',
   funded: true,
   goldenLayers: FUNDED_LAYERS,
+  accepted: SCENARIO_ACCEPTED['funded/session-verify-executions'],
   steady: [
     { kind: 'deployed', fixture: 'nexus-main', chainId: baseSepolia.id },
     { kind: 'session', fixture: 'nexus-main', session: 'scoped' },
