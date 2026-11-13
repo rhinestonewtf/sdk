@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import envelopes from '../../../src/orchestrator/__fixtures__/error-envelopes.json'
 import alpsQuoteRequest from '../__fixtures__/alps/quote-request.json'
 import alpsQuoteResponse from '../__fixtures__/alps/quote-response.json'
 import alpsSubmitRequest from '../__fixtures__/alps/submit-request.json'
@@ -470,11 +471,52 @@ describe('errors', () => {
   })
 
   test('the shared auth envelope maps the same in both versions', () => {
-    const body = { code: 'UNAUTHORIZED', message: 'Invalid API key' }
+    const body = {
+      code: 'UNAUTHORIZED',
+      message: 'Invalid API key',
+      traceId: 'e09bdb0b2c030188bbd5171442115ab8',
+    }
     expect(alps.wireError(401, body)).toEqual(blanc.wireError(401, body))
     expect(blanc.wireError(401, body)).toEqual({
       status: 401,
       code: 'UNAUTHORIZED',
     })
+  })
+})
+
+describe('recorded error envelopes', () => {
+  // The recorder stores a non-JSON body as its text.
+  const recorded = (body: unknown) => {
+    const text = (body as { __text?: unknown }).__text
+    return typeof text === 'string' ? text : body
+  }
+
+  test.each(envelopes)('$id: blanc gives the alps wire code', (envelope) => {
+    expect(
+      blanc.wireError(envelope.blanc.status, recorded(envelope.blanc.body)),
+    ).toEqual(
+      alps.wireError(envelope.alps.status, recorded(envelope.alps.body)),
+    )
+  })
+
+  test('blanc reports the domain code, not the envelope code', () => {
+    expect(
+      blanc.wireError(422, {
+        code: 'UNPROCESSABLE_CONTENT',
+        message: 'No balances available',
+        details: [
+          {
+            message: 'No balances available',
+            context: { code: 'ZERO_BALANCE' },
+          },
+        ],
+      }),
+    ).toEqual({ status: 422, code: 'ZERO_BALANCE' })
+    expect(
+      blanc.wireError(500, {
+        code: 'INTERNAL_ERROR',
+        message: 'Something went wrong',
+      }),
+    ).toEqual({ status: 500 })
   })
 })

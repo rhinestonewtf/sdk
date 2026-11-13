@@ -114,6 +114,8 @@ function describeError(error: unknown): StepError {
     statusCode:
       typeof value.statusCode === 'number' ? value.statusCode : undefined,
     context: value.context === undefined ? undefined : toPlain(value.context),
+    hasTraceId:
+      typeof value.traceId === 'string' ? value.traceId !== '' : undefined,
   }
 }
 

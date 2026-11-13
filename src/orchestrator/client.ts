@@ -39,6 +39,13 @@ import type {
   SplitIntentsResult,
 } from './types'
 import { convertBigIntFields } from './utils'
+import {
+  firstIssue,
+  isUnknownChainOnQuote,
+  type NormalizedError,
+  normalizeErrorResponse,
+  type OrchestratorOperation,
+} from './wire-error'
 
 function parseTokenAmountsRecord(
   record: Record<string, string>,
@@ -91,9 +98,13 @@ export class Orchestrator {
     }
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
     url.search = params.toString()
-    const json = await this.fetch(url.toString(), {
-      headers: await this.getHeaders(),
-    })
+    const json = await this.fetch(
+      url.toString(),
+      {
+        headers: await this.getHeaders(),
+      },
+      'portfolio',
+    )
     const portfolioResponse = json.portfolio as PortfolioResponse
     const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
       symbol: tokenResponse.tokenName,
@@ -123,11 +134,15 @@ export class Orchestrator {
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
     const body = convertBigIntFields(input)
-    return await this.fetch(`${this.serverUrl}/intents/route`, {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(body),
-    })
+    return await this.fetch(
+      `${this.serverUrl}/intents/route`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(),
+        body: JSON.stringify(body),
+      },
+      'quote',
+    )
   }
 
   async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
@@ -162,27 +177,23 @@ export class Orchestrator {
       } catch {}
     }
 
-    if (
-      response.status === 422 &&
-      errorData.error === 'INSUFFICIENT_LIQUIDITY'
-    ) {
+    const normalized = normalizeErrorResponse({
+      body: errorData,
+      traceIdHeader: response.headers?.get?.('x-trace-id'),
+    })
+    const { body } = normalized
+    if (response.status === 422 && body?.error === 'INSUFFICIENT_LIQUIDITY') {
       throw new InsufficientLiquidityError({
         availableIntents: (
-          errorData.availableIntents as Record<string, string>[]
+          body.availableIntents as Record<string, string>[]
         ).map(parseTokenAmountsRecord),
-        unfillable: parseTokenAmountsRecord(errorData.unfillable),
-        traceId: errorData.traceId,
+        unfillable: parseTokenAmountsRecord(body.unfillable),
+        traceId: normalized.traceId,
         statusCode: 422,
       })
     }
 
-    this.parseError({
-      response: {
-        status: response.status,
-        data: errorData,
-        headers: {},
-      },
-    })
+    this.throwResponseError(response.status, normalized, 'splits')
     throw new OrchestratorError({ message: 'Unexpected error' })
   }
 
@@ -204,11 +215,15 @@ export class Orchestrator {
           policyContext.isSponsored,
         )
       : await this.getHeaders()
-    return await this.fetch(`${this.serverUrl}/intent-operations`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    return await this.fetch(
+      `${this.serverUrl}/intent-operations`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+      'submit',
+    )
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
@@ -217,13 +232,18 @@ export class Orchestrator {
       {
         headers: await this.getHeaders(),
       },
+      'status',
     )
   }
 
   async getAppFeeBalances(): Promise<AppFeeBalances> {
-    const json = await this.fetch(`${this.serverUrl}/app-fees/balances`, {
-      headers: await this.getHeaders(),
-    })
+    const json = await this.fetch(
+      `${this.serverUrl}/app-fees/balances`,
+      {
+        headers: await this.getHeaders(),
+      },
+      'appFees',
+    )
     return {
       withdrawableUsd: json.withdrawableUsd,
       pendingUsd: json.pendingUsd,
@@ -257,7 +277,11 @@ export class Orchestrator {
     }
   }
 
-  private async fetch(url: string, options?: RequestInit): Promise<any> {
+  private async fetch(
+    url: string,
+    options: RequestInit,
+    operation: OrchestratorOperation,
+  ): Promise<any> {
     const response = await fetch(url, options)
 
     if (!response.ok) {
@@ -272,24 +296,52 @@ export class Orchestrator {
       }
       const retryAfterHeader =
         response.headers?.get?.('retry-after') || undefined
-      this.parseError({
-        response: {
-          status: response.status,
-          data: errorData,
-          headers: {
-            retryAfter: retryAfterHeader,
-          },
-        },
+      const normalized = normalizeErrorResponse({
+        body: errorData,
+        traceIdHeader: response.headers?.get?.('x-trace-id'),
       })
+      this.throwResponseError(
+        response.status,
+        normalized,
+        operation,
+        retryAfterHeader,
+      )
     }
     return response.json()
+  }
+
+  private throwResponseError(
+    status: number,
+    normalized: NormalizedError,
+    operation: OrchestratorOperation,
+    retryAfter?: string,
+  ) {
+    if (isUnknownChainOnQuote(normalized, operation, status)) {
+      const { traceId } = normalized
+      const context = firstIssue(normalized).context
+      throw new UnsupportedChainIdError({
+        context: { ...(context as object), traceId },
+        errorType: 'Bad Request',
+        traceId,
+        statusCode: status,
+      })
+    }
+    this.parseError({
+      response: {
+        status,
+        data: normalized.body,
+        headers: { retryAfter, traceId: normalized.traceId },
+      },
+    })
   }
 
   private parseError(error: any) {
     if (error.response) {
       const status: number | undefined = error.response.status
       const { headers } = error.response
-      const { errors = [], traceId, message } = error.response.data || {}
+      const data = error.response.data || {}
+      const { errors = [], message } = data
+      const traceId = headers?.traceId ?? data.traceId
 
       let errorType: string = 'Unknown'
       switch (status) {
@@ -403,7 +455,7 @@ export class Orchestrator {
     ) {
       throw new UnsupportedChainIdError(errorParams)
     } else if (message.startsWith('Unsupported chain ')) {
-      const chainIdMatch = message.match(/Unsupported chain (\d+)/)
+      const chainIdMatch = message.match(/Unsupported chain (?:eip155:)?(\d+)/)
       if (chainIdMatch) {
         const chainId = parseInt(chainIdMatch[1], 10)
         throw new UnsupportedChainError(chainId, errorParams)
@@ -414,7 +466,7 @@ export class Orchestrator {
       message.includes('for chain')
     ) {
       const tokenMatch = message.match(
-        /Unsupported token (\w+) for chain (\d+)/,
+        /Unsupported token (\w+) for chain (?:eip155:)?(\d+)/,
       )
       if (tokenMatch) {
         const tokenSymbol = tokenMatch[1]
@@ -427,7 +479,7 @@ export class Orchestrator {
       throw new BadRequestError({ message, ...errorParams })
     } else if (message.includes('not supported on chain')) {
       const tokenMatch = message.match(
-        /Token (.+) not supported on chain (\d+)/,
+        /Token (.+) not supported on chain (?:eip155:)?(\d+)/,
       )
       if (tokenMatch) {
         const tokenAddress = tokenMatch[1]

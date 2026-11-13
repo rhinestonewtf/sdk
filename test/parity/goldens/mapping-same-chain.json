@@ -20,6 +20,7 @@
       },
       "ctor": "OrchestratorError",
       "errorType": "Unprocessable Entity",
+      "hasTraceId": true,
       "message": "Same-chain swap inputs rejected by quoter — see candidateErrors for per-input failure codes.",
       "name": "Error",
       "statusCode": 422,

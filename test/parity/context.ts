@@ -56,6 +56,7 @@ interface StepError {
   errorType?: string
   statusCode?: number
   context?: Plain
+  hasTraceId?: boolean
 }
 
 interface StepRecord {
