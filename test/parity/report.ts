@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 import { LAYERS } from './canonical/types'
 import type { Diff } from './compare'
 import { RULES } from './rules'
-import type { BuildMeta, ScenarioResult } from './runner'
+import type { BuildMeta, ExecutionRecord, ScenarioResult } from './runner'
 import { stableStringify } from './serialize'
 
 const MAX_VALUE = 160
@@ -26,12 +26,45 @@ function buildLine(role: string, meta: BuildMeta): string {
   return `  ${role}: ${meta.label} — ${api}`
 }
 
+function executionLine(record: ExecutionRecord): string {
+  const id = record.intentId
+    ? `${record.intentId.slice(0, 12)}…`
+    : `submit ${record.submitStatus}`
+  const trace = record.submitTraceId
+    ? ` (submit trace ${record.submitTraceId})`
+    : ''
+  return `    ${record.role.padEnd(9)} ${record.step}: ${id} ${record.status}${record.settled ? '' : ' (not settled)'} ${Math.round(record.elapsedMs / 1000)}s${trace}`
+}
+
 function formatResult(result: ScenarioResult): string {
   const lines: string[] = []
   const fault = result.fault ? ` (fault: ${result.fault})` : ''
+  const kind = result.error ? ` (${result.error.kind})` : ''
   lines.push(
-    `${result.verdict === 'match' ? '✓' : '✗'} ${result.scenarioId} #${result.iteration + 1}: ${result.verdict}${fault}`,
+    `${result.verdict === 'match' ? '✓' : '✗'} ${result.scenarioId} #${result.iteration + 1}: ${result.verdict}${kind}${fault}`,
   )
+  if (result.error) lines.push(`  ${result.error.message}`)
+  const funded = result.funded
+  if (funded && funded.fixtures.length > 0) {
+    lines.push('  fixtures at preflight (balance / required):')
+    for (const entry of funded.fixtures)
+      lines.push(
+        `    ${entry.fixture} ${entry.chainId} ${entry.token}: ${entry.balance} / ${entry.required}`,
+      )
+  }
+  if (funded?.warmUp) {
+    lines.push(`  warm-up (${funded.warmUp.reasons.join('; ')}):`)
+    for (const record of funded.warmUp.execution)
+      lines.push(executionLine(record))
+    for (const error of funded.warmUp.errors) lines.push(`    ✗ ${error}`)
+  }
+  if (result.execution && result.execution.length > 0) {
+    lines.push('  execution:')
+    for (const record of result.execution) lines.push(executionLine(record))
+  }
+  if (result.skippedSides) {
+    lines.push(`  skipped: ${result.skippedSides.join(', ')}`)
+  }
   lines.push(buildLine('baseline ', result.baseline))
   lines.push(buildLine('candidate', result.candidate))
   for (const layer of LAYERS) {

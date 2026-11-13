@@ -1,0 +1,541 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "ERC7579",
+        "address": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+        "mockSignature": "0xad568b3f825a8d5ffc06dd3253526b64d810ae8901010000e0140100c0e0141de019000006e017221f7ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999e0153f010aa0e0151f0100802003e0130001c0ffe01600e0133c03000001402004e013000020e0131ce01a000041e01a23e073000060e0167ce2173f0001e0143f02014a34e0141fe00b000e13fdb5234e4e3162a810f54d9f7e98e00b22e00200e0179fe016000001e016ffe217fe0006e2171fe217bfe1153f010000e2179fe0043f1336c44f24f66739f4c1ead544c9ca6f5288d55f152043e013000004e0131c2000e016bf0001e0161f0002e0161f0503805dfc2e4a2067e01c0013d8da6bf26964af9d7eed9e03e53415d37aa96045e01638e116dfe1053fe00a00e107df0f3111cd8e92337c100f22b7a9dbf8dee3e1047fe00a00e117bf0400d0e30db02006e01c000042e00925e217a0e098ff2000e11743e01300e0173be044ff13e9ea54d063975cdee9e06b7636d5563d95a7a23ce0139c2000e118ff03691234562027e02e000004e2079fe00700e044ff2000e248ffe03600e1165f0001e1171fe2173fe0173fe01700e0169fe0587fe027dfe167dfe9531f040000000000",
+        "mockSignatures": {
+          "84532": "0xad568b3f825a8d5ffc06dd3253526b64d810ae8901010000e0140100c0e0141de019000006e017221f7ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999e0153f010aa0e0151f0100802003e0130001c0ffe01600e0133c03000001402004e013000020e0131ce01a000041e01a23e073000060e0167ce2173f0001e0143f02014a34e0141fe00b000e13fdb5234e4e3162a810f54d9f7e98e00b22e00200e0179fe016000001e016ffe217fe0006e2171fe217bfe1153f010000e2179fe0043f1336c44f24f66739f4c1ead544c9ca6f5288d55f152043e013000004e0131c2000e016bf0001e0161f0002e0161f0503805dfc2e4a2067e01c0013d8da6bf26964af9d7eed9e03e53415d37aa96045e01638e116dfe1053fe00a00e107df0f3111cd8e92337c100f22b7a9dbf8dee3e1047fe00a00e117bf0400d0e30db02006e01c000042e00925e217a0e098ff2000e11743e01300e0173be044ff13e9ea54d063975cdee9e06b7636d5563d95a7a23ce0139c2000e118ff03691234562027e02e000004e2079fe00700e044ff2000e248ffe03600e1165f0001e1171fe2173fe0173fe01700e0169fe0587fe027dfe167dfe9531f040000000000"
+        },
+        "setupOps": [
+          {
+            "data": "0xea6d13ac0000000000000000000000000000000000000000000000000000000000000040c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a47000000000000000000000000000000000000000000000000000000000000003c000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea70000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000034441bede0300000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000032000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000a536fad1c092c9ec93ccdc7ca5f4ced14c9cde700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000ad568b3f825a8d5ffc06dd3253526b64d810ae89000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "to": "0x0000000000679a258c64d2f20f310e12b64b7375"
+          }
+        ]
+      },
+      "accountAccessList": {
+        "chainIds": [84532]
+      },
+      "destinationChainId": 84532,
+      "destinationExecutions": [
+        {
+          "data": "0x5dfc2e4a",
+          "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+          "value": "0"
+        }
+      ],
+      "options": {
+        "signatureMode": 5,
+        "sponsorSettings": {
+          "bridgeFees": true,
+          "gas": true,
+          "protocolFees": true,
+          "swapFees": true
+        },
+        "topupCompact": false
+      },
+      "tokenRequests": []
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 98,
+        "template": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#1.r><sig:signMessage#1.s><sig:signMessage#1.v+4>"
+      },
+      "origin": [
+        {
+          "notarizedClaimSig": {
+            "byteLength": 150,
+            "template": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>"
+          },
+          "preClaimSig": {
+            "byteLength": 98,
+            "template": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#1.r><sig:signMessage#1.s><sig:signMessage#1.v+4>"
+          }
+        }
+      ],
+      "targetExecution": {
+        "byteLength": 98,
+        "template": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#4.r><sig:signMessage#4.s><sig:signMessage#4.v+4>"
+      }
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#1.r><sig:signMessage#1.s><sig:signMessage#1.v+4>",
+        "origin": [
+          {
+            "notarizedClaimSig": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>",
+            "preClaimSig": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#1.r><sig:signMessage#1.s><sig:signMessage#1.v+4>"
+          }
+        ],
+        "targetExecution": "0x007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999<sig:signMessage#4.r><sig:signMessage#4.s><sig:signMessage#4.v+4>"
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit [x-api-key]"],
+      "step": "submit"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "wait"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x0000000000000000000000000000000000000000"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": "0x5dfc2e4a",
+                  "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0205000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "origin[0]",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x0000000000000000000000000000000000000000"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": "0x5dfc2e4a",
+                  "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0205000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "destination",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "name": "SmartSessionEmissary",
+          "version": "1"
+        },
+        "message": {
+          "sessionsAndChainIds": [
+            {
+              "chainId": "84532n",
+              "session": {
+                "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+                "expires": "<time>",
+                "nonce": "<nonce>",
+                "permissions": {
+                  "actions": [
+                    {
+                      "actionPolicies": [
+                        {
+                          "initData": "0x",
+                          "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                        }
+                      ],
+                      "actionTarget": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                      "actionTargetSelector": "0x5dfc2e4a"
+                    },
+                    {
+                      "actionPolicies": [
+                        {
+                          "initData": "0x",
+                          "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                        }
+                      ],
+                      "actionTarget": "0x4200000000000000000000000000000000000006",
+                      "actionTargetSelector": "0xd0e30db0"
+                    },
+                    {
+                      "actionPolicies": [
+                        {
+                          "initData": "0x",
+                          "policy": "0xe9ea54d063975cdee9e06b7636d5563d95a7a23c"
+                        }
+                      ],
+                      "actionTarget": "0x0000000000000000000000000000000000000001",
+                      "actionTargetSelector": "0x00000001"
+                    },
+                    {
+                      "actionPolicies": [
+                        {
+                          "initData": "0x",
+                          "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                        }
+                      ],
+                      "actionTarget": "0x0000000000000000000000000000000000000420",
+                      "actionTargetSelector": "0x69123456"
+                    }
+                  ],
+                  "erc7739Policies": {
+                    "allowedERC7739Content": [
+                      {
+                        "appDomainSeparator": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "contentName": [""]
+                      }
+                    ],
+                    "erc1271Policies": [
+                      {
+                        "initData": "0x",
+                        "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                      }
+                    ]
+                  },
+                  "lockTagPolicies": {
+                    "claimPolicies": [],
+                    "lockTag": "0x000000000000000000000000"
+                  },
+                  "permitGenericPolicy": true
+                },
+                "salt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "sessionValidator": "0x000000000013fdb5234e4e3162a810f54d9f7e98",
+                "sessionValidatorInitData": "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000036c44f24f66739f4c1ead544c9ca6f5288d55f15",
+                "smartSessionEmissary": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89"
+              }
+            }
+          ]
+        },
+        "primaryType": "MultiChainSession",
+        "roleKey": "MultiChainSession@-#0",
+        "signer": "owner",
+        "types": {
+          "ActionData": [
+            {
+              "name": "actionTargetSelector",
+              "type": "bytes4"
+            },
+            {
+              "name": "actionTarget",
+              "type": "address"
+            },
+            {
+              "name": "actionPolicies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "ChainSession": [
+            {
+              "name": "chainId",
+              "type": "uint64"
+            },
+            {
+              "name": "session",
+              "type": "SignedSession"
+            }
+          ],
+          "ERC7739Context": [
+            {
+              "name": "appDomainSeparator",
+              "type": "bytes32"
+            },
+            {
+              "name": "contentName",
+              "type": "string[]"
+            }
+          ],
+          "ERC7739Data": [
+            {
+              "name": "allowedERC7739Content",
+              "type": "ERC7739Context[]"
+            },
+            {
+              "name": "erc1271Policies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "LockTagData": [
+            {
+              "name": "lockTag",
+              "type": "bytes12"
+            },
+            {
+              "name": "claimPolicies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "MultiChainSession": [
+            {
+              "name": "sessionsAndChainIds",
+              "type": "ChainSession[]"
+            }
+          ],
+          "PolicyData": [
+            {
+              "name": "policy",
+              "type": "address"
+            },
+            {
+              "name": "initData",
+              "type": "bytes"
+            }
+          ],
+          "SignedPermissions": [
+            {
+              "name": "actions",
+              "type": "ActionData[]"
+            },
+            {
+              "name": "erc7739Policies",
+              "type": "ERC7739Data"
+            },
+            {
+              "name": "lockTagPolicies",
+              "type": "LockTagData"
+            },
+            {
+              "name": "permitGenericPolicy",
+              "type": "bool"
+            }
+          ],
+          "SignedSession": [
+            {
+              "name": "account",
+              "type": "address"
+            },
+            {
+              "name": "expires",
+              "type": "uint256"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "permissions",
+              "type": "SignedPermissions"
+            },
+            {
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "name": "sessionValidator",
+              "type": "address"
+            },
+            {
+              "name": "sessionValidatorInitData",
+              "type": "bytes"
+            },
+            {
+              "name": "smartSessionEmissary",
+              "type": "address"
+            }
+          ]
+        }
+      }
+    ],
+    "signedRaw": [
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#0>"
+          }
+        },
+        "roleKey": "signMessage#0",
+        "signer": "session"
+      },
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#1>"
+          }
+        },
+        "roleKey": "signMessage#1",
+        "signer": "session"
+      },
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#0>"
+          }
+        },
+        "roleKey": "signMessage#2",
+        "signer": "session"
+      },
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#1>"
+          }
+        },
+        "roleKey": "signMessage#3",
+        "signer": "session"
+      },
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#4>"
+          }
+        },
+        "roleKey": "signMessage#4",
+        "signer": "session"
+      }
+    ]
+  }
+}

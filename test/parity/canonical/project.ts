@@ -1,9 +1,21 @@
-import type { HttpRecord, RunRecords, StepRecord } from '../context'
+import type {
+  HttpRecord,
+  IdentityRecord,
+  RunRecords,
+  StepRecord,
+} from '../context'
 import type { ApiVersion, Op } from '../routing'
 import { alps } from './alps'
 import { blanc } from './blanc'
 import { asRecord, compact, lowerHex, type ReadOp, readParams } from './common'
-import { createTemplater, templateDeep, templateSignatures } from './signatures'
+import {
+  createTemplater,
+  signerIdentities,
+  type Templater,
+  templateDeep,
+  templateIdentities,
+  templateSignatures,
+} from './signatures'
 import type { CanonicalLayers, VersionAdapter } from './types'
 
 const ADAPTERS: Record<ApiVersion, VersionAdapter> = { alps, blanc }
@@ -61,8 +73,11 @@ function isOk(record: HttpRecord): boolean {
   return record.status >= 200 && record.status < 300
 }
 
-function projectTypedData(records: RunRecords, steps: StepRecord[]) {
-  const templater = createTemplater(records.signer)
+function projectTypedData(
+  records: RunRecords,
+  steps: StepRecord[],
+  templater: Templater,
+) {
   const publicMessages = byStep(
     steps
       .filter((step) => step.kind === 'messages' && step.ok)
@@ -103,8 +118,7 @@ function projectTypedData(records: RunRecords, steps: StepRecord[]) {
   })
 }
 
-function projectSignatures(records: RunRecords, steps: StepRecord[]) {
-  const templater = createTemplater(records.signer)
+function projectSignatures(steps: StepRecord[], templater: Templater) {
   return byStep(
     steps
       .filter((step) => step.kind === 'sign' && step.ok)
@@ -240,8 +254,25 @@ function projectTraffic(records: RunRecords) {
 }
 
 function project(records: RunRecords): CanonicalLayers {
+  const declared = records.identities ?? []
+  const identities = [
+    ...declared,
+    ...signerIdentities(declared, records.signer),
+  ]
+  const layers = projectLayers(records, identities)
+  if (identities.length === 0) return layers
+  const out = {} as CanonicalLayers
+  for (const [layer, value] of Object.entries(layers))
+    out[layer as keyof CanonicalLayers] = templateIdentities(value, identities)
+  return out
+}
+
+function projectLayers(
+  records: RunRecords,
+  identities: readonly IdentityRecord[],
+): CanonicalLayers {
   const steps = records.steps
-  const templater = createTemplater(records.signer)
+  const templater = createTemplater(records.signer, identities)
   const quotes = records.http.filter((r) => r.op === 'quote')
   const submits = records.http.filter((r) => r.op === 'submit')
   return {
@@ -251,8 +282,8 @@ function project(records: RunRecords): CanonicalLayers {
         value: adapterFor(r.apiVersion).quoteRequest(r.requestBody),
       })),
     ),
-    typedData: projectTypedData(records, steps),
-    signatures: projectSignatures(records, steps),
+    typedData: projectTypedData(records, steps, templater),
+    signatures: projectSignatures(steps, templater),
     submitRequest: byStep(
       submits.map((r) => ({
         step: r.step,

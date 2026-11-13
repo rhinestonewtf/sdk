@@ -29,6 +29,10 @@ interface SdkAccount {
   sendTransaction(transaction: unknown): Promise<unknown>
   signAuthorizations(prepared: unknown): Promise<unknown>
   signEip7702InitData(): Promise<Hex>
+  isDeployed(chain: Chain): Promise<boolean>
+  experimental_getSessionDetails(sessions: unknown[]): Promise<unknown>
+  experimental_signEnableSession(details: unknown): Promise<Hex>
+  experimental_isSessionEnabled(session: unknown): Promise<boolean>
 }
 
 interface SdkInstance {
@@ -47,6 +51,7 @@ interface SdkRoot {
     apiKey?: string
     auth?: unknown
     endpointUrl?: string
+    provider?: unknown
   }) => SdkInstance
   getTokenAddress(symbol: string, chainId: number): Address
 }
@@ -134,5 +139,26 @@ async function loadBuild(id: BuildId): Promise<LoadedBuild> {
 
 type BuildLoader = (id: BuildId) => Promise<LoadedBuild>
 
-export type { BuildLoader, LoadedBuild, SdkAccount, SdkInstance, SdkRoot }
-export { loadBuild }
+type TokenRequirements = Record<
+  string,
+  Record<string, { type: string; amount?: bigint | string }>
+>
+
+// Reads the alps-shaped `prepared.intentRoute.tokenRequirements` (wrap and
+// approval requirements an EOA must meet before submitting). RHI-9152 changes
+// the prepared shape and must keep this working for blanc candidates.
+function tokenRequirementsOf(prepared: unknown): TokenRequirements {
+  const route = (prepared as { intentRoute?: { tokenRequirements?: unknown } })
+    ?.intentRoute
+  return (route?.tokenRequirements ?? {}) as TokenRequirements
+}
+
+export type {
+  BuildLoader,
+  LoadedBuild,
+  SdkAccount,
+  SdkInstance,
+  SdkRoot,
+  TokenRequirements,
+}
+export { loadBuild, tokenRequirementsOf }

@@ -13,6 +13,9 @@ interface ParityConfig {
   repeat: number
   fault: Fault | undefined
   updateGoldens: boolean
+  // Funded scenarios submit for real; they run only against prod.
+  funded: boolean
+  settleTimeoutMs: number
 }
 
 const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
@@ -54,6 +57,12 @@ function loadConfig(
       `PARITY_REPEAT must be a positive integer; got "${env.PARITY_REPEAT}"`,
     )
   }
+  const settleTimeoutMs = Number(env.PARITY_SETTLE_TIMEOUT_MS || '600000')
+  if (!Number.isInteger(settleTimeoutMs) || settleTimeoutMs < 1) {
+    throw new Error(
+      `PARITY_SETTLE_TIMEOUT_MS must be a positive integer; got "${env.PARITY_SETTLE_TIMEOUT_MS}"`,
+    )
+  }
   return {
     apiKey,
     env: parityEnv,
@@ -67,6 +76,8 @@ function loadConfig(
     repeat,
     fault: env.PARITY_FAULT ? getFault(env.PARITY_FAULT) : undefined,
     updateGoldens: env.PARITY_UPDATE_GOLDENS === '1',
+    funded: env.PARITY_FUNDED !== '0',
+    settleTimeoutMs,
   }
 }
 

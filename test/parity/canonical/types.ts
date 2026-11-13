@@ -78,6 +78,8 @@ interface VersionAdapter {
   cost(responseBody: unknown, requestBody: unknown): CanonicalCost | undefined
   wireError(status: number, body: unknown): CanonicalWireError
   submitStub(body: unknown): { status: number; body: unknown }
+  // The intent id a successful submit response carries.
+  submittedIntentId(responseBody: unknown): string | undefined
 }
 
 export type {

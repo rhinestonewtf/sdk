@@ -1,0 +1,619 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "ERC7579",
+        "address": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+        "mockSignature": "0xad568b3f825a8d5ffc06dd3253526b64d810ae8901010000e0140100c0e0141de019000006e017221f7ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999e0153f010740e0151f0100802003e0130001c0ffe01600e0133c02000001e0177f00202024e033000041e0333ce05a000060e01663e2173f0001e0143f02aa37dce0141fe00b000e13fdb5234e4e3162a810f54d9f7e98e00b22e00200e0179fe016000001e016ff0102a0e015400002e0177fe217bfe1153f010000e2179fe0043f1336c44f24f66739f4c1ead544c9ca6f5288d55f152043e01300e0043fe00a0042ffe01723e01300e0173be1167fe0183f409fe003000f3111cd8e92337c100f22b7a9dbf8dee3e0177fe1175fe03700e0165f0001e007bfe00700e017bfe0173fe01700e0169fe0587fe027dfe167dfe553bf040000000000",
+        "mockSignatures": {
+          "84532": "0xad568b3f825a8d5ffc06dd3253526b64d810ae8901010000e0140100c0e0141de019000006e017221f7ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999e0153f010740e0151f0100802003e0130001c0ffe01600e0133c02000001e0177f00202024e033000041e0333ce05a000060e01663e2173f0001e0143f02014a34e0141fe00b000e13fdb5234e4e3162a810f54d9f7e98e00b22e00200e0179fe016000001e016ff0102a0e015400002e0177fe217bfe1153f010000e2179fe0043f1336c44f24f66739f4c1ead544c9ca6f5288d55f152043e01300e0043fe00a0042ffe01723e01300e0173be1167fe0183f409fe003000f3111cd8e92337c100f22b7a9dbf8dee3e0177fe1175fe03700e0165f0001e007bfe00700e017bfe0173fe01700e0169fe0587fe027dfe167dfe553bf040000000000",
+          "11155420": "0xad568b3f825a8d5ffc06dd3253526b64d810ae8901010000e0140100c0e0141de019000006e017221f7ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb6076975999e0153f010740e0151f0100802003e0130001c0ffe01600e0133c02000001e0177f00202024e033000041e0333ce05a000060e01663e2173f0001e0143f02aa37dce0141fe00b000e13fdb5234e4e3162a810f54d9f7e98e00b22e00200e0179fe016000001e016ff0102a0e015400002e0177fe217bfe1153f010000e2179fe0043f1336c44f24f66739f4c1ead544c9ca6f5288d55f152043e01300e0043fe00a0042ffe01723e01300e0173be1167fe0183f409fe003000f3111cd8e92337c100f22b7a9dbf8dee3e0177fe1175fe03700e0165f0001e007bfe00700e017bfe0173fe01700e0169fe0587fe027dfe167dfe553bf040000000000"
+        },
+        "setupOps": [
+          {
+            "data": "0xea6d13ac0000000000000000000000000000000000000000000000000000000000000040c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a47000000000000000000000000000000000000000000000000000000000000003c000000000000000000000000000000000006efb61d8c9546ff1b500de3f244ea70000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000034441bede0300000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000032000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000a536fad1c092c9ec93ccdc7ca5f4ced14c9cde700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000ad568b3f825a8d5ffc06dd3253526b64d810ae89000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "to": "0x0000000000679a258c64d2f20f310e12b64b7375"
+          }
+        ]
+      },
+      "accountAccessList": {
+        "chainIds": [11155420]
+      },
+      "destinationChainId": 84532,
+      "destinationExecutions": [],
+      "options": {
+        "settlementLayers": {
+          "include": ["ACROSS"]
+        },
+        "signatureMode": 1,
+        "sponsorSettings": {
+          "bridgeFees": true,
+          "gas": true,
+          "protocolFees": true,
+          "swapFees": true
+        },
+        "topupCompact": false
+      },
+      "preClaimExecutions": {
+        "11155420": [
+          {
+            "data": "0x5dfc2e4a",
+            "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+            "value": "0"
+          }
+        ]
+      },
+      "tokenRequests": [
+        {
+          "amount": "50000",
+          "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+        }
+      ]
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 150,
+        "template": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>"
+      },
+      "origin": [
+        {
+          "byteLength": 150,
+          "template": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>"
+        }
+      ]
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>",
+        "origin": [
+          "0xad568b3f825a8d5ffc06dd3253526b64d810ae89007ea2f5d2adfe4ba5a8448a808530efdb46292fe3828039214443cb60769759990000000000000000000000000000000000000000000000000000000000000081<sig:signMessage#0.r><sig:signMessage#0.s><sig:signMessage#0.v+4>"
+        ]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit [x-api-key]"],
+      "step": "submit"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "wait"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 11155420,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": "0x5dfc2e4a",
+                    "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                    "value": "<~typed-data.origin-op-value>"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+                "targetChain": "84532n",
+                "tokenOut": [
+                  {
+                    "amount": "50000n",
+                    "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+              }
+            ],
+            "spender": "0x28a4d41776968c1201a807ec51ffb405362b8882"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "origin[0]",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 11155420,
+            "name": "Permit2",
+            "verifyingContract": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+          },
+          "message": {
+            "deadline": "<time>",
+            "mandate": {
+              "destOps": {
+                "ops": [],
+                "vt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "minGas": "0n",
+              "originOps": {
+                "ops": [
+                  {
+                    "data": "0x5dfc2e4a",
+                    "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                    "value": "<~typed-data.origin-op-value>"
+                  }
+                ],
+                "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+              },
+              "q": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+              "target": {
+                "fillExpiry": "<time>",
+                "recipient": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+                "targetChain": "84532n",
+                "tokenOut": [
+                  {
+                    "amount": "50000n",
+                    "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+                  }
+                ]
+              }
+            },
+            "nonce": "<nonce>",
+            "permitted": [
+              {
+                "amount": "<~typed-data.permit-amounts>",
+                "token": "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+              }
+            ],
+            "spender": "0x28a4d41776968c1201a807ec51ffb405362b8882"
+          },
+          "primaryType": "PermitBatchWitnessTransferFrom",
+          "role": "destination",
+          "types": {
+            "Mandate": [
+              {
+                "name": "target",
+                "type": "Target"
+              },
+              {
+                "name": "minGas",
+                "type": "uint128"
+              },
+              {
+                "name": "originOps",
+                "type": "Op"
+              },
+              {
+                "name": "destOps",
+                "type": "Op"
+              },
+              {
+                "name": "q",
+                "type": "bytes32"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "PermitBatchWitnessTransferFrom": [
+              {
+                "name": "permitted",
+                "type": "TokenPermissions[]"
+              },
+              {
+                "name": "spender",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "deadline",
+                "type": "uint256"
+              },
+              {
+                "name": "mandate",
+                "type": "Mandate"
+              }
+            ],
+            "Target": [
+              {
+                "name": "recipient",
+                "type": "address"
+              },
+              {
+                "name": "tokenOut",
+                "type": "Token[]"
+              },
+              {
+                "name": "targetChain",
+                "type": "uint256"
+              },
+              {
+                "name": "fillExpiry",
+                "type": "uint256"
+              }
+            ],
+            "Token": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "TokenPermissions": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "name": "SmartSessionEmissary",
+          "version": "1"
+        },
+        "message": {
+          "sessionsAndChainIds": [
+            {
+              "chainId": "11155420n",
+              "session": {
+                "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+                "expires": "<time>",
+                "nonce": "<nonce>",
+                "permissions": {
+                  "actions": [
+                    {
+                      "actionPolicies": [
+                        {
+                          "initData": "0x",
+                          "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                        }
+                      ],
+                      "actionTarget": "0x0000000000000000000000000000000000000001",
+                      "actionTargetSelector": "0x00000001"
+                    }
+                  ],
+                  "erc7739Policies": {
+                    "allowedERC7739Content": [
+                      {
+                        "appDomainSeparator": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "contentName": [""]
+                      }
+                    ],
+                    "erc1271Policies": [
+                      {
+                        "initData": "0x",
+                        "policy": "0x0000003111cd8e92337c100f22b7a9dbf8dee301"
+                      }
+                    ]
+                  },
+                  "lockTagPolicies": {
+                    "claimPolicies": [],
+                    "lockTag": "0x000000000000000000000000"
+                  },
+                  "permitGenericPolicy": true
+                },
+                "salt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "sessionValidator": "0x000000000013fdb5234e4e3162a810f54d9f7e98",
+                "sessionValidatorInitData": "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000036c44f24f66739f4c1ead544c9ca6f5288d55f15",
+                "smartSessionEmissary": "0xad568b3f825a8d5ffc06dd3253526b64d810ae89"
+              }
+            }
+          ]
+        },
+        "primaryType": "MultiChainSession",
+        "roleKey": "MultiChainSession@-#0",
+        "signer": "owner",
+        "types": {
+          "ActionData": [
+            {
+              "name": "actionTargetSelector",
+              "type": "bytes4"
+            },
+            {
+              "name": "actionTarget",
+              "type": "address"
+            },
+            {
+              "name": "actionPolicies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "ChainSession": [
+            {
+              "name": "chainId",
+              "type": "uint64"
+            },
+            {
+              "name": "session",
+              "type": "SignedSession"
+            }
+          ],
+          "ERC7739Context": [
+            {
+              "name": "appDomainSeparator",
+              "type": "bytes32"
+            },
+            {
+              "name": "contentName",
+              "type": "string[]"
+            }
+          ],
+          "ERC7739Data": [
+            {
+              "name": "allowedERC7739Content",
+              "type": "ERC7739Context[]"
+            },
+            {
+              "name": "erc1271Policies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "LockTagData": [
+            {
+              "name": "lockTag",
+              "type": "bytes12"
+            },
+            {
+              "name": "claimPolicies",
+              "type": "PolicyData[]"
+            }
+          ],
+          "MultiChainSession": [
+            {
+              "name": "sessionsAndChainIds",
+              "type": "ChainSession[]"
+            }
+          ],
+          "PolicyData": [
+            {
+              "name": "policy",
+              "type": "address"
+            },
+            {
+              "name": "initData",
+              "type": "bytes"
+            }
+          ],
+          "SignedPermissions": [
+            {
+              "name": "actions",
+              "type": "ActionData[]"
+            },
+            {
+              "name": "erc7739Policies",
+              "type": "ERC7739Data"
+            },
+            {
+              "name": "lockTagPolicies",
+              "type": "LockTagData"
+            },
+            {
+              "name": "permitGenericPolicy",
+              "type": "bool"
+            }
+          ],
+          "SignedSession": [
+            {
+              "name": "account",
+              "type": "address"
+            },
+            {
+              "name": "expires",
+              "type": "uint256"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "permissions",
+              "type": "SignedPermissions"
+            },
+            {
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "name": "sessionValidator",
+              "type": "address"
+            },
+            {
+              "name": "sessionValidatorInitData",
+              "type": "bytes"
+            },
+            {
+              "name": "smartSessionEmissary",
+              "type": "address"
+            }
+          ]
+        }
+      }
+    ],
+    "signedRaw": [
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#0>"
+          }
+        },
+        "roleKey": "signMessage#0",
+        "signer": "session"
+      },
+      {
+        "method": "signMessage",
+        "payload": {
+          "message": {
+            "raw": "0x<raw:signMessage#0>"
+          }
+        },
+        "roleKey": "signMessage#1",
+        "signer": "session"
+      }
+    ]
+  }
+}

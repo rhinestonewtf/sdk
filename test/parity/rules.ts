@@ -78,6 +78,15 @@ const RULES: Rule[] = [
       'Permit2 batch amounts an EOA approves cover the price-derived input; tokens and spender stay exact.',
   },
   {
+    id: 'typed-data.origin-op-value',
+    layer: 'typedData',
+    path: '**/message/mandate/originOps/ops/*/value',
+    kind: 'tolerance',
+    relative: AMOUNT_TOLERANCE,
+    reason:
+      'Native input an EOA wraps into WETH before the claim includes price-derived fees (the value steps.intent-op.pre-claim-value covers).',
+  },
+  {
     id: 'typed-data.source-amounts',
     layer: 'typedData',
     path: '**/(idsAndAmounts|spendTokens)/*/1',
@@ -199,6 +208,15 @@ const RULES: Rule[] = [
       'The bridge fill output is rounded from price-derived amounts (a max-out request receives the balance minus fees).',
   },
   {
+    id: 'steps.token-requirements.permit-nonce',
+    layer: 'steps',
+    path: '*/value/intentRoute/tokenRequirements/*/*/permit/message/nonce',
+    kind: 'mask',
+    label: 'nonce',
+    reason:
+      'The token’s ERC-2612 nonce advances with every executed permit, so each build’s quote offers the next one.',
+  },
+  {
     id: 'steps.token-requirements.permit-deadline',
     layer: 'steps',
     path: '*/value/intentRoute/tokenRequirements/*/*/permit/message/deadline',
@@ -237,19 +255,32 @@ const RULES: Rule[] = [
     path: '*/value/intentRoute/intentCost/sponsorFee/(protocol|relayer)',
     kind: 'tolerance',
     relative: 0.1,
+    absolute: 0.02,
     presence: true,
     reason:
-      'USD sponsor fees follow live gas prices; whether one is charged must match.',
+      'USD sponsor fees follow live gas prices, which move between two funded sides; whether one is charged must match.',
   },
   {
     id: 'steps.intent-op.sponsor-fee',
     layer: 'steps',
-    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|plannedGasPrincipalMicroUsd|surchargeBaseUsd|surchargeUsd)',
+    path: '*/value/intentRoute/intentOp/signedMetadata/(accounting|fees)/sponsorFee/(protocol|relayer|surchargeBaseUsd|surchargeUsd)',
     kind: 'tolerance',
     relative: 0.1,
+    absolute: 0.02,
     presence: true,
     reason:
-      'Sponsored gas and its surcharge follow live gas prices; the surcharge rate and subsidies stay exact.',
+      'Sponsored gas and its surcharge in USD follow live gas prices, which move between two funded sides; the surcharge rate and subsidies stay exact.',
+  },
+  {
+    id: 'steps.intent-op.sponsor-gas-principal',
+    layer: 'steps',
+    path: '*/value/intentRoute/intentOp/signedMetadata/accounting/sponsorFee/(plannedGasPrincipalMicroUsd|plannedFillGasPrincipalMicroUsd)',
+    kind: 'tolerance',
+    relative: 0.1,
+    absolute: 20_000,
+    presence: true,
+    reason:
+      'Planned sponsored gas in micro-USD follows live gas prices; the floor matches the 0.02 USD of the other fee rules.',
   },
   {
     id: 'steps.intent-cost.fees',
@@ -279,6 +310,22 @@ const RULES: Rule[] = [
     kind: 'tolerance',
     relative: AMOUNT_TOLERANCE,
     reason: 'Fee token USD price at quote time.',
+  },
+  {
+    id: 'steps.wait.fill-hash',
+    layer: 'steps',
+    path: '*/value/fill/hash',
+    kind: 'mask',
+    label: 'tx-hash',
+    reason: 'Each execution lands in its own fill transaction.',
+  },
+  {
+    id: 'steps.wait.claim-hash',
+    layer: 'steps',
+    path: '*/value/claims/*/hash',
+    kind: 'ignore',
+    reason:
+      'A claim hash appears only once the claim lands; whether polling stopped at FILLED or COMPLETED is relayer timing.',
   },
   {
     id: 'cost.inputs',

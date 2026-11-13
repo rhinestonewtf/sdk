@@ -135,3 +135,50 @@ describe('quote.drop-optional-fields', () => {
     ).toEqual(body)
   })
 })
+
+describe('submit.corrupt-origin-signature', () => {
+  const fault = getFault('submit.corrupt-origin-signature')
+
+  test('flips the last byte of the first alps origin signature', () => {
+    const body = {
+      signedIntentOp: {
+        originSignatures: ['0x1234ab', '0x99'],
+        destinationSignature: '0x1234ab',
+      },
+    }
+    expect(fault.transform(structuredClone(body), 'alps')).toEqual({
+      signedIntentOp: {
+        originSignatures: ['0x123454', '0x99'],
+        destinationSignature: '0x1234ab',
+      },
+    })
+  })
+
+  test('corrupts the notarized claim signature of a session pair', () => {
+    const body = {
+      signedIntentOp: {
+        originSignatures: [
+          { preClaimSig: '0x01', notarizedClaimSig: '0x00ff' },
+        ],
+      },
+    }
+    expect(fault.transform(structuredClone(body), 'alps')).toEqual({
+      signedIntentOp: {
+        originSignatures: [
+          { preClaimSig: '0x01', notarizedClaimSig: '0x0000' },
+        ],
+      },
+    })
+  })
+
+  test('flips the first blanc origin signature', () => {
+    const body = { signatures: { origin: ['0x0a1b'], destination: '0x0a1b' } }
+    expect(fault.transform(structuredClone(body), 'blanc')).toEqual({
+      signatures: { origin: ['0x0ae4'], destination: '0x0a1b' },
+    })
+  })
+
+  test('applies to submits only', () => {
+    expect(fault.op).toBe('submit')
+  })
+})

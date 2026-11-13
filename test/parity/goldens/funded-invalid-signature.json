@@ -1,0 +1,357 @@
+{
+  "quoteRequest": {
+    "prepare": {
+      "account": {
+        "accountType": "ERC7579",
+        "address": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+        "setupOps": []
+      },
+      "accountAccessList": {
+        "chainIds": [84532]
+      },
+      "destinationChainId": 84532,
+      "destinationExecutions": [
+        {
+          "data": "0x5dfc2e4a",
+          "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+          "value": "0"
+        }
+      ],
+      "options": {
+        "signatureMode": 1,
+        "sponsorSettings": {
+          "bridgeFees": true,
+          "gas": true,
+          "protocolFees": true,
+          "swapFees": true
+        },
+        "topupCompact": false
+      },
+      "tokenRequests": []
+    }
+  },
+  "signatures": {
+    "sign": {
+      "destination": {
+        "byteLength": 85,
+        "template": "0x0000000000000000000000000000000000000000<sig:SingleChainOps@84532#0>"
+      },
+      "origin": [
+        {
+          "byteLength": 85,
+          "template": "0x0000000000000000000000000000000000000000<sig:SingleChainOps@84532#0>"
+        }
+      ]
+    }
+  },
+  "steps": {
+    "submit": {
+      "kind": "submit",
+      "ok": true,
+      "value": {
+        "refused": {
+          "category": "INVALID_SIGNATURE",
+          "ctor": "OrchestratorError",
+          "errorName": "InvalidSignature()",
+          "errorSelector": "0x8baa579f",
+          "errorType": "Bad Request",
+          "message": "Simulation failed: InvalidSignature()",
+          "name": "Error",
+          "retryable": false,
+          "statusCode": 400
+        }
+      }
+    }
+  },
+  "submitRequest": {
+    "submit": {
+      "quoteRef": "<quote>",
+      "signatures": {
+        "destination": "0x0000000000000000000000000000000000000000<sig:SingleChainOps@84532#0>",
+        "origin": [
+          "0x0000000000000000000000000000000000000000<sig:SingleChainOps@84532#0>"
+        ]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["quote [x-api-key]"],
+      "step": "prepare"
+    },
+    {
+      "ops": ["submit [x-api-key]"],
+      "step": "submit"
+    }
+  ],
+  "typedData": {
+    "public": {
+      "messages": [
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x0000000000000000000000000000000000000000"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": "0x5dfc2e4a",
+                  "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "origin[0]",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        },
+        {
+          "domain": {
+            "chainId": 84532,
+            "name": "IntentExecutor",
+            "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+            "version": "v0.0.1"
+          },
+          "message": {
+            "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+            "gasRefund": {
+              "exchangeRate": "<~typed-data.gas-refund>",
+              "overhead": "<~typed-data.gas-refund>",
+              "token": "0x0000000000000000000000000000000000000000"
+            },
+            "nonce": "<nonce>",
+            "op": {
+              "ops": [
+                {
+                  "data": "0x5dfc2e4a",
+                  "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                  "value": "0"
+                }
+              ],
+              "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "primaryType": "SingleChainOps",
+          "role": "destination",
+          "types": {
+            "GasRefund": [
+              {
+                "name": "token",
+                "type": "address"
+              },
+              {
+                "name": "exchangeRate",
+                "type": "uint256"
+              },
+              {
+                "name": "overhead",
+                "type": "uint256"
+              }
+            ],
+            "Op": [
+              {
+                "name": "vt",
+                "type": "bytes32"
+              },
+              {
+                "name": "ops",
+                "type": "Ops[]"
+              }
+            ],
+            "Ops": [
+              {
+                "name": "to",
+                "type": "address"
+              },
+              {
+                "name": "value",
+                "type": "uint256"
+              },
+              {
+                "name": "data",
+                "type": "bytes"
+              }
+            ],
+            "SingleChainOps": [
+              {
+                "name": "account",
+                "type": "address"
+              },
+              {
+                "name": "nonce",
+                "type": "uint256"
+              },
+              {
+                "name": "op",
+                "type": "Op"
+              },
+              {
+                "name": "gasRefund",
+                "type": "GasRefund"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "signed": [
+      {
+        "domain": {
+          "chainId": 84532,
+          "name": "IntentExecutor",
+          "verifyingContract": "0x00000000005ad9ce1f5035fd62ca96cef16adaaf",
+          "version": "v0.0.1"
+        },
+        "message": {
+          "account": "0xf2ef721498c691a5fcc84adf03e8676f7fe594c3",
+          "gasRefund": {
+            "exchangeRate": "<~typed-data.gas-refund>",
+            "overhead": "<~typed-data.gas-refund>",
+            "token": "0x0000000000000000000000000000000000000000"
+          },
+          "nonce": "<nonce>",
+          "op": {
+            "ops": [
+              {
+                "data": "0x5dfc2e4a",
+                "to": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                "value": "0"
+              }
+            ],
+            "vt": "0x0201000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "primaryType": "SingleChainOps",
+        "roleKey": "SingleChainOps@84532#0",
+        "signer": "owner2",
+        "types": {
+          "GasRefund": [
+            {
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "name": "exchangeRate",
+              "type": "uint256"
+            },
+            {
+              "name": "overhead",
+              "type": "uint256"
+            }
+          ],
+          "Op": [
+            {
+              "name": "vt",
+              "type": "bytes32"
+            },
+            {
+              "name": "ops",
+              "type": "Ops[]"
+            }
+          ],
+          "Ops": [
+            {
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "SingleChainOps": [
+            {
+              "name": "account",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "op",
+              "type": "Op"
+            },
+            {
+              "name": "gasRefund",
+              "type": "GasRefund"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

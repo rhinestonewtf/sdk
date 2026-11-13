@@ -2,8 +2,15 @@ import { keccak256 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
 import { als, createRunContext, type SignerRecord } from '../context'
+import { fixturePasskey } from '../funded/fixtures'
 import { recordingAccount } from '../signers'
-import { createTemplater, roleKeysFor, templateSignatures } from './signatures'
+import {
+  createTemplater,
+  roleKeysFor,
+  signerIdentities,
+  templateIdentities,
+  templateSignatures,
+} from './signatures'
 
 const VALIDATOR = '0x000000000013fdb5234e4e3162a810f54d9f7e98'
 
@@ -118,5 +125,101 @@ describe('signature templating', () => {
     expect(templateSignatures({ origin: [blob] }, templater)).toEqual({
       origin: [{ byteLength: 85, template: `${VALIDATOR}<sig:Op@84532#0>` }],
     })
+  })
+})
+
+describe('identity templating', () => {
+  const account = '0x1111111111111111111111111111111111111111'
+  const salt = `0x${'ab'.repeat(32)}`
+
+  test('replaces identities in values, keys and partly templated strings', () => {
+    const identities = [
+      { label: 'account', value: account },
+      { label: 'salt', value: salt },
+    ]
+    const value = {
+      address: account.toUpperCase().replace('0X', '0x'),
+      [account]: { data: `0xea6d${salt.slice(2)}00<sig:Op@1#0>` },
+      note: `not hex ${account}`,
+    }
+    expect(templateIdentities(value, identities)).toEqual({
+      address: '0x<id:account>',
+      '0x<id:account>': { data: '0xea6d<id:salt>00<sig:Op@1#0>' },
+      note: `not hex ${account}`,
+    })
+  })
+
+  test('a changed byte next to an identity still shows', () => {
+    const identities = [{ label: 'account', value: account }]
+    const a = templateIdentities(`0x00${account.slice(2)}`, identities)
+    const b = templateIdentities(`0x01${account.slice(2)}`, identities)
+    expect(a).not.toEqual(b)
+  })
+
+  test("a fresh signer's signatures and recovery bits become identities", async () => {
+    const ctx = createRunContext({
+      role: 'baseline',
+      submitMode: 'capture',
+      fault: undefined,
+      origins: [],
+    })
+    const key = privateKeyToAccount(generatePrivateKey())
+    const signer = recordingAccount(key, 'eoa')
+    const authorization = await als.run(ctx, () =>
+      signer.signAuthorization!({
+        chainId: 1,
+        contractAddress: account,
+        nonce: 0,
+      }),
+    )
+    const declared = [
+      { label: 'eoa', value: key.address.toLowerCase(), signer: true as const },
+    ]
+    const identities = [
+      ...declared,
+      ...signerIdentities(declared, ctx.records.signer),
+    ]
+    expect(
+      templateIdentities(
+        {
+          r: authorization.r,
+          s: authorization.s,
+          yParity: authorization.yParity,
+          v: '27n',
+        },
+        identities,
+      ),
+    ).toEqual({
+      r: '0x<id:eoa.sig#0.r>',
+      s: '0x<id:eoa.sig#0.s>',
+      yParity: '<id:recovery>',
+      v: '<id:recovery>',
+    })
+    // A fixed signer's recovery bit stays compared.
+    expect(
+      templateIdentities({ r: '0x01', s: '0x02', v: 27 }, identities),
+    ).toEqual({ r: '0x01', s: '0x02', v: 27 })
+  })
+})
+
+describe('WebAuthn templating', () => {
+  test('the challenge in clientDataJSON is templated; the rest stays exact', async () => {
+    const ctx = createRunContext({
+      role: 'baseline',
+      submitMode: 'capture',
+      fault: undefined,
+      origins: [],
+    })
+    const hash = keccak256('0x01')
+    const { webauthn } = await als.run(ctx, () =>
+      fixturePasskey().sign({ hash }),
+    )
+    const templater = createTemplater(ctx.records.signer)
+    const json = Buffer.from(webauthn.clientDataJSON, 'utf8').toString('hex')
+    const templated = templater.template(`0x${json}`)
+    expect(templated).toContain('<challenge:sign#0>')
+    expect(templated).toContain(
+      Buffer.from('"origin":"https://parity.rhinestone.test"').toString('hex'),
+    )
   })
 })

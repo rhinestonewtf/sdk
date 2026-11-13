@@ -183,6 +183,123 @@ describe('normalization rules', () => {
   })
 })
 
+describe('funded execution rules', () => {
+  test('sponsored gas fees compare within an absolute floor, and must both be charged or not', () => {
+    const quote = (usd: number, microUsd: number) => ({
+      prepare: {
+        value: {
+          intentRoute: {
+            intentCost: { sponsorFee: { relayer: usd } },
+            intentOp: {
+              signedMetadata: {
+                accounting: {
+                  sponsorFee: {
+                    surchargeUsd: usd,
+                    plannedGasPrincipalMicroUsd: microUsd,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const run = (a: unknown, b: unknown) =>
+      compare(
+        'steps',
+        normalizeLayer('steps', a, RULES, {}),
+        normalizeLayer('steps', b, RULES, {}),
+      )
+    expect(run(quote(0.0139, 5918), quote(0.0159, 7932))).toEqual([])
+    expect(run(quote(0.0139, 5918), quote(0.05, 40_000))).toHaveLength(3)
+    expect(run(quote(0, 0), quote(0.001, 1000))).toHaveLength(3)
+  })
+
+  test('a wrapped native origin-op value compares within tolerance', () => {
+    const op = (value: string) =>
+      typedDataWith({
+        mandate: { originOps: { ops: [{ to: '0x42', value }] } },
+      })
+    const run = (a: string, b: string) =>
+      compare(
+        'typedData',
+        normalizeLayer('typedData', op(a), RULES, {}),
+        normalizeLayer('typedData', op(b), RULES, {}),
+      )
+    expect(run('15368872988263', '15364553240671')).toEqual([])
+    expect(run('15368872988263', '20000000000000')).toMatchObject([
+      { kind: 'out-of-tolerance' },
+    ])
+  })
+
+  const steps = (wait: unknown, permitNonce: string) => ({
+    wait: { kind: 'wait', ok: true, value: wait },
+    prepare: {
+      kind: 'prepare',
+      ok: true,
+      value: {
+        intentRoute: {
+          tokenRequirements: {
+            84532: {
+              '0x036cbd53842c5426634e7929541ec2318f3dcf7e': {
+                type: 'approval',
+                permit: { message: { nonce: permitNonce, value: '1' } },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  const run = (a: unknown, b: unknown) =>
+    compare(
+      'steps',
+      normalizeLayer('steps', a, RULES, {}),
+      normalizeLayer('steps', b, RULES, {}),
+    )
+
+  test('fill hashes, claim hashes and permit nonces vary per execution', () => {
+    const hits = {}
+    normalizeLayer(
+      'steps',
+      steps({ fill: { hash: '0xaa', chainId: 1 }, claims: [] }, '0'),
+      RULES,
+      hits,
+    )
+    expect(hits).toMatchObject({
+      'steps.wait.fill-hash': 1,
+      'steps.token-requirements.permit-nonce': 1,
+    })
+    expect(
+      run(
+        steps(
+          { fill: { hash: '0xaa', chainId: 1 }, claims: [{ chainId: 2 }] },
+          '0',
+        ),
+        steps(
+          {
+            fill: { hash: '0xbb', chainId: 1 },
+            claims: [{ hash: '0xcc', chainId: 2 }],
+          },
+          '1',
+        ),
+      ),
+    ).toEqual([])
+  })
+
+  test('the fill chain, the number of claims and the permit itself stay exact', () => {
+    expect(
+      run(
+        steps({ fill: { hash: '0xaa', chainId: 1 }, claims: [] }, '0'),
+        steps(
+          { fill: { hash: '0xaa', chainId: 2 }, claims: [{ chainId: 2 }] },
+          '0',
+        ),
+      ).map((diff) => diff.path),
+    ).toEqual(['/wait/value/claims/0', '/wait/value/fill/chainId'])
+  })
+})
+
 describe('compare', () => {
   test('reports missing, extra, type and changed', () => {
     expect(

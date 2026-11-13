@@ -69,14 +69,25 @@ interface StepRecord {
   harness?: true
 }
 
+// A value that differs between sides by construction (a fresh account or
+// salt per build); projection replaces it with `<id:label>`.
+interface IdentityRecord {
+  label: string
+  value: string
+  // A fresh signer: its signatures differ per side too.
+  signer?: true
+}
+
 interface RunRecords {
   http: HttpRecord[]
   signer: SignerRecord[]
   steps: StepRecord[]
+  identities?: IdentityRecord[]
 }
 
 interface RunContext {
-  role: 'baseline' | 'candidate'
+  // `warmup` runs settle fixture state and are never compared.
+  role: 'baseline' | 'candidate' | 'warmup'
   step: string | undefined
   submitMode: SubmitMode
   fault: Fault | undefined
@@ -103,12 +114,13 @@ function createRunContext(
     ...init,
     step: undefined,
     seq: 0,
-    records: { http: [], signer: [], steps: [] },
+    records: { http: [], signer: [], steps: [], identities: [] },
   }
 }
 
 export type {
   HttpRecord,
+  IdentityRecord,
   RunContext,
   RunRecords,
   SignerRecord,

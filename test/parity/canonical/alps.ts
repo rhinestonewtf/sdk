@@ -200,6 +200,10 @@ const alps: VersionAdapter = {
       body: { result: { id: String(nonce), status: 'PENDING' } },
     }
   },
+  submittedIntentId(responseBody) {
+    const id = asRecord(asRecord(responseBody).result).id
+    return id === undefined || id === null ? undefined : String(id)
+  },
 }
 
 export { alps }
