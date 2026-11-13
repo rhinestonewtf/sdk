@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 import type { AuthProvider } from '../auth/provider'
 import { API_VERSION, BLANC_API_VERSION, SDK_VERSION } from './consts'
 import {
@@ -32,6 +32,7 @@ import type {
   IntentOpStatus,
   IntentResult,
   IntentRoute,
+  OriginSignature,
   Portfolio,
   Quote,
   SignedIntentOp,
@@ -132,9 +133,31 @@ export class Orchestrator {
     return quotesFromBlanc(json)
   }
 
-  /** Submits a signed quote on blanc (see `blancSubmitRequest` for the body). */
+  /**
+   * Submits a signed quote on blanc. Origin signatures follow the quote's
+   * `signData.origin` order; authorization chains are CAIP-2 (`eip155:<id>`).
+   */
   async createIntent(
-    request: Record<string, unknown>,
+    request: {
+      intentId: string
+      signatures: {
+        origin: OriginSignature[]
+        destination: Hex
+        targetExecution?: Hex
+        permits?: Record<number, Record<Address, Hex>>
+      }
+      authorizations?: {
+        sponsor: {
+          chainId: 0 | string
+          address: Address
+          nonce: number
+          yParity: number
+          r: Hex
+          s: Hex
+        }[]
+      }
+      options?: { dryRun: true }
+    },
     policyContext?: { intentInput: unknown; isSponsored: boolean },
   ): Promise<{ intentId: string }> {
     const headers = policyContext

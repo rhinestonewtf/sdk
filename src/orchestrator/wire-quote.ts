@@ -7,6 +7,7 @@ import type {
   TypedDataDefinition,
   TypedDataParameter,
 } from 'viem'
+import type { Orchestrator } from './client'
 import { OrchestratorError } from './error'
 import type {
   Account,
@@ -326,7 +327,7 @@ function blancSubmitRequest(input: {
   permitSignatures?: Record<number, Record<Address, Hex>>
   authorizations: SignedAuthorizationList
   dryRun: boolean
-}): Record<string, unknown> {
+}): Parameters<Orchestrator['createIntent']>[0] {
   const sponsor = input.authorizations.map((authorization) => ({
     chainId: authorizationChainId(authorization.chainId),
     address: authorization.address,
@@ -335,19 +336,17 @@ function blancSubmitRequest(input: {
     r: authorization.r,
     s: authorization.s,
   }))
-  return convertBigIntFields(
-    omitUndefined({
-      intentId: input.quote.intentId,
-      signatures: omitUndefined({
-        origin: input.originSignatures,
-        destination: input.destinationSignature,
-        targetExecution: input.targetExecutionSignature,
-        permits: input.permitSignatures,
-      }),
-      authorizations: sponsor.length > 0 ? { sponsor } : undefined,
-      options: input.dryRun ? { dryRun: true } : undefined,
+  return omitUndefined({
+    intentId: input.quote.intentId,
+    signatures: omitUndefined({
+      origin: input.originSignatures,
+      destination: input.destinationSignature,
+      targetExecution: input.targetExecutionSignature,
+      permits: input.permitSignatures,
     }),
-  )
+    authorizations: sponsor.length > 0 ? { sponsor } : undefined,
+    options: input.dryRun ? { dryRun: true as const } : undefined,
+  })
 }
 
 export type { BlancRoute }
