@@ -1181,7 +1181,10 @@ function assertSignableAcrossChains(
     new Error(
       `Cannot sign a multi-chain intent payload with ${validator}: it binds the chain id into the signed hash, so the signature would validate only on chain ${payloadChainId(payload)} and fail on the intent's legs on other chains`,
     )
-  if (config.owners?.type === 'quorum') {
+  if (
+    config.owners?.type === 'quorum' &&
+    (!signers || (signers.type === 'owner' && signers.kind === 'quorum'))
+  ) {
     throw chainBoundError('a quorum validator')
   }
   const validator = getValidator(config, signers)

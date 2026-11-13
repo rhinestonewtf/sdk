@@ -9,7 +9,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import { getEip712Domain, getTypedDataPackedSignature } from '../accounts'
 import { getOwnerValidator } from '../modules/validators'
-import { supportsEip712 } from '../modules/validators/core'
+import {
+  getSocialRecoveryValidator,
+  supportsEip712,
+} from '../modules/validators/core'
 import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
 import { getChainById } from '../orchestrator/registry'
 import type { Quote, SettlementLayer } from '../orchestrator/types'
@@ -467,6 +470,40 @@ describe('multi-chain intent signing', () => {
       expect(getTypedDataPackedSignature).not.toHaveBeenCalled()
     },
   )
+
+  test('rejects implicit quorum owners before signing', async () => {
+    await expect(signIntent(quorumConfig, recorded(), base)).rejects.toThrow(
+      'quorum validator',
+    )
+    expect(mockGetEip1271Signature).not.toHaveBeenCalled()
+    expect(mockSignQuorumHash).not.toHaveBeenCalled()
+  })
+
+  test('allows guardians on a quorum-owned account', async () => {
+    const guardianValidator = {
+      address: '0x4444444444444444444444444444444444444444',
+      type: 1,
+      initData: '0x',
+      deInitData: '0x',
+      additionalContext: '0x',
+    } as const
+    vi.mocked(getSocialRecoveryValidator).mockReturnValue(guardianValidator)
+    const guardians: SignerSet = {
+      type: 'guardians',
+      guardians: [accountA],
+    }
+    const result = await signIntent(quorumConfig, recorded(), base, guardians)
+    expect(result.originSignatures).toHaveLength(1)
+    expect(result.destinationSignature).toBe(result.originSignatures[0])
+    expect(mockGetEip1271Signature).toHaveBeenCalledWith(
+      quorumConfig,
+      guardians,
+      base,
+      { address: guardianValidator.address, isRoot: false },
+      expect.any(String),
+    )
+    expect(mockSignQuorumHash).not.toHaveBeenCalled()
+  })
 
   test('signs two same-chain chainless payloads with the quorum Merkle path', async () => {
     const quote = recorded()
