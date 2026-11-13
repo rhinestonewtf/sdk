@@ -54,6 +54,7 @@ const COMPACT_TYPED_DATA_TYPES = {
   ],
 } as const
 
+/** @deprecated Builds from an Alps bundle for compatibility; use quote.signData or getTransactionMessages for Blanc. */
 function getCompactTypedData(intentOp: IntentOp) {
   const typedData = {
     domain: {
@@ -99,7 +100,8 @@ function getCompactTypedData(intentOp: IntentOp) {
 }
 
 /**
- * Get the compact digest for signing
+ * Get the compact digest for signing.
+ * @deprecated Builds from an Alps bundle for compatibility; use quote.signData or getTransactionMessages for Blanc.
  * @param intentOp The intent operation
  * @returns The digest hash
  */
@@ -109,7 +111,8 @@ function getCompactDigest(intentOp: IntentOp): Hex {
 }
 
 /**
- * Get the Permit2 digest for signing
+ * Get the Permit2 digest for signing.
+ * @deprecated Builds from an Alps bundle for compatibility; use quote.signData or getTransactionMessages for Blanc.
  * @param intentOp The intent operation
  * @returns The digest hash
  */

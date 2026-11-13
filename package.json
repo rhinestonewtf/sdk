@@ -4,6 +4,7 @@
     "build": "bun run clean && tsc",
     "clean": "rimraf src/dist",
     "test": "vitest",
+    "test:surface": "bun run scripts/check-v1-surface.ts",
     "test:parity": "vitest --config vitest.config.parity.ts --run",
     "parity:funding": "vite-node test/parity/funded/funding-plan.ts",
     "check": "biome check",
