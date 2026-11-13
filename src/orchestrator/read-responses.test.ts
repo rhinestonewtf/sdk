@@ -7,7 +7,8 @@ import type { IntentOpStatus } from './types'
 
 // Real alps and blanc read responses recorded from the prod orchestrator for
 // the same requests (plus derived status bodies, one per lowering branch).
-// Every read must give exactly what v1 1.22.0 gives for the alps response.
+// The client now reads blanc; every read must give exactly what v1 1.22.0
+// gives for the alps response to the same request.
 
 interface RecordedRequest {
   method: string
@@ -31,6 +32,14 @@ interface ReadCase {
 
 const CASES = recorded as ReadCase[]
 const SUCCESSES = CASES.filter((c) => c.alps.status < 400)
+const ERRORS = CASES.filter((c) => c.alps.status >= 400)
+const LIVE = CASES.filter((c) => c.blanc.request)
+
+// Blanc words an unknown chain id differently; everything else is identical.
+const MESSAGE_DIFFERS = new Set([
+  'errors-reads.splits-unsupported-chain',
+  'extra.unknown-chain-filter',
+])
 
 const authProvider = {
   getHeaders: async () => ({}),
@@ -153,6 +162,25 @@ function stubFetch(response: RecordedResponse) {
   return fetchMock
 }
 
+async function captureError(c: ReadCase, response: RecordedResponse) {
+  stubFetch(response)
+  const error: any = await call(new Orchestrator(ENDPOINT, authProvider), c)
+    .then(() => {
+      throw new Error('expected the call to throw')
+    })
+    .catch((e) => e)
+  const { traceId: _traceId, ...context } = error.context ?? {}
+  return {
+    ctor: error.constructor.name,
+    statusCode: error.statusCode,
+    errorType: error.errorType,
+    message: error.message,
+    context,
+    availableIntents: error.availableIntents,
+    unfillable: error.unfillable,
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -161,19 +189,67 @@ describe('read responses', () => {
   test.each(SUCCESSES.map((c) => [c.id, c] as const))(
     '%s gives the 1.22.0 result',
     async (_id, c) => {
-      stubFetch(c.alps)
+      stubFetch(c.blanc)
       const orchestrator = new Orchestrator(ENDPOINT, authProvider)
       const actual = await call(orchestrator, c)
       expect(actual).toStrictEqual(expected122(c.operation, c.alps.body))
     },
   )
 
+  test.each(LIVE.map((c) => [c.id, c] as const))(
+    '%s sends the recorded blanc request',
+    async (_id, c) => {
+      const fetchMock = stubFetch(c.blanc)
+      await call(new Orchestrator(ENDPOINT, authProvider), c).catch(() => {})
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0]
+      const request = c.blanc.request!
+      expect(url).toBe(`${ENDPOINT}${request.path}`)
+      expect(init?.method ?? 'GET').toBe(request.method)
+      expect((init?.headers as Record<string, string>)['x-api-version']).toBe(
+        '2026-04.blanc',
+      )
+      if (request.body) {
+        expect(JSON.parse(init?.body as string)).toStrictEqual(request.body)
+      } else {
+        expect(init?.body).toBeUndefined()
+      }
+    },
+  )
+
+  test.each(ERRORS.map((c) => [c.id, c] as const))(
+    '%s raises the 1.22.0 error',
+    async (_id, c) => {
+      const expected = await captureError(c, c.alps)
+      const actual = await captureError(c, c.blanc)
+      if (MESSAGE_DIFFERS.has(c.id)) {
+        expect(actual.message).not.toBe(expected.message)
+        expect({ ...actual, message: '' }).toStrictEqual({
+          ...expected,
+          message: '',
+        })
+      } else {
+        expect(actual).toStrictEqual(expected)
+      }
+    },
+  )
+
+  test('the quote still sends the alps version', async () => {
+    const fetchMock = stubFetch({ status: 200, body: {} })
+    await new Orchestrator(ENDPOINT, authProvider).getIntentRoute({} as any)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(`${ENDPOINT}/intents/route`)
+    expect((init?.headers as Record<string, string>)['x-api-version']).toBe(
+      '2026-01.alps',
+    )
+  })
+
   test.each(
     SUCCESSES.filter((c) => c.operation === 'status').map(
       (c) => [c.id, c] as const,
     ),
   )('%s gives the 1.22.0 public status', async (_id, c) => {
-    stubFetch(c.alps)
+    stubFetch(c.blanc)
     const alps = c.alps.body as IntentOpStatus
     const actual = await getIntentStatus(authProvider, ENDPOINT, 1n)
     expect(actual).toStrictEqual({
