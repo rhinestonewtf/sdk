@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import type { AuthProvider } from '../auth/provider'
-import { API_VERSION, SDK_VERSION } from './consts'
+import { API_VERSION, BLANC_API_VERSION, SDK_VERSION } from './consts'
 import {
   AuthenticationRequiredError,
   BadRequestError,
@@ -33,7 +33,6 @@ import type {
   IntentResult,
   IntentRoute,
   Portfolio,
-  PortfolioResponse,
   SignedIntentOp,
   SplitIntentsInput,
   SplitIntentsResult,
@@ -46,6 +45,12 @@ import {
   normalizeErrorResponse,
   type OrchestratorOperation,
 } from './wire-error'
+import {
+  blancPortfolioQuery,
+  intentOpStatusFromBlanc,
+  portfolioFromBlanc,
+  toCaip2,
+} from './wire-read'
 
 function parseTokenAmountsRecord(
   record: Record<string, string>,
@@ -82,54 +87,16 @@ export class Orchestrator {
       }
     },
   ): Promise<Portfolio> {
-    const params = new URLSearchParams()
-    if (filter?.chainIds) {
-      params.set('chainIds', filter.chainIds.join(','))
-    }
-    if (filter?.tokens) {
-      params.set(
-        'tokens',
-        Object.entries(filter.tokens)
-          .flatMap(([chainId, tokens]) =>
-            tokens.map((token) => `${chainId}:${token}`),
-          )
-          .join(','),
-      )
-    }
     const url = new URL(`${this.serverUrl}/accounts/${userAddress}/portfolio`)
-    url.search = params.toString()
+    url.search = blancPortfolioQuery(filter).toString()
     const json = await this.fetch(
       url.toString(),
       {
-        headers: await this.getHeaders(),
+        headers: await this.getHeaders(BLANC_API_VERSION),
       },
       'portfolio',
     )
-    const portfolioResponse = json.portfolio as PortfolioResponse
-    const portfolio: Portfolio = portfolioResponse.map((tokenResponse) => ({
-      symbol: tokenResponse.tokenName,
-      decimals: tokenResponse.tokenDecimals,
-      balances: {
-        locked: BigInt(tokenResponse.balance.locked),
-        unlocked: BigInt(tokenResponse.balance.unlocked),
-      },
-      chains: tokenResponse.tokenChainBalance.map((chainBalance) => ({
-        chain: chainBalance.chainId,
-        address: chainBalance.tokenAddress,
-        locked: BigInt(chainBalance.balance.locked),
-        unlocked: BigInt(chainBalance.balance.unlocked),
-      })) as [
-        {
-          isAccountDeployed: boolean
-          chain: number
-          address: Address
-          locked: bigint
-          unlocked: bigint
-        },
-      ],
-    }))
-
-    return portfolio
+    return portfolioFromBlanc(json)
   }
 
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
@@ -146,12 +113,12 @@ export class Orchestrator {
   }
 
   async splitIntents(input: SplitIntentsInput): Promise<SplitIntentsResult> {
-    const response = await fetch(`${this.serverUrl}/intents/split`, {
+    const response = await fetch(`${this.serverUrl}/intents/splits`, {
       method: 'POST',
-      headers: await this.getHeaders(),
+      headers: await this.getHeaders(BLANC_API_VERSION),
       body: JSON.stringify(
         convertBigIntFields({
-          chainId: input.chain.id,
+          chainId: toCaip2(input.chain.id),
           tokens: input.tokens,
           settlementLayers: input.settlementLayers,
         }),
@@ -227,20 +194,21 @@ export class Orchestrator {
   }
 
   async getIntentOpStatus(intentId: bigint): Promise<IntentOpStatus> {
-    return await this.fetch(
-      `${this.serverUrl}/intent-operation/${intentId.toString()}`,
+    const json = await this.fetch(
+      `${this.serverUrl}/intents/${intentId.toString()}`,
       {
-        headers: await this.getHeaders(),
+        headers: await this.getHeaders(BLANC_API_VERSION),
       },
       'status',
     )
+    return intentOpStatusFromBlanc(json)
   }
 
   async getAppFeeBalances(): Promise<AppFeeBalances> {
     const json = await this.fetch(
       `${this.serverUrl}/app-fees/balances`,
       {
-        headers: await this.getHeaders(),
+        headers: await this.getHeaders(BLANC_API_VERSION),
       },
       'appFees',
     )
@@ -250,14 +218,25 @@ export class Orchestrator {
     }
   }
 
-  private async getHeaders(): Promise<Record<string, string>> {
+  private async getHeaders(
+    apiVersion?: string,
+  ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getHeaders()
+    // Operations that pick their own version must not be redirected by a
+    // custom `x-api-version` header (header names are case-insensitive).
+    const extra = apiVersion
+      ? Object.fromEntries(
+          Object.entries(this.extraHeaders ?? {}).filter(
+            ([name]) => name.toLowerCase() !== 'x-api-version',
+          ),
+        )
+      : this.extraHeaders
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
-      'x-api-version': API_VERSION,
+      'x-api-version': apiVersion ?? API_VERSION,
       ...auth,
-      ...this.extraHeaders,
+      ...extra,
     }
   }
 

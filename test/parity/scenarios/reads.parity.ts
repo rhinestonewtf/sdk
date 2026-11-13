@@ -1,5 +1,10 @@
 import { describe, it } from 'vitest'
-import { DORMANT_ACCOUNT, FIXED_INTENTS } from '../fixtures'
+import {
+  DORMANT_ACCOUNT,
+  FIXED_INTENTS,
+  USDC_BASE_SEPOLIA,
+  WETH_BASE_SEPOLIA,
+} from '../fixtures'
 import { assertParity } from '../harness'
 import { defineScenario } from '../scenario'
 import { accountConfig, attempts, fixtureAccount } from './shared'
@@ -114,8 +119,67 @@ const splits = defineScenario({
   },
 })
 
+const client = defineScenario({
+  id: 'reads/client',
+  description:
+    "The exported low-level client's raw status of the fixed intents, and portfolio with a token filter and with an unknown chain",
+  goldenLayers: ['reads', 'errors', 'traffic'],
+  async run(ctx) {
+    const orchestrator = ctx.client()
+    const address = (await fixtureAccount(ctx, 'nexus')).getAddress()
+    const { baseSepolia, optimismSepolia } = ctx.chains
+    const status = (intentId: bigint) => () =>
+      orchestrator.getIntentOpStatus(intentId)
+    await attempts(ctx, [
+      [
+        'client-status-completed-cross-chain',
+        'read',
+        status(FIXED_INTENTS.completedCrossChain),
+      ],
+      [
+        'client-status-completed-same-chain',
+        'read',
+        status(FIXED_INTENTS.completedSameChain),
+      ],
+      [
+        'client-status-failed-cross-chain',
+        'read',
+        status(FIXED_INTENTS.failedCrossChain),
+      ],
+      [
+        'client-status-failed-same-chain',
+        'read',
+        status(FIXED_INTENTS.failedSameChain),
+      ],
+      [
+        'client-portfolio-token-filter',
+        'read',
+        () =>
+          orchestrator.getPortfolio(address, {
+            chainIds: [baseSepolia.id, optimismSepolia.id],
+            tokens: {
+              [baseSepolia.id]: [USDC_BASE_SEPOLIA, WETH_BASE_SEPOLIA],
+              [optimismSepolia.id]: [
+                ctx.build.root.getTokenAddress('USDC', optimismSepolia.id),
+              ],
+            },
+          }),
+      ],
+      [
+        'portfolio-unknown-chain',
+        'read',
+        // Holesky (17000) is not a chain the orchestrator supports.
+        () =>
+          orchestrator.getPortfolio(address, {
+            chainIds: [baseSepolia.id, 17000],
+          }),
+      ],
+    ])
+  },
+})
+
 describe.sequential('parity: reads', () => {
-  for (const scenario of [intentStatus, portfolio, splits]) {
+  for (const scenario of [intentStatus, portfolio, splits, client]) {
     it(scenario.id, () => assertParity(scenario))
   }
 })

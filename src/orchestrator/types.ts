@@ -549,9 +549,8 @@ interface IntentOpStatus {
    * refund is recorded only where a settlement layer evidences it with a
    * transaction, so presence is a fact and absence is not a claim.
    *
-   * Typed only: `getIntentOpStatus` returns the response body as-is, so the
-   * value has always arrived once the orchestrator sends it. This is what
-   * lets a caller read it without a cast.
+   * `getIntentOpStatus` passes the orchestrator's refunds through verbatim
+   * and omits the field when the orchestrator does.
    */
   refunds?: IntentRefund[]
 }

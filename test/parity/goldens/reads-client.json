@@ -1,0 +1,173 @@
+{
+  "errors": {
+    "portfolio-unknown-chain": {
+      "context": {
+        "path": "query"
+      },
+      "ctor": "OrchestratorError",
+      "errorType": "Bad Request",
+      "hasTraceId": true,
+      "message": "Invalid CAIP-2 chain id (no chain carries this id): 17000",
+      "name": "Error",
+      "statusCode": 400,
+      "wire": {
+        "status": 400
+      }
+    }
+  },
+  "reads": {
+    "client-portfolio-token-filter": {
+      "op": "portfolio",
+      "params": {
+        "account": "0x36c03e7d593f7b2c6b06fc18b5f4e9a4a29c99b0",
+        "chainIds": [84532, 11155420],
+        "tokens": {
+          "84532": [
+            "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "0x4200000000000000000000000000000000000006"
+          ],
+          "11155420": ["0x5fd84259d66cd46123540766be93dfe6d43130d7"]
+        }
+      },
+      "result": [
+        {
+          "balances": {
+            "locked": "0n",
+            "unlocked": "0n"
+          },
+          "chains": [
+            {
+              "address": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+              "chain": 84532,
+              "locked": "0n",
+              "unlocked": "0n"
+            },
+            {
+              "address": "0x5fd84259d66cd46123540766be93dfe6d43130d7",
+              "chain": 11155420,
+              "locked": "0n",
+              "unlocked": "0n"
+            }
+          ],
+          "decimals": 6,
+          "symbol": "USDC"
+        },
+        {
+          "balances": {
+            "locked": "0n",
+            "unlocked": "0n"
+          },
+          "chains": [
+            {
+              "address": "0x4200000000000000000000000000000000000006",
+              "chain": 84532,
+              "locked": "0n",
+              "unlocked": "0n"
+            }
+          ],
+          "decimals": 18,
+          "symbol": "WETH"
+        }
+      ]
+    },
+    "client-status-completed-cross-chain": {
+      "op": "status",
+      "params": {
+        "intentId": "419405903733774847000549735049099665436387374880885830640724572373541018"
+      },
+      "result": {
+        "claims": [
+          {
+            "chainId": 84532,
+            "claimTimestamp": 1792682154,
+            "claimTransactionHash": "0xc65c3c76ada6f6706e5e618efb412b90163a3c7ef21a46eaae1097035481c4b9",
+            "status": "COMPLETED"
+          }
+        ],
+        "destinationChainId": 421614,
+        "fillTimestamp": 1792682169,
+        "fillTransactionHash": "0x01a424545997f205b889bbc239096e9d324c874bba4f2103a3de4939638667b0",
+        "status": "COMPLETED",
+        "userAddress": "0x87dbe67f0486dc4efbb2b5df498b84bb55c23530"
+      }
+    },
+    "client-status-completed-same-chain": {
+      "op": "status",
+      "params": {
+        "intentId": "41506782001482633007225160255346769677401208027046050899384763376797918"
+      },
+      "result": {
+        "claims": [],
+        "destinationChainId": 84532,
+        "fillTimestamp": 1793356173,
+        "fillTransactionHash": "0x270db90e682ce9692b3128d75caf64ffc89b89109b45424084b2d68782bc415a",
+        "status": "COMPLETED",
+        "userAddress": "0xd6cbb070e7570524a4e6d5fcf976178f0d591ed4"
+      }
+    },
+    "client-status-failed-cross-chain": {
+      "op": "status",
+      "params": {
+        "intentId": "4109734322649134165915266808227797040135362929957450305308521571507605438"
+      },
+      "result": {
+        "claims": [
+          {
+            "chainId": 84532,
+            "claimTimestamp": 1785008500,
+            "claimTransactionHash": "0x5fef88687d4b4c9fba301f888de57c659b0f3c0d59aed8b1fec42edb4e252ef7",
+            "status": "COMPLETED"
+          }
+        ],
+        "destinationChainId": 421614,
+        "status": "FAILED",
+        "userAddress": "0xe426056646c8eabd8bb0caf82f19d66762dfe52a"
+      }
+    },
+    "client-status-failed-same-chain": {
+      "op": "status",
+      "params": {
+        "intentId": "48961021748258018645452854903033653786369369947133809999642876755944166"
+      },
+      "result": {
+        "claims": [],
+        "destinationChainId": 11155420,
+        "status": "FAILED",
+        "userAddress": "0x46f491c4aeec869784669823f5deb2142f9a1f95"
+      }
+    },
+    "portfolio-unknown-chain": {
+      "op": "portfolio",
+      "params": {
+        "account": "0x36c03e7d593f7b2c6b06fc18b5f4e9a4a29c99b0",
+        "chainIds": [84532, 17000]
+      }
+    }
+  },
+  "traffic": [
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "client-status-completed-cross-chain"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "client-status-completed-same-chain"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "client-status-failed-cross-chain"
+    },
+    {
+      "ops": ["status [x-api-key]"],
+      "step": "client-status-failed-same-chain"
+    },
+    {
+      "ops": ["portfolio [x-api-key]"],
+      "step": "client-portfolio-token-filter"
+    },
+    {
+      "ops": ["portfolio [x-api-key]"],
+      "step": "portfolio-unknown-chain"
+    }
+  ]
+}

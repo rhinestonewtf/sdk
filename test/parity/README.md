@@ -57,7 +57,7 @@ The offline tests for the harness itself (`test/parity/**/*.test.ts`) run with `
 | --- | --- |
 | `seed.parity.ts` | One unfunded cross-chain quote, sign and captured submit; basic reads; basic errors. |
 | `mapping.parity.ts` | Every transaction option v1 puts in the quote request, source selection, same-chain and tokenless routes, sessions, and each account shape (Safe, Kernel, Startale, multi-owner, EOA, EIP-7702 signed with a captured submit; passkey quoted only). |
-| `reads.parity.ts` | Status of fixed past intents, portfolios of empty fixture accounts and a dormant account, splits. |
+| `reads.parity.ts` | Status of fixed past intents, portfolios of empty fixture accounts and a dormant account, splits, and the exported low-level client's status and portfolio (raw shapes, token filter). |
 | `errors.parity.ts` | Orchestrator quote rejections, `sendTransaction` with no balance, the SDK's own validation errors, invalid API key and JWT, read errors. |
 | `funded-tokenless.parity.ts` | Funded: sponsored no-op calls that execute each signing path without moving funds, and a non-owner signature the orchestrator refuses. |
 | `funded-transfers.parity.ts` | Funded: smart-account transfers over Across, CCTP and same-chain, paired so principal comes back. |
@@ -94,6 +94,7 @@ A funded scenario sets `funded: true` and declares what it needs: its per-side s
 
 - **Rules** (`rules.ts`) mask, ignore, decode or tolerance-compare values that vary per quote. Add one only for variance a repeated self-check shows, scope it to the narrowest path, and give it a reason that names what varies. Never mask a field that is deterministic in the request. Each report lists the rules that fired. Scenarios can override tolerances with `tolerances`.
 - **Accepted differences** (`accepted.ts`, or `accepted` on a scenario) are differences the migration intends. Each needs a reason, and the report lists them under their own heading.
+- **Reads**: the candidate reads status, portfolio, splits and app-fee balances through blanc, while the baseline reads them through alps; the read results must match exactly.
 - **Errors** are compared strictly: class, name, type, status, message, context, the wire's domain code and whether the error carries a trace id. The wire code is the domain code on both versions (`ZERO_BALANCE`, `INSUFFICIENT_BALANCE`, …), not blanc's coarse envelope code (`UNPROCESSABLE_CONTENT`, `VALIDATION_ERROR`). When blanc's own wording of one error differs from alps's, accept that difference with one entry for that scenario, that step and that field (e.g. `/<step>/message`), with the reason. Never a wildcard or alternation on the errors layer: the runner rejects any such entry, global or on a scenario, and `accepted.test.ts` requires the global ones to name a scenario. Never rewritten text in the SDK.
 
 ## Goldens

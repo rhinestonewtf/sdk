@@ -454,6 +454,45 @@ describe('reads', () => {
       tokens: { '84532': ['0xdef'] },
     })
   })
+
+  test('alps and blanc status paths project the same', () => {
+    const intentId =
+      '4109734322649134165915266808227797040135362929957450305308521571507605438'
+    const fromAlps = readParams('status', {
+      path: `/intent-operation/${intentId}`,
+      query: {},
+      body: undefined,
+    })
+    expect(fromAlps).toEqual(
+      readParams('status', {
+        path: `/intents/${intentId}`,
+        query: {},
+        body: undefined,
+      }),
+    )
+    expect(fromAlps).toEqual({ intentId })
+  })
+
+  test('alps and blanc splits bodies project the same', () => {
+    const tokens = { [USDC_ARB]: '1000000' }
+    const fromAlps = readParams('splits', {
+      path: '/intents/split',
+      query: {},
+      body: { chainId: 421614, tokens, settlementLayers: ['CCTP'] },
+    })
+    expect(fromAlps).toEqual(
+      readParams('splits', {
+        path: '/intents/splits',
+        query: {},
+        body: {
+          chainId: 'eip155:421614',
+          tokens,
+          settlementLayers: ['CCTP'],
+        },
+      }),
+    )
+    expect(fromAlps).toMatchObject({ chainId: 421614 })
+  })
 })
 
 describe('errors', () => {

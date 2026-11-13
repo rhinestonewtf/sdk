@@ -31,6 +31,20 @@ const ACCEPTED: AcceptedDifference[] = [
     path: '/splits-settlement-layers/hasTraceId',
     reason: LIQUIDITY_TRACE_ID,
   },
+  {
+    layer: 'errors',
+    scenario: 'errors/reads',
+    path: '/splits-unsupported-chain/message',
+    reason:
+      'Splits now go through blanc, whose chain-id validator words an unknown chain differently ("unknown eip155 reference", CAIP-2 form). Class, status, error type and context are unchanged; the SDK does not rewrite server text.',
+  },
+  {
+    layer: 'errors',
+    scenario: 'reads/client',
+    path: '/portfolio-unknown-chain/message',
+    reason:
+      'Portfolio filters now go through blanc, whose chain-id validator words an unknown chain differently. Class, status, error type and context are unchanged.',
+  },
 ]
 
 // Every glob construct glob.ts supports: wildcards and alternation.
