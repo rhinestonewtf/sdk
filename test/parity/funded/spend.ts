@@ -7,15 +7,18 @@ import type { FixtureUse } from './preflight'
 const USDC_AMOUNT = 50_000n
 const ETH_AMOUNT = 10_000_000_000_000n
 
+// Fee allowances are about twice the fees measured on prod testnets
+// (2026-11): Across 0.012–0.019 USDC, same-chain with 1% of fees 0.003 USDC,
+// Across ETH 0.000006 ETH.
 const SPEND = {
-  // Principal plus a fee allowance: Across testnet fees run 0.01–0.05 USDC.
-  acrossUnsponsored: USDC_AMOUNT + 70_000n,
+  acrossUnsponsored: USDC_AMOUNT + 40_000n,
   // Sponsored Across spends exactly the requested amount.
   acrossSponsored: USDC_AMOUNT,
-  sameChainWithFees: USDC_AMOUNT + 50_000n,
+  sameChainWithFees: USDC_AMOUNT + 20_000n,
   // Sponsored intent-executor routes (CCTP, same-chain) may round up a unit.
   sponsored: USDC_AMOUNT + 100n,
-  ethUnsponsored: ETH_AMOUNT + 30_000_000_000_000n,
+  // The wrap covers the amount plus the fee.
+  ethUnsponsored: ETH_AMOUNT + 15_000_000_000_000n,
   // The EOA's own approve, wrap and unwrap transactions on Base Sepolia.
   eoaGas: 5_000_000_000_000n,
 } as const

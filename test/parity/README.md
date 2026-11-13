@@ -188,10 +188,10 @@ PARITY_REPEAT=3 bun run parity:funding
 
 It prints one line per send in the shared faucet's format, `chain=<faucet chain> token=<USDC|ETH> amount=<decimal> recipient=<address>`. Send exactly those; the faucet caps a send at 2 USDC or 0.001 ETH. Never send ETH to a smart-account fixture, and never fund `startale`, the seed account or a fresh per-side account.
 
-COST_PLACEHOLDER
+Measured on prod testnets (2026-11, over about 20 full comparison iterations): one iteration of the full suite (each funded scenario once per build) takes about 4 minutes and costs about 0.065 USDC and 0.000013 ETH net. Fees come out of Nexus on Base (about 0.04 USDC: the unsponsored Across and same-chain transfers), the Safe on OP (about 0.023 USDC: the unsponsored Across return) and the EOA's ETH on Base (about 0.000033 ETH leaves Base, 0.00002 of it arrives on OP); sponsored routes cost the fixtures nothing. A `PARITY_REPEAT=3` invocation takes about 12 minutes and costs about 0.2 USDC and 0.00004 ETH. Standing balances of about 2 USDC for Nexus on Base, 1 USDC for the Safe on OP and 0.001 ETH for the EOA on Base last about ten such invocations.
 
 ### Checking the funded harness
 
 - **Self-check:** `PARITY_CANDIDATE=published PARITY_REPEAT=3 bun run test:parity` must match 100%, with every intent COMPLETED on both sides.
-- **Execution fault:** `PARITY_FAULT=submit.corrupt-origin-signature bun run test:parity test/parity/scenarios/funded-tokenless.parity.ts -t funded/startale-erc7739` flips a byte of the candidate's first origin signature. Expect `error` (execution): the baseline completes, the candidate's submit is refused. Run it on one scenario only.
+- **Execution fault:** `PARITY_FAULT=submit.corrupt-origin-signature bun run test:parity test/parity/scenarios/funded-transfers.parity.ts -t funded/across-owner-destination-call` flips a byte of the candidate's first origin signature. Expect `error` (execution): the baseline completes, the candidate's submit is refused (`InvalidContractSignature()`). Run it on one scenario only, and on a route with a claim: same-chain no-op calls without funds (`SingleChainOps`) execute with the destination signature, so a corrupted origin signature still completes there and shows only as a `submitRequest` diff.
 - **Funding:** `PARITY_REPEAT=50 bun run test:parity test/parity/scenarios/funded-eoa.parity.ts` must stop at preflight with top-up lines and submit nothing.
