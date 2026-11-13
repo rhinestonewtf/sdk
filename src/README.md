@@ -33,7 +33,7 @@ bun install viem @rhinestone/sdk@v1-latest
 
 This README covers legacy **v1**. Unqualified installation selects another SDK generation. **1.23.0 is the upcoming, intentionally breaking legacy-v1 minor release**, to be published under `v1-latest`; it is not yet a published release in this checkout. After publication, you can pin `@rhinestone/sdk@1.23.0`. Existing caret ranges may adopt this breaking minor automatically: review the migration below before upgrading.
 
-## Migrating v1 to Blanc (upcoming 1.23.0)
+## Migrating v1 to Blanc (1.23.0+)
 
 High-level transaction preparation, signing and submission now use `2026-04.blanc`: `POST /quotes` creates a stored quote and `POST /intents` submits it by intent ID. Reads also use Blanc. High-level method inputs remain unchanged, but **returned prepared/signed types are source-breaking**. UserOperation APIs are separate and unchanged.
 
