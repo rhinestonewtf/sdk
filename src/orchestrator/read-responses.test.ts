@@ -247,6 +247,27 @@ describe('read responses', () => {
     },
   )
 
+  test.each(['x-api-version', 'X-Api-Version'])(
+    'a custom %s header does not redirect a blanc read',
+    async (name) => {
+      const fetchMock = stubFetch({ status: 200, body: {} })
+      const orchestrator = new Orchestrator(ENDPOINT, authProvider, {
+        [name]: '2026-01.alps',
+        'x-other': 'kept',
+      })
+      await orchestrator.getAppFeeBalances()
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<
+        string,
+        string
+      >
+      expect(headers['x-api-version']).toBe('2026-04.blanc')
+      expect(
+        Object.keys(headers).filter((k) => /api-version/i.test(k)),
+      ).toHaveLength(1)
+      expect(headers['x-other']).toBe('kept')
+    },
+  )
+
   test('the quote still sends the alps version', async () => {
     const fetchMock = stubFetch({ status: 200, body: {} })
     await new Orchestrator(ENDPOINT, authProvider).getIntentRoute({} as any)

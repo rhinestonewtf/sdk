@@ -219,15 +219,24 @@ export class Orchestrator {
   }
 
   private async getHeaders(
-    apiVersion: string = API_VERSION,
+    apiVersion?: string,
   ): Promise<Record<string, string>> {
     const auth = await this.authProvider.getHeaders()
+    // Operations that pick their own version must not be redirected by a
+    // custom `x-api-version` header (header names are case-insensitive).
+    const extra = apiVersion
+      ? Object.fromEntries(
+          Object.entries(this.extraHeaders ?? {}).filter(
+            ([name]) => name.toLowerCase() !== 'x-api-version',
+          ),
+        )
+      : this.extraHeaders
     return {
       'Content-Type': 'application/json',
       'x-sdk-version': SDK_VERSION,
-      'x-api-version': apiVersion,
+      'x-api-version': apiVersion ?? API_VERSION,
       ...auth,
-      ...this.extraHeaders,
+      ...extra,
     }
   }
 
