@@ -106,6 +106,7 @@ export class Orchestrator {
     return portfolioFromBlanc(json)
   }
 
+  /** @deprecated Alps compatibility route; use createQuote or high-level prepare/sign/submit for Blanc. */
   async getIntentRoute(input: IntentInput): Promise<IntentRoute> {
     const body = convertBigIntFields(input)
     return await this.fetch(
@@ -244,6 +245,7 @@ export class Orchestrator {
     throw new OrchestratorError({ message: 'Unexpected error' })
   }
 
+  /** @deprecated Submits an Alps bundle and requests sponsorship approval at submit time. Use createIntent or high-level prepare/sign/submit for Blanc. */
   async submitIntent(
     signedIntentOpUnformatted: SignedIntentOp,
     dryRun: boolean,

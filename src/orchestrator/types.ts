@@ -210,6 +210,7 @@ interface GasCostBreakdown {
   totalUSD: number
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeeBreakdown {
   gasFee: string
   bridgeFee: string
@@ -219,11 +220,13 @@ interface FeeBreakdown {
   appFee: string
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeesByTokenEntry {
   amount: string
   breakdown: FeeBreakdown
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface FeeBreakdownUSD {
   gasFeeUSD: number
   bridgeFeeUSD: number
@@ -234,6 +237,7 @@ interface FeeBreakdownUSD {
   totalFeeUSD: number
 }
 
+/** @deprecated Alps cost representation retained for compatibility; use QuoteCost for Blanc. */
 interface IntentCost {
   hasFulfilledAll: boolean
   tokensReceived: [
@@ -265,16 +269,19 @@ interface IntentCost {
   feeBreakdownUSD?: FeeBreakdownUSD
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 export interface Op {
   vt: Hex
   ops: Execution[]
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 export interface ExecutionWithPlaceholders extends Execution {
   senderAddressPlaceholder?: Address
   recipientAddressPlaceholder?: Address
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 export interface ElementSwapDestination {
   tokenIn: Address
   amountIn: string
@@ -286,6 +293,7 @@ export interface ElementSwapDestination {
   outputSymbol: string
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 export interface ElementSwapOrigin {
   tokenIn: Address
   tokenOut: Address
@@ -297,6 +305,7 @@ export interface ElementSwapOrigin {
   price: number
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 interface IntentOpElementMandate {
   recipient: Address
   tokenOut: [[string, string]]
@@ -323,6 +332,7 @@ interface IntentOpElementMandate {
   minGas: string
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use quote.signData for Blanc signing. */
 interface IntentOpElement {
   arbiter: Address
   chainId: string
@@ -334,6 +344,7 @@ interface IntentOpElement {
   mandate: IntentOpElementMandate
 }
 
+/** @deprecated Alps bundle representation retained for compatibility; use Quote for Blanc flows. */
 interface IntentOp {
   sponsor: Address
   nonce: string
@@ -446,6 +457,7 @@ type TokenRequirements = {
   }
 }
 
+/** @deprecated Alps route retained for compatibility; use Quote for Blanc flows. */
 interface IntentRoute {
   intentOp: IntentOp
   intentCost: IntentCost
@@ -505,6 +517,7 @@ interface Quote {
   tokenRequirements?: TokenRequirements
 }
 
+/** @deprecated Alps submit result retained for compatibility; use Blanc transaction results for new flows. */
 interface IntentResult {
   result: {
     id: string
@@ -514,6 +527,7 @@ interface IntentResult {
 
 type OriginSignature = Hex | { notarizedClaimSig: Hex; preClaimSig: Hex }
 
+/** @deprecated Signed Alps bundle retained for compatibility; use Blanc transaction results for new flows. */
 type SignedIntentOp = IntentOp & {
   originSignatures: OriginSignature[]
   destinationSignature: Hex

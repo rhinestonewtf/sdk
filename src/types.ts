@@ -577,6 +577,7 @@ interface BaseTransaction {
   sponsored?: Sponsorship
   eip7702InitSignature?: Hex
   sourceAssets?: SourceAssetInput
+  /** @deprecated Retained for compatibility; has no effect on Blanc intent fees. */
   feeAsset?: Address | TokenSymbol
   appFees?: AppFeeRate
   /**
@@ -591,6 +592,7 @@ interface BaseTransaction {
   protocolFees?: ProtocolFeeRate
   settlementLayers?: SettlementLayer[]
   quoters?: SwapQuoterFilter
+  /** @deprecated Retained for compatibility; has no effect on Blanc intent locking. */
   lockFunds?: boolean
   auxiliaryFunds?: AuxiliaryFunds
   experimental_accountOverride?: {

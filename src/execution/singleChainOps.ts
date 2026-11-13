@@ -1,6 +1,7 @@
 import type { Address } from 'viem'
 import type { IntentOpElement } from '../orchestrator/types'
 
+/** @deprecated Builds from an Alps element for compatibility; use quote.signData or getTransactionMessages for Blanc. */
 function getTypedData(
   account: Address,
   intentExecutorAddress: Address,
