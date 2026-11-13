@@ -8,7 +8,7 @@
 
   Custom signers must apply `computeBlancIntentInputDigest` to the unchanged legacy numeric-chain/serialized-amount callback input, not hash raw JCS or a Blanc wire body. Generic `computeIntentInputDigest` remains unchanged. Sponsorship filters still check only destination chain, account and calls; cryptographic binding does not add policy checks.
 
-- 1308034: **Upcoming 1.23.0 is an intentionally breaking minor on the legacy v1 line, published under `v1-latest`, not `latest`.** Existing caret ranges may adopt it automatically. Install `@rhinestone/sdk@v1-latest` deliberately, or pin 1.23.0 after publication; unqualified installation selects another SDK generation.
+- 1308034: **1.23.0 is an intentionally breaking minor on the legacy v1 line, published under `v1-latest`, not `latest`.** Existing caret ranges may adopt it automatically. Install `@rhinestone/sdk@v1-latest` deliberately, or pin 1.23.0; unqualified installation selects another SDK generation.
 
   Preparing, signing and submitting transactions now use the orchestrator's `2026-04.blanc` API: quotes are stored by `POST /quotes`, and `POST /intents` submits by intent ID. The low-level `Orchestrator.getIntentRoute` and `Orchestrator.submitIntent` remain Alps compatibility methods with unchanged behavior. The actual low-level entry point is `@rhinestone/sdk/dist/src/orchestrator`, not `@rhinestone/sdk/orchestrator`.
 
@@ -25,11 +25,11 @@
 ### Patch Changes
 
 - 48faa52: Support chain-independent MultiChainOps payloads without a domain chain on `2026-04.blanc` for ECDSA/multisig and passkey owners. The SDK reuses a signature for a shared origin/destination payload. EIP-7702 accounts authorize all required leg chains plus the target unless a recipient is supplied, skipping existing delegation. Smart sessions, quorum owners and Startale's K1 validator reject payloads spanning multiple chains during preparation, before signing, because their signatures bind to one chain.
-- 1c70538: Orchestrator errors take their trace id from the `x-trace-id` response header where the runtime can read it, falling back to the response body. `InsufficientLiquidityError` from `splitIntents` now carries one when the header is readable. Cross-origin browsers need the API to expose these headers; browser-header compatibility deployment is a release prerequisite. Existing error classes remain unchanged; no public envelope-code field is added.
+- 1c70538: Orchestrator errors take their trace id from the `x-trace-id` response header where the runtime can read it, falling back to the response body. `InsufficientLiquidityError` from `splitIntents` now carries one when the header is readable. Until the API exposes `x-trace-id` and `Retry-After` to cross-origin browsers, Blanc browser errors lack readable trace IDs and retry hints remain unavailable. Existing error classes remain unchanged; no public envelope-code field is added.
 - 25346b0: Intent status, portfolio, splits and app-fee balance reads use the orchestrator's `2026-04.blanc` API version. Results are unchanged. An unknown chain id in `splitIntents` or in a portfolio chain filter is now reported with blanc's validation message. Validation errors for malformed inputs to the low-level client's portfolio read name blanc's request fields and use its wording.
 - 8bb871f: Deprecate retained Alps-only route/bundle/cost types, low-level quote/submit methods and bundle-based signing helpers without removing exports or changing their runtime behavior. Mark ineffective `feeAsset` / `lockFunds` intent options deprecated; standalone Compact actions and generic allowance helpers remain current.
 
-  Synchronize the repository and npm READMEs with the v1 Blanc migration guide, actual package subpaths, quote costs/signatures, persisted-object migration and coordinated JWT backend opt-in. This cleanup adds guidance and deprecation metadata only; the pending minor changesets select the upcoming breaking legacy-v1 1.23.0 release under `v1-latest`. Version generation and publication remain separate release steps.
+  Synchronize the repository and npm READMEs with the v1 Blanc migration guide, actual package subpaths, quote costs/signatures, persisted-object migration and coordinated JWT backend opt-in. This cleanup adds guidance and deprecation metadata only.
 
 ## 1.22.0
 

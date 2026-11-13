@@ -31,9 +31,9 @@ npm install viem @rhinestone/sdk@v1-latest
 bun install viem @rhinestone/sdk@v1-latest
 ```
 
-This README covers legacy **v1**. Unqualified installation selects another SDK generation. **1.23.0 is the upcoming, intentionally breaking legacy-v1 minor release**, to be published under `v1-latest`; it is not yet a published release in this checkout. After publication, you can pin `@rhinestone/sdk@1.23.0`. Existing caret ranges may adopt this breaking minor automatically: review the migration below before upgrading.
+This README covers legacy **v1**. Unqualified installation selects another SDK generation. **1.23.0 is an intentionally breaking legacy-v1 minor release** on `v1-latest`, not `latest`. Pin `@rhinestone/sdk@1.23.0` for this migration. Existing caret ranges may adopt this breaking minor automatically: review the migration below before upgrading.
 
-## Migrating v1 to Blanc (upcoming 1.23.0)
+## Migrating v1 to Blanc (1.23.0)
 
 High-level transaction preparation, signing and submission now use `2026-04.blanc`: `POST /quotes` creates a stored quote and `POST /intents` submits it by intent ID. Reads also use Blanc. High-level method inputs remain unchanged, but **returned prepared/signed types are source-breaking**. UserOperation APIs are separate and unchanged.
 
@@ -95,7 +95,7 @@ import type { Quote, QuoteCost } from '@rhinestone/sdk/dist/src/orchestrator/typ
 
 **JWT clients and signing backends must upgrade together**, with explicit `apiVersion: 'blanc'` on the backend; see all three helper configurations below. Existing callback inputs are preserved, not replaced with Blanc wire bodies.
 
-Read result types and existing error classes remain unchanged. Server validation wording and field paths may differ (for example, unsupported-token chains use CAIP-2). Trace IDs come from response headers where readable, with a body fallback. Cross-origin browsers require the API to expose those headers; browser-header compatibility must be deployed before release. This migration adds no public envelope-code field or error classes.
+Read result types and existing error classes remain unchanged. Server validation wording and field paths may differ (for example, unsupported-token chains use CAIP-2). Trace IDs come from response headers where readable, with a body fallback. Until the API exposes `x-trace-id` and `Retry-After` to cross-origin browsers, Blanc browser errors lack readable trace IDs and retry hints remain unavailable. This migration adds no public envelope-code field or error classes.
 
 ## Authentication
 
