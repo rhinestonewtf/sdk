@@ -13,7 +13,6 @@ import {
   getSocialRecoveryValidator,
   supportsEip712,
 } from '../modules/validators/core'
-import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
 import { getChainById } from '../orchestrator/registry'
 import type { Quote, SettlementLayer } from '../orchestrator/types'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
@@ -23,6 +22,7 @@ import type {
   SessionSignerSet,
   SignerSet,
 } from '../types'
+import multichainRoute from './__fixtures__/multichain-route.json'
 import {
   getTargetExecutionSignature,
   getValidatorAccount,
@@ -410,9 +410,7 @@ describe('getTargetExecutionSignature', () => {
 
 describe('multi-chain intent signing', () => {
   const recorded = () =>
-    quoteFromBlanc(
-      recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
-    )
+    quoteFromBlanc(multichainRoute as unknown as BlancRoute)
   const quorumConfig: RhinestoneConfig = {
     ...config,
     owners: {
@@ -907,15 +905,6 @@ describe('signPermits', () => {
 })
 
 describe('signIntent destination payload', () => {
-  const recorded = (id: string) => {
-    const found = (
-      recordedQuotes as unknown as {
-        cases: { id: string; blanc: { body?: { routes: BlancRoute[] } } }[]
-      }
-    ).cases.find((entry) => entry.id === id)
-    return quoteFromBlanc(found!.blanc.body!.routes[0])
-  }
-
   beforeEach(() => {
     let call = 0
     mockGetEip1271Signature.mockImplementation(
@@ -923,10 +912,13 @@ describe('signIntent destination payload', () => {
     )
   })
 
-  test('reuses the origin signature over the same payload (relayer-delivered CCTP)', async () => {
-    // A destination-chain child payload, then the burn, which is the
-    // destination.
-    const quote = recorded('unfunded/nexus')
+  test('reuses the last origin signature when it matches the destination', async () => {
+    const quote = makeQuote('INTENT_EXECUTOR')
+    const child = { ...MOCK_TYPED_DATA, message: { value: 2n } }
+    quote.signData = {
+      origin: [child, MOCK_TYPED_DATA] as TypedDataDefinition[],
+      destination: MOCK_TYPED_DATA as TypedDataDefinition,
+    }
     expect(quote.signData.origin).toHaveLength(2)
     const { originSignatures, destinationSignature } = await signIntent(
       config,

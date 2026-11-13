@@ -12,7 +12,7 @@ import { accountA } from '../../test/consts'
 import { RhinestoneSDK } from '../index'
 import type { Quote } from '../orchestrator/types'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
-import recorded from './__fixtures__/signing-vectors.json'
+import multichainRoute from './__fixtures__/multichain-route.json'
 import type { PreparedTransactionData, SignedTransactionData } from './utils'
 
 // The prepared and signed transaction shapes are public: `intentRoute` was
@@ -39,12 +39,9 @@ describe('prepared transaction shape', () => {
   })
 
   test('a signed transaction holds the quote and the signatures', async () => {
-    const vector = recorded.vectors.find(
-      ({ id }) => id === 'owner-ecdsa-nexus',
-    )!
     const prepared: PreparedTransactionData = {
-      quote: quoteFromBlanc(vector.blancRoutePatched as unknown as BlancRoute),
-      intentInput: vector.alpsRequest,
+      quote: quoteFromBlanc(multichainRoute as unknown as BlancRoute),
+      intentInput: {},
       transaction: {
         sourceChains: [baseSepolia],
         targetChain: arbitrumSepolia,

@@ -1,14 +1,38 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import recorded from '../orchestrator/__fixtures__/read-responses.json'
 import type { RhinestoneConfig } from '../types'
 import { IntentFailedError, waitForExecution } from '.'
 
-const CASES = recorded as { id: string; alps: any; blanc: any }[]
+const fillHash = `0x${'11'.repeat(32)}`
+const claimHash = `0x${'22'.repeat(32)}`
 
-function blancBody(id: string) {
-  const found = CASES.find((c) => c.id === id)
-  if (!found) throw new Error(`missing case ${id}`)
-  return found.blanc.body
+function statusBody(status: string, claimed = false) {
+  return {
+    status,
+    accountAddress: `0x${'33'.repeat(20)}`,
+    operations: [
+      {
+        chain: 84532,
+        items: [
+          {
+            type: 'CLAIM',
+            status: claimed ? 'COMPLETED' : 'PENDING',
+            debitsAccount: true,
+            ...(claimed ? { txHash: claimHash } : {}),
+          },
+        ],
+      },
+      {
+        chain: 11155420,
+        items: [
+          {
+            type: 'BRIDGE_FILL',
+            status: 'COMPLETED',
+            txHash: fillHash,
+          },
+        ],
+      },
+    ],
+  }
 }
 
 const config = {
@@ -43,20 +67,20 @@ describe('waitForExecution', () => {
   test('polls blanc status until the intent completes', async () => {
     vi.useFakeTimers()
     const fetchMock = stubPolls([
-      blancBody('synthetic.inflight-cross-chain-claim-pending'),
-      blancBody('synthetic.inflight-cross-chain-claim-landed'),
-      blancBody('synthetic.completed-cross-chain'),
+      statusBody('PENDING'),
+      statusBody('PENDING', true),
+      statusBody('COMPLETED', true),
     ])
     const pending = waitForExecution(config, result, false)
     await vi.runAllTimersAsync()
     expect(await pending).toStrictEqual({
       fill: {
-        hash: '0xda47536f4cf256e50191b604727ee54fe0dbbdd8091c7bc47843495a0673a72b',
+        hash: fillHash,
         chainId: 11155420,
       },
       claims: [
         {
-          hash: '0x88cec4515a608259e8ddefb478ed9e15a672a4b91c1c57260aea5ef0be218e81',
+          hash: claimHash,
           chainId: 84532,
         },
       ],
@@ -72,10 +96,7 @@ describe('waitForExecution', () => {
 
   test('raises IntentFailedError when the intent fails', async () => {
     vi.useFakeTimers()
-    stubPolls([
-      blancBody('synthetic.inflight-cross-chain-claim-pending'),
-      blancBody('reads-intent-status.status-failed-cross-chain'),
-    ])
+    stubPolls([statusBody('PENDING'), statusBody('FAILED')])
     const pending = waitForExecution(config, result, false)
     const outcome = expect(pending).rejects.toBeInstanceOf(IntentFailedError)
     await vi.runAllTimersAsync()

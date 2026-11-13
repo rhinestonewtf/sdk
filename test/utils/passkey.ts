@@ -10,7 +10,7 @@ import {
 } from 'viem'
 import type { WebAuthnAccount } from 'viem/account-abstraction'
 
-// Keep this identity stable to reproduce the recorded signing vectors.
+// A deterministic software credential keeps offline signing reproducible.
 const privateKey = keccak256(toHex('sdk-v1-parity:passkey:v1'))
 const publicKey = PublicKey.toHex(P256.getPublicKey({ privateKey }), {
   includePrefix: false,

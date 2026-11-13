@@ -1,15 +1,14 @@
 import type { TypedDataDefinition } from 'viem'
 import { describe, expect, test } from 'vitest'
-import recorded from '../orchestrator/__fixtures__/quote-responses.json'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
+import multichainRoute from './__fixtures__/multichain-route.json'
 import {
   payloadChainId,
   payloadChainIds,
   signatureSpansMultipleChains,
 } from './payload-chain'
 
-const multi = quoteFromBlanc(recorded.devMultiChainOpsRoute as BlancRoute)
-  .signData.origin[0]
+const multi = quoteFromBlanc(multichainRoute as BlancRoute).signData.origin[0]
 function payload(domain: unknown, message: unknown): TypedDataDefinition {
   return {
     primaryType: 'MultiChainOps',

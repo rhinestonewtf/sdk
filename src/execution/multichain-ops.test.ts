@@ -1,10 +1,13 @@
+import { PublicKey, WebAuthnP256 } from 'ox'
 import {
   type Address,
   concat,
+  decodeAbiParameters,
   encodeAbiParameters,
   type Hex,
   hashTypedData,
   keccak256,
+  parseAbiParameters,
   recoverTypedDataAddress,
   size,
   slice,
@@ -12,15 +15,14 @@ import {
   zeroAddress,
 } from 'viem'
 import * as viemChains from 'viem/chains'
-import { arbitrumSepolia, baseSepolia } from 'viem/chains'
-import { hashStruct } from 'viem/utils'
+import { arbitrumSepolia, base, baseSepolia } from 'viem/chains'
+import { hashStruct, recoverAuthorizationAddress } from 'viem/utils'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { accountA } from '../../test/consts'
 import { fixturePasskey } from '../../test/utils/passkey'
 import { RhinestoneSDK } from '../index'
-import recorded from '../orchestrator/__fixtures__/quote-responses.json'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
-import vectors from './__fixtures__/signing-vectors.json'
+import multichainRoute from './__fixtures__/multichain-route.json'
 
 // Match the published build's single viem instance for RIP-7212 chain identity.
 vi.mock('@rhinestone/shared-configs', async (importOriginal) => {
@@ -35,7 +37,8 @@ vi.mock('@rhinestone/shared-configs', async (importOriginal) => {
   }
 })
 
-const route = recorded.devMultiChainOpsRoute as BlancRoute
+// Recorded dev CCTP route serving one chainless payload for both execution legs.
+const route = multichainRoute as BlancRoute
 const USDC_BASE: Address = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
 const USDC_ARB: Address = '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'
 const transaction = {
@@ -46,17 +49,12 @@ const transaction = {
   settlementLayers: ['CCTP'] as ['CCTP'],
 }
 
-// Initialization depends on the account, not on the quoted route.
-const eip7702InitSignature = (
-  vectors as unknown as {
-    vectors: { id: string; transaction: { eip7702InitSignature?: Hex } }[]
-  }
-).vectors.find(({ id }) => id === 'eip7702')!.transaction.eip7702InitSignature!
-
 let quoteRequests: unknown[]
+let delegatedCode: Hex
 
 beforeEach(() => {
   quoteRequests = []
+  delegatedCode = '0x'
   vi.stubGlobal('fetch', async (input: unknown, init?: { body?: string }) => {
     const body = JSON.parse(init?.body ?? '{}')
     if (String(input).endsWith('/quotes')) {
@@ -64,7 +62,7 @@ beforeEach(() => {
       return Response.json({ routes: [route] })
     }
     const results: Record<string, string> = {
-      eth_getCode: '0x',
+      eth_getCode: delegatedCode,
       eth_getTransactionCount: '0x0',
     }
     if (!(body.method in results)) {
@@ -160,7 +158,37 @@ describe('recorded MultiChainOps signing offline', () => {
     const signed = await account.signTransaction(prepared)
     expect(quoteRequests).toHaveLength(1)
     expect(signed.originSignatures).toHaveLength(1)
-    expect(size(signed.originSignatures[0] as Hex)).toBeGreaterThan(65)
+    const [, , [assertion]] = decodeAbiParameters(
+      parseAbiParameters(
+        'bytes32[] credIds, bool usePrecompile, (bytes authenticatorData, string clientDataJSON, uint256 challengeIndex, uint256 typeIndex, uint256 r, uint256 s)[] webAuthns',
+      ),
+      // Kernel prefixes its root validator byte and replayable magic value.
+      slice(signed.originSignatures[0] as Hex, 33),
+    )
+    expect(
+      WebAuthnP256.verify({
+        challenge: hashTypedData({
+          domain: {
+            name: 'Kernel',
+            version: '0.3.3',
+            chainId: 0,
+            verifyingContract: account.getAddress(),
+          },
+          types: { Kernel: [{ name: 'hash', type: 'bytes32' }] },
+          primaryType: 'Kernel',
+          message: { hash: hashTypedData(prepared.quote.signData.origin[0]) },
+        }),
+        publicKey: PublicKey.fromHex(
+          concat(['0x04', fixturePasskey().publicKey]),
+        ),
+        signature: { r: assertion.r, s: assertion.s },
+        metadata: {
+          ...assertion,
+          typeIndex: Number(assertion.typeIndex),
+          challengeIndex: Number(assertion.challengeIndex),
+        },
+      }),
+    ).toBe(true)
     expect(signed.destinationSignature).toBe(signed.originSignatures[0])
   })
 
@@ -173,7 +201,7 @@ describe('recorded MultiChainOps signing offline', () => {
     // Authorization scope depends on the quote's chains, not its named account.
     const prepared = await account.prepareTransaction({
       ...transaction,
-      eip7702InitSignature,
+      eip7702InitSignature: await account.signEip7702InitData(),
     })
     expect(prepared.transaction.recipient).toBeUndefined()
     expect(prepared.quote.signData).toEqual(quoteFromBlanc(route).signData)
@@ -182,5 +210,37 @@ describe('recorded MultiChainOps signing offline', () => {
       84532, 421614,
     ])
     expect(authorizations.every(({ nonce }) => nonce === 0)).toBe(true)
+    for (const authorization of authorizations) {
+      expect(await recoverAuthorizationAddress({ authorization })).toBe(
+        accountA.address,
+      )
+    }
+
+    // Repeated payloads and a target already present in the legs add no scope.
+    prepared.quote.signData.origin.push(prepared.quote.signData.origin[0])
+    expect(await account.signAuthorizations(prepared)).toEqual(authorizations)
+
+    const target = {
+      ...prepared,
+      transaction: { ...prepared.transaction, targetChain: base },
+    }
+    expect(
+      (await account.signAuthorizations(target)).map(({ chainId }) => chainId),
+    ).toEqual([8453, 84532, 421614])
+    expect(
+      (
+        await account.signAuthorizations({
+          ...target,
+          transaction: { ...target.transaction, recipient: accountA.address },
+        })
+      ).map(({ chainId }) => chainId),
+    ).toEqual([84532, 421614])
+
+    // Already delegated chains must not be authorized again.
+    delegatedCode = concat([
+      '0xef0100',
+      authorizations[0].address.toLowerCase() as Hex,
+    ])
+    expect(await account.signAuthorizations(prepared)).toEqual([])
   })
 })

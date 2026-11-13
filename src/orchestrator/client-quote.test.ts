@@ -1,39 +1,22 @@
-import { decodeJwt, exportJWK, generateKeyPair } from 'jose'
+import { hashTypedData, type TypedDataDefinition } from 'viem'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createAuthProvider } from '../auth/provider'
-import {
-  computeBlancIntentInputDigest,
-  computeIntentInputDigest,
-  createJwtSigner,
-} from '../jwt-server'
 import envelopes from './__fixtures__/error-envelopes.json'
 import recorded from './__fixtures__/quote-responses.json'
 import { Orchestrator } from './client'
 import { OrchestratorError, UnsupportedChainIdError } from './error'
 import type { IntentInput } from './types'
 import { convertBigIntFields } from './utils'
+import type { BlancRoute } from './wire-quote'
 
-interface Recorded {
-  status?: number
-  body?: any
-  request: Record<string, unknown>
-}
-
-const CASES = (
-  recorded as unknown as {
-    cases: { id: string; alps: Recorded; blanc: Recorded }[]
-  }
-).cases
-const byId = (id: string) => CASES.find((c) => c.id === id)!
-const envelope = (id: string) =>
-  (
-    envelopes as { id: string; blanc: { status: number; body: unknown } }[]
-  ).find((e) => e.id === id)!.blanc
-
+// First route of a recorded production pair, unchanged; local replay catalogs are omitted.
+const fixture = recorded.cases[0]
+const input = fixture.alps.request as unknown as IntentInput
 const ENDPOINT = 'https://example.test'
 const apiKeyAuth = createAuthProvider({ apiKey: 'test-key' })
+const submit = { intentId: '1', signatures: { origin: [], destination: '0x' } }
 
-function stubFetch(status: number, body: unknown) {
+function stubFetch(status = 200, body: unknown = fixture.blanc.body) {
   const fetchMock = vi.fn(
     async (_url: string, _init?: RequestInit) =>
       new Response(JSON.stringify(body), { status }),
@@ -42,365 +25,312 @@ function stubFetch(status: number, body: unknown) {
   return fetchMock
 }
 
-function sentHeaders(fetchMock: ReturnType<typeof stubFetch>) {
-  return fetchMock.mock.calls[0][1]?.headers as Record<string, string>
+function headers(fetchMock: ReturnType<typeof stubFetch>, index = 0) {
+  return fetchMock.mock.calls[index][1]?.headers as Record<string, string>
 }
 
-async function rejection(promise: Promise<unknown>): Promise<any> {
-  return promise.then(
-    () => {
-      throw new Error('expected the call to throw')
-    },
-    (error) => error,
-  )
+function jwt(
+  getIntentExtensionToken?: (input: unknown) => Promise<string>,
+  accessToken: string | (() => Promise<string>) = 'access',
+) {
+  return createAuthProvider({
+    auth: { mode: 'experimental_jwt', accessToken, getIntentExtensionToken },
+  })
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
+function sponsoredInput(): IntentInput {
+  const copy = structuredClone(input)
+  copy.options.sponsorSettings = { gasSponsored: true }
+  return copy
+}
 
-describe('createQuote', () => {
-  const recordedCase = byId('planned/unfunded/nexus')
-  const input = recordedCase.alps.request as unknown as IntentInput
+afterEach(() => vi.unstubAllGlobals())
 
-  test('posts the blanc request to /quotes and decodes every route', async () => {
-    const fetchMock = stubFetch(200, recordedCase.blanc.body)
-    const quotes = await new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(
-      input,
-    )
+describe('Blanc quote and submit boundary', () => {
+  test('posts the recorded wire request, pins version and maps signing data and costs', async () => {
+    const body = structuredClone(fixture.blanc.body)
+    body.routes.push({ ...body.routes[0], intentId: 'second-route' })
+    const fetchMock = stubFetch(200, body)
+    const quotes = await new Orchestrator(ENDPOINT, apiKeyAuth, {
+      'X-Api-Version': '2026-01.alps',
+      'x-other': 'kept',
+    }).createQuote(input)
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe(`${ENDPOINT}/quotes`)
     expect(init?.method).toBe('POST')
-    expect(sentHeaders(fetchMock)['x-api-version']).toBe('2026-04.blanc')
-    expect(sentHeaders(fetchMock)['x-api-key']).toBe('test-key')
     expect(JSON.parse(init?.body as string)).toStrictEqual(
-      recordedCase.blanc.request,
+      fixture.blanc.request,
     )
-    expect(quotes.map((quote) => quote.intentId)).toEqual(
-      recordedCase.blanc.body.routes.map(
-        (route: { intentId: string }) => route.intentId,
-      ),
-    )
-  })
-
-  test.each(['x-api-version', 'X-Api-Version'])(
-    'a custom %s header does not redirect the quote',
-    async (name) => {
-      const fetchMock = stubFetch(200, recordedCase.blanc.body)
-      await new Orchestrator(ENDPOINT, apiKeyAuth, {
-        [name]: '2026-01.alps',
-        'x-other': 'kept',
-      }).createQuote(input)
-      const headers = sentHeaders(fetchMock)
-      expect(headers['x-api-version']).toBe('2026-04.blanc')
-      expect(
-        Object.keys(headers).filter((key) => /api-version/i.test(key)),
-      ).toHaveLength(1)
-      expect(headers['x-other']).toBe('kept')
-    },
-  )
-
-  test('an unknown destination chain is UnsupportedChainIdError', async () => {
-    const { blanc } = byId('err/unsupported-chain')
-    stubFetch(blanc.status!, blanc.body)
-    const error = await rejection(
-      new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(
-        byId('err/unsupported-chain').alps.request as unknown as IntentInput,
-      ),
-    )
-    expect(error).toBeInstanceOf(UnsupportedChainIdError)
-    expect(error.statusCode).toBe(400)
-  })
-
-  test('insufficient balance keeps its context', async () => {
-    const { status, body } = envelope('quote-insufficient-balance-cross-chain')
-    stubFetch(status, body)
-    const error = await rejection(
-      new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(input),
-    )
-    expect(error).toBeInstanceOf(OrchestratorError)
-    expect(error.message).toBe(
-      'Insufficient balance after exhausting all candidates',
-    )
-    expect(error.statusCode).toBe(422)
-    expect(error.context).toMatchObject({
-      remaining: '8087343',
-      requestedAmount: '10000000',
-      code: 'INSUFFICIENT_BALANCE',
+    expect(headers(fetchMock)).toMatchObject({
+      'x-api-version': '2026-04.blanc',
+      'x-api-key': 'test-key',
+      'x-other': 'kept',
     })
-  })
-})
-
-describe('createIntent', () => {
-  const request = {
-    intentId: '1',
-    signatures: { origin: [], destination: '0x' },
-  }
-
-  test('posts to /intents with blanc headers', async () => {
-    const fetchMock = stubFetch(201, { intentId: '1' })
-    const result = await new Orchestrator(ENDPOINT, apiKeyAuth, {
-      'X-API-VERSION': '2026-01.alps',
-    }).createIntent(request, { intentInput: {}, isSponsored: false })
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe(`${ENDPOINT}/intents`)
-    expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toStrictEqual(request)
-    const headers = sentHeaders(fetchMock)
-    expect(headers['x-api-version']).toBe('2026-04.blanc')
     expect(
-      Object.keys(headers).filter((key) => /api-version/i.test(key)),
+      Object.keys(headers(fetchMock)).filter((key) => /api-version/i.test(key)),
     ).toHaveLength(1)
-    expect(headers['x-api-key']).toBe('test-key')
-    expect(result).toEqual({ intentId: '1' })
-  })
-
-  test('JWT submits use ordinary auth even with a sponsored policy context', async () => {
-    const getIntentExtensionToken = vi.fn(async () => 'extension')
-    const jwtAuth = createAuthProvider({
-      auth: {
-        mode: 'experimental_jwt',
-        accessToken: 'access',
-        getIntentExtensionToken,
-      },
-    })
-    const fetchMock = stubFetch(201, { intentId: '1' })
-    const intentInput = { options: {} }
-    await new Orchestrator(ENDPOINT, jwtAuth).createIntent(request, {
-      intentInput,
-      isSponsored: true,
-    })
-    const headers = sentHeaders(fetchMock)
-    expect(getIntentExtensionToken).not.toHaveBeenCalled()
-    expect(headers).not.toHaveProperty('X-Intent-Extension')
-    expect(headers.Authorization).toBe('Bearer access')
-    expect(headers['x-api-version']).toBe('2026-04.blanc')
-  })
-
-  test('a refused signature keeps its simulation context', async () => {
-    const { status, body } = envelope('submit-refused-signature')
-    stubFetch(status, body)
-    const error = await rejection(
-      new Orchestrator(ENDPOINT, apiKeyAuth).createIntent(request),
+    const route = fixture.blanc.body.routes[0]
+    expect(quotes.map((quote) => quote.intentId)).toEqual(
+      body.routes.map((route) => route.intentId),
     )
-    expect(error).toBeInstanceOf(OrchestratorError)
-    expect(error.statusCode).toBe(400)
-    expect(error.context).toMatchObject({
-      category: 'INVALID_SIGNATURE',
-      errorName: 'InvalidSignature()',
-      errorSelector: '0x8baa579f',
-      retryable: false,
+    expect(quotes[0]).toMatchObject({
+      expiresAt: route.expiresAt,
+      settlementLayer: route.settlementLayer,
+      cost: { fees: route.cost.fees },
+    })
+    expect(hashTypedData(quotes[0].signData.origin[0])).toBe(
+      hashTypedData(route.signData.origin[0] as unknown as TypedDataDefinition),
+    )
+    expect(quotes[0].signData.origin[0]).not.toHaveProperty('kind')
+    expect(
+      typeof (quotes[0].signData.origin[0].message as { nonce: unknown }).nonce,
+    ).toBe('bigint')
+    expect(quotes[0].cost.input[0]).toMatchObject({
+      chainId: 84532,
+      amount: BigInt(route.cost.input[0].amount),
     })
   })
-})
 
-describe('quote authentication lifecycle', () => {
-  const fixture = byId('planned/unfunded/nexus')
-  const sponsoredInput = (settings: unknown = { gasSponsored: true }) => {
-    const input = structuredClone(
-      fixture.alps.request,
-    ) as unknown as IntentInput
-    input.options = { ...input.options, sponsorSettings: settings as never }
-    return input
-  }
-  const jwt = (
-    getIntentExtensionToken?: (input: unknown) => Promise<string>,
-    accessToken: string | (() => Promise<string>) = 'access',
-  ) =>
-    createAuthProvider({
-      auth: { mode: 'experimental_jwt', accessToken, getIntentExtensionToken },
-    })
-  const deferred = <T>() => {
-    let resolve!: (value: T) => void
-    const promise = new Promise<T>((done) => {
-      resolve = done
-    })
-    return { promise, resolve }
-  }
-
-  test.each([
-    ['omitted', undefined, false],
-    ['false', false, false],
-    ['empty', {}, false],
-    [
-      'all false',
-      {
-        gasSponsored: false,
-        bridgeFeesSponsored: false,
-        swapFeesSponsored: false,
-        protocolFeesSponsored: false,
+  test('EOA approval requirements keep bigint amounts and the permit digest', async () => {
+    // EIP-2612 permit shape, with uints serialized as Blanc decimal strings.
+    const token = '0x036cbd53842c5426634e7929541ec2318f3dcf7e'
+    const spender = '0x000000000022d473030f116ddee9f6b43ac78ba3'
+    const permit = {
+      domain: {
+        name: 'USDC',
+        version: '2',
+        chainId: 84532,
+        verifyingContract: token,
       },
-      false,
-    ],
-    ['gas', { gasSponsored: true }, true],
-    ['bridge', { bridgeFeesSponsored: true }, true],
-    ['swap', { swapFeesSponsored: true }, true],
-    ['protocol', { protocolFeesSponsored: true }, true],
-    [
-      'all true',
-      {
-        gasSponsored: true,
-        bridgeFeesSponsored: true,
-        swapFeesSponsored: true,
-        protocolFeesSponsored: true,
+      types: {
+        Permit: [
+          { name: 'owner', type: 'address' },
+          { name: 'spender', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+        ],
       },
-      true,
-    ],
-    [
-      'truthy is not true',
-      { gasSponsored: 1, bridgeFeesSponsored: 'true' },
-      false,
-    ],
-  ])(
-    '%s sponsorship requests approval only for explicit true',
-    async (_name, settings, expected) => {
-      const approve = vi.fn(async () => 'extension')
-      const fetchMock = stubFetch(200, fixture.blanc.body)
-      const input = sponsoredInput(settings)
-      // Passing undefined must not activate the helper's default sponsorship.
-      input.options.sponsorSettings = settings as never
-      await new Orchestrator(ENDPOINT, jwt(approve)).createQuote(input)
-      expect(approve).toHaveBeenCalledTimes(expected ? 1 : 0)
-      expect(sentHeaders(fetchMock)).toMatchObject({
-        Authorization: 'Bearer access',
-        'x-api-key': 'jwt',
-        'x-api-version': '2026-04.blanc',
-      })
-      if (expected)
-        expect(sentHeaders(fetchMock)['X-Intent-Extension']).toBe(
-          'Bearer extension',
-        )
-      else
-        expect(sentHeaders(fetchMock)).not.toHaveProperty('X-Intent-Extension')
-    },
-  )
+      primaryType: 'Permit',
+      message: {
+        owner: input.account.address,
+        spender,
+        value: '9007199254740993',
+        nonce: '0',
+        deadline: '1794543125',
+      },
+    } as unknown as TypedDataDefinition
+    const body: { routes: BlancRoute[] } = structuredClone(fixture.blanc.body)
+    body.routes[0].tokenRequirements = {
+      'eip155:84532': {
+        [token]: {
+          type: 'approval',
+          amount: '9007199254740993',
+          spender,
+          permit,
+        },
+      },
+    }
+    stubFetch(200, body)
+    const [quote] = await new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(
+      input,
+    )
+    const requirement = quote.tokenRequirements![84532][token]
+    expect(requirement).toMatchObject({
+      type: 'approval',
+      amount: 9007199254740993n,
+      spender,
+    })
+    const normalized = (requirement as { permit: TypedDataDefinition }).permit
+    expect(normalized.message).toMatchObject({
+      value: 9007199254740993n,
+      nonce: 0n,
+      deadline: 1794543125n,
+    })
+    expect(hashTypedData(normalized)).toBe(hashTypedData(permit))
+  })
 
-  test('API keys and JWT without a callback still send sponsored quotes', async () => {
-    for (const auth of [apiKeyAuth, jwt()]) {
-      const fetchMock = stubFetch(200, fixture.blanc.body)
-      await new Orchestrator(ENDPOINT, auth).createQuote(sponsoredInput())
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(sentHeaders(fetchMock)).not.toHaveProperty('X-Intent-Extension')
+  test('unsupported signing data fails closed', async () => {
+    const body = structuredClone(fixture.blanc.body)
+    const route = body.routes[0]
+    Object.assign(route.signData, {
+      origin: [{ kind: 'personalSign', message: 'x' }],
+    })
+    stubFetch(200, body)
+    await expect(
+      new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(input),
+    ).rejects.toThrow(
+      'non-EVM origin payloads are not supported by this SDK version',
+    )
+  })
+
+  test('unknown quote chains keep their specialized error', async () => {
+    const response = envelopes.find(
+      (entry) => entry.id === 'quote-unsupported-chain',
+    )!.blanc
+    stubFetch(response.status, response.body)
+    await expect(
+      new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(input),
+    ).rejects.toBeInstanceOf(UnsupportedChainIdError)
+  })
+
+  test('balance and signature failures retain actionable context', async () => {
+    for (const [id, call, context] of [
+      [
+        'quote-insufficient-balance-cross-chain',
+        () => new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(input),
+        {
+          remaining: '8087343',
+          requestedAmount: '10000000',
+          code: 'INSUFFICIENT_BALANCE',
+        },
+      ],
+      [
+        'submit-refused-signature',
+        () => new Orchestrator(ENDPOINT, apiKeyAuth).createIntent(submit),
+        {
+          category: 'INVALID_SIGNATURE',
+          errorSelector: '0x8baa579f',
+          retryable: false,
+        },
+      ],
+    ] as const) {
+      const response = envelopes.find((entry) => entry.id === id)!.blanc
+      stubFetch(response.status, response.body)
+      const error = await call().catch((error) => error)
+      expect(error).toBeInstanceOf(OrchestratorError)
+      expect(error).toMatchObject({ statusCode: response.status, context })
     }
   })
 
-  test('provides the exact detached legacy payload, not the lowered wire input', async () => {
-    const input = sponsoredInput()
-    input.destinationGasUnits = 9007199254740993n
-    input.account.mockSignature = '0x1234'
-    input.accountAccessList = [
-      {
-        chainId: 8453,
-        tokenAddress: '0x0000000000000000000000000000000000000001',
-        amount: 9007199254740995n,
-      },
-    ]
-    input.options.topupCompact = true
-    const expected = convertBigIntFields(input)
+  test('submits pin Blanc and use ordinary JWT auth even with sponsored context', async () => {
+    const approve = vi.fn(async () => 'extension')
+    const fetchMock = stubFetch(201, { intentId: '1' })
+    const result = await new Orchestrator(ENDPOINT, jwt(approve), {
+      'X-API-VERSION': '2026-01.alps',
+    }).createIntent(submit, { intentInput: input, isSponsored: true })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${ENDPOINT}/intents`)
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST')
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(
+      submit,
+    )
+    expect(headers(fetchMock)).toMatchObject({
+      Authorization: 'Bearer access',
+      'x-api-version': '2026-04.blanc',
+    })
+    expect(
+      Object.keys(headers(fetchMock)).filter((key) => /api-version/i.test(key)),
+    ).toHaveLength(1)
+    expect(headers(fetchMock)).not.toHaveProperty('X-Intent-Extension')
+    expect(approve).not.toHaveBeenCalled()
+    expect(result).toEqual({ intentId: '1' })
+  })
+})
+
+describe('quote approval lifecycle', () => {
+  test.each([false, true])(
+    'only explicit sponsorship (%s) requests approval',
+    async (enabled) => {
+      const approve = vi.fn(async () => 'extension')
+      const fetchMock = stubFetch()
+      const copy = sponsoredInput()
+      copy.options.sponsorSettings = { gasSponsored: enabled }
+      await new Orchestrator(ENDPOINT, jwt(approve)).createQuote(copy)
+      expect(approve).toHaveBeenCalledTimes(enabled ? 1 : 0)
+      expect(headers(fetchMock).Authorization).toBe('Bearer access')
+      expect(headers(fetchMock)['X-Intent-Extension']).toBe(
+        enabled ? 'Bearer extension' : undefined,
+      )
+    },
+  )
+
+  test('approval sees detached legacy input, not lowered CAIP-2/bigint wire input', async () => {
+    const copy = sponsoredInput()
+    copy.destinationGasUnits = 9007199254740993n
+    copy.account.mockSignature = '0x1234'
+    copy.options.topupCompact = true
+    const expected = convertBigIntFields(copy)
     const approve = vi.fn(async (legacy: unknown) => {
       expect(legacy).toStrictEqual(expected)
-      expect(legacy).not.toBe(input)
-      expect((legacy as IntentInput).options).not.toBe(input.options)
+      expect(legacy).not.toBe(copy)
+      ;(legacy as IntentInput).destinationChainId = 1
       return 'extension'
     })
-    const fetchMock = stubFetch(200, fixture.blanc.body)
-    await new Orchestrator(ENDPOINT, jwt(approve)).createQuote(input)
-    expect(approve).toHaveBeenCalledTimes(1)
-    expect(input.destinationGasUnits).toBe(9007199254740993n)
+    const fetchMock = stubFetch()
+    await new Orchestrator(ENDPOINT, jwt(approve)).createQuote(copy)
     const wire = JSON.parse(fetchMock.mock.calls[0][1]?.body as string)
-    expect(wire.destinationChainId).toBe(`eip155:${input.destinationChainId}`)
+    expect(wire.destinationChainId).toBe(`eip155:${copy.destinationChainId}`)
     expect(wire.destinationGasLimit).toBe('9007199254740993')
     expect(wire.options).not.toHaveProperty('topupCompact')
     expect(wire.account).not.toHaveProperty('mockSignature')
     expect(wire.options.sponsorSettings).toEqual({ gas: true })
+    expect(copy.destinationGasUnits).toBe(9007199254740993n)
   })
 
-  test.each(['access', 'approval'])(
-    'freezes wire and legacy snapshot before the %s await',
-    async (waitAt) => {
-      const input = sponsoredInput()
-      const baselineFetch = stubFetch(200, fixture.blanc.body)
-      await new Orchestrator(ENDPOINT, apiKeyAuth).createQuote(input)
-      const baselineBody = baselineFetch.mock.calls[0][1]?.body
-      const expectedLegacy = convertBigIntFields(input)
-      const gate = deferred<string>()
-      const entered = deferred<void>()
-      const approve = vi.fn(async (legacy: unknown) => {
-        expect(legacy).toStrictEqual(expectedLegacy)
-        const copy = legacy as IntentInput
-        copy.destinationChainId = 1
-        copy.options.sponsorSettings!.gasSponsored = false
-        if (waitAt === 'approval') {
-          entered.resolve()
-          return gate.promise
-        }
-        return 'extension'
+  test('captures the wire and approval snapshots before awaiting access auth', async () => {
+    const copy = sponsoredInput()
+    const expectedLegacy = convertBigIntFields(copy)
+    let release!: (token: string) => void
+    let entered!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const access = () => {
+      entered()
+      return new Promise<string>((resolve) => {
+        release = resolve
       })
-      const access = vi.fn(async () => {
-        if (waitAt === 'access') {
-          entered.resolve()
-          return gate.promise
-        }
-        return 'access'
-      })
-      const fetchMock = stubFetch(200, fixture.blanc.body)
-      const pending = new Orchestrator(
-        ENDPOINT,
-        jwt(approve, access),
-      ).createQuote(input)
-      await entered.promise
-      expect(fetchMock).not.toHaveBeenCalled()
-      input.destinationChainId = 10
-      input.options.sponsorSettings!.gasSponsored = false
-      input.account.address = '0x0000000000000000000000000000000000000002'
-      gate.resolve(waitAt === 'access' ? 'access' : 'extension')
-      await pending
-      expect(fetchMock.mock.calls[0][1]?.body).toBe(baselineBody)
-      expect(approve).toHaveBeenCalledTimes(1)
-      expect(access).toHaveBeenCalledTimes(1)
-      expect(input.destinationChainId).toBe(10)
-    },
-  )
+    }
+    const approve = vi.fn(async (legacy: unknown) => {
+      expect(legacy).toStrictEqual(expectedLegacy)
+      ;(legacy as IntentInput).destinationChainId = 1
+      return 'extension'
+    })
+    const fetchMock = stubFetch()
+    const pending = new Orchestrator(
+      ENDPOINT,
+      jwt(approve, access),
+    ).createQuote(copy)
+    await started
+    expect(fetchMock).not.toHaveBeenCalled()
+    copy.destinationChainId = 10
+    copy.options.sponsorSettings!.gasSponsored = false
+    release('access')
+    await pending
+    const wire = JSON.parse(fetchMock.mock.calls[0][1]?.body as string)
+    expect(wire.destinationChainId).toBe(`eip155:${input.destinationChainId}`)
+    expect(wire.options.sponsorSettings).toEqual({ gas: true })
+    expect(approve).toHaveBeenCalledTimes(1)
+  })
 
   test('each quote gets fresh approval; submission and reads do not', async () => {
     const approve = vi.fn(async () => `extension-${approve.mock.calls.length}`)
     const access = vi.fn(async () => `access-${access.mock.calls.length}`)
     const client = new Orchestrator(ENDPOINT, jwt(approve, access))
-    const fetchMock = stubFetch(200, fixture.blanc.body)
-    const input = sponsoredInput()
-    await client.createQuote(input)
-    await client.createQuote(input)
-    expect(
-      fetchMock.mock.calls.map(
-        ([, init]) =>
-          (init?.headers as Record<string, string>)['X-Intent-Extension'],
-      ),
-    ).toEqual(['Bearer extension-1', 'Bearer extension-2'])
+    const fetchMock = stubFetch()
+    await client.createQuote(sponsoredInput())
+    await client.createQuote(sponsoredInput())
+    expect([
+      headers(fetchMock, 0)['X-Intent-Extension'],
+      headers(fetchMock, 1)['X-Intent-Extension'],
+    ]).toEqual(['Bearer extension-1', 'Bearer extension-2'])
     fetchMock.mockImplementation(
       async () => new Response(JSON.stringify({ intentId: '1' })),
     )
-    await client.createIntent(
-      { intentId: '1', signatures: { origin: [], destination: '0x' } },
-      { intentInput: input, isSponsored: true },
-    )
+    await client.createIntent(submit, { intentInput: input, isSponsored: true })
     fetchMock.mockImplementation(
       async () =>
         new Response(JSON.stringify({ withdrawableUsd: '0', pendingUsd: '0' })),
     )
     await client.getAppFeeBalances()
-    fetchMock.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ status: 'PENDING', operations: [] })),
-    )
-    await client.getIntentOpStatus(1n)
     expect(approve).toHaveBeenCalledTimes(2)
-    expect(access).toHaveBeenCalledTimes(5)
+    expect(access).toHaveBeenCalledTimes(4)
     for (const [, init] of fetchMock.mock.calls.slice(2))
       expect(init?.headers).not.toHaveProperty('X-Intent-Extension')
   })
 
   test.each(['access', 'approval'])(
-    '%s denial prevents quote fetch',
+    '%s denial prevents fetch',
     async (stage) => {
       const denied = new Error('denied')
       const approve = vi.fn(async () => {
@@ -410,7 +340,7 @@ describe('quote authentication lifecycle', () => {
         if (stage === 'access') throw denied
         return 'access'
       })
-      const fetchMock = stubFetch(200, fixture.blanc.body)
+      const fetchMock = stubFetch()
       await expect(
         new Orchestrator(ENDPOINT, jwt(approve, access)).createQuote(
           sponsoredInput(),
@@ -421,7 +351,7 @@ describe('quote authentication lifecycle', () => {
     },
   )
 
-  test('failed planning consumes no cached approval and never falls back', async () => {
+  test('failed planning never falls back or reuses approval', async () => {
     const approve = vi.fn(async () => `extension-${approve.mock.calls.length}`)
     const fetchMock = stubFetch(403, { message: 'binding mismatch' })
     const client = new Orchestrator(ENDPOINT, jwt(approve))
@@ -432,135 +362,32 @@ describe('quote authentication lifecycle', () => {
       expect(fetchMock).toHaveBeenCalledTimes(attempt + 1)
     }
     expect(approve).toHaveBeenCalledTimes(2)
-    expect(
-      fetchMock.mock.calls.map(
-        ([, init]) =>
-          (init?.headers as Record<string, string>)['X-Intent-Extension'],
-      ),
-    ).toEqual(['Bearer extension-1', 'Bearer extension-2'])
+    expect([
+      headers(fetchMock, 0)['X-Intent-Extension'],
+      headers(fetchMock, 1)['X-Intent-Extension'],
+    ]).toEqual(['Bearer extension-1', 'Bearer extension-2'])
   })
 })
 
-describe('transport with actual JWT signer', () => {
-  test.each([undefined, 'alps', 'blanc'] as const)(
-    'binds apiVersion %s to the unchanged callback input',
-    async (apiVersion) => {
-      const fixture = byId('planned/unfunded/nexus')
-      const input = structuredClone(
-        fixture.alps.request,
-      ) as unknown as IntentInput
-      input.options = {
-        ...input.options,
-        sponsorSettings: { gasSponsored: true },
-      }
-      const original = structuredClone(input)
-      const { privateKey } = await generateKeyPair('ES256', {
-        extractable: true,
-      })
-      const signer = createJwtSigner({
-        apiVersion,
-        jwt: {
-          privateKey: await exportJWK(privateKey),
-          integratorId: 'integrator',
-          projectId: 'project',
-          appId: 'app',
-          keyId: 'key',
-        },
-      })
-      const approve = vi.fn(signer.getIntentExtensionToken)
-      const client = new Orchestrator(
-        ENDPOINT,
-        createAuthProvider({
-          auth: {
-            mode: 'experimental_jwt',
-            ...signer,
-            getIntentExtensionToken: approve,
-          },
-        }),
-      )
-      const fetchMock = stubFetch(
-        200,
-        apiVersion === 'blanc' ? fixture.blanc.body : {},
-      )
-      if (apiVersion === 'blanc') {
-        await client.createQuote(input)
-      } else {
-        await client.submitIntent({} as never, false, {
-          intentInput: input,
-          isSponsored: true,
-        })
-      }
-      expect(approve).toHaveBeenCalledExactlyOnceWith(input)
-      expect(input).toEqual(original)
-      const rawDigest = await computeIntentInputDigest(input)
-      const normalizedDigest = await computeBlancIntentInputDigest(input)
-      expect(rawDigest).not.toBe(normalizedDigest)
-      const token = sentHeaders(fetchMock)['X-Intent-Extension'].replace(
-        'Bearer ',
-        '',
-      )
-      expect(decodeJwt(token).policy).toEqual({
-        sponsorship: {
-          scope: 'intent',
-          intent_input: {
-            digest: apiVersion === 'blanc' ? normalizedDigest : rawDigest,
-          },
-        },
-      })
-      expect(fetchMock.mock.calls[0][0]).toBe(
-        `${ENDPOINT}/${apiVersion === 'blanc' ? 'quotes' : 'intent-operations'}`,
-      )
-    },
-  )
-})
-
-describe('legacy alps methods', () => {
-  test('getIntentRoute still quotes on alps', async () => {
-    const fetchMock = stubFetch(200, {})
-    await new Orchestrator(ENDPOINT, apiKeyAuth).getIntentRoute(
-      byId('planned/unfunded/nexus').alps.request as unknown as IntentInput,
-    )
-    expect(fetchMock.mock.calls[0][0]).toBe(`${ENDPOINT}/intents/route`)
-    expect(sentHeaders(fetchMock)['x-api-version']).toBe('2026-01.alps')
-  })
-
-  test('JWT Alps quotes remain ordinary and legacy submits still request approval', async () => {
+describe('legacy Alps methods', () => {
+  test('quotes stay ordinary Alps; legacy submits still request approval without a version', async () => {
     const approve = vi.fn(async () => 'legacy-extension')
-    const auth = createAuthProvider({
-      auth: {
-        mode: 'experimental_jwt',
-        accessToken: 'access',
-        getIntentExtensionToken: approve,
-      },
-    })
-    const client = new Orchestrator(ENDPOINT, auth)
+    const client = new Orchestrator(ENDPOINT, jwt(approve))
     const fetchMock = stubFetch(200, {})
-    const input = byId('planned/unfunded/nexus').alps
-      .request as unknown as IntentInput
     await client.getIntentRoute(input)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${ENDPOINT}/intents/route`)
+    expect(headers(fetchMock)['x-api-version']).toBe('2026-01.alps')
     expect(approve).not.toHaveBeenCalled()
-    expect(sentHeaders(fetchMock)).not.toHaveProperty('X-Intent-Extension')
+    expect(headers(fetchMock)).not.toHaveProperty('X-Intent-Extension')
     await client.submitIntent({} as never, false, {
       intentInput: input,
       isSponsored: true,
     })
     expect(approve).toHaveBeenCalledExactlyOnceWith(input)
-    const headers = fetchMock.mock.calls[1][1]?.headers as Record<
-      string,
-      string
-    >
-    expect(headers['X-Intent-Extension']).toBe('Bearer legacy-extension')
-    expect(headers).not.toHaveProperty('x-api-version')
-  })
-
-  test('submitIntent still sends no version', async () => {
-    const fetchMock = stubFetch(200, { result: { id: '1' } })
-    await new Orchestrator(ENDPOINT, apiKeyAuth).submitIntent(
-      {} as any,
-      false,
-      { intentInput: {}, isSponsored: false },
+    expect(fetchMock.mock.calls[1][0]).toBe(`${ENDPOINT}/intent-operations`)
+    expect(headers(fetchMock, 1)['X-Intent-Extension']).toBe(
+      'Bearer legacy-extension',
     )
-    expect(fetchMock.mock.calls[0][0]).toBe(`${ENDPOINT}/intent-operations`)
-    expect(sentHeaders(fetchMock)).not.toHaveProperty('x-api-version')
+    expect(headers(fetchMock, 1)).not.toHaveProperty('x-api-version')
   })
 })

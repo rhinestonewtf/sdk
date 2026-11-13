@@ -9,7 +9,6 @@ import {
   DUMMY_PRECLAIMOP_TARGET,
 } from '../modules/validators'
 import { zeroEx } from '../modules/validators/smart-sessions'
-import recordedQuotes from '../orchestrator/__fixtures__/quote-responses.json'
 import { Orchestrator } from '../orchestrator/client'
 import {
   type IntentInput,
@@ -19,6 +18,7 @@ import {
 import { convertBigIntFields } from '../orchestrator/utils'
 import { type BlancRoute, quoteFromBlanc } from '../orchestrator/wire-quote'
 import type { RhinestoneConfig, SessionSignerSet, SignerSet } from '../types'
+import multichainRoute from './__fixtures__/multichain-route.json'
 import { OrderPathRequiredForIntentsError } from './error'
 import {
   hashErc7739TypedDataForSolady,
@@ -1413,7 +1413,7 @@ describe('quote, sign and submit through blanc', () => {
         new Response(
           JSON.stringify(
             url.endsWith('/quotes')
-              ? { routes: [recordedQuotes.devMultiChainOpsRoute] }
+              ? { routes: [multichainRoute] }
               : { intentId: '77' },
           ),
         ),
@@ -1466,9 +1466,7 @@ describe('quote, sign and submit through blanc', () => {
   })
 
   test('prepares the recorded multi-chain route for owners', async () => {
-    const quote = quoteFromBlanc(
-      recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
-    )
+    const quote = quoteFromBlanc(multichainRoute as unknown as BlancRoute)
     mockCreateQuote.mockResolvedValue([quote])
     expect((await prepareTransaction(config, { chain: base })).quote).toBe(
       quote,
@@ -1491,9 +1489,7 @@ describe('quote, sign and submit through blanc', () => {
   test.each([false, true])(
     'session prepare with same-chain leaves: %s',
     async (sameChain) => {
-      const quote = quoteFromBlanc(
-        recordedQuotes.devMultiChainOpsRoute as unknown as BlancRoute,
-      )
+      const quote = quoteFromBlanc(multichainRoute as unknown as BlancRoute)
       if (sameChain) {
         const payload = quote.signData.origin[0]
         const message = payload.message as { ops: { chainId: bigint }[] }
