@@ -232,6 +232,15 @@ function readParams(
   }
 }
 
+// The domain code of an alps error body: the first error's context code, the
+// flat liquidity body's `error`, or the gateway auth body's `code`.
+function alpsWireCode(body: unknown): string | undefined {
+  const input = asRecord(body)
+  const first = Array.isArray(input.errors) ? asRecord(input.errors[0]) : {}
+  const code = asRecord(first.context).code ?? input.error ?? input.code
+  return typeof code === 'string' ? code : undefined
+}
+
 function sumAmounts(values: unknown[]): string {
   let total = 0n
   for (const value of values) {
@@ -251,6 +260,7 @@ function sortCostTokens(tokens: CanonicalCostToken[]): CanonicalCostToken[] {
 
 export type { ReadOp }
 export {
+  alpsWireCode,
   amount,
   asRecord,
   authorization,

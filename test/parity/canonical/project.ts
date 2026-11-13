@@ -189,6 +189,7 @@ function projectErrors(records: RunRecords, steps: StepRecord[]) {
             statusCode: error.statusCode,
             message: error.message,
             context: withoutTraceId(error.context),
+            hasTraceId: error.hasTraceId,
             wire: last
               ? adapterFor(last.apiVersion).wireError(
                   last.status,

@@ -11,7 +11,26 @@ interface AcceptedDifference {
   reason: string
 }
 
-const ACCEPTED: AcceptedDifference[] = []
+const LIQUIDITY_TRACE_ID =
+  'The candidate reads the trace id from the x-trace-id header; the alps liquidity body has none, so 1.22.0 reports an empty trace id.'
+
+// Entries on the errors layer name one scenario and one exact path: never a
+// glob over messages or contexts (enforced by accepted.test.ts).
+const ACCEPTED: AcceptedDifference[] = [
+  {
+    layer: 'errors',
+    scenario: 'errors/reads',
+    path: '/splits-insufficient-liquidity/hasTraceId',
+    reason: LIQUIDITY_TRACE_ID,
+  },
+  {
+    // Fires only while this split fails for liquidity.
+    layer: 'errors',
+    scenario: 'reads/splits',
+    path: '/splits-settlement-layers/hasTraceId',
+    reason: LIQUIDITY_TRACE_ID,
+  },
+]
 
 function applyAccepted(
   diffs: Diff[],

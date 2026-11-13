@@ -1,4 +1,5 @@
 import {
+  alpsWireCode,
   amount,
   asRecord,
   authorization,
@@ -133,8 +134,28 @@ function cost(responseBody: unknown): CanonicalCost | undefined {
   }
 }
 
+// Blanc's envelope code is coarse (`UNPROCESSABLE_CONTENT` for every planning
+// refusal, `VALIDATION_ERROR` for every 400); compare the domain code alps
+// exposes, which blanc keeps in `details`.
 function wireError(status: number, body: unknown) {
-  const code = asRecord(body).code
+  const input = asRecord(body)
+  let code: unknown
+  if (Array.isArray(input.errors)) {
+    // Blanc still answers some failures (malformed JSON) in the alps shape.
+    return compact({ status, code: alpsWireCode(body) })
+  }
+  if (Array.isArray(input.details)) {
+    code = asRecord(asRecord(input.details[0]).context).code
+  } else if (input.code === 'INSUFFICIENT_LIQUIDITY') {
+    code = input.code
+  } else if (input.details === undefined) {
+    // The gateway's auth body is the same on both versions and is the only
+    // one that carries a body trace id; an orchestrator envelope without
+    // details has no domain code.
+    code = typeof input.traceId === 'string' ? input.code : undefined
+  } else {
+    code = asRecord(input.details).code
+  }
   return compact({ status, code: typeof code === 'string' ? code : undefined })
 }
 

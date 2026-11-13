@@ -1,4 +1,5 @@
 import {
+  alpsWireCode,
   amount,
   asRecord,
   authorization,
@@ -177,10 +178,7 @@ function cost(
 }
 
 function wireError(status: number, body: unknown) {
-  const input = asRecord(body)
-  const first = Array.isArray(input.errors) ? asRecord(input.errors[0]) : {}
-  const code = asRecord(first.context).code ?? input.error ?? input.code
-  return compact({ status, code: typeof code === 'string' ? code : undefined })
+  return compact({ status, code: alpsWireCode(body) })
 }
 
 const alps: VersionAdapter = {

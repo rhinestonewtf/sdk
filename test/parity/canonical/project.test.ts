@@ -100,4 +100,32 @@ describe('project', () => {
       '/prepare/value/intentRoute/intentCost/hasFulfilledAll',
     ])
   })
+  test('errors record whether the error carries a trace id', () => {
+    const failed = (traceId: string): RunRecords => ({
+      http: [],
+      signer: [],
+      steps: [
+        {
+          seq: 1,
+          name: 'splits',
+          kind: 'read',
+          ok: false,
+          error: {
+            name: 'Error',
+            ctor: 'InsufficientLiquidityError',
+            message: 'Insufficient liquidity',
+            statusCode: 422,
+            context: { traceId },
+            hasTraceId: traceId !== '',
+          },
+        },
+      ],
+    })
+    const a = normalize(project(failed(''))).layers
+    const b = normalize(project(failed('abc'))).layers
+    expect(a.errors).toMatchObject({ splits: { hasTraceId: false } })
+    expect(compare('errors', a.errors, b.errors).map((d) => d.path)).toEqual([
+      '/splits/hasTraceId',
+    ])
+  })
 })

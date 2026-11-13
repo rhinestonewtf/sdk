@@ -17,7 +17,7 @@ The recordings are projected into version-neutral layers, through an alps or bla
 | `signatures` | signatures returned by `signTransaction`, templated by role, with byte lengths |
 | `submitRequest` | the submit body: signatures by role, authorizations, permits |
 | `reads` | request parameters and public results of read steps |
-| `errors` | error class, name, type, status, message, context and wire status/code |
+| `errors` | error class, name, type, status, message, context, trace id presence and wire status/domain code |
 | `cost` | inputs, outputs and USD fees; compared within tolerances |
 | `steps` | public step results not covered above, including the prepared intent route |
 | `traffic` | which orchestrator operations each step called, in order, with the auth headers each sent |
@@ -94,6 +94,7 @@ A funded scenario sets `funded: true` and declares what it needs: its per-side s
 
 - **Rules** (`rules.ts`) mask, ignore, decode or tolerance-compare values that vary per quote. Add one only for variance a repeated self-check shows, scope it to the narrowest path, and give it a reason that names what varies. Never mask a field that is deterministic in the request. Each report lists the rules that fired. Scenarios can override tolerances with `tolerances`.
 - **Accepted differences** (`accepted.ts`, or `accepted` on a scenario) are differences the migration intends. Each needs a reason, and the report lists them under their own heading.
+- **Errors** are compared strictly: class, name, type, status, message, context, the wire's domain code and whether the error carries a trace id. The wire code is the domain code on both versions (`ZERO_BALANCE`, `INSUFFICIENT_BALANCE`, …), not blanc's coarse envelope code (`UNPROCESSABLE_CONTENT`, `VALIDATION_ERROR`). When blanc's own wording of one error differs from alps's, accept that difference with one entry for that scenario, that step and that field (e.g. `/<step>/message`), with the reason. Never a glob on the errors layer (`accepted.test.ts` enforces it), and never rewritten text in the SDK.
 
 ## Goldens
 
