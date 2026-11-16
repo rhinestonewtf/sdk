@@ -9,6 +9,7 @@ import {
   isSponsorError,
   isSponsorLimitExceeded,
   parseErrorEnvelope,
+  SimulationFailedError,
   SolanaAccountAlreadyCreatedError,
   SolanaAccountNotCreatedError,
   SolanaAuthorityChangeRefusedError,
@@ -613,5 +614,134 @@ describe('parseErrorEnvelope Swig authority change refusals', () => {
       code,
       ...context,
     })
+  })
+})
+
+describe('parseErrorEnvelope simulation failures', () => {
+  // source: dev POST /intents with forged signatures, trace
+  // 6f1244383f5cbe081b49dc66dbf38800 (orchestrator 71ea7c5).
+  const clientView = {
+    code: 'SIMULATION_FAILED',
+    message: 'Simulation failed: InvalidContractSignature()',
+    traceId: '6f1244383f5cbe081b49dc66dbf38800',
+    details: {
+      nonce:
+        '5425422143591634215322734885883245065001957684855281897089511519881608552',
+      category: 'INVALID_CONTRACT_SIGNATURE',
+      errorSelector: '0xb0669cbc',
+      errorName: 'InvalidContractSignature()',
+      retryable: false,
+      simulations: [
+        {
+          success: false,
+          action: 'claim',
+          chainId: 'eip155:42161',
+          errorSelector: '0xb0669cbc',
+          errorName: 'InvalidContractSignature()',
+          errorCategory: 'INVALID_CONTRACT_SIGNATURE',
+        },
+        {
+          success: false,
+          action: 'fill',
+          chainId: 'eip155:8453',
+          errorSelector: '0x8baa579f',
+          errorName: 'InvalidSignature()',
+          errorCategory: 'INVALID_SIGNATURE',
+        },
+      ],
+    },
+  } as const
+
+  function simulationFailure(details: Record<string, unknown>) {
+    const error = parseErrorEnvelope(
+      { ...clientView, details: { ...clientView.details, ...details } },
+      400,
+    )
+    expect(error).toBeInstanceOf(SimulationFailedError)
+    return error as SimulationFailedError
+  }
+
+  test('maps each failed leg of the client view', () => {
+    const error = simulationFailure({})
+    expect(error).toMatchObject({
+      code: 'SIMULATION_FAILED',
+      traceId: '6f1244383f5cbe081b49dc66dbf38800',
+      category: 'INVALID_CONTRACT_SIGNATURE',
+      retryable: false,
+    })
+    expect(error.simulations).toEqual(clientView.details.simulations)
+  })
+
+  test('drops the signed call and simulator state an older orchestrator returned', () => {
+    // Shape only: router fill calldata closing in a 65-byte atomic fill
+    // signature, as orchestrators before 71ea7c5 returned it.
+    const signature = `${'1b'.repeat(64)}1c`
+    const [, fill] = clientView.details.simulations
+    const error = simulationFailure({
+      simulations: [
+        {
+          ...fill,
+          call: {
+            chainId: 'eip155:8453',
+            to: '0x8a525dc484f893ca64fef507746ebd5036eec256',
+            data: `0x00000000${signature}`,
+            value: '0',
+          },
+          details: {
+            stateOverride: [
+              {
+                address: '0xfeebabe17996b3346cf80f04a1f072102a90cf09',
+                balance: '1',
+              },
+            ],
+            blockNumber: '58242805',
+            relayer: '0xfeebabe17996b3346cf80f04a1f072102a90cf09',
+          },
+        },
+      ],
+    })
+
+    expect(error.simulations).toEqual([fill])
+    expect(JSON.stringify(error)).not.toContain(signature)
+    expect(JSON.stringify(error)).not.toContain('stateOverride')
+  })
+
+  // source: orchestrator SimulationErrorCategory at 71ea7c5.
+  test.each([
+    'ACCOUNT_SETUP_FAILED',
+    'SESSION_POLICY_VIOLATION',
+    'SWAP_SLIPPAGE',
+  ])('keeps the %s category on the error and its leg', (category) => {
+    const [claim] = clientView.details.simulations
+    const error = simulationFailure({
+      category,
+      simulations: [{ ...claim, errorCategory: category }],
+    })
+    expect(error.category).toBe(category)
+    expect(error.simulations[0]?.errorCategory).toBe(category)
+  })
+
+  test('names the reverting contract on the error and its leg', () => {
+    // source: cUSDCv3 proxy on Base reverting Paused() under a fill, prod
+    // trace 555bcdf4df971486104e2135ea1cd04b.
+    const cometProxy = '0xb125e6687d4313864e53df431d5425969c15eb2f'
+    const [, fill] = clientView.details.simulations
+    const error = simulationFailure({
+      category: 'EXECUTION_FAILED',
+      errorSelector: '0x9e87fac8',
+      errorName: 'Paused()',
+      revertedBy: cometProxy,
+      simulations: [
+        {
+          ...fill,
+          errorSelector: '0x9e87fac8',
+          errorName: 'Paused()',
+          errorCategory: 'EXECUTION_FAILED',
+          revertedBy: cometProxy,
+        },
+      ],
+    })
+    expect(error.revertedBy).toBe(cometProxy)
+    expect(error.simulations[0]?.revertedBy).toBe(cometProxy)
   })
 })
