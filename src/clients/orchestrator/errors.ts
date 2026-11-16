@@ -449,6 +449,7 @@ class SimulationFailedError extends OrchestratorError {
   readonly retryHint?: SimulationRetryHint
   /** Contract that reverted, when the orchestrator recovered it from a call trace. */
   readonly revertedBy?: Address
+  /** The claim and fill legs that failed simulation. Legs that passed are not included. */
   readonly simulations: SimulationFailureSimulation[]
 
   constructor(params: BaseErrorParams & SimulationFailureDetails) {
