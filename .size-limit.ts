@@ -110,8 +110,9 @@ const limits = [
   {
     name: '@rhinestone/sdk/smart-sessions',
     path: `${packageRoot}/smart-sessions/index.js`,
-    // Full settlement policies and validation measure 33.98 kB.
-    limit: '34 kB',
+    // Full settlement policies and validation measure 34.04 kB with the
+    // redeployed TychoRouterV3 addresses.
+    limit: '34.1 kB',
     import: '*',
     ignore: viem,
   },

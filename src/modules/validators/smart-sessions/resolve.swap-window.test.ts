@@ -313,7 +313,7 @@ describe('a windowed swap scope gets its own permissionId', () => {
     const windowed = id(swap({ validUntil: UNTIL }), 'v1')
     expect(windowed).not.toBe(id(swap(), 'v1'))
     expect(windowed).toBe(
-      '0x6f01c96b4b47efa89c4976efb796ae9f266583e1fba222ba24edf9cb4ba7f9c8',
+      '0xf5756b9beb7a0b2bf57f951e3b9a4f8f55c0549844314744c9dd64160f2f6744',
     )
   })
 })
