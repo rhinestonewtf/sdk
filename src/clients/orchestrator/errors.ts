@@ -1,4 +1,4 @@
-import { type Address, type Hex, isAddress } from 'viem'
+import { type Address, isAddress } from 'viem'
 import { chainIdFromCaip2 } from '../../chains/caip2'
 import type { SolanaAuthorityRolePermission } from './public'
 
@@ -64,41 +64,30 @@ type SimulationErrorCategory =
   | 'UNCLASSIFIED_REVERT'
   | 'EMPTY_REVERT'
 
-interface SimulationCall {
-  chainId?: string
-  to?: Address
-  data?: Hex
-  value?: string
-}
-
-interface SimulationDetails {
-  stateOverride?: unknown
-  blockNumber?: string
-  relayer?: Address
-  simulationUrls?: string[]
-}
-
+/** A claim or fill leg that reverted in simulation. */
 interface SimulationFailureSimulation {
   success: false
   action?: SimulationAction
   chainId?: string
-  /**
-   * @deprecated The orchestrator no longer returns the simulated call, so this
-   * is always `undefined`. It will be removed in the next major version.
-   */
-  call?: SimulationCall
   errorSelector?: string
   errorName?: string
   errorArgs?: Record<string, unknown>
   errorCategory?: SimulationErrorCategory
   /** Contract that reverted, when the orchestrator recovered it from a call trace. */
   revertedBy?: Address
-  /**
-   * @deprecated The orchestrator no longer returns simulator state, so this is
-   * always `undefined`. It will be removed in the next major version.
-   */
-  details?: SimulationDetails
 }
+
+/** A claim or fill leg that passed simulation. */
+interface SimulationSuccessSimulation {
+  success: true
+  action?: SimulationAction
+  chainId?: string
+  /** Gas the leg is estimated to use, as a decimal string. */
+  gasEstimation?: string
+}
+
+/** One simulated claim or fill leg; narrow on `success`. */
+type SimulationLeg = SimulationFailureSimulation | SimulationSuccessSimulation
 
 interface SimulationFailureDetails {
   nonce?: string
@@ -109,7 +98,7 @@ interface SimulationFailureDetails {
   retryable?: boolean
   retryHint?: SimulationRetryHint
   revertedBy?: Address
-  simulations?: SimulationFailureSimulation[]
+  simulations?: SimulationLeg[]
 }
 
 class OrchestratorError extends Error {
@@ -449,8 +438,8 @@ class SimulationFailedError extends OrchestratorError {
   readonly retryHint?: SimulationRetryHint
   /** Contract that reverted, when the orchestrator recovered it from a call trace. */
   readonly revertedBy?: Address
-  /** The claim and fill legs that failed simulation. Legs that passed are not included. */
-  readonly simulations: SimulationFailureSimulation[]
+  /** Every simulated claim and fill leg, in order; narrow on `success`. */
+  readonly simulations: SimulationLeg[]
 
   constructor(params: BaseErrorParams & SimulationFailureDetails) {
     super({ ...params, code: 'SIMULATION_FAILED' })
@@ -588,23 +577,29 @@ function addressValue(value: unknown): Address | undefined {
   return typeof value === 'string' && isAddress(value) ? value : undefined
 }
 
-function isSimulationFailureSimulation(
-  value: unknown,
-): value is SimulationFailureSimulation {
-  return isRecord(value) && value.success === false
-}
+function parseSimulationLeg(value: unknown): SimulationLeg | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
 
-function parseSimulationFailureSimulation(
-  value: unknown,
-): SimulationFailureSimulation | undefined {
-  if (!isSimulationFailureSimulation(value)) {
+  const action = oneOf(value.action, SIMULATION_ACTIONS)
+  const chainId = stringValue(value.chainId)
+  if (value.success === true) {
+    return {
+      success: true,
+      action,
+      chainId,
+      gasEstimation: stringValue(value.gasEstimation),
+    }
+  }
+  if (value.success !== false) {
     return undefined
   }
 
   return {
     success: false,
-    action: oneOf(value.action, SIMULATION_ACTIONS),
-    chainId: stringValue(value.chainId),
+    action,
+    chainId,
     errorSelector: stringValue(value.errorSelector),
     errorName: stringValue(value.errorName),
     errorArgs: recordValue(value.errorArgs),
@@ -631,11 +626,8 @@ function parseSimulationFailureDetails(
     revertedBy: addressValue(details.revertedBy),
     simulations: Array.isArray(details.simulations)
       ? details.simulations
-          .map(parseSimulationFailureSimulation)
-          .filter(
-            (simulation): simulation is SimulationFailureSimulation =>
-              simulation !== undefined,
-          )
+          .map(parseSimulationLeg)
+          .filter((leg): leg is SimulationLeg => leg !== undefined)
       : undefined,
   }
 }
@@ -1026,12 +1018,12 @@ export type {
   ErrorDetail,
   ErrorEnvelope,
   SimulationAction,
-  SimulationCall,
-  SimulationDetails,
   SimulationErrorCategory,
   SimulationFailureDetails,
   SimulationFailureSimulation,
+  SimulationLeg,
   SimulationRetryHint,
+  SimulationSuccessSimulation,
   SolanaAuthorityChangeRefusalReason,
   SponsorLimitKey,
   ValidationIssue,

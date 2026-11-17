@@ -672,6 +672,25 @@ describe('parseErrorEnvelope simulation failures', () => {
     expect(error.simulations).toEqual(clientView.details.simulations)
   })
 
+  test('keeps a leg that passed alongside the one that failed', () => {
+    // source: dev POST /intents with forged signatures and no destination op,
+    // trace a10dc80fc4ac0544eb8042508f208f2d (orchestrator 71ea7c5).
+    const [claim] = clientView.details.simulations
+    const passedFill = {
+      success: true,
+      action: 'fill',
+      chainId: 'eip155:8453',
+      gasEstimation: '178946',
+    } as const
+    const error = simulationFailure({
+      simulations: [claim, passedFill, { action: 'fill' }],
+    })
+
+    expect(error.simulations).toEqual([claim, passedFill])
+    const [, fill] = error.simulations
+    expect(fill?.success && fill.gasEstimation).toBe('178946')
+  })
+
   test('drops the signed call and simulator state an older orchestrator returned', () => {
     // Shape only: router fill calldata closing in a 65-byte atomic fill
     // signature, as orchestrators before 71ea7c5 returned it.
@@ -718,7 +737,8 @@ describe('parseErrorEnvelope simulation failures', () => {
       simulations: [{ ...claim, errorCategory: category }],
     })
     expect(error.category).toBe(category)
-    expect(error.simulations[0]?.errorCategory).toBe(category)
+    const [leg] = error.simulations
+    expect(leg?.success === false && leg.errorCategory).toBe(category)
   })
 
   test('names the reverting contract on the error and its leg', () => {
@@ -742,6 +762,7 @@ describe('parseErrorEnvelope simulation failures', () => {
       ],
     })
     expect(error.revertedBy).toBe(cometProxy)
-    expect(error.simulations[0]?.revertedBy).toBe(cometProxy)
+    const [leg] = error.simulations
+    expect(leg?.success === false && leg.revertedBy).toBe(cometProxy)
   })
 })
