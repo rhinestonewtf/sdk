@@ -1,5 +1,21 @@
 # @rhinestone/sdk
 
+## 3.3.0
+
+### Minor Changes
+
+- d1144e8: Stop `SimulationFailedError` surfacing the simulated call and simulator state of a failed leg, and keep the revert details the orchestrator returns.
+
+  - Expose `revertedBy` on the error and on each entry of `simulations`: the contract that reverted, when the orchestrator recovered it from a call trace.
+  - Keep the `ACCOUNT_SETUP_FAILED`, `SESSION_POLICY_VIOLATION`, and `SWAP_SLIPPAGE` categories on `category` and `simulations[].errorCategory` instead of dropping them to `undefined`.
+  - Deprecate `simulations[].call` and `simulations[].details`. The orchestrator no longer returns the simulated call or simulator state, so both are always `undefined`; they will be removed in the next major version.
+
+### Patch Changes
+
+- 1d51f2c: Point `fynd()` swap sessions at PropellerHeads' redeployed TychoRouterV3 on every fynd chain (Ethereum, BNB Chain, Unichain, Polygon, Base, Plasma, Arbitrum), in both the direct router call and the Rhinestone-Swapper-wrapped one. The router ABI is unchanged.
+
+  A session built with `fynd()` (or `rhinestoneSwap({ route: 'fynd' })`) on an earlier version authorises the previous router deployment, which no longer executes fynd swaps. Re-create it with this version. This changes the session's digest on those chains.
+
 ## 3.2.0
 
 ### Minor Changes
