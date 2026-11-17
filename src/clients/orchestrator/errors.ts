@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, isAddress } from 'viem'
 import { chainIdFromCaip2 } from '../../chains/caip2'
 import type { SolanaAuthorityRolePermission } from './public'
 
@@ -50,12 +50,15 @@ type SimulationErrorCategory =
   | 'INSUFFICIENT_BALANCE'
   | 'INSUFFICIENT_ALLOWANCE'
   | 'ACCOUNT_CREATION_FAILED'
+  | 'ACCOUNT_SETUP_FAILED'
   | 'ACCOUNT_UNAUTHORIZED'
+  | 'SESSION_POLICY_VIOLATION'
   | 'ADAPTER_CALL_FAILED'
   | 'EXECUTION_FAILED'
   | 'CLAIM_FAILED'
   | 'ROUTER_PAUSED'
   | 'ADAPTER_NOT_FOUND'
+  | 'SWAP_SLIPPAGE'
   | 'PANIC'
   | 'REQUIRE_FAILED'
   | 'UNCLASSIFIED_REVERT'
@@ -79,11 +82,21 @@ interface SimulationFailureSimulation {
   success: false
   action?: SimulationAction
   chainId?: string
+  /**
+   * @deprecated The orchestrator no longer returns the simulated call, so this
+   * is always `undefined`. It will be removed in the next major version.
+   */
   call?: SimulationCall
   errorSelector?: string
   errorName?: string
   errorArgs?: Record<string, unknown>
   errorCategory?: SimulationErrorCategory
+  /** Contract that reverted, when the orchestrator recovered it from a call trace. */
+  revertedBy?: Address
+  /**
+   * @deprecated The orchestrator no longer returns simulator state, so this is
+   * always `undefined`. It will be removed in the next major version.
+   */
   details?: SimulationDetails
 }
 
@@ -95,6 +108,7 @@ interface SimulationFailureDetails {
   errorArgs?: Record<string, unknown>
   retryable?: boolean
   retryHint?: SimulationRetryHint
+  revertedBy?: Address
   simulations?: SimulationFailureSimulation[]
 }
 
@@ -433,6 +447,9 @@ class SimulationFailedError extends OrchestratorError {
   readonly errorArgs?: Record<string, unknown>
   readonly retryable: boolean
   readonly retryHint?: SimulationRetryHint
+  /** Contract that reverted, when the orchestrator recovered it from a call trace. */
+  readonly revertedBy?: Address
+  /** The claim and fill legs that failed simulation. Legs that passed are not included. */
   readonly simulations: SimulationFailureSimulation[]
 
   constructor(params: BaseErrorParams & SimulationFailureDetails) {
@@ -444,6 +461,7 @@ class SimulationFailedError extends OrchestratorError {
     this.errorArgs = params.errorArgs
     this.retryable = params.retryable ?? false
     this.retryHint = params.retryHint
+    this.revertedBy = params.revertedBy
     this.simulations = params.simulations ?? []
   }
 }
@@ -536,12 +554,15 @@ const SIMULATION_ERROR_CATEGORIES = [
   'INSUFFICIENT_BALANCE',
   'INSUFFICIENT_ALLOWANCE',
   'ACCOUNT_CREATION_FAILED',
+  'ACCOUNT_SETUP_FAILED',
   'ACCOUNT_UNAUTHORIZED',
+  'SESSION_POLICY_VIOLATION',
   'ADAPTER_CALL_FAILED',
   'EXECUTION_FAILED',
   'CLAIM_FAILED',
   'ROUTER_PAUSED',
   'ADAPTER_NOT_FOUND',
+  'SWAP_SLIPPAGE',
   'PANIC',
   'REQUIRE_FAILED',
   'UNCLASSIFIED_REVERT',
@@ -563,30 +584,8 @@ function stringArrayValue(value: unknown): string[] | undefined {
     : undefined
 }
 
-function parseSimulationCall(value: unknown): SimulationCall | undefined {
-  if (!isRecord(value)) {
-    return undefined
-  }
-
-  return {
-    chainId: stringValue(value.chainId),
-    to: stringValue(value.to) as Address | undefined,
-    data: stringValue(value.data) as Hex | undefined,
-    value: stringValue(value.value),
-  }
-}
-
-function parseSimulationDetails(value: unknown): SimulationDetails | undefined {
-  if (!isRecord(value)) {
-    return undefined
-  }
-
-  return {
-    stateOverride: value.stateOverride,
-    blockNumber: stringValue(value.blockNumber),
-    relayer: stringValue(value.relayer) as Address | undefined,
-    simulationUrls: stringArrayValue(value.simulationUrls),
-  }
+function addressValue(value: unknown): Address | undefined {
+  return typeof value === 'string' && isAddress(value) ? value : undefined
 }
 
 function isSimulationFailureSimulation(
@@ -606,12 +605,11 @@ function parseSimulationFailureSimulation(
     success: false,
     action: oneOf(value.action, SIMULATION_ACTIONS),
     chainId: stringValue(value.chainId),
-    call: parseSimulationCall(value.call),
     errorSelector: stringValue(value.errorSelector),
     errorName: stringValue(value.errorName),
     errorArgs: recordValue(value.errorArgs),
     errorCategory: oneOf(value.errorCategory, SIMULATION_ERROR_CATEGORIES),
-    details: parseSimulationDetails(value.details),
+    revertedBy: addressValue(value.revertedBy),
   }
 }
 
@@ -630,6 +628,7 @@ function parseSimulationFailureDetails(
     errorArgs: recordValue(details.errorArgs),
     retryable: booleanValue(details.retryable),
     retryHint: oneOf(details.retryHint, SIMULATION_RETRY_HINTS),
+    revertedBy: addressValue(details.revertedBy),
     simulations: Array.isArray(details.simulations)
       ? details.simulations
           .map(parseSimulationFailureSimulation)
