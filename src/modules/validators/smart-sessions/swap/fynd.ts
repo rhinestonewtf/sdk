@@ -30,13 +30,13 @@ export type FyndChainId = (typeof FYND_CHAIN_IDS)[number]
  * whitelisted target produces quotes that revert.
  */
 export const FYND_ROUTERS: Record<FyndChainId, Address> = {
-  1: '0x1644d2477f809cc2c71bccfd6dc9497e3f83210d',
-  56: '0x7f3d12bbafb8955e51b3ab9588b34c8ad95bda4e',
-  130: '0xcba5574597ad00ea250fd106dab4fc7461949635',
-  137: '0xbd4e6011f03355c2a377fd9af939322a7d0a1bc1',
-  8453: '0xaba5b53b03eafad1c5fc8bd5fc765fc85bb3de67',
-  9745: '0x0953c7e23b44259e5e5630e9b97c31d7278c4c85',
-  42161: '0x924f147c50ea59f5180a26031a8b65b2aa1e81cd',
+  1: '0xe41c726421007e133a59365432fe886a73b45126',
+  56: '0xee7ece626064bda1c6afdb8a281afe44eabd3242',
+  130: '0x556dff14e4a42259ebce4fa087323c1047e9a55a',
+  137: '0x4db0b661dc706f7e09e54273028b22f61f8f94c2',
+  8453: '0xd374c00614f95492d816b5957e3797ce3f0c445c',
+  9745: '0x43c747a86e84ce280c4c41909e6e4a5adc3a0bef',
+  42161: '0x1b82e8c16ce8e17535c9b6b8ad107f61b0b192b5',
 }
 
 /**
