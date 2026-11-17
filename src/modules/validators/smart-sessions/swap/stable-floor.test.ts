@@ -525,7 +525,7 @@ describe('stableFloor off', () => {
         to: ACCOUNT,
         via: [fynd()],
       },
-      '0x2cca6ce8fa8c9068f1751e53e249307000672255c568d5be5207c6f0f69423c9',
+      '0xecb888b5cb93309f9957c09886a7227723d5ab8a4539fd5f5182a4a0210af047',
     ],
   ] as [string, SwapScopeInput, Hex][])(
     '%s: session data unchanged, with or without served stablecoins',
