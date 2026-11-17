@@ -37,7 +37,7 @@ const DAI: Address = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const SETTLER: Address = '0x7F2194E8d4D5B5F889b17aeCe891F89Da74F5384'
 const PLASMA = 9745
-const TYCHO_PLASMA: Address = '0x0953c7e23b44259e5e5630e9b97c31d7278c4c85'
+const TYCHO_PLASMA: Address = '0x43c747a86e84ce280c4c41909e6e4a5adc3a0bef'
 
 function scope(overrides: Partial<SwapScopeInput> = {}): SwapScopeInput {
   return {
