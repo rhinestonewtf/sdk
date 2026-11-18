@@ -167,8 +167,9 @@ await sdk.createAccount({ solana, evm: managedEvmConfig })
 There is no EVM-derived fallback: without `swig`, the SDK derives the Swig from
 the owner's public key, never from the EVM account. That Swig is the same in
 development and production, and another key as `owner` derives another Swig: to
-use an existing Swig with another key, name it with `swig`. Account construction
-does not deploy or verify the Swig. Save a named Swig's state-account address during
+use an existing Swig with another key, name it with `swig`. Save
+`account.config.solana.swig`, which holds the derived Swig, for that. Account
+construction does not deploy or verify the Swig. Save a named Swig's state-account address during
 provisioning; the SDK derives the asset-holding wallet PDA. To create a Swig through the SDK, call
 `account.deploy('solana', solanaDevnet)` — see [Creating the Swig](#creating-the-swig). The Solana owner may
 be an ECDSA account or WebAuthn account and may be shared with EVM, but the two

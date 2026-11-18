@@ -264,7 +264,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     ...config,
     ...(capturedEvmReceiver ? { evm: capturedEvmReceiver } : {}),
     ...(capturedSolanaReceiver ? { solana: capturedSolanaReceiver } : {}),
-  }) as Readonly<C>
+  }) as RhinestoneAccountBase<C>['config']
   if (!managedEvm) {
     const receiver: RhinestoneAccountBase<C> = {
       config: captured,

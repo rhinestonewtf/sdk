@@ -197,13 +197,22 @@ type HasManagedSolana<C> = [RequiredBranch<C, 'solana'>] extends [never]
   : [RequiredBranch<C, 'solana'>] extends [SolanaManagedAccountConfig]
     ? true
     : false
+/** The captured configuration: a managed Solana entry always names its Swig. */
+type CapturedConfig<C> = HasManagedSolana<C> extends true
+  ? C & { readonly solana: { readonly swig: SolanaAddress } }
+  : C
 
 /** Address access shared by every account handle. */
 export interface RhinestoneAccountBase<
   C extends RhinestoneAccountConfig = DefaultAccountConfig,
 > {
-  /** Captured composite configuration. VM membership is shallowly immutable. */
-  config: Readonly<C>
+  /**
+   * Captured composite configuration. VM membership is shallowly immutable.
+   * A managed Solana entry names its Swig as `solana.swig`, the one derived
+   * from the owner when the configuration names none; save it to use that
+   * Swig with another key.
+   */
+  config: Readonly<CapturedConfig<C>>
   /**
    * Get the native address for a configured VM.
    *
@@ -672,7 +681,7 @@ export interface ManagedEvmAccount<
   C extends RhinestoneAccountConfig = DefaultAccountConfig,
 > extends ManagedTransactionAccount<C> {
   /** The captured composite account configuration. */
-  config: Readonly<C>
+  config: Readonly<CapturedConfig<C>>
   /**
    * Deploy the EVM account on a given chain.
    *
@@ -1296,7 +1305,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   }
 
   const account: ManagedEvmAccount<C> & ManagedSolanaDeployment = {
-    config: publicConfig,
+    config: publicConfig as Readonly<CapturedConfig<C>>,
     deploy: (async (
       vm: AccountVm,
       chain: Chain | SolanaChain,
@@ -2354,7 +2363,7 @@ export function createSolanaAccountFacade<C extends RhinestoneAccountConfig>(
   const sdk = composition.config
   const workflows = composition.project.solana
   return {
-    config: publicConfig,
+    config: publicConfig as Readonly<CapturedConfig<C>>,
     getAddress: ((vm: AccountVm) => {
       if (vm === 'solana') return source.walletAddress
       if (vm === 'evm' && source.evmRecipient) return source.evmRecipient
