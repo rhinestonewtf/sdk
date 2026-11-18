@@ -146,6 +146,19 @@ function reservedSwig(owner: SolanaOwner): ParsedSolanaSwig {
   return { address: reserved.wallet, swigAccount: reserved.swig }
 }
 
+/**
+ * The wallet of the Swig derived from the owner; `undefined` for a key that
+ * derives none.
+ */
+function derivedSwigWallet(owner: SolanaOwner): SolanaAddress | undefined {
+  try {
+    return reservedSwig(owner).address
+  } catch (error) {
+    if (error instanceof InvalidAccountConfigError) return undefined
+    throw error
+  }
+}
+
 export function attachAccount<const C extends RhinestoneAccountConfig>(
   sdk: SdkComposition,
   config: C,
@@ -208,10 +221,20 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
           "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account, or `{ owner: { type: 'passkey', account } }` with a viem WebAuthn account holding a P-256 public key.",
         )
       }
-      managedSolanaSwig =
-        solana.swig === undefined
-          ? reservedSwig(managedSolanaOwner)
-          : parseSwig(solana.swig)
+      if (solana.swig === undefined) {
+        managedSolanaSwig = reservedSwig(managedSolanaOwner)
+      } else {
+        managedSolanaSwig = parseSwig(solana.swig)
+        // A wallet's wallet belongs to no Swig: funds sent to it are lost.
+        if (
+          managedSolanaSwig.swigAccount ===
+          derivedSwigWallet(managedSolanaOwner)
+        ) {
+          throw new InvalidAccountConfigError(
+            '`solana.swig` is the wallet of the Swig derived from the owner; omit `swig` to use that Swig.',
+          )
+        }
+      }
     }
   }
   if (

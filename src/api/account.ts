@@ -78,6 +78,7 @@ import type {
 } from '../config/resolved'
 import {
   AccountVmNotConfiguredError,
+  InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
@@ -527,7 +528,8 @@ export interface SolanaStandaloneAccount<
    * needs no options: it is created from the reservation that commits its
    * address to the owner's key. A Swig minted with `createSolanaSwigId()` needs
    * the `swigId` saved with it, and an id that does not derive the configured
-   * `swig` is refused before anything is sent.
+   * `swig` is refused before anything is sent. A Swig derived from another
+   * owner is created only by an account configured with that owner.
    *
    * A Swig that already exists resolves `true` without creating anything. Its
    * root authority is not checked, and a Swig whose root is not the configured
@@ -611,7 +613,9 @@ interface ManagedSolanaDeployment {
    * owner's key. The Swig derived from the managed EVM account needs none
    * either: the SDK computes it. A Swig minted with `createSolanaSwigId()`
    * needs that id, and a missing id, or one that does not derive the
-   * configured `swig`, is refused before anything is sent.
+   * configured `swig`, is refused before anything is sent. A Swig derived
+   * from another owner is created only by an account configured with that
+   * owner.
    *
    * A Swig that already exists resolves `true` without creating anything. Its
    * root authority is not checked, and a Swig whose root is not the configured
@@ -1242,6 +1246,16 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     }
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
+    const paired = locateSwig(
+      asSwigNamespace(MANAGED_SWIG_NAMESPACES[ctx.sdk.environment]),
+      identity,
+    )
+    // A wallet's wallet belongs to no Swig: funds sent to it are lost.
+    if (branch.swig === paired.wallet) {
+      throw new InvalidAccountConfigError(
+        '`solana.swig` is the wallet of the Swig derived from the managed EVM account; name that Swig by its state account.',
+      )
+    }
     const kind = ctx.account.account.kind
     return createSolanaOrigin(
       {
@@ -2147,7 +2161,7 @@ function createSolanaOrigin(
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
     }
     return refuse(
-      `Creating the Swig ${source.swigAddress} needs the id it was minted with: pass the \`swigId\` that \`createSolanaSwigId()\` returned with it. Without \`swig\` in the account configuration, the SDK uses a different Swig, with a different wallet, derived from the owner, which needs no id.`,
+      `The Swig ${source.swigAddress} is not derived from this owner, so creating it needs the id it was minted with: pass the \`swigId\` that \`createSolanaSwigId()\` returned with it. A Swig derived from another owner is created by an account configured with that owner and no \`swig\`.`,
     )
   }
 

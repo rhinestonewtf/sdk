@@ -31,6 +31,7 @@ import {
 } from './solana-deployment'
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
+const otherOwner = privateKeyToAccount(`0x${'34'.repeat(32)}`)
 const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
 const MAINNET = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 // `createSolanaSwigId`-style independent Swig for id = 32 × 0x07.
@@ -208,7 +209,17 @@ describe('Solana Swig deployment request', () => {
       {
         initAuthority: { kind: 'secp256k1', publicKey: '0x04' as Hex } as const,
       },
-      /SEC1 secp256k1 public key/,
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
+      "another owner's ECDSA public key",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: otherOwner.publicKey,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
     ],
     [
       'another namespace',
@@ -315,6 +326,16 @@ describe('Solana Swig deployment request from a reservation', () => {
         reservationInput(overrides as Partial<SolanaDeploymentInput>),
       ),
     ).toThrow(/reservation does not derive the configured Swig and wallet/)
+  })
+
+  test('refuses a reserved root that is not the configured ECDSA owner', () => {
+    expect(() =>
+      buildSolanaDeploymentRequest(
+        reservationInput({
+          authorization: { kind: 'secp256k1', address: otherOwner.address },
+        }),
+      ),
+    ).toThrow(/configured owner's uncompressed secp256k1 public key/)
   })
 })
 

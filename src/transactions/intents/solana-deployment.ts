@@ -1,4 +1,5 @@
 import { type Hex, hexToBytes, isHex } from 'viem'
+import { publicKeyToAddress } from 'viem/utils'
 import {
   isManagedSwigNamespace,
   locateReservedSwig,
@@ -77,11 +78,14 @@ function assertInitAuthority(input: SolanaDeploymentInput): void {
   }
   if (
     initAuthority.kind === 'secp256k1' &&
-    !/^0x(?:0[23][0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/u.test(
-      initAuthority.publicKey,
-    )
+    (authorization.kind !== 'secp256k1' ||
+      !/^0x04[0-9a-fA-F]{128}$/u.test(initAuthority.publicKey) ||
+      publicKeyToAddress(initAuthority.publicKey).toLowerCase() !==
+        authorization.address.toLowerCase())
   ) {
-    refuse('the installed ECDSA authority must be a SEC1 secp256k1 public key')
+    refuse(
+      "the installed ECDSA authority must be the configured owner's uncompressed secp256k1 public key",
+    )
   }
 }
 

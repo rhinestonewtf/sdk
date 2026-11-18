@@ -114,7 +114,9 @@ A managed Solana
 config names its state account with `swig: stateAddress`, or names only its
 owner and uses the Swig derived from the owner's key; adding, removing, or
 replacing an EVM branch never selects another wallet. The SDK derives the
-asset-holding wallet PDA from that state account. Plain transfers,
+asset-holding wallet PDA from that state account, so a `swig` that is the wallet
+of the Swig derived from the owner, or of the one the managed EVM account pairs
+with, is refused: the wallet derived from a wallet belongs to no Swig. Plain transfers,
 instructions, and cross-chain deliveries name `svm.swigAccount`, carry no
 `account.evm`, bind sponsorship to the wallet, and persist no `accountType`.
 The owner is an independent ECDSA key or passkey; either credential may also be
