@@ -1,6 +1,7 @@
 import { type Hex, hexToBytes, isHex } from 'viem'
 import {
   isManagedSwigNamespace,
+  locateReservedSwig,
   locateSwigById,
   type ManagedSwigNamespace,
 } from '../../accounts/solana/address'
@@ -34,8 +35,11 @@ export interface SolanaDeploymentInput {
   readonly authorization: SwigAuthority
   /** The same owner as the public key installed as the permanent root role. */
   readonly initAuthority: OrchestratorSwigInitData['authority']
-  /** The 32-byte id that derives `swigAddress`. */
-  readonly swigId: Hex
+  /**
+   * What `swigAddress` derives from: the 32-byte id it was minted with, or the
+   * reservation package that commits it to `initAuthority`.
+   */
+  readonly creation: { readonly id: Hex } | { readonly reservation: Hex }
   readonly namespace: ManagedSwigNamespace
   readonly endpoint: string
 }
@@ -81,6 +85,35 @@ function assertInitAuthority(input: SolanaDeploymentInput): void {
   }
 }
 
+function idOf(input: SolanaDeploymentInput, id: Hex): Hex {
+  if (!isHex(id) || hexToBytes(id).length !== 32) {
+    refuse('the Swig id must be 32 bytes of hex')
+  }
+  const location = locateSwigById(hexToBytes(id))
+  if (
+    location.swig !== input.swigAddress ||
+    location.wallet !== input.walletAddress
+  ) {
+    refuse('the Swig id does not derive the configured Swig and wallet')
+  }
+  return id.toLowerCase() as Hex
+}
+
+// The only reservation the SDK sends: the index-0 package for the installed root.
+function reservationOf(input: SolanaDeploymentInput, reservation: Hex): Hex {
+  const reserved = locateReservedSwig(input.initAuthority)
+  if (reserved?.reservation !== reservation.toLowerCase()) {
+    refuse('the reservation must commit to the installed authority')
+  }
+  if (
+    reserved.swig !== input.swigAddress ||
+    reserved.wallet !== input.walletAddress
+  ) {
+    refuse('the reservation does not derive the configured Swig and wallet')
+  }
+  return reserved.reservation
+}
+
 export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   readonly request: OrchestratorIntentRequest
   readonly intentInput: SerializedIntentInput
@@ -90,19 +123,9 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   if (!isManagedSwigNamespace(input.namespace)) {
     refuse('the managed account namespace must be dev-v1 or prod-v1')
   }
-  if (!isHex(input.swigId) || hexToBytes(input.swigId).length !== 32) {
-    refuse('the Swig id must be 32 bytes of hex')
-  }
-  const location = locateSwigById(hexToBytes(input.swigId))
-  if (
-    location.swig !== input.swigAddress ||
-    location.wallet !== input.walletAddress
-  ) {
-    refuse('the Swig id does not derive the configured Swig and wallet')
-  }
   assertInitAuthority(input)
-  // The Solana-only shape: no `evm` entry, so the id is sent explicitly, even
-  // for the Swig the managed EVM account derives.
+  // The Solana-only shape: no `evm` entry, so the id or reservation is sent
+  // explicitly, even for the Swig the managed EVM account derives.
   const svm = {
     type: 'swig' as const,
     address: input.walletAddress,
@@ -110,7 +133,9 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
     authorization: input.authorization,
     initData: {
       authority: input.initAuthority,
-      id: input.swigId.toLowerCase() as Hex,
+      ...('reservation' in input.creation
+        ? { reservation: reservationOf(input, input.creation.reservation) }
+        : { id: idOf(input, input.creation.id) }),
     },
   }
   // Gas only: Solana routes refuse the other sponsorship categories. They are

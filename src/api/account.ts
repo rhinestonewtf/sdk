@@ -12,6 +12,7 @@ import type { UserOperationReceipt } from 'viem/account-abstraction'
 import { publicKeyToAddress } from 'viem/utils'
 import {
   asSwigNamespace,
+  locateReservedSwig,
   locateSwig,
   locateSwigById,
   locateSwigWallet,
@@ -76,6 +77,7 @@ import type {
 } from '../config/resolved'
 import {
   AccountVmNotConfiguredError,
+  InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
@@ -512,40 +514,38 @@ export interface SolanaStandaloneAccount<
    * wallet, including anything already sent to it. Each creation is billed to
    * the integrator's gas sponsorship, which pays the rent and fees.
    *
-   * Without a managed EVM account the Swig is always independent, so `swigId`,
-   * the id it was minted with by `createSolanaSwigId()`, is required. On an
-   * account that also manages EVM, the Swig derived from the EVM account needs
-   * no id; any other Swig still needs its saved one. An id that does not derive
-   * the configured `swig` is refused before anything is sent.
+   * The Swig the SDK derives from the owner, when the config gives no `swig`,
+   * needs no options: it is created from the reservation that commits its
+   * address to the owner's key. A Swig minted with `createSolanaSwigId()` needs
+   * the `swigId` saved with it, and an id that does not derive the configured
+   * `swig` is refused before anything is sent.
    *
    * A Swig that already exists resolves `true` without creating anything. Its
    * root authority is not checked, and a Swig whose root is not the configured
    * owner cannot be spent by it.
    * @param vm `'solana'`
    * @param chain Solana cluster to create the Swig on (`solanaDevnet` or `solanaMainnet`)
-   * @param options `swigId`, the 32-byte hex id saved with the configured `swig`; optional only for the Swig derived from a managed EVM account
+   * @param options `swigId`, the 32-byte hex id saved with a Swig minted by `createSolanaSwigId()`; omit it for the Swig derived from the owner
    * @returns `true` once the Swig exists
    * @throws IntentFailedError when the deployment intent fails
-   * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
+   * @throws UnsupportedAccountCapabilityError when the Swig id is missing, wrong or given for the Swig derived from the owner, or an ECDSA owner exposes no public key
    * @throws ManagedSolanaAccountNotSupportedError outside the environment and endpoint the account was created against
    * @example
    * ```ts
-   * import { createSolanaSwigId, solanaDevnet } from '@rhinestone/sdk/solana'
+   * import { solanaDevnet } from '@rhinestone/sdk/solana'
    *
-   * // Once, when provisioning: save `id` and `swig` together.
-   * const { id, swig } = createSolanaSwigId()
-   *
+   * // The SDK derives the Swig from the owner's key.
    * const account = await sdk.createAccount({
-   *   solana: { owner: { type: 'ecdsa', account: owner }, swig },
+   *   solana: { owner: { type: 'ecdsa', account: owner } },
    * })
-   * await account.deploy('solana', solanaDevnet, { swigId: id })
+   * await account.deploy('solana', solanaDevnet)
    * ```
-   * @see {@link createSolanaSwigId} to mint an independent Swig
+   * @see {@link createSolanaSwigId} for a Swig created from an id
    */
   deploy(
     vm: 'solana',
     chain: SolanaChain,
-    options: Required<SolanaDeployOptions>,
+    options?: SolanaDeployOptions,
   ): Promise<boolean>
 }
 
@@ -574,8 +574,8 @@ export interface EvmSetupOptions {
 export interface SolanaDeployOptions {
   /**
    * The 32-byte Swig id, as 0x-prefixed hex, returned by `createSolanaSwigId()`
-   * together with the configured `swig`. Optional only on an account with a
-   * managed EVM account, and there only for the Swig derived from it.
+   * together with the configured `swig`. Omit it for the Swig derived from the
+   * owner, and for the Swig derived from a managed EVM account.
    */
   swigId?: Hex
 }
@@ -597,10 +597,12 @@ interface ManagedSolanaDeployment {
    * wallet, including anything already sent to it. Each creation is billed to
    * the integrator's gas sponsorship, which pays the rent and fees.
    *
-   * The Swig derived from the managed EVM account needs no id: the SDK computes
-   * it. Any other Swig needs the id it was minted with by `createSolanaSwigId()`,
-   * and a missing id, or one that does not derive the configured `swig`, is
-   * refused before anything is sent.
+   * The Swig derived from the owner, when the config gives no `swig`, needs no
+   * id: it is created from the reservation that commits its address to the
+   * owner's key. The Swig derived from the managed EVM account needs none
+   * either: the SDK computes it. A Swig minted with `createSolanaSwigId()`
+   * needs that id, and a missing id, or one that does not derive the
+   * configured `swig`, is refused before anything is sent.
    *
    * A Swig that already exists resolves `true` without creating anything. Its
    * root authority is not checked, and a Swig whose root is not the configured
@@ -610,7 +612,7 @@ interface ManagedSolanaDeployment {
    * @param options Optional `swigId`, the 32-byte hex id saved with the configured `swig`
    * @returns `true` once the Swig exists
    * @throws IntentFailedError when the deployment intent fails
-   * @throws UnsupportedAccountCapabilityError when the Swig id is missing or wrong, or an ECDSA owner exposes no public key
+   * @throws UnsupportedAccountCapabilityError when the Swig id is missing, wrong or given for the Swig derived from the owner, or an ECDSA owner exposes no public key
    * @throws ManagedSolanaAccountNotSupportedError outside the environment and endpoint the account was created against
    * @example
    * ```ts
@@ -1228,11 +1230,19 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
     const kind = ctx.account.account.kind
+    const swig =
+      branch.swig === undefined
+        ? ownerDerivedSwig(branch.owner, (message) => {
+            throw new InvalidAccountConfigError(message)
+          })
+        : {
+            swigAddress: branch.swig,
+            walletAddress: locateSwigWallet(branch.swig).address,
+          }
     return createSolanaOrigin(
       {
         owner: branch.owner,
-        walletAddress: locateSwigWallet(branch.swig).address,
-        swigAddress: branch.swig,
+        ...swig,
         environment: ctx.sdk.environment,
         endpoint: ctx.sdk.orchestratorUrl,
         evmRecipient: identity,
@@ -1833,6 +1843,58 @@ function assertSolanaMetadata(
   }
 }
 
+/**
+ * The permanent root role a managed Solana owner installs on its Swig, from
+ * the owner's own key and never from caller input. `refuse` throws when an
+ * ECDSA owner carries no public key for its `address`.
+ */
+function solanaRootAuthority(
+  owner: SolanaOwner,
+  refuse: (message: string) => never,
+): OrchestratorSwigInitData['authority'] {
+  if (owner.type === 'passkey') {
+    return {
+      kind: 'secp256r1',
+      publicKey: compressP256PublicKey(owner.account.publicKey),
+    }
+  }
+  const publicKey = (owner.account as { publicKey?: unknown }).publicKey
+  if (
+    typeof publicKey !== 'string' ||
+    !/^0x04[0-9a-fA-F]{128}$/u.test(publicKey)
+  ) {
+    return refuse(
+      "Creating a Swig installs the ECDSA owner's public key as its root, and this owner account exposes none. Configure the Solana owner with a viem local account (such as `privateKeyToAccount`), which carries `publicKey`.",
+    )
+  }
+  if (
+    !isAddressEqual(publicKeyToAddress(publicKey as Hex), owner.account.address)
+  ) {
+    return refuse(
+      "The ECDSA owner's `publicKey` does not belong to its `address`.",
+    )
+  }
+  return { kind: 'secp256k1', publicKey: publicKey as Hex }
+}
+
+/**
+ * The Swig the SDK derives from a managed Solana owner's key, which `deploy`
+ * creates from its reservation. `refuse` throws when the owner has no key a
+ * Swig can commit to.
+ */
+export function ownerDerivedSwig(
+  owner: SolanaOwner,
+  refuse: (message: string) => never,
+): Pick<SolanaSource, 'swigAddress' | 'walletAddress'> {
+  const reserved = locateReservedSwig(solanaRootAuthority(owner, refuse))
+  if (!reserved) {
+    return refuse(
+      "The Solana owner's public key is not a point on its curve, so no Swig can be derived from it.",
+    )
+  }
+  return { swigAddress: reserved.swig, walletAddress: reserved.wallet }
+}
+
 function createSolanaOrigin(
   source: SolanaSource,
   publicConfig: Readonly<RhinestoneAccountConfig>,
@@ -2092,38 +2154,27 @@ function createSolanaOrigin(
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
     }
     return refuse(
-      `Creating the Swig ${source.swigAddress} needs the id it was minted with. Mint an independent Swig with \`createSolanaSwigId()\`, save its \`id\` with the \`swig\` address, and pass \`{ swigId: id }\` to \`deploy\`.`,
+      `Creating the Swig ${source.swigAddress} needs the id it was minted with: pass the \`swigId\` that \`createSolanaSwigId()\` returned with it. To create a new account's Swig without an id, omit \`swig\` from the account configuration, and the SDK derives the Swig from the owner.`,
     )
   }
 
-  // The permanent root role, derived from the configured owner and never from
-  // caller input.
-  const rootAuthority = (): OrchestratorSwigInitData['authority'] => {
-    if (authority.kind === 'secp256r1') {
-      return { kind: 'secp256r1', publicKey: authority.publicKey }
+  // The Swig derived from the owner is created from its reservation; any other
+  // Swig from the id it was minted with.
+  const resolveCreation = (
+    initAuthority: OrchestratorSwigInitData['authority'],
+    swigId: unknown,
+  ): SolanaDeploymentInput['creation'] => {
+    const reserved = locateReservedSwig(initAuthority)
+    if (reserved?.swig !== source.swigAddress) {
+      return { id: resolveSwigId(swigId) }
     }
-    const refuse = (message: string): never => {
-      throw new UnsupportedAccountCapabilityError(message, {
-        vm: 'solana',
-        field: 'owner',
-      })
-    }
-    const publicKey = (source.owner.account as { publicKey?: unknown })
-      .publicKey
-    if (
-      typeof publicKey !== 'string' ||
-      !/^0x04[0-9a-fA-F]{128}$/u.test(publicKey)
-    ) {
-      refuse(
-        "Creating a Swig installs the ECDSA owner's public key as its root, and this owner account exposes none. Configure the Solana owner with a viem local account (such as `privateKeyToAccount`), which carries `publicKey`.",
+    if (swigId !== undefined) {
+      throw new UnsupportedAccountCapabilityError(
+        `The Swig ${source.swigAddress} is derived from the owner and created from its reservation, not from an id. Omit \`swigId\`.`,
+        { vm: 'solana', field: 'swigId', swig: source.swigAddress },
       )
     }
-    if (
-      !isAddressEqual(publicKeyToAddress(publicKey as Hex), authority.address)
-    ) {
-      refuse("The ECDSA owner's `publicKey` does not belong to its `address`.")
-    }
-    return { kind: 'secp256k1', publicKey: publicKey as Hex }
+    return { reservation: reserved.reservation }
   }
 
   const deploy = async (
@@ -2135,13 +2186,19 @@ function createSolanaOrigin(
   ): Promise<true> => {
     assertCapturedEnvironment(sdk)
     const chainId = solanaChainId(chain)
+    const initAuthority = solanaRootAuthority(source.owner, (message) => {
+      throw new UnsupportedAccountCapabilityError(message, {
+        vm: 'solana',
+        field: 'owner',
+      })
+    })
     const input: SolanaDeploymentInput = {
       chain,
       walletAddress: source.walletAddress,
       swigAddress: source.swigAddress,
       authorization: authority,
-      initAuthority: rootAuthority(),
-      swigId: resolveSwigId(options?.swigId),
+      initAuthority,
+      creation: resolveCreation(initAuthority, options?.swigId),
       namespace,
       endpoint: sdk.orchestratorUrl,
     }

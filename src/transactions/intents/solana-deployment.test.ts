@@ -2,6 +2,7 @@ import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { quote as caucasusQuote, emptyCost } from '../../../test/utils/caucasus'
+import { locateReservedSwig } from '../../accounts/solana/address'
 import { solanaAddress, solanaDevnet } from '../../chains/non-evm'
 import { mapIntentRequestToWire } from '../../clients/orchestrator/mappers'
 import type {
@@ -48,7 +49,7 @@ function ecdsaInput(
     swigAddress: swig,
     authorization: { kind: 'secp256k1', address: owner.address },
     initAuthority: { kind: 'secp256k1', publicKey: owner.publicKey },
-    swigId,
+    creation: { id: swigId },
     namespace: 'dev-v1',
     endpoint: 'https://dev.example',
     ...overrides,
@@ -182,10 +183,14 @@ describe('Solana Swig deployment request', () => {
   })
 
   test.each([
-    ['a malformed id', { swigId: '0x1234' as Hex }, /32 bytes of hex/],
+    [
+      'a malformed id',
+      { creation: { id: '0x1234' as Hex } },
+      /32 bytes of hex/,
+    ],
     [
       'an id deriving another Swig',
-      { swigId: `0x${'08'.repeat(32)}` as Hex },
+      { creation: { id: `0x${'08'.repeat(32)}` as Hex } },
       /does not derive the configured Swig/,
     ],
     [
@@ -235,6 +240,102 @@ describe('Solana Swig deployment request', () => {
         }),
       ),
     ).toThrow(/configured 33-byte compressed P-256 key/)
+  })
+})
+
+describe('Solana Swig deployment request from a reservation', () => {
+  const other = privateKeyToAccount(`0x${'34'.repeat(32)}`)
+  const reserved = (publicKey: Hex, kind = 'secp256k1' as const) =>
+    locateReservedSwig({ kind, publicKey })!
+
+  function reservationInput(
+    overrides: Partial<SolanaDeploymentInput> = {},
+  ): SolanaDeploymentInput {
+    const location = reserved(owner.publicKey)
+    return ecdsaInput({
+      walletAddress: location.wallet,
+      swigAddress: location.swig,
+      creation: { reservation: location.reservation },
+      ...overrides,
+    })
+  }
+
+  test.each([
+    ['ECDSA', reservationInput()],
+    [
+      'passkey',
+      (() => {
+        const location = locateReservedSwig({
+          kind: 'secp256r1',
+          publicKey: passkey,
+        })!
+        return passkeyInput({
+          walletAddress: location.wallet,
+          swigAddress: location.swig,
+          creation: { reservation: location.reservation },
+        })
+      })(),
+    ],
+  ])('sends the %s reservation in place of an id', (_label, input) => {
+    const { request, intentInput } = buildSolanaDeploymentRequest(input)
+    expect(request.account.svm).toEqual({
+      type: 'swig',
+      address: input.walletAddress,
+      swigAccount: input.swigAddress,
+      authorization: input.authorization,
+      initData: {
+        authority: input.initAuthority,
+        reservation: (input.creation as { reservation: Hex }).reservation,
+      },
+    })
+    expect(intentInput.account).toEqual({ svm: request.account.svm })
+    expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
+      intentInput,
+    )
+  })
+
+  test.each([
+    [
+      'a package the program does not activate',
+      { creation: { reservation: '0x1234' as Hex } },
+      /must commit to the installed authority/,
+    ],
+    [
+      'a reservation at another account index',
+      {
+        creation: {
+          reservation: (() => {
+            const reservation = reserved(owner.publicKey).reservation
+            // Index 1: the salt's last four bytes hold the index, little-endian.
+            return `${reservation.slice(0, 124)}01${reservation.slice(126)}` as Hex
+          })(),
+        },
+      },
+      /must commit to the installed authority/,
+    ],
+    [
+      'a reservation of another Swig',
+      { swigAddress: swig, walletAddress: wallet },
+      /reservation does not derive the configured Swig and wallet/,
+    ],
+    [
+      "another owner's reservation",
+      (() => {
+        const location = reserved(other.publicKey)
+        return {
+          walletAddress: location.wallet,
+          swigAddress: location.swig,
+          creation: { reservation: location.reservation },
+        }
+      })(),
+      /must commit to the installed authority/,
+    ],
+  ])('refuses %s', (_label, overrides, message) => {
+    expect(() =>
+      buildSolanaDeploymentRequest(
+        reservationInput(overrides as Partial<SolanaDeploymentInput>),
+      ),
+    ).toThrow(message)
   })
 })
 

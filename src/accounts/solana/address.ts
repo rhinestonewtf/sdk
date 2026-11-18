@@ -1,7 +1,15 @@
 import { ed25519 } from '@noble/curves/ed25519'
 import { base58 } from '@scure/base'
-import { type Address, bytesToHex, type Hex, isAddress, sha256 } from 'viem'
+import {
+  type Address,
+  bytesToHex,
+  type Hex,
+  hexToBytes,
+  isAddress,
+  sha256,
+} from 'viem'
 import { type SolanaAddress, solanaAddress } from '../../chains/non-evm'
+import { compressedCurvePoint } from './keys'
 
 const textEncoder = new TextEncoder()
 const PROGRAM_DERIVED_ADDRESS_MARKER = textEncoder.encode(
@@ -11,6 +19,13 @@ const SWIG_SEED = textEncoder.encode('swig')
 const SWIG_WALLET_SEED = textEncoder.encode('swig-wallet-address')
 const MAX_SEEDS = 16
 const MAX_SEED_LENGTH = 32
+
+// A reservation V1 package, from swig-wallet `state/src/reservation.rs`:
+// version 1, the program id, a 32-byte salt, the owner's u16 authority type
+// (little-endian) and its 33-byte compressed key.
+const RESERVATION_DOMAIN = textEncoder.encode('rsv')
+const RESERVATION_VERSION = 1
+const RESERVATION_AUTHORITY_TYPES = { secp256k1: 3, secp256r1: 5 } as const
 
 /** Program used by classic Swig accounts on Solana. */
 const SWIG_PROGRAM_ADDRESS = solanaAddress(
@@ -196,6 +211,58 @@ function locateSwigById(id: Uint8Array): SwigIdLocation {
   }
 }
 
+/** The root a reserved Swig commits to, as `initData.authority` names it. */
+type SwigReservationOwner = {
+  readonly kind: keyof typeof RESERVATION_AUTHORITY_TYPES
+  readonly publicKey: Hex
+}
+
+type ReservedSwigLocation = {
+  /** The reservation package, 100 bytes as lowercase hex. */
+  readonly reservation: Hex
+  readonly swig: SolanaAddress
+  readonly swigBump: number
+  readonly wallet: SolanaAddress
+  readonly walletBump: number
+}
+
+/**
+ * The Swig reserved for `owner` at account index 0 (an all-zero salt, Swig's
+ * default), and the package that activates it with `owner` as its root.
+ * `undefined` when the key is not a point on its curve: the program never
+ * activates a package for one, so its address could hold funds for good.
+ */
+function locateReservedSwig(
+  owner: SwigReservationOwner,
+): ReservedSwigLocation | undefined {
+  const publicKey = compressedCurvePoint(owner.kind, owner.publicKey)
+  if (!publicKey) return undefined
+  const type = RESERVATION_AUTHORITY_TYPES[owner.kind]
+  const reservation = concatBytes([
+    Uint8Array.of(RESERVATION_VERSION),
+    decodeAddress(SWIG_PROGRAM_ADDRESS),
+    new Uint8Array(32),
+    Uint8Array.of(type & 0xff, type >> 8),
+    hexToBytes(publicKey),
+  ])
+  const commitment = sha256(
+    concatBytes([RESERVATION_DOMAIN, reservation]),
+    'bytes',
+  )
+  const swig = findProgramAddress(
+    [RESERVATION_DOMAIN, commitment],
+    SWIG_PROGRAM_ADDRESS,
+  )
+  const wallet = locateSwigWallet(swig.address)
+  return {
+    reservation: bytesToHex(reservation),
+    swig: swig.address,
+    swigBump: swig.bump,
+    wallet: wallet.address,
+    walletBump: wallet.bump,
+  }
+}
+
 function locateSwig(
   namespace: SwigNamespace,
   evmAccount: Address,
@@ -253,6 +320,7 @@ export {
   createSolanaSwigId,
   findProgramAddress,
   isManagedSwigNamespace,
+  locateReservedSwig,
   locateSwig,
   locateSwigById,
   locateSwigWallet,

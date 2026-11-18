@@ -199,6 +199,7 @@ function swigAccount(value: Json | undefined, field: string): void {
     const init = object(entry.initData, `${field}.initData`, [
       'authority',
       'id',
+      'reservation',
     ])
     const authority = object(init.authority, `${field}.initData.authority`, [
       'kind',
@@ -209,6 +210,7 @@ function swigAccount(value: Json | undefined, field: string): void {
     }
     string(authority.publicKey, `${field}.initData.authority.publicKey`)
     optionalString(init.id, `${field}.initData.id`)
+    optionalString(init.reservation, `${field}.initData.reservation`)
   }
 }
 

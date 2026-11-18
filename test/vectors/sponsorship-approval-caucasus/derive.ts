@@ -5,7 +5,10 @@
 // whose facade paths need a live Swig or session signer.
 import { hexToBytes } from 'viem'
 import { base } from 'viem/chains'
-import { locateSwigById } from '../../../src/accounts/solana/address'
+import {
+  locateReservedSwig,
+  locateSwigById,
+} from '../../../src/accounts/solana/address'
 import {
   hyperCorePerp,
   solanaAddress,
@@ -167,6 +170,9 @@ const NATIVE_SOL = solanaAddress('11111111111111111111111111111111')
 const SOLANA_RECIPIENT = solanaAddress('11111111111111111111111111111112')
 const PASSKEY = `0x02${'3c'.repeat(32)}` as const
 const ADDED_PASSKEY = `0x03${'4d'.repeat(32)}` as const
+// A reservation commits to a point on the curve; the P-256 generator is one.
+const RESERVED_PASSKEY =
+  '0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296' as const
 const RECOVERY_KEY = `0x02${'5e'.repeat(32)}` as const
 const k1 = { kind: 'secp256k1', address: owner.address } as const
 const r1 = { kind: 'secp256r1', publicKey: PASSKEY } as const
@@ -234,10 +240,23 @@ function solanaCases(): DerivedVector[] {
     swigAddress: swig.swig,
     authorization,
     initAuthority,
-    swigId: SWIG_ID,
+    creation: { id: SWIG_ID },
     namespace: 'dev-v1',
     endpoint: 'https://dev.v1.orchestrator.rhinestone.dev',
   })
+  const reservedDeployment = (
+    authorization: SolanaDeploymentInput['authorization'],
+    initAuthority: SolanaDeploymentInput['initAuthority'],
+  ): SolanaDeploymentInput => {
+    const reserved = locateReservedSwig(initAuthority)
+    if (!reserved) throw new Error('the reserved owner key is off its curve')
+    return {
+      ...deployment(authorization, initAuthority),
+      walletAddress: reserved.wallet,
+      swigAddress: reserved.swig,
+      creation: { reservation: reserved.reservation },
+    }
+  }
   return [
     fromBuilder('solana-transfer', buildSolanaIntentRequest(transfer())),
     fromBuilder(
@@ -368,6 +387,24 @@ function solanaCases(): DerivedVector[] {
     fromBuilder(
       'swig-creation-secp256r1',
       buildSolanaDeploymentRequest(deployment(r1, r1)),
+    ),
+    fromBuilder(
+      'swig-creation-reservation-secp256k1',
+      buildSolanaDeploymentRequest(
+        reservedDeployment(k1, {
+          kind: 'secp256k1',
+          publicKey: owner.publicKey,
+        }),
+      ),
+    ),
+    fromBuilder(
+      'swig-creation-reservation-secp256r1',
+      buildSolanaDeploymentRequest(
+        reservedDeployment(
+          { kind: 'secp256r1', publicKey: RESERVED_PASSKEY },
+          { kind: 'secp256r1', publicKey: RESERVED_PASSKEY },
+        ),
+      ),
     ),
   ]
 }

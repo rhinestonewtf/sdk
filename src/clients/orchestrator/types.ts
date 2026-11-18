@@ -84,8 +84,16 @@ export interface OrchestratorSwigInitData {
     readonly kind: 'secp256k1' | 'secp256r1'
     readonly publicKey: Hex
   }
-  /** The 32-byte Swig id. Required when the account has no `evm` entry. */
+  /**
+   * The 32-byte Swig id. Required when the account has no `evm` entry and
+   * sends no `reservation`.
+   */
   readonly id?: Hex
+  /**
+   * The 100-byte reservation package the Swig is activated from, in place of
+   * `id`: its address commits to `authority` as the root.
+   */
+  readonly reservation?: Hex
 }
 
 export interface OrchestratorIntentAccount {

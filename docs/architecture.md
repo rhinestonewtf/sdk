@@ -129,16 +129,19 @@ unsponsored one spends the same-chain `source.token` it then requires, as
 intent-path `setup(chain, { source })` does — and `deploy('solana', solanaChain, { swigId })` creates the Swig
 through a sponsored deployment intent (`transactions/intents/solana-deployment.ts`),
 on both the standalone facade and a composite account with a managed Solana
-entry. The standalone facade types `swigId` as required, because without managed
-EVM the Swig is always independent. It always
+entry. It always
 sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
-and no `account.evm` — with no source, a tokenless destination and
+or `initData: { authority, reservation }`, and no `account.evm` — with no source,
+a tokenless destination and
 `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`.
-The id is computed for the Swig derived from the managed EVM account under the
-environment's namespace, and otherwise must be the caller's saved id from
-`createSolanaSwigId()`; an id that does not derive the configured Swig, a missing
-ECDSA `publicKey`, and a changed environment or endpoint are refused before any
-request. The root authority
+A managed Solana entry without `swig` uses the Swig reserved for the owner's key
+at account index 0 (`locateReservedSwig` in `accounts/solana/address.ts`), and
+`deploy` creates it from that V1 reservation package with no id. Any other Swig is
+created from an id: computed for the Swig derived from the managed EVM account
+under the environment's namespace, and otherwise the caller's saved id from
+`createSolanaSwigId()`. A reservation or id that does not derive the configured
+Swig, an id for the reserved Swig, a missing ECDSA `publicKey`, and a changed
+environment or endpoint are refused before any request. The root authority
 comes only from the configured owner. The quoted `purpose: 'deployment'` route
 must name exactly that Swig, wallet and authority on the requested cluster and
 ask for no signatures or requirements; it is submitted with `proofs: []` and

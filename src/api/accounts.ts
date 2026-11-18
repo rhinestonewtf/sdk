@@ -31,6 +31,7 @@ import {
   createAccountFacade,
   createSolanaAccountFacade,
   isManagedSolanaEndpoint,
+  ownerDerivedSwig,
   type RhinestoneAccount,
   type RhinestoneAccountBase,
 } from './account'
@@ -128,6 +129,16 @@ function parseSwig(value: unknown): ParsedSolanaSwig {
   }
 }
 
+/** The Swig derived from the owner's key, which `deploy` creates with no id. */
+function reservedSwig(owner: SolanaOwner): ParsedSolanaSwig {
+  const derived = ownerDerivedSwig(owner, (message) => {
+    throw new InvalidAccountConfigError(
+      `Without \`swig\`, the SDK derives the Swig from the owner's public key. ${message} Or pass an existing Swig's address as \`swig\`.`,
+    )
+  })
+  return { address: derived.walletAddress, swigAccount: derived.swigAddress }
+}
+
 export function attachAccount<const C extends RhinestoneAccountConfig>(
   sdk: SdkComposition,
   config: C,
@@ -190,12 +201,10 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
           "Managed Solana requires `{ owner: { type: 'ecdsa', account } }` with a valid viem ECDSA account, or `{ owner: { type: 'passkey', account } }` with a viem WebAuthn account holding a P-256 public key.",
         )
       }
-      if (solana.swig === undefined) {
-        throw new InvalidAccountConfigError(
-          'Managed Solana requires `swig` with the existing provisioned Swig state account address; the SDK no longer derives it from an EVM account.',
-        )
-      }
-      managedSolanaSwig = parseSwig(solana.swig)
+      managedSolanaSwig =
+        solana.swig === undefined
+          ? reservedSwig(managedSolanaOwner)
+          : parseSwig(solana.swig)
     }
   }
   if (

@@ -1411,17 +1411,24 @@ type SolanaOwner =
   | { type: 'passkey'; account: WebAuthnAccount }
 
 /**
- * Managed Solana account identified by its Swig.
+ * Managed Solana account: a Swig whose root is `owner`.
  *
- * The wallet is independent from any EVM entry in the composite account. Save
- * the Swig state address when the account is provisioned and supply the matching
- * private-key or passkey owner when attaching it; the wallet PDA is derived.
+ * The wallet is independent from any EVM entry in the composite account. With
+ * only an `owner`, the SDK derives the Swig from the owner's public key: the
+ * same owner always yields the same Swig, and its wallet can receive funds
+ * before the Swig exists. An ECDSA owner must then be a viem local account
+ * (such as `privateKeyToAccount`), which carries its public key. To use a
+ * Swig minted with `createSolanaSwigId()`, name it with `swig`.
  * A Swig that does not exist yet is created with `account.deploy('solana', solanaChain)`.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
-  /** Swig state account. Its asset-holding wallet PDA is derived. */
-  swig: SolanaAddress
+  /**
+   * Swig state account, for a Swig minted with `createSolanaSwigId()`. Omit
+   * it to use the Swig derived from `owner`. Its asset-holding wallet PDA is
+   * derived.
+   */
+  swig?: SolanaAddress
   address?: never
 }
 

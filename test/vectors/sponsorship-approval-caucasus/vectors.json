@@ -8,9 +8,9 @@
     "orchestratorCrossCheck": {
       "repository": "git@github.com:rhinestonewtf/orchestrator.git",
       "ref": "main",
-      "commit": "ca9bac3a8e4eac5858c1ef828a67e753f8aa2bf8",
+      "commit": "f2ae0a62b8912277a9212616854336a67a4c5e36",
       "method": "Each case's body and digest was passed to authorizeQuoteRequest (apiVersion 2026-09.caucasus, intent-scoped sponsorship) and each refused body to the same function.",
-      "result": "All 30 cases bound under sdk-3.0.0-caucasus with the SDK digest, and all 18 refused bodies were refused as SPONSORSHIP_BINDING_UNSUPPORTED."
+      "result": "All 32 cases bound under sdk-3.0.0-caucasus with the SDK digest, and all 18 refused bodies were refused as SPONSORSHIP_BINDING_UNSUPPORTED."
     }
   },
   "cases": [
@@ -2330,6 +2330,140 @@
         }
       },
       "digest": "5bf746944c24e037dbf68c22f7663c0c78f096a07fb1bcc5e3d679495e2156d1"
+    },
+    {
+      "id": "swig-creation-reservation-secp256k1",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "2ahzNwRPNNCXZCNJCcxmj53FDW7QL3X9Pf1EeYB4U4Ze",
+            "swigAccount": "7gy7qbFvxQJU3VCJCqtTb52cdTjPYhPxwuMmM6Mn3MR3",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256k1",
+                "publicKey": "0x04ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d240d1103860d4901da953cc7021d4d62f3f95691ac7cd434cbf9fc9e8b8d871d"
+              },
+              "reservation": "0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe0000000000000000000000000000000000000000000000000000000000000000030003ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "contractVersion": "sdk-3.0.0-caucasus",
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "2ahzNwRPNNCXZCNJCcxmj53FDW7QL3X9Pf1EeYB4U4Ze",
+            "swigAccount": "7gy7qbFvxQJU3VCJCqtTb52cdTjPYhPxwuMmM6Mn3MR3",
+            "authorization": {
+              "kind": "secp256k1",
+              "address": "0x5d5c99EdF529335160FF180fA141Dd4967fc00D2"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256k1",
+                "publicKey": "0x04ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d240d1103860d4901da953cc7021d4d62f3f95691ac7cd434cbf9fc9e8b8d871d"
+              },
+              "reservation": "0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe0000000000000000000000000000000000000000000000000000000000000000030003ab5d2e79cfd621b1b027ffb24e2453ed7fb571ba9a841ff0e2473466cabd168d"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "bce4e421983205ac14d89f616a9e5aa8bced4e8a9a79f6b3cf48adaafa703fc8"
+    },
+    {
+      "id": "swig-creation-reservation-secp256r1",
+      "body": {
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "2E4ar4rbgHH5QyqMEEJvMWHp2Qp1emH9xuvFgN8gk753",
+            "swigAccount": "F5DJQ8TKFBvmjQ8wkH4H4DxRrYJgcGDhTLTWCbZApJyx",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256r1",
+                "publicKey": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+              },
+              "reservation": "0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe00000000000000000000000000000000000000000000000000000000000000000500036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "intentInput": {
+        "contractVersion": "sdk-3.0.0-caucasus",
+        "account": {
+          "svm": {
+            "type": "swig",
+            "address": "2E4ar4rbgHH5QyqMEEJvMWHp2Qp1emH9xuvFgN8gk753",
+            "swigAccount": "F5DJQ8TKFBvmjQ8wkH4H4DxRrYJgcGDhTLTWCbZApJyx",
+            "authorization": {
+              "kind": "secp256r1",
+              "publicKey": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+            },
+            "initData": {
+              "authority": {
+                "kind": "secp256r1",
+                "publicKey": "0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+              },
+              "reservation": "0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe00000000000000000000000000000000000000000000000000000000000000000500036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+            }
+          }
+        },
+        "destination": {
+          "vm": "svm",
+          "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+        },
+        "options": {
+          "sponsorship": {
+            "gas": true,
+            "bridgeFees": false,
+            "swapFees": false
+          }
+        }
+      },
+      "digest": "7f0d6fd0d2a06876f519c02faba61db01ec2e07d3e201adc9ac5e90ee607ef0c"
     }
   ],
   "refused": [
