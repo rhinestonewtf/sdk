@@ -187,12 +187,25 @@ function locateSwigWallet(swig: SolanaAddress): ProgramAddress {
   )
 }
 
-type SwigIdLocation = {
-  readonly id: Uint8Array
+type SwigAccounts = {
   readonly swig: SolanaAddress
   readonly swigBump: number
   readonly wallet: SolanaAddress
   readonly walletBump: number
+}
+
+type SwigIdLocation = SwigAccounts & { readonly id: Uint8Array }
+
+/** The Swig state account at the PDA of `seeds`, and its wallet. */
+function locateSwigBySeeds(seeds: readonly Uint8Array[]): SwigAccounts {
+  const swig = findProgramAddress(seeds, SWIG_PROGRAM_ADDRESS)
+  const wallet = locateSwigWallet(swig.address)
+  return {
+    swig: swig.address,
+    swigBump: swig.bump,
+    wallet: wallet.address,
+    walletBump: wallet.bump,
+  }
 }
 
 /** The Swig state account and wallet a 32-byte Swig id derives. */
@@ -200,15 +213,7 @@ function locateSwigById(id: Uint8Array): SwigIdLocation {
   if (id.length !== 32) {
     throw new TypeError('Invalid Swig id: expected 32 bytes')
   }
-  const swig = findProgramAddress([SWIG_SEED, id], SWIG_PROGRAM_ADDRESS)
-  const wallet = locateSwigWallet(swig.address)
-  return {
-    id,
-    swig: swig.address,
-    swigBump: swig.bump,
-    wallet: wallet.address,
-    walletBump: wallet.bump,
-  }
+  return { id, ...locateSwigBySeeds([SWIG_SEED, id]) }
 }
 
 /** The root a reserved Swig commits to, as `initData.authority` names it. */
@@ -217,13 +222,9 @@ type SwigReservationOwner = {
   readonly publicKey: Hex
 }
 
-type ReservedSwigLocation = {
+type ReservedSwigLocation = SwigAccounts & {
   /** The reservation package, 100 bytes as lowercase hex. */
   readonly reservation: Hex
-  readonly swig: SolanaAddress
-  readonly swigBump: number
-  readonly wallet: SolanaAddress
-  readonly walletBump: number
 }
 
 /**
@@ -249,17 +250,9 @@ function locateReservedSwig(
     concatBytes([RESERVATION_DOMAIN, reservation]),
     'bytes',
   )
-  const swig = findProgramAddress(
-    [RESERVATION_DOMAIN, commitment],
-    SWIG_PROGRAM_ADDRESS,
-  )
-  const wallet = locateSwigWallet(swig.address)
   return {
     reservation: bytesToHex(reservation),
-    swig: swig.address,
-    swigBump: swig.bump,
-    wallet: wallet.address,
-    walletBump: wallet.bump,
+    ...locateSwigBySeeds([RESERVATION_DOMAIN, commitment]),
   }
 }
 
@@ -276,8 +269,8 @@ function locateSwig(
 }
 
 /**
- * Mints a fresh, random Swig id and the addresses it derives, for a Solana
- * account that is not tied to a managed EVM account.
+ * Mints a fresh, random Swig id and the addresses it derives, for an owner
+ * that needs a Swig other than the one the SDK derives from its key.
  *
  * Persist `id` together with `swig`: configure the account with
  * `solana: { swig, owner }`, and pass the id to

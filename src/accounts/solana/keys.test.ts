@@ -64,9 +64,20 @@ describe('compressedCurvePoint', () => {
   })
 
   test('refuses a coordinate at or above the field prime', () => {
-    const p = 2n ** 256n - 2n ** 32n - 977n
+    // Each x is p plus a valid x-coordinate, so only the range checks refuse it.
+    const hex = (value: bigint) => value.toString(16).padStart(64, '0')
+    const k1 = secp256k1.CURVE.Fp.ORDER
+    const r1 = p256.CURVE.Fp.ORDER
+    const { b } = p256.CURVE
+    // x ≡ 1, and 1 + 7 = 8 is a square mod p.
     expect(
-      compressedCurvePoint('secp256k1', `0x02${p.toString(16)}`),
+      compressedCurvePoint('secp256k1', `0x02${hex(k1 + 1n)}`),
+    ).toBeUndefined()
+    // x ≡ 0, and b is a square mod p.
+    expect(compressedCurvePoint('secp256r1', `0x02${hex(r1)}`)).toBeUndefined()
+    const y = p256.CURVE.Fp.sqrt(b)
+    expect(
+      compressedCurvePoint('secp256r1', `0x04${hex(r1)}${hex(y)}`),
     ).toBeUndefined()
   })
 

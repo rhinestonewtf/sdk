@@ -106,13 +106,15 @@ operation. Each environment derives EVM-paired Swigs under its own namespace
 (`MANAGED_SWIG_NAMESPACES` in `accounts/solana/address.ts`: `dev-v1`, `prod-v1`),
 a local mirror of that orchestrator's `SOLANA_SWIG_NAMESPACE` that must be kept
 in step with it; the namespace is also bound into the execution metadata. The
-SDK adds no per-environment refusals beyond that — whatever an environment
+Swig derived from the owner has no namespace, so both environments derive the
+same one. The SDK adds no per-environment refusals beyond that — whatever an environment
 cannot serve yet, its orchestrator refuses. Its Swig must exist and carry the
 configured owner as its authority on the target cluster before it can spend.
-Every managed Solana
-config names its state account explicitly with `swig: stateAddress`; adding,
-removing, or replacing an EVM branch never selects another wallet. The SDK
-derives the asset-holding wallet PDA from that state account. Plain transfers,
+A managed Solana
+config names its state account with `swig: stateAddress`, or names only its
+owner and uses the Swig derived from the owner's key; adding, removing, or
+replacing an EVM branch never selects another wallet. The SDK derives the
+asset-holding wallet PDA from that state account. Plain transfers,
 instructions, and cross-chain deliveries name `svm.swigAccount`, carry no
 `account.evm`, bind sponsorship to the wallet, and persist no `accountType`.
 The owner is an independent ECDSA key or passkey; either credential may also be
@@ -120,19 +122,19 @@ used by EVM, but each VM retains its own authorization protocol. A passkey is
 named to the orchestrator by its SEC1-compressed P-256 key. Its assertion's
 challenge and type are checked locally, but the orchestrator verifies the
 signature. The SDK derives only PDA relationships offline with the small
-`@noble/curves` and `@scure/base` primitives; it imports no Solana RPC or
-transaction stack and does not verify the account onchain.
+`@noble/curves` and `@scure/base` primitives, and checks owner keys on secp256k1
+and P-256 with its own arithmetic (`accounts/solana/keys.ts`); it imports no
+Solana RPC or transaction stack and does not verify the account onchain.
 
 `deploy` names its VM first: `deploy('evm', chain, { sponsored, source })` runs
 the EVM deployment — a sponsored intent deployment is source-free, and an
 unsponsored one spends the same-chain `source.token` it then requires, as
-intent-path `setup(chain, { source })` does — and `deploy('solana', solanaChain, { swigId })` creates the Swig
+intent-path `setup(chain, { source })` does — and `deploy('solana', solanaChain)` creates the Swig
 through a sponsored deployment intent (`transactions/intents/solana-deployment.ts`),
 on both the standalone facade and a composite account with a managed Solana
-entry. It always
-sends the Solana-only shape — `svm.swigAccount` plus `initData: { authority, id }`
-or `initData: { authority, reservation }`, and no `account.evm` — with no source,
-a tokenless destination and
+entry. It always sends the Solana-only shape — `svm.swigAccount` plus
+`initData: { authority, id }` or `initData: { authority, reservation }`, and no
+`account.evm` — with no source, a tokenless destination and
 `sponsorship: { gas: true, bridgeFees: false, swapFees: false }`.
 A managed Solana entry without `swig` uses the Swig reserved for the owner's key
 at account index 0 (`locateReservedSwig` in `accounts/solana/address.ts`), and
@@ -140,8 +142,9 @@ at account index 0 (`locateReservedSwig` in `accounts/solana/address.ts`), and
 created from an id: computed for the Swig derived from the managed EVM account
 under the environment's namespace, and otherwise the caller's saved id from
 `createSolanaSwigId()`. A reservation or id that does not derive the configured
-Swig, an id for the reserved Swig, a missing ECDSA `publicKey`, and a changed
-environment or endpoint are refused before any request. The root authority
+Swig, an id for the reserved Swig, a missing ECDSA `publicKey`, a passkey key
+off P-256, and a changed environment or endpoint are refused before any
+request. The root authority
 comes only from the configured owner. The quoted `purpose: 'deployment'` route
 must name exactly that Swig, wallet and authority on the requested cluster and
 ask for no signatures or requirements; it is submitted with `proofs: []` and

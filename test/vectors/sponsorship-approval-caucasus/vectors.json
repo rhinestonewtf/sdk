@@ -9,7 +9,7 @@
       "repository": "git@github.com:rhinestonewtf/orchestrator.git",
       "ref": "main",
       "commit": "f2ae0a62b8912277a9212616854336a67a4c5e36",
-      "method": "Each case's body and digest was passed to authorizeQuoteRequest (apiVersion 2026-09.caucasus, intent-scoped sponsorship) and each refused body to the same function.",
+      "method": "With this file as the orchestrator's test/fixtures/sponsorship-approval/caucasus-stable-vectors.json at that commit, each case's body and digest was passed to authorizeQuoteRequest (apiVersion 2026-09.caucasus, intent-scoped sponsorship) and each refused body to the same function.",
       "result": "All 32 cases bound under sdk-3.0.0-caucasus with the SDK digest, and all 18 refused bodies were refused as SPONSORSHIP_BINDING_UNSUPPORTED."
     }
   },

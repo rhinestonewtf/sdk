@@ -36,10 +36,10 @@ export interface SolanaDeploymentInput {
   /** The same owner as the public key installed as the permanent root role. */
   readonly initAuthority: OrchestratorSwigInitData['authority']
   /**
-   * What `swigAddress` derives from: the 32-byte id it was minted with, or the
-   * reservation package that commits it to `initAuthority`.
+   * What `swigAddress` derives from: the 32-byte id it was minted with, or
+   * `'reservation'` when it is the Swig reserved for `initAuthority`.
    */
-  readonly creation: { readonly id: Hex } | { readonly reservation: Hex }
+  readonly creation: { readonly id: Hex } | 'reservation'
   readonly namespace: ManagedSwigNamespace
   readonly endpoint: string
 }
@@ -85,7 +85,7 @@ function assertInitAuthority(input: SolanaDeploymentInput): void {
   }
 }
 
-function idOf(input: SolanaDeploymentInput, id: Hex): Hex {
+function checkedId(input: SolanaDeploymentInput, id: Hex): Hex {
   if (!isHex(id) || hexToBytes(id).length !== 32) {
     refuse('the Swig id must be 32 bytes of hex')
   }
@@ -100,13 +100,10 @@ function idOf(input: SolanaDeploymentInput, id: Hex): Hex {
 }
 
 // The only reservation the SDK sends: the index-0 package for the installed root.
-function reservationOf(input: SolanaDeploymentInput, reservation: Hex): Hex {
+function checkedReservation(input: SolanaDeploymentInput): Hex {
   const reserved = locateReservedSwig(input.initAuthority)
-  if (reserved?.reservation !== reservation.toLowerCase()) {
-    refuse('the reservation must commit to the installed authority')
-  }
   if (
-    reserved.swig !== input.swigAddress ||
+    reserved?.swig !== input.swigAddress ||
     reserved.wallet !== input.walletAddress
   ) {
     refuse('the reservation does not derive the configured Swig and wallet')
@@ -123,20 +120,19 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   if (!isManagedSwigNamespace(input.namespace)) {
     refuse('the managed account namespace must be dev-v1 or prod-v1')
   }
+  const creation =
+    input.creation === 'reservation'
+      ? { reservation: checkedReservation(input) }
+      : { id: checkedId(input, input.creation.id) }
   assertInitAuthority(input)
-  // The Solana-only shape: no `evm` entry, so the id or reservation is sent
-  // explicitly, even for the Swig the managed EVM account derives.
+  // The Solana-only shape: no `evm` entry, so the id is sent explicitly, even
+  // for the Swig the managed EVM account derives.
   const svm = {
     type: 'swig' as const,
     address: input.walletAddress,
     swigAccount: input.swigAddress,
     authorization: input.authorization,
-    initData: {
-      authority: input.initAuthority,
-      ...('reservation' in input.creation
-        ? { reservation: reservationOf(input, input.creation.reservation) }
-        : { id: idOf(input, input.creation.id) }),
-    },
+    initData: { authority: input.initAuthority, ...creation },
   }
   // Gas only: Solana routes refuse the other sponsorship categories. They are
   // spelled out so the request says exactly what the approval input does.

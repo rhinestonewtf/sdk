@@ -64,9 +64,9 @@ export function canonicalSecp256k1PublicKey(value: unknown): Hex | undefined {
 
 /**
  * The compressed, lowercase form of a public key that is a point on `curve`,
- * from 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex. Unlike the
- * canonical forms above, a compressed key is checked too. `undefined` for any
- * other shape and for a point off the curve.
+ * from 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex. Unlike
+ * `canonicalSecp256k1PublicKey`, a compressed key is checked too. `undefined`
+ * for any other shape and for a point off the curve.
  */
 export function compressedCurvePoint(
   curve: keyof typeof CURVES,
@@ -102,10 +102,9 @@ function onCurve(curve: Curve, point: Uint8Array): boolean {
   return (y * y) % curve.p === curveSide(curve, x)
 }
 
-/** x³ + ax + b, reduced into [0, p). */
+/** x³ + ax + b mod p. Both curves keep it positive for x ≥ 0, so no sign fix. */
 function curveSide(curve: Curve, x: bigint): bigint {
-  const side = (x * x * x + curve.a * x + curve.b) % curve.p
-  return side < 0n ? side + curve.p : side
+  return (x * x * x + curve.a * x + curve.b) % curve.p
 }
 
 function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {

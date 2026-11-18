@@ -254,7 +254,7 @@ function solanaCases(): DerivedVector[] {
       ...deployment(authorization, initAuthority),
       walletAddress: reserved.wallet,
       swigAddress: reserved.swig,
-      creation: { reservation: reserved.reservation },
+      creation: 'reservation',
     }
   }
   return [

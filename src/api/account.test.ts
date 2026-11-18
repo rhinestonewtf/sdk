@@ -5,7 +5,7 @@ import {
   type Hex,
   hexToBytes,
 } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
+import { privateKeyToAccount, publicKeyToAddress } from 'viem/accounts'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -121,6 +121,10 @@ const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
 const generatorOwner = privateKeyToAccount(`0x${'00'.repeat(31)}01`)
 const P256_GENERATOR =
   '0x046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5' as const
+// The generator with y's low bit flipped: off P-256, though compressing it
+// gives -G, a valid point.
+const P256_GENERATOR_WRONG_Y = `${P256_GENERATOR.slice(0, -2)}f4` as Hex
+const OFF_CURVE_K1 = `0x04${'11'.repeat(64)}` as const
 // source: swig-wallet interface/tests/data/reservation-v1.json (c64127837995),
 // the Swig program's own vectors: each generator as the owner, account index 0.
 const SWIG_RESERVATIONS = {
@@ -463,7 +467,18 @@ describe('managed Solana account construction', () => {
       [
         'an ECDSA owner exposing no public key',
         { type: 'ecdsa', account: { address: owner.address } },
-        /exposes none.*`swig`/,
+        /carries no uncompressed/,
+      ],
+      [
+        'an ECDSA owner whose public key is no point on secp256k1',
+        {
+          type: 'ecdsa',
+          account: {
+            address: publicKeyToAddress(OFF_CURVE_K1),
+            publicKey: OFF_CURVE_K1,
+          },
+        },
+        /not a point on its curve/,
       ],
       [
         "an ECDSA owner carrying another key's public key",
@@ -483,7 +498,18 @@ describe('managed Solana account construction', () => {
             publicKey: `0x02${'00'.repeat(31)}01`,
           },
         },
-        /not a point on its curve/,
+        /not a point on P-256/,
+      ],
+      [
+        'a passkey whose y is not on P-256',
+        {
+          type: 'passkey',
+          account: {
+            ...signingPasskey().account,
+            publicKey: P256_GENERATOR_WRONG_Y,
+          },
+        },
+        /not a point on P-256/,
       ],
     ])('refuses %s', async (_label, solanaOwner, message) => {
       const refusal = devSdk().createAccount({
@@ -2572,17 +2598,21 @@ describe('managed Solana cross-chain delivery facade', () => {
 
       await expect(
         base.facade.prepareTransaction(callsTransaction()),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
       const replayWithCalls = {
         ...prepared,
         transaction: withDestination({ calls: [call] }),
       }
       expect(() => base.facade.getTransactionMessages(replayWithCalls)).toThrow(
-        /independently selected Swig/,
+        /run only from the Swig derived from the managed EVM account/,
       )
       await expect(
         base.facade.signTransaction(replayWithCalls),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
       expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
       expect(base.workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
@@ -2608,7 +2638,9 @@ describe('managed Solana cross-chain delivery facade', () => {
 
       await expect(
         facade.prepareTransaction(callsTransaction()),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
       expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
     })
 
@@ -5840,7 +5872,7 @@ describe('managed Solana Swig creation', () => {
         target: SWIG_RESERVATIONS.r1,
       })
 
-      await facade.deploy('solana', solanaDevnet)
+      await expect(facade.deploy('solana', solanaDevnet)).resolves.toBe(true)
 
       expect(workflows.createQuote.mock.calls[0]![0].account.svm).toEqual({
         type: 'swig',
@@ -5868,6 +5900,25 @@ describe('managed Solana Swig creation', () => {
         UnsupportedAccountCapabilityError,
       )
       await expect(refusal).rejects.toThrow(/Omit `swigId`/)
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    })
+
+    test('refuses a passkey whose key is off P-256 before contacting the orchestrator', async () => {
+      const passkey = {
+        ...signingPasskey().account,
+        publicKey: P256_GENERATOR_WRONG_Y,
+      }
+      const { facade, workflows } = standalone({
+        owner: { type: 'passkey', account: passkey },
+      })
+
+      const refusal = facade.deploy('solana', solanaDevnet, {
+        swigId: independentId,
+      })
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(/not a point on P-256/)
       expect(workflows.createQuote).not.toHaveBeenCalled()
     })
 
@@ -5948,7 +5999,7 @@ describe('managed Solana Swig creation', () => {
     [
       'exposes no public key',
       { address: owner.address, type: 'json-rpc' } as unknown as Account,
-      /exposes none/,
+      /carries no uncompressed/,
     ],
     [
       "carries another key's public key",
@@ -6498,6 +6549,71 @@ describe('quote-time sponsorship approval', () => {
         approvals[0],
       )
       expect(server.submissions[0]?.has('X-Intent-Extension')).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('creates the owner-derived Swig of a composite account, which makes plain deliveries only', async () => {
+    const reserved = {
+      ...leg,
+      account: {
+        wallet: SWIG_RESERVATIONS.k1.wallet,
+        swigAccount: SWIG_RESERVATIONS.k1.swig,
+        authority: {
+          kind: 'secp256k1' as const,
+          address: generatorOwner.address,
+        },
+      },
+    }
+    const server = orchestrator({
+      ...deploymentRoute(),
+      plan: { source: [], destination: reserved, deployments: [reserved] },
+    })
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const account = await sdk(async () => 'extension').createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: { owner: { type: 'ecdsa', account: generatorOwner } },
+      })
+
+      await expect(account.deploy('solana', solanaDevnet)).resolves.toBe(true)
+
+      const { account: quoted } = server.quotes[0]?.body as {
+        account: Record<string, unknown>
+      }
+      expect(quoted).toEqual({
+        svm: {
+          type: 'swig',
+          address: SWIG_RESERVATIONS.k1.wallet,
+          swigAccount: SWIG_RESERVATIONS.k1.swig,
+          authorization: {
+            kind: 'secp256k1',
+            address: generatorOwner.address,
+          },
+          initData: {
+            authority: {
+              kind: 'secp256k1',
+              publicKey: generatorOwner.publicKey,
+            },
+            reservation: SWIG_RESERVATIONS.k1.reservation,
+          },
+        },
+      })
+      await expect(
+        account.prepareTransaction({
+          source: { chain: solanaDevnet, token: mint },
+          destination: {
+            chain: optimism,
+            token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+            amount: 100n,
+            calls: [{ to: '0x00000000000000000000000000000000000000c1' }],
+          },
+        }),
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
+      expect(server.quotes).toHaveLength(1)
     } finally {
       vi.unstubAllGlobals()
     }

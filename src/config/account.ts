@@ -1415,24 +1415,28 @@ type SolanaOwner =
  *
  * The wallet is independent from any EVM entry in the composite account. With
  * only an `owner`, the SDK derives the Swig from the owner's public key: the
- * same owner always yields the same Swig, and its wallet can receive funds
- * before the Swig exists. An ECDSA owner must then be a viem local account
- * (such as `privateKeyToAccount`), which carries its public key. To use a
- * Swig minted with `createSolanaSwigId()`, name it with `swig`.
+ * same owner always yields the same Swig, in development and production, and
+ * its wallet can receive funds before the Swig exists. An ECDSA owner must then
+ * be a viem local account (such as `privateKeyToAccount`), which carries its
+ * public key. Another key as `owner` derives another Swig, so name an existing
+ * Swig with `swig` to use it with another key. The derived Swig is never the
+ * one a managed EVM account pairs with, so it makes plain deliveries only,
+ * without EVM destination calls.
  * A Swig that does not exist yet is created with `account.deploy('solana', solanaChain)`.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
   /**
-   * Swig state account, for a Swig minted with `createSolanaSwigId()`. Omit
-   * it to use the Swig derived from `owner`. Its asset-holding wallet PDA is
-   * derived.
+   * Swig state account of an existing Swig: one minted with
+   * `createSolanaSwigId()`, or, for EVM destination calls, the Swig derived
+   * from the managed EVM account. Omit it to use the Swig derived from
+   * `owner`. Its asset-holding wallet PDA is derived.
    */
   swig?: SolanaAddress
   address?: never
 }
 
-/** Backwards-compatible name for an explicitly identified managed Solana account. */
+/** Backwards-compatible name for a managed Solana account. */
 type SolanaStandaloneAccountConfig = SolanaManagedAccountConfig
 
 /** Address-only Solana destination without spending authority. */

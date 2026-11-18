@@ -157,9 +157,25 @@ const crossVmAccount = await rhinestone.createAccount({
 })
 ```
 
-Address-only entries cannot prepare, sign, or execute transactions. To use an
-existing Swig, supply its saved state-account address and its
-independent private-key or passkey owner; the wallet PDA is derived:
+Address-only entries cannot prepare, sign, or execute transactions. A managed
+Solana account names its owner, a private-key or passkey account independent of
+EVM. With only the owner, the SDK derives the Swig from the owner's public key,
+and `deploy` creates it:
+
+```ts
+import { solanaMainnet } from '@rhinestone/sdk/solana'
+
+const ownedAccount = await rhinestone.createAccount({
+  solana: { owner: { type: 'ecdsa' as const, account: solanaSigner } },
+})
+await ownedAccount.deploy('solana', solanaMainnet)
+```
+
+The derived Swig is the same in development and production, and its wallet can
+receive funds before the Swig exists. An ECDSA owner must be a viem local
+account (such as `privateKeyToAccount`), which carries its public key. Another
+key as `owner` derives another Swig. To use an existing Swig, supply its saved
+state-account address with `swig`; the wallet PDA is derived:
 
 ```ts
 const managedSolana = {
@@ -179,8 +195,9 @@ Adding or changing `evm` does not change the selected Swig. Plain Solana
 transfers, instructions, and deliveries use only the Solana owner. An EVM
 receiver can default a delivery recipient but cannot spend or execute calls.
 Solana-to-EVM destination calls require a managed EVM account whose existing
-backend-compatible pair matches the explicit Swig. Account construction does
-not create or verify a Swig; provisioning remains an operator step. Managed
+backend-compatible pair matches the explicit Swig; the Swig derived from the
+owner makes plain deliveries only. Account construction does not create or
+verify a Swig; `deploy('solana', chain)` creates it. Managed
 Solana runs on production with the default endpoint, or with
 `useDevContracts: true` and
 `endpointUrl: 'https://dev.v1.orchestrator.rhinestone.dev'`.

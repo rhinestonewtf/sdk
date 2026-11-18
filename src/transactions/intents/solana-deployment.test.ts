@@ -244,98 +244,77 @@ describe('Solana Swig deployment request', () => {
 })
 
 describe('Solana Swig deployment request from a reservation', () => {
-  const other = privateKeyToAccount(`0x${'34'.repeat(32)}`)
-  const reserved = (publicKey: Hex, kind = 'secp256k1' as const) =>
+  const reserved = (kind: 'secp256k1' | 'secp256r1', publicKey: Hex) =>
     locateReservedSwig({ kind, publicKey })!
+  const ecdsa = reserved('secp256k1', owner.publicKey)
+  const other = reserved(
+    'secp256k1',
+    privateKeyToAccount(`0x${'34'.repeat(32)}`).publicKey,
+  )
+  const p256 = reserved('secp256r1', passkey)
 
   function reservationInput(
     overrides: Partial<SolanaDeploymentInput> = {},
   ): SolanaDeploymentInput {
-    const location = reserved(owner.publicKey)
     return ecdsaInput({
-      walletAddress: location.wallet,
-      swigAddress: location.swig,
-      creation: { reservation: location.reservation },
+      walletAddress: ecdsa.wallet,
+      swigAddress: ecdsa.swig,
+      creation: 'reservation',
       ...overrides,
     })
   }
 
   test.each([
-    ['ECDSA', reservationInput()],
+    ['ECDSA', reservationInput(), ecdsa.reservation],
     [
       'passkey',
-      (() => {
-        const location = locateReservedSwig({
-          kind: 'secp256r1',
-          publicKey: passkey,
-        })!
-        return passkeyInput({
-          walletAddress: location.wallet,
-          swigAddress: location.swig,
-          creation: { reservation: location.reservation },
-        })
-      })(),
+      passkeyInput({
+        walletAddress: p256.wallet,
+        swigAddress: p256.swig,
+        creation: 'reservation',
+      }),
+      p256.reservation,
     ],
-  ])('sends the %s reservation in place of an id', (_label, input) => {
-    const { request, intentInput } = buildSolanaDeploymentRequest(input)
-    expect(request.account.svm).toEqual({
-      type: 'swig',
-      address: input.walletAddress,
-      swigAccount: input.swigAddress,
-      authorization: input.authorization,
-      initData: {
-        authority: input.initAuthority,
-        reservation: (input.creation as { reservation: Hex }).reservation,
-      },
-    })
-    expect(intentInput.account).toEqual({ svm: request.account.svm })
-    expect(projectSponsorshipApproval(mapIntentRequestToWire(request))).toEqual(
-      intentInput,
-    )
-  })
+  ])(
+    'sends the %s reservation in place of an id',
+    (_label, input, reservation) => {
+      const { request, intentInput } = buildSolanaDeploymentRequest(input)
+      expect(request.account.svm).toEqual({
+        type: 'swig',
+        address: input.walletAddress,
+        swigAccount: input.swigAddress,
+        authorization: input.authorization,
+        initData: { authority: input.initAuthority, reservation },
+      })
+      expect(intentInput.account).toEqual({ svm: request.account.svm })
+      expect(
+        projectSponsorshipApproval(mapIntentRequestToWire(request)),
+      ).toEqual(intentInput)
+    },
+  )
 
   test.each([
+    ['a Swig minted from an id', { swigAddress: swig, walletAddress: wallet }],
+    ['a wallet the reservation does not derive', { walletAddress: wallet }],
     [
-      'a package the program does not activate',
-      { creation: { reservation: '0x1234' as Hex } },
-      /must commit to the installed authority/,
+      "another owner's reserved Swig",
+      { swigAddress: other.swig, walletAddress: other.wallet },
     ],
     [
-      'a reservation at another account index',
+      'a root off its curve',
       {
-        creation: {
-          reservation: (() => {
-            const reservation = reserved(owner.publicKey).reservation
-            // Index 1: the salt's last four bytes hold the index, little-endian.
-            return `${reservation.slice(0, 124)}01${reservation.slice(126)}` as Hex
-          })(),
-        },
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x02${'00'.repeat(32)}`,
+        } as const,
       },
-      /must commit to the installed authority/,
     ],
-    [
-      'a reservation of another Swig',
-      { swigAddress: swig, walletAddress: wallet },
-      /reservation does not derive the configured Swig and wallet/,
-    ],
-    [
-      "another owner's reservation",
-      (() => {
-        const location = reserved(other.publicKey)
-        return {
-          walletAddress: location.wallet,
-          swigAddress: location.swig,
-          creation: { reservation: location.reservation },
-        }
-      })(),
-      /must commit to the installed authority/,
-    ],
-  ])('refuses %s', (_label, overrides, message) => {
+  ])('refuses %s', (_label, overrides) => {
     expect(() =>
       buildSolanaDeploymentRequest(
         reservationInput(overrides as Partial<SolanaDeploymentInput>),
       ),
-    ).toThrow(message)
+    ).toThrow(/reservation does not derive the configured Swig and wallet/)
   })
 })
 

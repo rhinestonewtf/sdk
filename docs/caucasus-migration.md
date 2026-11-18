@@ -147,7 +147,7 @@ import { solanaAddress, solanaDevnet } from '@rhinestone/sdk/solana'
 
 Behavior and types are unchanged; only the import paths move.
 
-## Managed Solana accounts require explicit identity
+## Managed Solana accounts name their Swig or derive it from the owner
 
 A managed Solana branch names the existing Swig it uses, or names only its
 owner and uses the Swig derived from the owner's key:
@@ -165,8 +165,10 @@ await sdk.createAccount({ solana, evm: managedEvmConfig })
 ```
 
 There is no EVM-derived fallback: without `swig`, the SDK derives the Swig from
-the owner's public key, never from the EVM account. Account construction does not
-deploy or verify the Swig. Save a named Swig's state-account address during
+the owner's public key, never from the EVM account. That Swig is the same in
+development and production, and another key as `owner` derives another Swig: to
+use an existing Swig with another key, name it with `swig`. Account construction
+does not deploy or verify the Swig. Save a named Swig's state-account address during
 provisioning; the SDK derives the asset-holding wallet PDA. To create a Swig through the SDK, call
 `account.deploy('solana', solanaDevnet)` — see [Creating the Swig](#creating-the-swig). The Solana owner may
 be an ECDSA account or WebAuthn account and may be shared with EVM, but the two
@@ -178,7 +180,8 @@ now the Swig wallet, so review or reissue policies that granted sponsorship to
 the former EVM identity. EVM-origin operations are unchanged. Solana-to-EVM
 destination calls remain available only when the explicit Swig matches the
 backend-compatible Swig derived from the managed EVM account; unrelated pairs
-must omit calls and use plain delivery. Address-only EVM receivers provide a
+must omit calls and use plain delivery. The Swig derived from the owner is never
+that pair, so an account without `swig` makes plain deliveries only. Address-only EVM receivers provide a
 default recipient but cannot execute calls.
 
 Previously prepared paired plain-Solana artifacts do not get reinterpreted.
@@ -190,7 +193,7 @@ Reconcile any possible submission, then prepare again with the explicit Swig.
 `account.deploy('evm', chain, { sponsored })`; `account.deploy(chain, …)` no
 longer compiles.
 
-`account.deploy('solana', solanaChain, { swigId })` creates the configured Swig
+`account.deploy('solana', solanaChain)` creates the configured Swig
 as a sponsored deployment intent, installs the configured owner as its root,
 and resolves `true` once the Swig exists. Nothing is signed; the integrator's
 gas sponsorship pays the rent and fees.
@@ -205,7 +208,8 @@ const { id, swig } = createSolanaSwigId()
 const minted = await sdk.createAccount({ solana: { owner, swig } })
 await minted.deploy('solana', solanaDevnet, { swigId: id })
 
-// The Swig derived from a managed EVM account needs no id.
+// On a composite account, the Swig derived from the managed EVM account,
+// named as `swig`, needs no id either.
 await composite.deploy('solana', solanaDevnet)
 ```
 
@@ -697,7 +701,8 @@ quote request ([sponsorship approval](sponsorship-approval.md)).
   the callback runs; use project-wide sponsorship for such a request.
 - **Solana.** The input names the paying Swig as `account.svm`: its wallet,
   its authority and, for plain operations, its state account. A Swig creation
-  also carries the installed root and the Swig id in `account.svm.initData`.
+  also carries the installed root and either the Swig id or its reservation
+  in `account.svm.initData`.
 - **Restoring Solana artifacts.** A Solana transaction prepared by an earlier
   snapshot fails restore with `InvalidSolanaTransactionArtifactError`. Prepare
   it again.

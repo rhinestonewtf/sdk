@@ -18,8 +18,8 @@ const limits = [
     // The settlement/session compiler adds ~19 kB to the 85.78 kB v3 baseline.
     // Explicit destination grants and quote consistency add 1.12 kB to the
     // measured 107.02 kB baseline; the resulting root bundle is 108.14 kB.
-    // Swigs derived from the owner add the reservation derivation and P-256
-    // point checks: 0.57 kB on the measured 108.73 kB, for 109.3 kB.
+    // Swigs derived from the owner add the reservation derivation and the
+    // curve checks: 0.5 kB on the 108.73 kB measured before them, for 109.23 kB.
     limit: '109.5 kB',
     import: '*',
     ignore: viem,

@@ -24,6 +24,21 @@ function body(overrides: Record<string, unknown> = {}) {
   return { account: evmAccount, destination: evmDestination, ...overrides }
 }
 
+function swigCreation(creation: Record<string, unknown>) {
+  const authority = { kind: 'secp256k1', publicKey: `0x02${'11'.repeat(32)}` }
+  return body({
+    account: {
+      svm: {
+        type: 'swig',
+        address: WALLET,
+        swigAccount: SWIG,
+        authorization: { kind: 'secp256k1', address: A },
+        initData: { authority, ...creation },
+      },
+    },
+  })
+}
+
 const CONTRACT_VERSION = 'sdk-3.0.0-caucasus'
 
 describe('projectSponsorshipApproval', () => {
@@ -223,6 +238,16 @@ describe('projectSponsorshipApproval', () => {
       'a non-Swig SVM account',
       body({ account: { svm: { type: 'pda', address: WALLET } } }),
       'account.svm.type',
+    ],
+    [
+      'a non-string Swig id',
+      swigCreation({ id: 1 }),
+      'account.svm.initData.id',
+    ],
+    [
+      'a non-string Swig reservation',
+      swigCreation({ reservation: 1 }),
+      'account.svm.initData.reservation',
     ],
     [
       'an unknown key on source',

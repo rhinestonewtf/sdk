@@ -1,5 +1,8 @@
 import { type Address, type Hex, isAddress } from 'viem'
-import { locateSwigWallet } from '../accounts/solana/address'
+import {
+  locateReservedSwig,
+  locateSwigWallet,
+} from '../accounts/solana/address'
 import { compressP256PublicKey } from '../accounts/solana/passkey'
 import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
 import type {
@@ -31,9 +34,9 @@ import {
   createAccountFacade,
   createSolanaAccountFacade,
   isManagedSolanaEndpoint,
-  ownerDerivedSwig,
   type RhinestoneAccount,
   type RhinestoneAccountBase,
+  solanaRootAuthority,
 } from './account'
 import { createConfiguredCoreComposition } from './compose'
 import type { CoreComposition } from './compose-types'
@@ -129,14 +132,18 @@ function parseSwig(value: unknown): ParsedSolanaSwig {
   }
 }
 
-/** The Swig derived from the owner's key, which `deploy` creates with no id. */
+/** The Swig reserved for the owner's key, which `deploy` creates with no id. */
 function reservedSwig(owner: SolanaOwner): ParsedSolanaSwig {
-  const derived = ownerDerivedSwig(owner, (message) => {
+  const refuse = (message: string): never => {
     throw new InvalidAccountConfigError(
-      `Without \`swig\`, the SDK derives the Swig from the owner's public key. ${message} Or pass an existing Swig's address as \`swig\`.`,
+      `Without \`swig\`, the SDK derives the Swig from the owner's public key. ${message}`,
     )
-  })
-  return { address: derived.walletAddress, swigAccount: derived.swigAddress }
+  }
+  const reserved = locateReservedSwig(solanaRootAuthority(owner, refuse))
+  if (!reserved) {
+    return refuse("The owner's public key is not a point on its curve.")
+  }
+  return { address: reserved.wallet, swigAccount: reserved.swig }
 }
 
 export function attachAccount<const C extends RhinestoneAccountConfig>(
