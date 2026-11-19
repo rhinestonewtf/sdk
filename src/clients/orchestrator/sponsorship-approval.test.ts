@@ -250,6 +250,11 @@ describe('projectSponsorshipApproval', () => {
       'account.svm.initData.reservation',
     ],
     [
+      'a Swig reservation beside an id',
+      swigCreation({ id: `0x${'07'.repeat(32)}`, reservation: '0x01' }),
+      'account.svm.initData.reservation',
+    ],
+    [
       'an unknown key on source',
       body({
         source: { vm: 'evm', chainId: 'eip155:1', token: T1, foo: 1 },
