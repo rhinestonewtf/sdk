@@ -46,6 +46,13 @@ if (swig) {
   // @ts-expect-error the Swig entry is always a Swig
   swig.type = 'erc7579'
 }
+// A Swig creation carries an id or a reservation.
+const root = { kind: 'secp256k1', publicKey: '0x02' } as const
+const creations: NonNullable<NonNullable<typeof swig>['initData']>[] = [
+  { authority: root, id: '0x01' },
+  { authority: root, reservation: '0x01' },
+]
+void creations
 // @ts-expect-error `svm` is optional
 const required: NonNullable<typeof swig> = prepared.intentInput.account.svm
 void required

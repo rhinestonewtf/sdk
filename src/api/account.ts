@@ -1856,12 +1856,14 @@ function assertSolanaMetadata(
 }
 
 /**
- * The pairing, under either environment's namespace, of the account's EVM
- * address or an ECDSA owner's address whose `account` is the configured
- * `swig`. A smart account's address differs per environment, so the other
- * environment matches only an address both share, such as an EOA's.
+ * The pairing whose state account (`by: 'swig'`) or wallet (`by: 'wallet'`)
+ * is the configured `swig`, among the Swigs paired with the account's EVM
+ * address and an ECDSA owner's address under either environment's namespace;
+ * `undefined` when none matches. A smart account's address differs per
+ * environment, so only an address both share, such as an EOA's, pairs usefully
+ * in the other one.
  */
-function findPairedSwig(source: SolanaSource, account: 'swig' | 'wallet') {
+function findPairedSwig(source: SolanaSource, by: 'swig' | 'wallet') {
   const evmAddresses = [
     source.evmRecipient,
     source.owner.type === 'ecdsa' ? source.owner.account.address : undefined,
@@ -1872,7 +1874,7 @@ function findPairedSwig(source: SolanaSource, account: 'swig' | 'wallet') {
       MANAGED_SWIG_NAMESPACES,
     )) {
       const paired = locateSwig(asSwigNamespace(namespace), evmAddress)
-      if (paired[account] === source.swigAddress) {
+      if (paired[by] === source.swigAddress) {
         return { evmAddress, environment, swig: paired.swig }
       }
     }
@@ -2193,10 +2195,14 @@ function createSolanaOrigin(
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
     }
     const paired = findPairedSwig(source, 'swig')
+    if (paired) {
+      return refuse(
+        `The Swig ${source.swigAddress} is paired with ${paired.evmAddress} in ${paired.environment}: create it in ${paired.environment} from an account whose managed EVM account is ${paired.evmAddress}.`,
+        'swig',
+      )
+    }
     return refuse(
-      paired
-        ? `The Swig ${source.swigAddress} is paired with ${paired.evmAddress} in ${paired.environment}: create it in ${paired.environment} from an account whose managed EVM account is ${paired.evmAddress}.`
-        : `The Swig ${source.swigAddress} is not derived from this owner. If \`createSolanaSwigId()\` minted it, pass the \`swigId\` saved with it. Otherwise create it from an account configured with the owner or the managed EVM account it is derived from.`,
+      `The Swig ${source.swigAddress} is not derived from this owner. If \`createSolanaSwigId()\` minted it, pass the \`swigId\` saved with it. Otherwise create it from an account configured with the owner or the managed EVM account it is derived from.`,
     )
   }
 

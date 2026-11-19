@@ -1,5 +1,6 @@
 import {
   type Account,
+  type Address,
   bytesToHex,
   type Chain,
   type Hex,
@@ -5850,6 +5851,7 @@ describe('managed Solana Swig creation', () => {
       readonly endpoint?: string
       readonly route?: OrchestratorQuote
       readonly target?: { readonly swig: string; readonly wallet: string }
+      readonly evmRecipient?: Address
     } = {},
   ) {
     const solanaOwner = options.owner ?? { type: 'ecdsa', account: owner }
@@ -5870,6 +5872,7 @@ describe('managed Solana Swig creation', () => {
         swigAddress: target.swig as SolanaAddress,
         environment: options.environment ?? 'development',
         endpoint: options.endpoint ?? devSdk.orchestratorUrl,
+        ...(options.evmRecipient ? { evmRecipient: options.evmRecipient } : {}),
       },
       { solana: { owner: solanaOwner, swig: target.swig as SolanaAddress } },
       {
@@ -5975,19 +5978,40 @@ describe('managed Solana Swig creation', () => {
   })
 
   test.each([
-    ['development', managedSwigLocation],
-    ['production', prodSwigLocation],
+    ["the owner's address", 'development', 'dev-v1', owner.address, undefined],
+    ["the owner's address", 'production', 'prod-v1', owner.address, undefined],
+    [
+      'an EVM receiver',
+      'production',
+      'prod-v1',
+      guardian.address,
+      guardian.address,
+    ],
+    [
+      "the owner's address beside an EVM receiver",
+      'development',
+      'dev-v1',
+      owner.address,
+      guardian.address,
+    ],
   ])(
-    "points the Swig the owner's address pairs with in %s to that pairing before contacting the orchestrator",
-    async (environment, target) => {
-      const { facade, workflows } = standalone({ target })
+    'points a Swig paired with %s in %s to that pairing before contacting the orchestrator',
+    async (_label, environment, namespace, pairedWith, receiver) => {
+      const target = locateSwig(asSwigNamespace(namespace), pairedWith)
+      const { facade, workflows } = standalone({
+        target,
+        evmRecipient: receiver,
+      })
       const refusal = facade.deploy('solana', solanaDevnet)
       await expect(refusal).rejects.toBeInstanceOf(
         UnsupportedAccountCapabilityError,
       )
       await expect(refusal).rejects.toThrow(
-        `The Swig ${target.swig} is paired with ${owner.address} in ${environment}: create it in ${environment} from an account whose managed EVM account is ${owner.address}.`,
+        `The Swig ${target.swig} is paired with ${pairedWith} in ${environment}: create it in ${environment} from an account whose managed EVM account is ${pairedWith}.`,
       )
+      await expect(refusal).rejects.toMatchObject({
+        context: { field: 'swig' },
+      })
       expect(workflows.createQuote).not.toHaveBeenCalled()
     },
   )
@@ -6371,7 +6395,9 @@ describe('managed Solana Swig creation', () => {
     })
   })
 
-  test('points the dev-v1 Swig on a production account to development', async () => {
+  // The fixture's managed EVM account keeps the owner's address in both
+  // environments, as an EOA does.
+  test('points the dev-v1 Swig of an address both environments share to development', async () => {
     const { facade, workflows } = composite({
       environment: 'production',
       swig: managedSwig,
