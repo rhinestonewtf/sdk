@@ -459,8 +459,8 @@ export interface Session {
   /** The layers `'all'` dropped from a settlement-scoped permit. Metadata only,
    *  like `swap`; absent on sessions stored before it existed. */
   settlementCoverage?: SettlementCoverage
-  /** A scoped Permit2-route session's `from` tokens per chain, each with its
-   *  cap, so intents are funded only from them. Metadata only. */
+  /** Permit2 settlement tokens and caps per chain. Origin swaps fund from
+   *  `swap.sell` only when `swap.buy` settles here to the account. Metadata only. */
   permit2Sources?: readonly {
     readonly chain: Chain
     readonly token: Address

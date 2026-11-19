@@ -388,8 +388,12 @@ Read failure stays closed; ordinary sessions retain nonce-only reads. Pass the
 resulting details to `signEnableSession`; do not rebuild an authorized session.
 
 Intent preparation narrows the one explicit source and routing filters before
-quoting and binding sponsorship. One-time sessions burn before user calls, at
-most once per participating EVM chain; own destination execution burns separately
+quoting and binding sponsorship. A scoped Permit2 origin swap may fund from its
+swap sell tokens and `maxTotal` when its buy token is a permitted settlement
+source on that chain and the swap delivers to the account. Wallet and settlement
+budgets remain separate; direct settlement funding retains its own permit cap.
+One-time sessions burn before user calls, at most once per participating EVM
+chain; own destination execution burns separately
 unless it is the same chain.
 
 The account **executes** on the explicit source and, when it runs the
