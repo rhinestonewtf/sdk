@@ -199,6 +199,26 @@ const creation = {
 } satisfies OrchestratorSvmAccount
 const wireCreation: WireSvmAccount = creation
 
+// A reserved Swig is created from its reservation package in place of `id`.
+const reservedCreation = {
+  type: 'swig',
+  address: wallet,
+  swigAccount,
+  authorization: { kind: 'secp256r1', publicKey: '0x02' },
+  initData: {
+    authority: { kind: 'secp256r1', publicKey: '0x02' },
+    reservation: `0x${'07'.repeat(100)}`,
+  },
+} satisfies OrchestratorSvmAccount
+const wireReservedCreation: WireSvmAccount = reservedCreation
+
+// Indexed, so dropping either arm from the wire `initData` fails to compile;
+// assigning a named object skips the excess-property check.
+type WireSwigInitData = NonNullable<WireSvmAccount['initData']>
+const wireId: WireSwigInitData['id'] = creation.initData.id
+const wireReservation: WireSwigInitData['reservation'] =
+  reservedCreation.initData.reservation
+
 const deploymentStatus = {
   traceId: 'trace-2',
   purpose: 'deployment',
@@ -209,6 +229,9 @@ const deploymentStatus = {
 void status
 void deploymentStatus
 void wireCreation
+void wireReservedCreation
+void wireId
+void wireReservation
 void plan
 void wireIntentAccounts
 void wireDeploymentAccounts
