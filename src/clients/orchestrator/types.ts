@@ -78,8 +78,14 @@ export interface OrchestratorSvmAccount {
   readonly initData?: OrchestratorSwigInitData
 }
 
+// Mapped per arm, so the `id`/`reservation` arms stay exclusive and the root
+// key is readonly all the way down.
+type ReadonlyInitData<T> = T extends unknown
+  ? { readonly [K in keyof T]: K extends 'authority' ? Readonly<T[K]> : T[K] }
+  : never
+
 /** What a Swig-creation request installs. */
-export type OrchestratorSwigInitData = Readonly<SwigInitData>
+export type OrchestratorSwigInitData = ReadonlyInitData<SwigInitData>
 
 export interface OrchestratorIntentAccount {
   readonly evm?: OrchestratorEvmAccount

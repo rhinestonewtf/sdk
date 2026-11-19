@@ -219,12 +219,17 @@ const wireId: WireSwigInitData['id'] = creation.initData.id
 const wireReservation: WireSwigInitData['reservation'] =
   reservedCreation.initData.reservation
 
-// The paired shape sends neither: the orchestrator derives the id.
-type SwigCreation = NonNullable<OrchestratorSvmAccount['initData']>
+type SwigInitData = NonNullable<OrchestratorSvmAccount['initData']>
 const root = { kind: 'secp256r1', publicKey: '0x02' } as const
-const pairedCreation: SwigCreation = { authority: root }
+// A Swig paired with an EVM entry sends neither `id` nor `reservation`.
+const pairedCreation: SwigInitData = { authority: root }
+// Named, so the excess-property check cannot stand in for the union.
+const bothKeys = { authority: root, id: '0x01', reservation: '0x01' } as const
 // @ts-expect-error the wire refuses `reservation` beside `id`
-const both: SwigCreation = { authority: root, id: '0x01', reservation: '0x01' }
+const both: SwigInitData = bothKeys
+declare const installed: SwigInitData
+// @ts-expect-error the root is permanent, so its key is readonly
+installed.authority.publicKey = '0x03'
 
 const deploymentStatus = {
   traceId: 'trace-2',

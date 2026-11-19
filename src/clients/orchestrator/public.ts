@@ -457,27 +457,25 @@ interface IntentInputDelegations {
   chains?: Record<Caip2ChainId, { contract: Address }>
 }
 
-/**
- * What a Swig creation installs: its root role, and the Swig's id or its
- * reservation, never both. A Swig paired with the account's EVM entry sends
- * neither: the orchestrator derives its id.
- */
+/** What a Swig creation installs: its root, and its id or its reservation. */
 type SwigInitData = {
   /** The permanent root role. It must agree with `authorization`. */
   authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
 } & (
   | {
       /**
-       * The 32-byte Swig id, lowercase hex. Required when the account has no
-       * `evm` entry and sends no `reservation`.
+       * The 32-byte Swig id, lowercase hex. Required for a Solana-only account
+       * that sends no `reservation`. Omitted for a Swig paired with the
+       * account's EVM entry: the orchestrator derives its id.
        */
       id?: Hex
       reservation?: never
     }
   | {
       /**
-       * The 100-byte reservation package the Swig is activated from, in place
-       * of `id`, lowercase hex: its address commits to `authority` as the root.
+       * The 100-byte reservation package, lowercase hex, that activates a
+       * Solana-only account's Swig in place of `id`, never beside it. The
+       * Swig's address commits to `authority` as its root.
        */
       reservation: Hex
       id?: never
@@ -1106,20 +1104,7 @@ interface Account {
    * installs, exactly as the quote request names it. Present only on Solana
    * inputs, so a sponsorship policy can bind the paying wallet and its key.
    */
-  svm?: {
-    type: 'swig'
-    /** The asset-holding Swig wallet, base58. */
-    address: string
-    /**
-     * The Swig state account, base58. Absent when the request pairs the Swig
-     * with the account's EVM entry, which derives it.
-     */
-    swigAccount?: string
-    /** The Swig role that authorizes the spend. */
-    authorization: SwigAuthority
-    /** Present only on a Swig creation. */
-    initData?: SwigInitData
-  }
+  svm?: IntentInputSvmAccount
 }
 
 type AccountWithContext = Omit<Account, 'delegations' | 'mockSignatures'> & {
