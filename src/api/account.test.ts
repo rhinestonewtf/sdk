@@ -533,6 +533,10 @@ describe('managed Solana account construction', () => {
         endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
       })
+    const prodSdk = () =>
+      new RhinestoneSDK({
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+      })
 
     test('is addressed by its wallet and exposes only the intent lifecycle, offline', async () => {
       const fetch = vi.fn()
@@ -629,8 +633,61 @@ describe('managed Solana account construction', () => {
       )
     })
 
-    // An EOA keeps its address in both environments, so the wallet its
-    // production pairing gives is recognised from development too.
+    test.each([
+      ['development', 'production', 'prod-v1'],
+      ['production', 'development', 'dev-v1'],
+    ] as const)(
+      'refuses, in %s, the wallet of the Swig the managed smart account pairs with in %s',
+      async (createdIn, pairedIn, namespace) => {
+        const sdks = { development: devSdk, production: prodSdk }
+        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+        const here = await sdks[createdIn]().createAccount({ evm })
+        const there = await sdks[pairedIn]().createAccount({ evm })
+        expect(there.getAddress('evm')).not.toBe(here.getAddress('evm'))
+        const paired = locateSwig(
+          asSwigNamespace(namespace),
+          there.getAddress('evm'),
+        )
+        const refusal = sdks[createdIn]().createAccount({
+          evm,
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `the wallet of the Swig paired with ${there.getAddress('evm')} in ${pairedIn}: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test.each([
+      ['development', 'production', 'prod-v1'],
+      ['production', 'development', 'dev-v1'],
+    ] as const)(
+      'points deploy in %s to the Swig the managed smart account pairs with in %s',
+      async (createdIn, pairedIn, namespace) => {
+        const sdks = { development: devSdk, production: prodSdk }
+        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+        const there = (
+          await sdks[pairedIn]().createAccount({ evm })
+        ).getAddress('evm')
+        const paired = locateSwig(asSwigNamespace(namespace), there)
+        const account = await sdks[createdIn]().createAccount({
+          evm,
+          solana: { owner: ecdsaOwner, swig: paired.swig },
+        })
+        const refusal = account.deploy('solana', solanaDevnet)
+        await expect(refusal).rejects.toBeInstanceOf(
+          UnsupportedAccountCapabilityError,
+        )
+        await expect(refusal).rejects.toThrow(
+          `The Swig ${paired.swig} is paired with ${there} in ${pairedIn}: create it in ${pairedIn} from an account whose managed EVM account is ${there}.`,
+        )
+        await expect(refusal).rejects.toMatchObject({
+          context: { field: 'swig' },
+        })
+      },
+    )
+
     test('refuses the production wallet of the Swig an EOA account pairs with', async () => {
       const paired = locateSwig(asSwigNamespace('prod-v1'), guardian.address)
       const refusal = devSdk().createAccount({
