@@ -31,7 +31,6 @@ import {
   ManagedSolanaAccountNotSupportedError,
 } from '../errors/capability'
 import {
-  assertNotPairedSwigWallet,
   createAccountFacade,
   createSolanaAccountFacade,
   isManagedSolanaEndpoint,
@@ -232,11 +231,8 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
           derivedSwigWallet(managedSolanaOwner)
         ) {
           throw new InvalidAccountConfigError(
-            '`solana.swig` is the wallet of the Swig derived from the owner; omit `swig` to use that Swig.',
+            '`solana.swig` is the wallet of the Swig derived from the owner: omit `swig` to use that Swig.',
           )
-        }
-        if (evmReceiver) {
-          assertNotPairedSwigWallet(managedSolanaSwig.swigAccount, evmReceiver)
         }
       }
     }

@@ -175,8 +175,9 @@ The derived Swig is the same in development and production. An ECDSA owner must
 be a viem local account (such as `privateKeyToAccount`), which carries its
 public key. Another key as `owner` derives another Swig, so save
 `ownedAccount.config.solana.swig`, the derived Swig's state account (not
-`getAddress('solana')`, its wallet), to use that Swig with another key. To use an existing Swig, supply its saved state-account
-address with `swig`; the wallet PDA is derived:
+`getAddress('solana')`, its wallet), to use that Swig with another key. To use
+an existing Swig, supply its saved state-account address with `swig`; the
+wallet PDA is derived:
 
 ```ts
 const managedSolana = {

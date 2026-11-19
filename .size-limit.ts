@@ -19,8 +19,8 @@ const limits = [
     // Explicit destination grants and quote consistency add 1.12 kB to the
     // measured 107.02 kB baseline; the resulting root bundle is 108.14 kB.
     // Swigs derived from the owner add the reservation derivation, the curve
-    // checks and the wallet guards: 0.70 kB on the 108.73 kB measured before
-    // them, for 109.43 kB.
+    // checks and the wallet guards: 0.73 kB on the 108.73 kB measured before
+    // them, for 109.46 kB.
     limit: '109.5 kB',
     import: '*',
     ignore: viem,

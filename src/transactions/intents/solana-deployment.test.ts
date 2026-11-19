@@ -1,3 +1,4 @@
+import { secp256k1 } from '@noble/curves/secp256k1'
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
@@ -236,7 +237,7 @@ describe('Solana Swig deployment request', () => {
       {
         initAuthority: {
           kind: 'secp256k1',
-          publicKey: `0x${BigInt(`0x${owner.publicKey.slice(68)}`) % 2n ? '03' : '02'}${owner.publicKey.slice(4, 68)}`,
+          publicKey: `0x${secp256k1.ProjectivePoint.fromHex(owner.publicKey.slice(2)).toHex(true)}`,
         } as const,
       },
       /configured owner's uncompressed secp256k1 public key/,

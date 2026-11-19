@@ -611,29 +611,43 @@ describe('managed Solana account construction', () => {
       )
     })
 
-    test.each(['dev-v1', 'prod-v1'])(
-      'refuses the wallet of the Swig the managed EVM account pairs with under %s',
-      async (namespace) => {
-        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
-        const managed = await devSdk().createAccount({ evm })
-        const paired = locateSwig(
-          asSwigNamespace(namespace),
-          managed.getAddress('evm'),
-        )
-        const refusal = devSdk().createAccount({
-          evm,
-          solana: { owner: ecdsaOwner, swig: paired.wallet },
-        })
-        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
-        await expect(refusal).rejects.toThrow(
-          `the wallet of the Swig derived from the EVM account: configure its state account, ${paired.swig}, instead`,
-        )
-      },
-    )
+    test('refuses the wallet of the Swig the managed EVM account pairs with', async () => {
+      const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+      const managed = await devSdk().createAccount({ evm })
+      const paired = locateSwig(
+        asSwigNamespace('dev-v1'),
+        managed.getAddress('evm'),
+      )
+      const refusal = devSdk().createAccount({
+        evm,
+        solana: { owner: ecdsaOwner, swig: paired.wallet },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `the wallet of the Swig paired with ${managed.getAddress('evm')} in development: configure its state account, ${paired.swig}, instead`,
+      )
+    })
 
-    test.each(['dev-v1', 'prod-v1'])(
-      'refuses the wallet of the Swig an EVM receiver pairs with under %s',
-      async (namespace) => {
+    // An EOA keeps its address in both environments, so the wallet its
+    // production pairing gives is recognised from development too.
+    test('refuses the production wallet of the Swig an EOA account pairs with', async () => {
+      const paired = locateSwig(asSwigNamespace('prod-v1'), guardian.address)
+      const refusal = devSdk().createAccount({
+        evm: { account: { type: 'eoa' }, eoa: guardian },
+        solana: { owner: ecdsaOwner, swig: paired.wallet },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `paired with ${guardian.address} in production: configure its state account, ${paired.swig}, instead`,
+      )
+    })
+
+    test.each([
+      ['development', 'dev-v1'],
+      ['production', 'prod-v1'],
+    ])(
+      'refuses the wallet of the Swig an EVM receiver pairs with in %s',
+      async (environment, namespace) => {
         const paired = locateSwig(asSwigNamespace(namespace), guardian.address)
         const refusal = devSdk().createAccount({
           evm: { address: guardian.address },
@@ -641,7 +655,24 @@ describe('managed Solana account construction', () => {
         })
         await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
         await expect(refusal).rejects.toThrow(
-          `configure its state account, ${paired.swig}, instead`,
+          `paired with ${guardian.address} in ${environment}: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test.each([
+      ['development', 'dev-v1'],
+      ['production', 'prod-v1'],
+    ])(
+      "refuses the wallet of the Swig the owner's address pairs with in %s",
+      async (environment, namespace) => {
+        const paired = locateSwig(asSwigNamespace(namespace), owner.address)
+        const refusal = devSdk().createAccount({
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `paired with ${owner.address} in ${environment}: configure its state account, ${paired.swig}, instead`,
         )
       },
     )
@@ -5911,7 +5942,7 @@ describe('managed Solana Swig creation', () => {
       UnsupportedAccountCapabilityError,
     )
     await expect(refusal).rejects.toThrow(
-      /create it from an account configured with that owner/,
+      /an account configured with the owner or the managed EVM account it is derived from/,
     )
     expect(workflows.createQuote).not.toHaveBeenCalled()
   })
@@ -5930,8 +5961,9 @@ describe('managed Solana Swig creation', () => {
       UnsupportedAccountCapabilityError,
     )
     await expect(refusal).rejects.toThrow(
-      `configure its state account, ${independent.swig}, as \`swig\``,
+      `\`solana.swig\` is the wallet of the Swig this \`swigId\` derives: configure its state account, ${independent.swig}, instead`,
     )
+    await expect(refusal).rejects.toMatchObject({ context: { field: 'swig' } })
     expect(workflows.createQuote).not.toHaveBeenCalled()
   })
 
