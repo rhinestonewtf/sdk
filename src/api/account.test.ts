@@ -3,6 +3,7 @@ import {
   type Address,
   bytesToHex,
   type Chain,
+  decodeFunctionData,
   encodeFunctionData,
   erc20Abi,
   type Hex,
@@ -24,6 +25,10 @@ import {
   personalSignRequest,
   publicQuote,
 } from '../../test/utils/caucasus'
+import {
+  permit2Types,
+  singleChainOpsTypes,
+} from '../../test/utils/intent-typed-data'
 import { signingPasskey } from '../../test/utils/passkeys'
 import {
   asSwigNamespace,
@@ -4198,7 +4203,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
         routes: [route('best', best), route('alternate', alternate)],
       }
     })
-    const submitIntent = vi.fn(async () => ({
+    const submitIntent = vi.fn(async (_input: unknown) => ({
       traceId: 'submitted',
       intentId: 'best',
     }))
@@ -4402,6 +4407,155 @@ describe('quote-driven Smart Session API lifecycle', () => {
         args: [owner.address, 1_000_000n],
       }),
     }
+    // Quote/RPC I/O is synthetic; hashing, session compilation and proofs are real.
+    // source: the dev probe's token roles and TychoRouterV3 ABI.
+    const fyndRouter = '0xd374c00614f95492d816b5957e3797ce3f0c445c' as const
+    const permit2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const
+    const swapAbi = parseAbi([
+      'function singleSwap(uint256 amountIn,address tokenIn,address tokenOut,uint256 expectedAmountOut,uint256 minAmountOut,address receiver,(uint32 clientFeeBps,address clientFeeReceiver,uint256 maxClientContribution,uint256 deadline,bytes clientSignature) clientFeeParams,bytes swapData) payable returns(uint256 amountOut)',
+    ])
+    const approve = (token: Address, spender: Address, amount: bigint) => ({
+      to: token,
+      value: 0n,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, amount],
+      }),
+    })
+    f.createQuote.mockImplementation(async (request) => {
+      const usesSwap =
+        request.source?.vm === 'evm' &&
+        request.source.token.toLowerCase() === walletToken.toLowerCase()
+      const sourceCalls =
+        request.source?.vm === 'evm'
+          ? (request.source.execution?.calls ?? [])
+          : []
+      const destinationCalls =
+        request.destination.vm === 'evm'
+          ? (request.destination.execution?.calls ?? [])
+          : []
+      const claim = {
+        domain: {
+          name: 'Permit2',
+          chainId: base.id,
+          verifyingContract: permit2,
+        },
+        primaryType: 'PermitBatchWitnessTransferFrom',
+        types: permit2Types,
+        message: {
+          permitted: [{ token: settlementToken, amount: 998_364n }],
+          // source: the production Across7579Arbiter deployment.
+          spender: '0x28a4D41776968c1201A807ec51fFB405362B8882',
+          nonce: 1n,
+          deadline: 4_000_000_000n,
+          mandate: {
+            target: {
+              recipient: account,
+              tokenOut: [{ token: mainnetUsdc, amount: 1_000_000n }],
+              targetChain: 1n,
+              fillExpiry: 4_000_000_000n,
+            },
+            minGas: 0n,
+            originOps: {
+              vt: zeroHash,
+              ops: [
+                ...sourceCalls,
+                ...(usesSwap
+                  ? [
+                      approve(walletToken, fyndRouter, 1_000_000n),
+                      {
+                        to: fyndRouter,
+                        value: 0n,
+                        data: encodeFunctionData({
+                          abi: swapAbi,
+                          functionName: 'singleSwap',
+                          args: [
+                            1_000_000n,
+                            walletToken,
+                            settlementToken,
+                            998_573n,
+                            998_364n,
+                            account,
+                            {
+                              clientFeeBps: 0,
+                              clientFeeReceiver: zeroAddress,
+                              maxClientContribution: 0n,
+                              deadline: 4_000_000_000n,
+                              clientSignature: '0x',
+                            },
+                            '0x',
+                          ],
+                        }),
+                      },
+                    ]
+                  : []),
+                approve(settlementToken, permit2, settlementCap),
+              ],
+            },
+            destOps: { vt: zeroHash, ops: destinationCalls },
+            q: zeroHash,
+          },
+        },
+      } satisfies TypedDataDefinition
+      const target = {
+        domain: {
+          name: 'IntentExecutor',
+          version: 'v0.0.1',
+          chainId: mainnet.id,
+          verifyingContract: recipientAddress,
+        },
+        primaryType: 'SingleChainOps',
+        types: singleChainOpsTypes,
+        message: {
+          account,
+          nonce: 1n,
+          op: { vt: zeroHash, ops: destinationCalls },
+          gasRefund: { token: zeroAddress, exchangeRate: 0n, overhead: 0n },
+        },
+      } satisfies TypedDataDefinition
+      return {
+        traceId: 'origin-swap-routing',
+        routes: [
+          caucasusQuote({
+            intentId: 'best',
+            settlementLayer: 'ACROSS',
+            cost: {
+              ...emptyCost(),
+              input: [
+                costEntry({
+                  chainId: 'eip155:8453',
+                  tokenAddress: usesSwap ? walletToken : settlementToken,
+                  amount: usesSwap ? 1_000_000n : 998_364n,
+                }),
+              ],
+              output: [
+                costEntry({
+                  chainId: 'eip155:1',
+                  tokenAddress: mainnetUsdc,
+                  amount: 1_000_000n,
+                }),
+              ],
+            },
+            signingRequests: [
+              eip712Request({ chainId: base.id, account, typedData: claim }),
+              eip712Request({
+                chainId: base.id,
+                account,
+                typedData: claim,
+                purpose: 'destinationAuthorization',
+              }),
+              eip712Request({
+                chainId: mainnet.id,
+                account,
+                typedData: target,
+                purpose: 'targetExecutionAuthorization',
+              }),
+            ],
+          }),
+        ],
+      }
+    })
     const transaction = {
       source: { chain: base, token: walletToken, calls: [pull] },
       destination: {
@@ -4431,6 +4585,9 @@ describe('quote-driven Smart Session API lifecycle', () => {
       settlementCap,
       pull,
       payout,
+      fyndRouter,
+      permit2,
+      swapAbi,
     }
   }
 
@@ -4449,6 +4606,7 @@ describe('quote-driven Smart Session API lifecycle', () => {
       options: {
         settlementLayers: { include: ['ACROSS'] },
         quoters: { include: ['fynd'] },
+        sponsorship: { gas: true, bridgeFees: true, swapFees: true },
       },
     })
     expect(f.sourceSession.access?.kind).toBe('scoped')
@@ -4458,6 +4616,219 @@ describe('quote-driven Smart Session API lifecycle', () => {
     expect(JSON.stringify(serializeBigInts(f.transaction.signers))).toBe(before)
     expect(f.createQuote).toHaveBeenCalledOnce()
     expect(f.submitIntent).not.toHaveBeenCalled()
+    f.expectUnsigned()
+  })
+
+  test.each(['cached', 'restored'] as const)(
+    'signs and serializes the origin-swap claim and destination payout without re-quoting (%s)',
+    async (path) => {
+      const f = originSwapFixture()
+      const grantsBefore = JSON.stringify(
+        serializeBigInts(f.transaction.signers),
+      )
+      const prepared = await f.account.prepareTransaction(f.transaction)
+      const signed = await f.account.signTransaction(
+        path === 'restored' ? restore(prepared) : prepared,
+      )
+      const payload = signed.quote.signingRequests[0]!.payload
+      if (payload.kind !== 'eip712') throw new Error('Expected EIP-712')
+      const message = payload.typedData.message as {
+        permitted: { token: Address; amount: bigint }[]
+        mandate: { originOps: { ops: { to: Address; data: Hex }[] } }
+      }
+      expect(
+        message.permitted.map(({ token, amount }) => ({
+          token,
+          amount: BigInt(amount),
+        })),
+      ).toEqual([{ token: f.settlementToken, amount: 998_364n }])
+      const calls = message.mandate.originOps.ops
+      expect(calls).toHaveLength(4)
+      expect(calls[0]!.data).toBe(f.pull.data)
+      const approval = decodeFunctionData({
+        abi: erc20Abi,
+        data: calls[1]!.data,
+      })
+      expect(approval.functionName).toBe('approve')
+      expect(String(approval.args![0]).toLowerCase()).toBe(f.fyndRouter)
+      expect(approval.args![1]).toBe(1_000_000n)
+      expect(
+        decodeFunctionData({ abi: f.swapAbi, data: calls[2]!.data }),
+      ).toMatchObject({
+        functionName: 'singleSwap',
+        args: [
+          1_000_000n,
+          expect.any(String),
+          expect.any(String),
+          998_573n,
+          998_364n,
+          f.account.getAddress('evm'),
+          expect.any(Object),
+          '0x',
+        ],
+      })
+      expect(calls[3]!.to).toBe(f.settlementToken)
+      expect(
+        decodeFunctionData({ abi: erc20Abi, data: calls[3]!.data }),
+      ).toMatchObject({
+        functionName: 'approve',
+        args: [f.permit2, f.settlementCap],
+      })
+      const sourceProof = signed.proofs[0]
+      if (
+        sourceProof?.kind !== 'eip712' ||
+        typeof sourceProof.signature === 'string'
+      )
+        throw new Error('Expected a source claim pair')
+      expect(sourceProof.signature.preClaim).toContain(
+        f.sourceSession.permissionId.slice(2),
+      )
+      expect(sourceProof.signature.notarizedClaim).toContain(
+        f.sourceSession.permissionId.slice(2),
+      )
+      expect(sessionProof(signed.proofs[1])).toContain(
+        f.destinationSession.permissionId.slice(2),
+      )
+      expect(sessionProof(signed.proofs[2])).toContain(
+        f.destinationSession.permissionId.slice(2),
+      )
+      expect(JSON.stringify(serializeBigInts(f.transaction.signers))).toBe(
+        grantsBefore,
+      )
+      expect(f.createQuote).toHaveBeenCalledOnce()
+      await f.account.submitTransaction(signed)
+      expect(f.submitIntent).toHaveBeenCalledOnce()
+      const serialized = f.submitIntent.mock.calls[0]?.[0]
+      expect(serialized).toEqual({ intentId: 'best', proofs: signed.proofs })
+    },
+  )
+
+  test.each(['missing swap permission', 'wrong swap output'] as const)(
+    'refuses origin-swap funding with %s before quoting',
+    async (fault) => {
+      const f = originSwapFixture()
+      f.transaction.signers.sessions[base.id] = {
+        session: toSession({
+          ...f.definition,
+          swap:
+            fault === 'missing swap permission'
+              ? undefined
+              : {
+                  ...f.definition.swap,
+                  buy: { token: mainnetUsdc },
+                },
+        }),
+      }
+      await expect(f.account.prepareTransaction(f.transaction)).rejects.toThrow(
+        'funding scope',
+      )
+      expect(f.createQuote).not.toHaveBeenCalled()
+      f.expectUnsigned()
+    },
+  )
+
+  test('refuses an origin swap whose output leaves the funding account', async () => {
+    const f = originSwapFixture()
+    f.transaction.signers.sessions[base.id] = {
+      session: toSession({
+        ...f.definition,
+        swap: { ...f.definition.swap, to: owner.address },
+      }),
+    }
+    await expect(f.account.prepareTransaction(f.transaction)).rejects.toThrow(
+      'funding scope',
+    )
+    expect(f.createQuote).not.toHaveBeenCalled()
+  })
+
+  test.each([1_025_000n, 2_000_000n])(
+    'keeps the origin-swap wallet budget with caller cap %s',
+    async (maxAmount) => {
+      const f = originSwapFixture()
+      const prepared = await f.account.prepareTransaction({
+        ...f.transaction,
+        source: { ...f.transaction.source, maxAmount, calls: [] },
+      })
+      expect(prepared.request.request).toHaveProperty(
+        'source.maxAmount',
+        String(maxAmount < f.walletCap ? maxAmount : f.walletCap),
+      )
+    },
+  )
+
+  test('keeps direct settlement funding on its own budget even when a swap is permitted', async () => {
+    const f = originSwapFixture()
+    const prepared = await f.account.prepareTransaction({
+      ...f.transaction,
+      source: { chain: base, token: f.settlementToken, maxAmount: 2_000_000n },
+    })
+    expect(prepared.request.request).toHaveProperty(
+      'source.maxAmount',
+      String(f.settlementCap),
+    )
+  })
+
+  test('refuses unrelated wallet funding and unsupported layers under an origin-swap grant', async () => {
+    const f = originSwapFixture()
+    await expect(
+      f.account.prepareTransaction({
+        ...f.transaction,
+        source: { chain: base, token: mainnetUsdc },
+      }),
+    ).rejects.toThrow('funding scope')
+    await expect(
+      f.account.prepareTransaction({
+        ...f.transaction,
+        settlementLayers: { include: ['RELAY'] },
+      }),
+    ).rejects.toThrow('no settlement layer')
+    expect(f.createQuote).not.toHaveBeenCalled()
+    f.expectUnsigned()
+  })
+
+  test('refuses a restored origin-swap artifact whose wallet cap changed', async () => {
+    const f = originSwapFixture()
+    const prepared = restore(
+      await f.account.prepareTransaction({
+        ...f.transaction,
+        source: { ...f.transaction.source, maxAmount: 1_025_000n, calls: [] },
+      }),
+    )
+    const changed = {
+      ...prepared,
+      transaction: {
+        ...f.transaction,
+        source: { ...f.transaction.source, calls: [], maxAmount: f.walletCap },
+      },
+    }
+    await expect(f.account.signTransaction(changed)).rejects.toThrow(
+      /incompatible/,
+    )
+    expect(f.createQuote).toHaveBeenCalledOnce()
+    f.expectUnsigned()
+  })
+
+  test('refuses origin-swap output whose settlement permission is on another chain', async () => {
+    const f = originSwapFixture()
+    const permit = f.definition.crossChainPermits[0]!
+    f.transaction.signers.sessions[base.id] = {
+      session: toSession({
+        ...f.definition,
+        crossChainPermits: [
+          {
+            ...permit,
+            from: [
+              { ...permit.from, token: mainnetUsdc },
+              { ...permit.from, chain: optimism },
+            ],
+          },
+        ],
+      }),
+    }
+    await expect(f.account.prepareTransaction(f.transaction)).rejects.toThrow(
+      'funding scope',
+    )
+    expect(f.createQuote).not.toHaveBeenCalled()
     f.expectUnsigned()
   })
 
