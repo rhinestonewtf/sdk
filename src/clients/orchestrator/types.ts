@@ -17,6 +17,7 @@ import type {
   SigningRequest,
   SolanaAuthorityChangeRequest,
   SwigAuthority,
+  SwigInitData,
 } from './public'
 
 export interface OrchestratorExecution {
@@ -78,23 +79,7 @@ export interface OrchestratorSvmAccount {
 }
 
 /** What a Swig-creation request installs. */
-export interface OrchestratorSwigInitData {
-  /** The permanent root role. It must agree with `authorization`. */
-  readonly authority: {
-    readonly kind: 'secp256k1' | 'secp256r1'
-    readonly publicKey: Hex
-  }
-  /**
-   * The 32-byte Swig id. Required when the account has no `evm` entry and
-   * sends no `reservation`.
-   */
-  readonly id?: Hex
-  /**
-   * The 100-byte reservation package the Swig is activated from, in place of
-   * `id`: its address commits to `authority` as the root.
-   */
-  readonly reservation?: Hex
-}
+export type OrchestratorSwigInitData = Readonly<SwigInitData>
 
 export interface OrchestratorIntentAccount {
   readonly evm?: OrchestratorEvmAccount

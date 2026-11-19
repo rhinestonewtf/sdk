@@ -219,6 +219,13 @@ const wireId: WireSwigInitData['id'] = creation.initData.id
 const wireReservation: WireSwigInitData['reservation'] =
   reservedCreation.initData.reservation
 
+// The paired shape sends neither: the orchestrator derives the id.
+type SwigCreation = NonNullable<OrchestratorSvmAccount['initData']>
+const root = { kind: 'secp256r1', publicKey: '0x02' } as const
+const pairedCreation: SwigCreation = { authority: root }
+// @ts-expect-error the wire refuses `reservation` beside `id`
+const both: SwigCreation = { authority: root, id: '0x01', reservation: '0x01' }
+
 const deploymentStatus = {
   traceId: 'trace-2',
   purpose: 'deployment',
@@ -232,6 +239,8 @@ void wireCreation
 void wireReservedCreation
 void wireId
 void wireReservation
+void pairedCreation
+void both
 void plan
 void wireIntentAccounts
 void wireDeploymentAccounts

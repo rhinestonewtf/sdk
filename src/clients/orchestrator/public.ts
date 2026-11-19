@@ -457,6 +457,33 @@ interface IntentInputDelegations {
   chains?: Record<Caip2ChainId, { contract: Address }>
 }
 
+/**
+ * What a Swig creation installs: its root role, and the Swig's id or its
+ * reservation, never both. A Swig paired with the account's EVM entry sends
+ * neither: the orchestrator derives its id.
+ */
+type SwigInitData = {
+  /** The permanent root role. It must agree with `authorization`. */
+  authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
+} & (
+  | {
+      /**
+       * The 32-byte Swig id, lowercase hex. Required when the account has no
+       * `evm` entry and sends no `reservation`.
+       */
+      id?: Hex
+      reservation?: never
+    }
+  | {
+      /**
+       * The 100-byte reservation package the Swig is activated from, in place
+       * of `id`, lowercase hex: its address commits to `authority` as the root.
+       */
+      reservation: Hex
+      id?: never
+    }
+)
+
 /** A Swig that pays for a Solana-origin intent, or that a Swig creation installs. */
 interface IntentInputSvmAccount {
   type: 'swig'
@@ -469,20 +496,8 @@ interface IntentInputSvmAccount {
   swigAccount?: string
   /** The Swig role that authorizes the spend. */
   authorization: SwigAuthority
-  /**
-   * Present only on a Swig creation: the root role it installs, and its id or
-   * reservation.
-   */
-  initData?: {
-    authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
-    /** The 32-byte Swig id, lowercase hex. */
-    id?: Hex
-    /**
-     * The 100-byte reservation package the Swig is activated from, in place
-     * of `id`, lowercase hex.
-     */
-    reservation?: Hex
-  }
+  /** Present only on a Swig creation. */
+  initData?: SwigInitData
 }
 
 /** Calls an EVM or HyperEVM settlement runs, with an optional gas limit. */
@@ -1102,20 +1117,8 @@ interface Account {
     swigAccount?: string
     /** The Swig role that authorizes the spend. */
     authorization: SwigAuthority
-    /**
-     * Present only on a Swig creation: the root role it installs, and its id or
-     * reservation.
-     */
-    initData?: {
-      authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
-      /** The 32-byte Swig id, lowercase hex. */
-      id?: Hex
-      /**
-       * The 100-byte reservation package the Swig is activated from, in place
-       * of `id`, lowercase hex.
-       */
-      reservation?: Hex
-    }
+    /** Present only on a Swig creation. */
+    initData?: SwigInitData
   }
 }
 
@@ -1345,6 +1348,7 @@ export type {
   SigningRequestPurpose,
   SigningAuthority,
   SwigAuthority,
+  SwigInitData,
   SolanaAuthorityChangeRequest,
   SolanaAuthorityDisclosure,
   SolanaAuthorityKeyView,

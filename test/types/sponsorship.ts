@@ -46,13 +46,19 @@ if (swig) {
   // @ts-expect-error the Swig entry is always a Swig
   swig.type = 'erc7579'
 }
-// A Swig creation carries an id or a reservation.
+// A Swig creation carries its id or its reservation, never both. A Swig paired
+// with the account's EVM entry carries neither: the orchestrator derives its id.
 const root = { kind: 'secp256k1', publicKey: '0x02' } as const
-const creations: NonNullable<NonNullable<typeof swig>['initData']>[] = [
+type SwigCreation = NonNullable<NonNullable<typeof swig>['initData']>
+const creations: SwigCreation[] = [
   { authority: root, id: '0x01' },
   { authority: root, reservation: '0x01' },
+  { authority: root },
 ]
 void creations
+// @ts-expect-error the wire refuses `reservation` beside `id`
+const both: SwigCreation = { authority: root, id: '0x01', reservation: '0x01' }
+void both
 // @ts-expect-error `svm` is optional
 const required: NonNullable<typeof swig> = prepared.intentInput.account.svm
 void required
