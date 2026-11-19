@@ -4303,6 +4303,164 @@ describe('quote-driven Smart Session API lifecycle', () => {
     return signed.signature as Hex
   }
 
+  function originSwapFixture() {
+    const f = fixture(base, mainnet, 'across')
+    const account = f.account.getAddress('evm')
+    const walletToken = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2' as const
+    const settlementToken =
+      '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
+    // source: owned dev probe 0048ea94ba509be0176a6f890f3396e6;
+    // the wallet and settlement budgets name different tokens.
+    const walletCap = 1_050_000n
+    const settlementCap = 1_000_000n
+    const abi = parseAbi([
+      'function transferFrom(address from,address to,uint256 amount) returns(bool)',
+      'function transfer(address to,uint256 amount) returns(bool)',
+    ])
+    const definition = {
+      chain: base,
+      account,
+      owners: { type: 'ecdsa' as const, accounts: [f.sourceOwner] },
+      restrictToActions: true,
+      saltMode: 'strict' as const,
+      swap: {
+        sell: { token: walletToken, maxTotal: walletCap },
+        buy: { token: settlementToken },
+        to: account,
+        via: [{ id: 'fynd' as const }],
+      },
+      crossChainPermits: [
+        {
+          settlementLayers: ['ACROSS' as const],
+          from: {
+            chain: base,
+            token: settlementToken,
+            maxAmount: settlementCap,
+          },
+          to: { chain: mainnet, token: mainnetUsdc, recipient: account },
+        },
+      ],
+      permissions: [
+        {
+          address: walletToken,
+          abi,
+          functions: {
+            transferFrom: {
+              maxUses: 1n,
+              params: {
+                from: { condition: 'equal' as const, value: owner.address },
+                to: { condition: 'equal' as const, value: account },
+                amount: {
+                  condition: 'lessThanOrEqual' as const,
+                  value: walletCap,
+                  usageLimit: walletCap,
+                },
+              },
+            },
+          },
+        },
+      ],
+    }
+    const sourceSession = toSession(definition)
+    const destinationSession = toSession({
+      chain: mainnet,
+      owners: { type: 'ecdsa', accounts: [f.destinationOwner] },
+      restrictToActions: true,
+      saltMode: 'strict',
+      permissions: [
+        {
+          address: mainnetUsdc,
+          abi,
+          functions: {
+            transfer: {
+              maxUses: 1n,
+              params: {
+                to: { condition: 'equal', value: owner.address },
+                amount: { condition: 'equal', value: 1_000_000n },
+              },
+            },
+          },
+        },
+      ],
+    })
+    const pull = {
+      to: walletToken,
+      value: 0n,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'transferFrom',
+        args: [owner.address, account, walletCap],
+      }),
+      provides: [{ token: walletToken, amount: walletCap }],
+    }
+    const payout = {
+      to: mainnetUsdc,
+      value: 0n,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'transfer',
+        args: [owner.address, 1_000_000n],
+      }),
+    }
+    const transaction = {
+      source: { chain: base, token: walletToken, calls: [pull] },
+      destination: {
+        chain: mainnet,
+        token: mainnetUsdc,
+        amount: 1_000_000n,
+        calls: [payout],
+      },
+      signers: {
+        type: 'session' as const,
+        sessions: {
+          [base.id]: { session: sourceSession },
+          [mainnet.id]: { session: destinationSession },
+        },
+      },
+      sponsored: true,
+    }
+    return {
+      ...f,
+      transaction,
+      definition,
+      sourceSession,
+      destinationSession,
+      walletToken,
+      settlementToken,
+      walletCap,
+      settlementCap,
+      pull,
+      payout,
+    }
+  }
+
+  test('quotes an origin swap from its wallet budget without adding a wallet-token bridge permit', async () => {
+    const f = originSwapFixture()
+    const before = JSON.stringify(serializeBigInts(f.transaction.signers))
+    const prepared = await f.account.prepareTransaction(f.transaction)
+    expect(prepared.request.request).toMatchObject({
+      source: {
+        token: f.walletToken,
+        maxAmount: String(f.walletCap),
+        auxiliaryFunds: String(f.walletCap),
+        execution: { calls: [expect.objectContaining({ data: f.pull.data })] },
+      },
+      destination: { token: mainnetUsdc, amount: '1000000' },
+      options: {
+        settlementLayers: { include: ['ACROSS'] },
+        quoters: { include: ['fynd'] },
+      },
+    })
+    expect(f.sourceSession.access?.kind).toBe('scoped')
+    expect(f.sourceSession.permit2Sources).toEqual([
+      { chain: base, token: f.settlementToken, maxAmount: f.settlementCap },
+    ])
+    expect(JSON.stringify(serializeBigInts(f.transaction.signers))).toBe(before)
+    expect(f.createQuote).toHaveBeenCalledOnce()
+    expect(f.submitIntent).not.toHaveBeenCalled()
+    f.expectUnsigned()
+  })
+
   test.each([
     { source: base, destination: arbitrum },
     { source: arbitrum, destination: base },
