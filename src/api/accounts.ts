@@ -176,6 +176,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
   let managedEvm: EvmAccountConfig | undefined
   let managedSolanaOwner: SolanaOwner | undefined
   let managedSolanaSwig: ParsedSolanaSwig | undefined
+  let solanaSwigNamed = false
   let solanaReceiver: SolanaAddress | undefined
 
   if (input.evm !== undefined) {
@@ -224,6 +225,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
       if (solana.swig === undefined) {
         managedSolanaSwig = reservedSwig(managedSolanaOwner)
       } else {
+        solanaSwigNamed = true
         managedSolanaSwig = parseSwig(solana.swig)
         // A wallet's wallet belongs to no Swig: funds sent to it are lost.
         if (
@@ -320,5 +322,6 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     compatibilityConfig,
     managedCaptured,
     sdk.composition,
+    solanaSwigNamed,
   )
 }

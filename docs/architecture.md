@@ -116,12 +116,12 @@ owner's key; adding, removing, or replacing an EVM branch never selects another
 wallet. The SDK derives the asset-holding wallet PDA from that state account,
 and refuses a `swig` that is the wallet of one of these Swigs: the one derived
 from the owner, when the owner carries its public key; one paired, under either
-environment's namespace, with the account's EVM address in that environment or,
-for an ECDSA owner, the owner's address; or, at `deploy`, the one a `swigId`
-derives. The wallet derived from a wallet belongs
-to no Swig. Plain transfers, instructions, and cross-chain deliveries name
-`svm.swigAccount`, carry no `account.evm`, bind sponsorship to the wallet, and
-persist no `accountType`. The owner is an independent ECDSA key or passkey;
+environment's namespace, with the account's development or production EVM
+address or, for an ECDSA owner, the owner's address; or, at `deploy`, the one a
+`swigId` derives. The wallet derived from a wallet belongs to no Swig. Plain
+transfers, instructions, and cross-chain deliveries name `svm.swigAccount`,
+carry no `account.evm`, bind sponsorship to the wallet, and persist no
+`accountType`. The owner is an independent ECDSA key or passkey;
 either credential may also be used by EVM, but each VM retains its own
 authorization protocol. A passkey is named to the orchestrator by its
 SEC1-compressed P-256 key. Its assertion's challenge and type are checked

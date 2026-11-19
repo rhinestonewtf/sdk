@@ -1221,6 +1221,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
   compatibilityConfig: LegacyAccountConfig<unknown>,
   publicConfig: Readonly<C>,
   composition: CoreComposition<LegacyAccountConfig<unknown>>,
+  swigNamed = true,
 ): ManagedEvmAccount<C> & ManagedSolanaDeployment {
   // Intent identity caches are facade-scoped. Values crossing account/SDK
   // instances are reconstructed and validated by the receiving account.
@@ -1246,16 +1247,18 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     }
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
-    // The same configuration in the other environment: a smart account's
-    // modules, and so its address, differ there.
-    const elsewhere = materializeAccountInvocationContext(
-      composition.config,
-      {
-        ...compatibilityConfig,
-        useDevContracts: ctx.sdk.environment === 'production',
-      },
-      'get-address',
-    )
+    // A smart account's address differs per environment. Only a named `swig`
+    // can be the wallet of the Swig that address pairs with in the other one.
+    const otherCtx = swigNamed
+      ? materializeAccountInvocationContext(
+          composition.config,
+          {
+            ...compatibilityConfig,
+            useDevContracts: ctx.sdk.environment === 'production',
+          },
+          'get-address',
+        )
+      : undefined
     const kind = ctx.account.account.kind
     return createSolanaOrigin(
       {
@@ -1265,10 +1268,9 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         environment: ctx.sdk.environment,
         endpoint: ctx.sdk.orchestratorUrl,
         evmRecipient: identity,
-        evmAddressInOtherEnvironment: workflowsFor(elsewhere).getAddress(
-          elsewhere,
-          referenceChain(),
-        ),
+        evmAddressInOtherEnvironment:
+          otherCtx &&
+          workflowsFor(otherCtx).getAddress(otherCtx, referenceChain()),
         evmExecution: {
           address: identity,
           accountType:
@@ -1873,10 +1875,11 @@ function assertSolanaMetadata(
 
 /**
  * The pairing whose state account (`by: 'swig'`) or wallet (`by: 'wallet'`)
- * is the configured `swig`, among the Swigs paired with the account's EVM
- * address, the managed account's address in the other environment and an ECDSA
- * owner's address, under either environment's namespace; `undefined` when none
- * matches.
+ * is the configured `swig`, among the Swigs paired, under either environment's
+ * namespace, with the account's EVM address, the managed account's address in
+ * the other environment and an ECDSA owner's address; `undefined` when none
+ * matches. Only an address both environments share, such as an EOA's, pairs
+ * usefully under both namespaces.
  */
 function findPairedSwig(source: SolanaSource, by: 'swig' | 'wallet') {
   const evmAddresses = [
