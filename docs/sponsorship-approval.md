@@ -74,7 +74,7 @@ offending `field`).
 | `account` | `evm` and/or `svm`, at least one |
 | `account.evm` | `type: 'eoa'` with `address`, `delegations`, `signatureMode`; or `type: 'erc7579'` with `address`, `initData.setupOps[{ to, data }]`, `delegations`, `simulation { mockSignature, mockSignaturesByChain }`, `signatureMode` |
 | `…delegations` | `default { contract }` and/or `chains { <caip2>: { contract } }` |
-| `account.svm` | `type: 'swig'`, `address`, `swigAccount`, `authorization` (`secp256k1` + `address`, or `secp256r1` + `publicKey`), `initData { authority { kind, publicKey }, id }` |
+| `account.svm` | `type: 'swig'`, `address`, `swigAccount`, `authorization` (`secp256k1` + `address`, or `secp256r1` + `publicKey`), `initData { authority { kind, publicKey } }` with at most one of `id` and `reservation` |
 | `source` | `vm` (`'evm'` or `'svm'`), `chainId`, `token`, `maxAmount`, `auxiliaryFunds`, `execution { calls[{ to, value, data }] }` (EVM only) |
 | `destination` | `vm`, `chainId`, `token`, `amount` (only with `token`), `recipient`, and `execution` for `evm`, `svm` and `hypercore` |
 | `destination.recipient` | `evm` / `hypercore`: a bare `{ address }` or a typed account as `account.evm`, without `signatureMode`. `svm`: `{ address }`. `tvm` / `stellar`: `{ address }`, required |

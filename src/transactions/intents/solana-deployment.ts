@@ -1,6 +1,8 @@
 import { type Hex, hexToBytes, isHex } from 'viem'
+import { publicKeyToAddress } from 'viem/utils'
 import {
   isManagedSwigNamespace,
+  locateReservedSwig,
   locateSwigById,
   type ManagedSwigNamespace,
 } from '../../accounts/solana/address'
@@ -34,8 +36,11 @@ export interface SolanaDeploymentInput {
   readonly authorization: SwigAuthority
   /** The same owner as the public key installed as the permanent root role. */
   readonly initAuthority: OrchestratorSwigInitData['authority']
-  /** The 32-byte id that derives `swigAddress`. */
-  readonly swigId: Hex
+  /**
+   * What `swigAddress` derives from: the 32-byte id it was minted with, or
+   * `'reservation'` when it is the Swig reserved for `initAuthority`.
+   */
+  readonly creation: { readonly id: Hex } | 'reservation'
   readonly namespace: ManagedSwigNamespace
   readonly endpoint: string
 }
@@ -73,12 +78,41 @@ function assertInitAuthority(input: SolanaDeploymentInput): void {
   }
   if (
     initAuthority.kind === 'secp256k1' &&
-    !/^0x(?:0[23][0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/u.test(
-      initAuthority.publicKey,
-    )
+    (authorization.kind !== 'secp256k1' ||
+      !/^0x04[0-9a-fA-F]{128}$/u.test(initAuthority.publicKey) ||
+      publicKeyToAddress(initAuthority.publicKey).toLowerCase() !==
+        authorization.address.toLowerCase())
   ) {
-    refuse('the installed ECDSA authority must be a SEC1 secp256k1 public key')
+    refuse(
+      "the installed ECDSA authority must be the configured owner's uncompressed secp256k1 public key",
+    )
   }
+}
+
+function checkedId(input: SolanaDeploymentInput, id: Hex): Hex {
+  if (!isHex(id) || hexToBytes(id).length !== 32) {
+    refuse('the Swig id must be 32 bytes of hex')
+  }
+  const location = locateSwigById(hexToBytes(id))
+  if (
+    location.swig !== input.swigAddress ||
+    location.wallet !== input.walletAddress
+  ) {
+    refuse('the Swig id does not derive the configured Swig and wallet')
+  }
+  return id.toLowerCase() as Hex
+}
+
+// The only reservation the SDK sends: the index-0 package for the installed root.
+function checkedReservation(input: SolanaDeploymentInput): Hex {
+  const reserved = locateReservedSwig(input.initAuthority)
+  if (
+    reserved?.swig !== input.swigAddress ||
+    reserved.wallet !== input.walletAddress
+  ) {
+    refuse('the reservation does not derive the configured Swig and wallet')
+  }
+  return reserved.reservation
 }
 
 export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
@@ -90,16 +124,10 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
   if (!isManagedSwigNamespace(input.namespace)) {
     refuse('the managed account namespace must be dev-v1 or prod-v1')
   }
-  if (!isHex(input.swigId) || hexToBytes(input.swigId).length !== 32) {
-    refuse('the Swig id must be 32 bytes of hex')
-  }
-  const location = locateSwigById(hexToBytes(input.swigId))
-  if (
-    location.swig !== input.swigAddress ||
-    location.wallet !== input.walletAddress
-  ) {
-    refuse('the Swig id does not derive the configured Swig and wallet')
-  }
+  const creation =
+    input.creation === 'reservation'
+      ? { reservation: checkedReservation(input) }
+      : { id: checkedId(input, input.creation.id) }
   assertInitAuthority(input)
   // The Solana-only shape: no `evm` entry, so the id is sent explicitly, even
   // for the Swig the managed EVM account derives.
@@ -108,10 +136,7 @@ export function buildSolanaDeploymentRequest(input: SolanaDeploymentInput): {
     address: input.walletAddress,
     swigAccount: input.swigAddress,
     authorization: input.authorization,
-    initData: {
-      authority: input.initAuthority,
-      id: input.swigId.toLowerCase() as Hex,
-    },
+    initData: { authority: input.initAuthority, ...creation },
   }
   // Gas only: Solana routes refuse the other sponsorship categories. They are
   // spelled out so the request says exactly what the approval input does.

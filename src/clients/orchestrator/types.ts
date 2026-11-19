@@ -17,6 +17,7 @@ import type {
   SigningRequest,
   SolanaAuthorityChangeRequest,
   SwigAuthority,
+  SwigInitData,
 } from './public'
 
 export interface OrchestratorExecution {
@@ -77,16 +78,14 @@ export interface OrchestratorSvmAccount {
   readonly initData?: OrchestratorSwigInitData
 }
 
+// Mapped per arm, so the `id`/`reservation` arms stay exclusive and the root
+// key is readonly all the way down.
+type ReadonlyInitData<T> = T extends unknown
+  ? { readonly [K in keyof T]: K extends 'authority' ? Readonly<T[K]> : T[K] }
+  : never
+
 /** What a Swig-creation request installs. */
-export interface OrchestratorSwigInitData {
-  /** The permanent root role. It must agree with `authorization`. */
-  readonly authority: {
-    readonly kind: 'secp256k1' | 'secp256r1'
-    readonly publicKey: Hex
-  }
-  /** The 32-byte Swig id. Required when the account has no `evm` entry. */
-  readonly id?: Hex
-}
+export type OrchestratorSwigInitData = ReadonlyInitData<SwigInitData>
 
 export interface OrchestratorIntentAccount {
   readonly evm?: OrchestratorEvmAccount

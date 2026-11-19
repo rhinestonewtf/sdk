@@ -260,11 +260,13 @@ const standaloneConfig: SolanaStandaloneAccountConfig = {
   owner: { type: 'ecdsa', account: owner },
   swig,
 }
-// @ts-expect-error every managed Solana account must name its existing Swig state account
-const implicitConfig: SolanaStandaloneAccountConfig = {
+// Without `swig`, the SDK derives the Swig from the owner's key.
+const ownerOnlyConfig: SolanaStandaloneAccountConfig = {
   owner: { type: 'ecdsa', account: owner },
 }
-void implicitConfig
+// @ts-expect-error a managed Solana account names its owner
+const swigOnlyConfig: SolanaStandaloneAccountConfig = { swig }
+void swigOnlyConfig
 
 async function standaloneCapabilitySurface() {
   const sdk = new RhinestoneSDK({
@@ -308,8 +310,16 @@ async function standaloneCapabilitySurface() {
   const created: boolean = await account.deploy('solana', solanaDevnet, {
     swigId: minted.id,
   })
-  // @ts-expect-error without managed EVM the Swig is independent, so its id is required
-  account.deploy('solana', solanaDevnet)
+  // The Swig derived from the owner is created with no id.
+  const ownerOnly = await sdk.createAccount({ solana: ownerOnlyConfig })
+  const reserved: boolean = await ownerOnly.deploy('solana', solanaDevnet)
+  // The captured configuration names the derived Swig, to save for another key.
+  const derived: typeof swig = ownerOnly.config.solana.swig
+  const literal = await sdk.createAccount({
+    solana: { owner: { type: 'ecdsa', account: owner } },
+  })
+  const derivedFromLiteral: typeof swig = literal.config.solana.swig
+  void [reserved, derived, derivedFromLiteral]
   // @ts-expect-error the Swig id is 0x-prefixed hex
   account.deploy('solana', solanaDevnet, { swigId: '07'.repeat(32) })
   // @ts-expect-error creation is always sponsored
@@ -439,6 +449,12 @@ async function compositeCapabilitySurface() {
   evmOnly.deploy('evm', mainnet)
   // @ts-expect-error an account with no managed Solana entry has no Swig to create
   evmOnly.deploy('solana', solanaDevnet)
+  const ownerOnlyComposite = await sdk.createAccount({
+    evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+    solana: { owner: { type: 'ecdsa', account: owner } },
+  })
+  const compositeSwig: typeof swig = ownerOnlyComposite.config.solana.swig
+  void compositeSwig
 
   const messages = account.getTransactionMessages(
     null as unknown as Parameters<typeof account.getTransactionMessages>[0],

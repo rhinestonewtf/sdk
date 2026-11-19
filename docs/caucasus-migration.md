@@ -147,9 +147,10 @@ import { solanaAddress, solanaDevnet } from '@rhinestone/sdk/solana'
 
 Behavior and types are unchanged; only the import paths move.
 
-## Managed Solana accounts require explicit identity
+## Managed Solana accounts name their Swig or derive it from the owner
 
-Every managed Solana branch now names the existing Swig it uses:
+A managed Solana branch names the existing Swig it uses, or names only its
+owner and uses the Swig derived from the owner's key:
 
 ```ts
 const solana = {
@@ -163,9 +164,13 @@ await sdk.createAccount({ solana, evm: { address: evmReceiver } })
 await sdk.createAccount({ solana, evm: managedEvmConfig })
 ```
 
-There is no EVM-derived fallback and account construction does not deploy or
-verify the Swig. Save its state-account address during provisioning; the SDK
-derives the asset-holding wallet PDA. To create a Swig through the SDK, call
+There is no EVM-derived fallback: without `swig`, the SDK derives the Swig from
+the owner's public key, never from the EVM account. That Swig is the same in
+development and production, and another key as `owner` derives another Swig: to
+use an existing Swig with another key, name it with `swig`. Save
+`account.config.solana.swig`, which holds the derived Swig, for that. Account
+construction does not deploy or verify the Swig. Save a named Swig's state-account address during
+provisioning; the SDK derives the asset-holding wallet PDA. To create a Swig through the SDK, call
 `account.deploy('solana', solanaDevnet)` — see [Creating the Swig](#creating-the-swig). The Solana owner may
 be an ECDSA account or WebAuthn account and may be shared with EVM, but the two
 VMs authorize independently.
@@ -176,8 +181,12 @@ now the Swig wallet, so review or reissue policies that granted sponsorship to
 the former EVM identity. EVM-origin operations are unchanged. Solana-to-EVM
 destination calls remain available only when the explicit Swig matches the
 backend-compatible Swig derived from the managed EVM account; unrelated pairs
-must omit calls and use plain delivery. Address-only EVM receivers provide a
-default recipient but cannot execute calls.
+must omit calls and use plain delivery. Name that Swig by its state account,
+not by the wallet `getAddress('solana')` returned: `createAccount` refuses the
+wallet and names the state account. The Swig derived from the owner is never
+that pair, so an account without `swig` makes plain deliveries only.
+Address-only EVM receivers provide a default recipient but cannot execute
+calls.
 
 Previously prepared paired plain-Solana artifacts do not get reinterpreted.
 Reconcile any possible submission, then prepare again with the explicit Swig.
@@ -188,25 +197,32 @@ Reconcile any possible submission, then prepare again with the explicit Swig.
 `account.deploy('evm', chain, { sponsored })`; `account.deploy(chain, …)` no
 longer compiles.
 
-`account.deploy('solana', solanaChain, { swigId })` creates the configured Swig
+`account.deploy('solana', solanaChain)` creates the configured Swig
 as a sponsored deployment intent, installs the configured owner as its root,
 and resolves `true` once the Swig exists. Nothing is signed; the integrator's
 gas sponsorship pays the rent and fees.
 
 ```ts
-// An independent Swig: mint once, save `id` with `swig`.
-const { id, swig } = createSolanaSwigId()
-const account = await sdk.createAccount({ solana: { owner, swig } })
-await account.deploy('solana', solanaDevnet, { swigId: id })
+// The Swig derived from the owner's key needs no id.
+const account = await sdk.createAccount({ solana: { owner } })
+await account.deploy('solana', solanaDevnet)
 
-// The Swig derived from a managed EVM account needs no id.
+// A minted Swig: mint once, save `id` with `swig`.
+const { id, swig } = createSolanaSwigId()
+const minted = await sdk.createAccount({ solana: { owner, swig } })
+await minted.deploy('solana', solanaDevnet, { swigId: id })
+
+// On a composite account, the Swig derived from the managed EVM account,
+// named as `swig`, needs no id either.
 await composite.deploy('solana', solanaDevnet)
 ```
 
-`swigId` is required on an account without managed EVM, whose Swig is always
-independent. It is optional on a composite account, where the SDK computes the
-id of the Swig derived from the EVM account; an independent Swig there still
-needs its saved id.
+Without `swig`, `deploy` creates the Swig derived from the owner's key from its
+reservation, which commits the Swig's address to that key; passing a `swigId`
+for it is refused. An ECDSA owner must then be a viem local account (such as
+`privateKeyToAccount`), which carries its public key. A Swig minted with
+`createSolanaSwigId()` needs its saved `swigId`. On a composite account, the SDK
+computes the id of the Swig derived from the EVM account.
 
 Creation is one-shot: a Swig created with the wrong owner permanently strands
 its wallet. A wrong or missing id, an ECDSA owner without `publicKey` (such as a
@@ -689,7 +705,8 @@ quote request ([sponsorship approval](sponsorship-approval.md)).
   the callback runs; use project-wide sponsorship for such a request.
 - **Solana.** The input names the paying Swig as `account.svm`: its wallet,
   its authority and, for plain operations, its state account. A Swig creation
-  also carries the installed root and the Swig id in `account.svm.initData`.
+  also carries the installed root and either the Swig id or its reservation
+  in `account.svm.initData`.
 - **Restoring Solana artifacts.** A Solana transaction prepared by an earlier
   snapshot fails restore with `InvalidSolanaTransactionArtifactError`. Prepare
   it again.
