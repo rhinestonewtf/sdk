@@ -421,13 +421,15 @@ are never refreshed during signing: incompatible request inputs require fresh
 preparation. Direct signing resolves only the supplied authorization requests;
 a source one-time grant needs an already committed Permit2 burn.
 
-Session envelopes are chain-local. A destination authorization repeats the
-origin's source-domain message; it is validated on the destination, with the
-destination grant, only when the account executes calls there. Otherwise —
-including direct signing — the origin proof answers it (its pre-claim half when
-the origin is a claim pair). The signed payload, proof order and count stay
-unchanged. Session-specific EVM behavior does not broaden managed/standalone
-Solana capabilities.
+Session envelopes are chain-local. Executor `SingleChainOps` and `MultiChainOps`
+authorizations use the payload's execution chain, regardless of the final payment
+destination or the request's role. A bridge-deposit signature cannot use the
+destination payout grant. A repeated Permit2 source-domain message instead uses
+the destination grant when the account executes calls there. Otherwise — including
+direct signing — the origin proof answers it (its pre-claim half when the origin
+is a claim pair). The signed payload, proof order and count stay unchanged.
+Session-specific EVM behavior does not broaden managed/standalone Solana
+capabilities.
 
 ## Execution paths
 

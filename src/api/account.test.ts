@@ -3,8 +3,14 @@ import {
   type Address,
   bytesToHex,
   type Chain,
+  encodeFunctionData,
+  erc20Abi,
   type Hex,
   hexToBytes,
+  parseAbi,
+  type TypedDataDefinition,
+  zeroAddress,
+  zeroHash,
 } from 'viem'
 import { privateKeyToAccount, publicKeyToAddress } from 'viem/accounts'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
@@ -4333,6 +4339,262 @@ describe('quote-driven Smart Session API lifecycle', () => {
     )
     expect(f.destinationOwner.signMessage).toHaveBeenCalledOnce()
     expect(f.createQuote).toHaveBeenCalledOnce()
+  })
+
+  test.each([
+    { path: 'cached', verifyExecutions: false },
+    { path: 'restored', verifyExecutions: false },
+    { path: 'cached', verifyExecutions: true },
+    { path: 'restored', verifyExecutions: true },
+  ])(
+    'keeps the bridge-deposit grant on Ethereum despite Base payout calls ($path, verifyExecutions=$verifyExecutions)',
+    async ({ path, verifyExecutions }) => {
+      // source: production trace 9f38a801d5aa579f44a1121aa7038a90:
+      // Ethereum SingleChainOps deposit and a separate Base payout stage.
+      const f = fixture(mainnet, base)
+      const sourceToken = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+      const destinationToken = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+      const pull = {
+        to: sourceToken,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transferFrom',
+          args: [owner.address, f.account.getAddress('evm'), 1_050_000n],
+        }),
+      } as const
+      const payout = {
+        to: destinationToken,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [owner.address, 1_000_000n],
+        }),
+      } as const
+      if (verifyExecutions) {
+        const abi = parseAbi([
+          'function transferFrom(address from,address to,uint256 amount) returns(bool)',
+          'function transfer(address to,uint256 amount) returns(bool)',
+        ])
+        f.signers.sessions[mainnet.id] = {
+          session: toSession({
+            chain: mainnet,
+            owners: { type: 'ecdsa', accounts: [f.sourceOwner] },
+            restrictToActions: true,
+            saltMode: 'strict',
+            permissions: [
+              {
+                address: sourceToken,
+                abi,
+                functions: {
+                  transferFrom: {
+                    maxUses: 3n,
+                    params: {
+                      from: { condition: 'equal', value: owner.address },
+                      to: {
+                        condition: 'equal',
+                        value: f.account.getAddress('evm'),
+                      },
+                      amount: {
+                        condition: 'lessThanOrEqual',
+                        value: 1_050_000n,
+                        usageLimit: 3_150_000n,
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+        }
+        f.signers.sessions[base.id] = {
+          session: toSession({
+            chain: base,
+            owners: { type: 'ecdsa', accounts: [f.destinationOwner] },
+            restrictToActions: true,
+            saltMode: 'strict',
+            permissions: [
+              {
+                address: destinationToken,
+                abi,
+                functions: {
+                  transfer: {
+                    maxUses: 3n,
+                    params: {
+                      to: { condition: 'equal', value: owner.address },
+                      amount: { condition: 'equal', value: 1_000_000n },
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+        }
+      }
+      const sourceSession = f.signers.sessions[mainnet.id].session
+      const destinationSession = f.signers.sessions[base.id].session
+      const execution = (
+        chainId: number,
+        account: Address,
+        call: typeof pull | typeof payout,
+      ): TypedDataDefinition => ({
+        domain: {
+          name: 'IntentExecutor',
+          version: 'v0.0.1',
+          chainId,
+          verifyingContract: recipientAddress,
+        },
+        // source: compact-utils IntentExecutor SingleChainOps EIP-712 schema.
+        types: {
+          SingleChainOps: [
+            { name: 'account', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'op', type: 'Op' },
+            { name: 'gasRefund', type: 'GasRefund' },
+          ],
+          Op: [
+            { name: 'vt', type: 'bytes32' },
+            { name: 'ops', type: 'Ops[]' },
+          ],
+          Ops: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+          ],
+          GasRefund: [
+            { name: 'token', type: 'address' },
+            { name: 'exchangeRate', type: 'uint256' },
+            { name: 'overhead', type: 'uint256' },
+          ],
+        },
+        primaryType: 'SingleChainOps',
+        message: {
+          account,
+          nonce: 1n,
+          op: { vt: zeroHash, ops: [call] },
+          gasRefund: { token: zeroAddress, exchangeRate: 0n, overhead: 0n },
+        },
+      })
+      // I/O only: the quote carries the actual executor schema, not a Test payload.
+      f.createQuote.mockImplementation(async (request) => {
+        const account = request.account.evm!.address
+        const sourcePayload = execution(mainnet.id, account, pull)
+        return {
+          traceId: 'executor-chain-regression',
+          routes: [
+            caucasusQuote({
+              intentId: 'best',
+              signingRequests: [
+                eip712Request({
+                  chainId: base.id,
+                  account,
+                  typedData: execution(base.id, account, payout),
+                }),
+                eip712Request({
+                  chainId: mainnet.id,
+                  account,
+                  typedData: sourcePayload,
+                }),
+                eip712Request({
+                  chainId: mainnet.id,
+                  account,
+                  typedData: sourcePayload,
+                  purpose: 'destinationAuthorization',
+                }),
+              ],
+            }),
+          ],
+        }
+      })
+      const grantsBefore = JSON.stringify(serializeBigInts(f.signers))
+      const prepared = await f.account.prepareTransaction({
+        source: {
+          chain: mainnet,
+          token: sourceToken,
+          maxAmount: 1_050_000n,
+          calls: [pull],
+        },
+        destination: {
+          chain: base,
+          token: destinationToken,
+          amount: 1_000_000n,
+          calls: [payout],
+        },
+        signers: f.signers,
+        sponsored: true,
+      })
+      const signed = await f.account.signTransaction(
+        path === 'restored' ? restore(prepared) : prepared,
+      )
+      expect(sourceSession.permissionId).not.toBe(
+        destinationSession.permissionId,
+      )
+      const executionProof = (index: number) => {
+        const proof = signed.proofs[index]
+        if (proof?.kind !== 'eip712')
+          throw new Error('Expected an EIP-712 proof')
+        return typeof proof.signature === 'string'
+          ? proof.signature
+          : proof.signature.preClaim
+      }
+      expect(
+        typeof (signed.proofs[1] as { signature: unknown }).signature,
+      ).toBe(verifyExecutions ? 'object' : 'string')
+      expect(executionProof(0)).toContain(
+        destinationSession.permissionId.slice(2),
+      )
+      expect(executionProof(1)).toContain(sourceSession.permissionId.slice(2))
+      expect(sessionProof(signed.proofs[2])).toBe(executionProof(1))
+      expect(sessionProof(signed.proofs[2])).not.toContain(
+        destinationSession.permissionId.slice(2),
+      )
+      expect(JSON.stringify(serializeBigInts(f.signers))).toBe(grantsBefore)
+      expect(f.createQuote).toHaveBeenCalledOnce()
+    },
+  )
+
+  test('refuses Relay selection under an intact Across source grant before quoting', async () => {
+    const f = fixture(mainnet, base)
+    const sourceToken = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+    const destinationToken = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+    const session = toSession({
+      chain: mainnet,
+      account: f.account.getAddress('evm'),
+      owners: { type: 'ecdsa', accounts: [f.sourceOwner] },
+      crossChainPermits: [
+        {
+          settlementLayers: ['ACROSS'],
+          from: { chain: mainnet, token: sourceToken, maxAmount: 3_150_000n },
+          to: { chain: base, token: destinationToken },
+        },
+      ],
+    })
+    const before = JSON.stringify(serializeBigInts(session))
+    await expect(
+      f.account.prepareTransaction({
+        ...f.transaction,
+        source: { chain: mainnet, token: sourceToken },
+        destination: {
+          chain: base,
+          token: destinationToken,
+          amount: 1_000_000n,
+          calls: [{ to: destinationToken }],
+        },
+        signers: {
+          type: 'session',
+          sessions: {
+            ...f.signers.sessions,
+            [mainnet.id]: { session },
+          },
+        },
+        settlementLayers: { include: ['RELAY'] },
+        sponsored: true,
+      }),
+    ).rejects.toThrow(/no settlement layer/)
+    expect(JSON.stringify(serializeBigInts(session))).toBe(before)
+    expect(f.createQuote).not.toHaveBeenCalled()
+    f.expectUnsigned()
   })
 
   test.each(['cached', 'restored'] as const)(
