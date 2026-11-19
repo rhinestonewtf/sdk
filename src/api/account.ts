@@ -1246,6 +1246,16 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     }
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
+    // The same configuration in the other environment: a smart account's
+    // modules, and so its address, differ there.
+    const elsewhere = materializeAccountInvocationContext(
+      composition.config,
+      {
+        ...compatibilityConfig,
+        useDevContracts: ctx.sdk.environment === 'production',
+      },
+      'get-address',
+    )
     const kind = ctx.account.account.kind
     return createSolanaOrigin(
       {
@@ -1255,6 +1265,10 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
         environment: ctx.sdk.environment,
         endpoint: ctx.sdk.orchestratorUrl,
         evmRecipient: identity,
+        evmAddressInOtherEnvironment: workflowsFor(elsewhere).getAddress(
+          elsewhere,
+          referenceChain(),
+        ),
         evmExecution: {
           address: identity,
           accountType:
@@ -1825,6 +1839,8 @@ export interface SolanaSource {
    * plain EVM delivery.
    */
   readonly evmRecipient?: Address
+  /** The managed EVM account's address in the other environment. */
+  readonly evmAddressInOtherEnvironment?: Address
   /** Managed EVM account available to execute destination calls. */
   readonly evmExecution?: {
     readonly address: Address
@@ -1858,14 +1874,14 @@ function assertSolanaMetadata(
 /**
  * The pairing whose state account (`by: 'swig'`) or wallet (`by: 'wallet'`)
  * is the configured `swig`, among the Swigs paired with the account's EVM
- * address and an ECDSA owner's address under either environment's namespace;
- * `undefined` when none matches. A smart account's address differs per
- * environment, so only an address both share, such as an EOA's, pairs usefully
- * in the other one.
+ * address, the managed account's address in the other environment and an ECDSA
+ * owner's address, under either environment's namespace; `undefined` when none
+ * matches.
  */
 function findPairedSwig(source: SolanaSource, by: 'swig' | 'wallet') {
   const evmAddresses = [
     source.evmRecipient,
+    source.evmAddressInOtherEnvironment,
     source.owner.type === 'ecdsa' ? source.owner.account.address : undefined,
   ]
   for (const evmAddress of evmAddresses) {
