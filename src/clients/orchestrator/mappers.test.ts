@@ -1038,7 +1038,7 @@ describe('quote plan and recorded executions', () => {
     executedBy: executor,
     calls,
   }
-  const actions = [{ nonce: 1633493192000, agent: address }]
+  const actions = [{ action: {}, nonce: 1633493192000, agent: address }]
 
   function planOf(plan: WireQuotePlan) {
     const mapped = mapQuoteResponseFromWire({

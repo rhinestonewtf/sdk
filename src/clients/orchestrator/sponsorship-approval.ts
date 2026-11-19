@@ -211,6 +211,9 @@ function swigAccount(value: Json | undefined, field: string): void {
     string(authority.publicKey, `${field}.initData.authority.publicKey`)
     optionalString(init.id, `${field}.initData.id`)
     optionalString(init.reservation, `${field}.initData.reservation`)
+    if (init.id !== undefined && init.reservation !== undefined) {
+      unsupported(`${field}.initData.reservation`)
+    }
   }
 }
 
