@@ -222,6 +222,26 @@ describe('Solana Swig deployment request', () => {
       /configured owner's uncompressed secp256k1 public key/,
     ],
     [
+      "a wrong SEC1 prefix on the owner's point",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x05${owner.publicKey.slice(4)}`,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
+      "the owner's compressed ECDSA public key",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x${BigInt(`0x${owner.publicKey.slice(68)}`) % 2n ? '03' : '02'}${owner.publicKey.slice(4, 68)}`,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
       'another namespace',
       { namespace: 'local-v1' as 'dev-v1' },
       /namespace must be dev-v1 or prod-v1/,
@@ -258,10 +278,7 @@ describe('Solana Swig deployment request from a reservation', () => {
   const reserved = (kind: 'secp256k1' | 'secp256r1', publicKey: Hex) =>
     locateReservedSwig({ kind, publicKey })!
   const ecdsa = reserved('secp256k1', owner.publicKey)
-  const other = reserved(
-    'secp256k1',
-    privateKeyToAccount(`0x${'34'.repeat(32)}`).publicKey,
-  )
+  const other = reserved('secp256k1', otherOwner.publicKey)
   const p256 = reserved('secp256r1', passkey)
 
   function reservationInput(

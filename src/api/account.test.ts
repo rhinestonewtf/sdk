@@ -22,6 +22,7 @@ import {
   asSwigNamespace,
   locateSwig,
   locateSwigById,
+  locateSwigWallet,
 } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import type { SolanaAddress } from '../chains/non-evm'
@@ -586,6 +587,17 @@ describe('managed Solana account construction', () => {
       expect(account.getAddress('solana')).toBe(location.wallet)
     })
 
+    test('takes the state account of the Swig derived from the owner', async () => {
+      const derived = await devSdk().createAccount({
+        solana: { owner: ecdsaOwner },
+      })
+      const named = await devSdk().createAccount({
+        solana: { owner: ecdsaOwner, swig: derived.config.solana.swig },
+      })
+
+      expect(named.getAddress('solana')).toBe(derived.getAddress('solana'))
+    })
+
     test('refuses the wallet of the Swig derived from the owner', async () => {
       const derived = await devSdk().createAccount({
         solana: { owner: ecdsaOwner },
@@ -599,22 +611,40 @@ describe('managed Solana account construction', () => {
       )
     })
 
-    test('refuses the wallet of the Swig derived from the managed EVM account', async () => {
-      const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
-      const managed = await devSdk().createAccount({ evm })
-      const paired = locateSwig(
-        asSwigNamespace('dev-v1'),
-        managed.getAddress('evm'),
-      )
-      const refusal = devSdk().createAccount({
-        evm,
-        solana: { owner: ecdsaOwner, swig: paired.wallet },
-      })
-      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
-      await expect(refusal).rejects.toThrow(
-        /wallet of the Swig derived from the managed EVM account/,
-      )
-    })
+    test.each(['dev-v1', 'prod-v1'])(
+      'refuses the wallet of the Swig the managed EVM account pairs with under %s',
+      async (namespace) => {
+        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+        const managed = await devSdk().createAccount({ evm })
+        const paired = locateSwig(
+          asSwigNamespace(namespace),
+          managed.getAddress('evm'),
+        )
+        const refusal = devSdk().createAccount({
+          evm,
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `the wallet of the Swig derived from the EVM account: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test.each(['dev-v1', 'prod-v1'])(
+      'refuses the wallet of the Swig an EVM receiver pairs with under %s',
+      async (namespace) => {
+        const paired = locateSwig(asSwigNamespace(namespace), guardian.address)
+        const refusal = devSdk().createAccount({
+          evm: { address: guardian.address },
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
 
     test('snapshots an EVM receiver without leaking managed capabilities through mutation', async () => {
       const evm = { address: owner.address }
@@ -2643,7 +2673,7 @@ describe('managed Solana cross-chain delivery facade', () => {
       await expect(
         base.facade.prepareTransaction(callsTransaction()),
       ).rejects.toThrow(
-        /run only from the Swig derived from the managed EVM account/,
+        `run only from the Swig derived from the managed EVM account, ${managedSwig}, and`,
       )
       const replayWithCalls = {
         ...prepared,
@@ -5874,14 +5904,33 @@ describe('managed Solana Swig creation', () => {
     },
   )
 
-  test('refuses a Swig derived from another owner before contacting the orchestrator', async () => {
+  test('points a Swig derived from another owner to that owner before contacting the orchestrator', async () => {
     const { facade, workflows } = standalone({ target: SWIG_RESERVATIONS.k1 })
     const refusal = facade.deploy('solana', solanaDevnet)
     await expect(refusal).rejects.toBeInstanceOf(
       UnsupportedAccountCapabilityError,
     )
     await expect(refusal).rejects.toThrow(
-      /created by an account configured with that owner/,
+      /create it from an account configured with that owner/,
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  test("refuses a minted Swig's wallet named as its Swig before contacting the orchestrator", async () => {
+    const { facade, workflows } = standalone({
+      target: {
+        swig: independent.wallet,
+        wallet: locateSwigWallet(independent.wallet).address,
+      },
+    })
+    const refusal = facade.deploy('solana', solanaDevnet, {
+      swigId: independentId,
+    })
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toThrow(
+      `configure its state account, ${independent.swig}, as \`swig\``,
     )
     expect(workflows.createQuote).not.toHaveBeenCalled()
   })

@@ -1430,7 +1430,8 @@ interface SolanaManagedAccountConfig {
    * Swig state account of an existing Swig: one minted with
    * `createSolanaSwigId()`, or, for EVM destination calls, the Swig derived
    * from the managed EVM account. Omit it to use the Swig derived from
-   * `owner`. Its asset-holding wallet PDA is derived.
+   * `owner`. Its asset-holding wallet PDA is derived, so never pass a wallet,
+   * such as the address `getAddress('solana')` returns.
    */
   swig?: SolanaAddress
   address?: never

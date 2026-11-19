@@ -181,7 +181,9 @@ now the Swig wallet, so review or reissue policies that granted sponsorship to
 the former EVM identity. EVM-origin operations are unchanged. Solana-to-EVM
 destination calls remain available only when the explicit Swig matches the
 backend-compatible Swig derived from the managed EVM account; unrelated pairs
-must omit calls and use plain delivery. The Swig derived from the owner is never
+must omit calls and use plain delivery. Name that Swig by its state account, not
+by the wallet `getAddress('solana')` returned: `createAccount` refuses the wallet
+and names the state account. The Swig derived from the owner is never
 that pair, so an account without `swig` makes plain deliveries only. Address-only EVM receivers provide a
 default recipient but cannot execute calls.
 

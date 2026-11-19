@@ -1246,16 +1246,7 @@ export function createAccountFacade<C extends RhinestoneAccountConfig>(
     }
     const ctx = context('get-address')
     const identity = workflowsFor(ctx).getAddress(ctx, referenceChain())
-    const paired = locateSwig(
-      asSwigNamespace(MANAGED_SWIG_NAMESPACES[ctx.sdk.environment]),
-      identity,
-    )
-    // A wallet's wallet belongs to no Swig: funds sent to it are lost.
-    if (branch.swig === paired.wallet) {
-      throw new InvalidAccountConfigError(
-        '`solana.swig` is the wallet of the Swig derived from the managed EVM account; name that Swig by its state account.',
-      )
-    }
+    assertNotPairedSwigWallet(branch.swig, identity)
     const kind = ctx.account.account.kind
     return createSolanaOrigin(
       {
@@ -1863,6 +1854,25 @@ function assertSolanaMetadata(
 }
 
 /**
+ * Refuses a `swig` that is the wallet of the Swig `evmAccount` pairs with in
+ * either environment: a wallet's own wallet belongs to no Swig, so funds sent
+ * to it are lost.
+ */
+export function assertNotPairedSwigWallet(
+  swig: SolanaAddress,
+  evmAccount: Address,
+): void {
+  for (const namespace of Object.values(MANAGED_SWIG_NAMESPACES)) {
+    const paired = locateSwig(asSwigNamespace(namespace), evmAccount)
+    if (paired.wallet === swig) {
+      throw new InvalidAccountConfigError(
+        `\`solana.swig\` is the wallet of the Swig derived from the EVM account: configure its state account, ${paired.swig}, instead.`,
+      )
+    }
+  }
+}
+
+/**
  * The permanent root role a managed Solana owner installs on its Swig, from
  * the owner's own key and never from caller input. `refuse` throws when an
  * ECDSA owner carries no public key for its `address`, or a passkey's key is
@@ -1923,7 +1933,7 @@ function createSolanaOrigin(
       compatible.swig !== source.swigAddress
     ) {
       throw new UnsupportedAccountCapabilityError(
-        'EVM destination calls run only from the Swig derived from the managed EVM account, and this account uses another Swig. Name that Swig as `swig` in the account configuration, or omit `calls` to make a plain delivery.',
+        `EVM destination calls run only from the Swig derived from the managed EVM account, ${compatible.swig}, and this account uses another Swig. Name that Swig as \`swig\` in the account configuration, or omit \`calls\` to make a plain delivery.`,
         { vm: 'solana', field: 'calls' },
       )
     }
@@ -2146,7 +2156,13 @@ function createSolanaOrigin(
         refuse('`swigId` must be the 32-byte Swig id as 0x-prefixed hex.')
       }
       const id = (swigId as string).toLowerCase() as Hex
-      if (locateSwigById(hexToBytes(id)).swig !== source.swigAddress) {
+      const minted = locateSwigById(hexToBytes(id))
+      if (minted.wallet === source.swigAddress) {
+        refuse(
+          `\`swig\` is the wallet of the Swig this \`swigId\` derives: configure its state account, ${minted.swig}, as \`swig\`.`,
+        )
+      }
+      if (minted.swig !== source.swigAddress) {
         refuse(
           `\`swigId\` does not derive the configured Swig ${source.swigAddress}. Pass the id saved with that Swig.`,
         )
@@ -2161,7 +2177,7 @@ function createSolanaOrigin(
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
     }
     return refuse(
-      `The Swig ${source.swigAddress} is not derived from this owner, so creating it needs the id it was minted with: pass the \`swigId\` that \`createSolanaSwigId()\` returned with it. A Swig derived from another owner is created by an account configured with that owner and no \`swig\`.`,
+      `The Swig ${source.swigAddress} is not derived from this owner. If \`createSolanaSwigId()\` minted it, pass the \`swigId\` saved with it. If it is derived from another owner, create it from an account configured with that owner.`,
     )
   }
 
