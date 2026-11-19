@@ -41,7 +41,8 @@ if (swig) {
   const stateAccount: string | undefined = swig.swigAccount
   const authority: 'secp256k1' | 'secp256r1' = swig.authorization.kind
   const installed: `0x${string}` | undefined = swig.initData?.id
-  void [wallet, stateAccount, authority, installed]
+  const reservation: `0x${string}` | undefined = swig.initData?.reservation
+  void [wallet, stateAccount, authority, installed, reservation]
   // @ts-expect-error the Swig entry is always a Swig
   swig.type = 'erc7579'
 }

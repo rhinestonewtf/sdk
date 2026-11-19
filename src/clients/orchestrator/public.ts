@@ -469,11 +469,19 @@ interface IntentInputSvmAccount {
   swigAccount?: string
   /** The Swig role that authorizes the spend. */
   authorization: SwigAuthority
-  /** Present only on a Swig creation: the root role it installs and its id. */
+  /**
+   * Present only on a Swig creation: the root role it installs, and its id or
+   * reservation.
+   */
   initData?: {
     authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
     /** The 32-byte Swig id, lowercase hex. */
     id?: Hex
+    /**
+     * The 100-byte reservation package the Swig is activated from, in place
+     * of `id`, lowercase hex.
+     */
+    reservation?: Hex
   }
 }
 
@@ -1094,11 +1102,19 @@ interface Account {
     swigAccount?: string
     /** The Swig role that authorizes the spend. */
     authorization: SwigAuthority
-    /** Present only on a Swig creation: the root role it installs and its id. */
+    /**
+     * Present only on a Swig creation: the root role it installs, and its id or
+     * reservation.
+     */
     initData?: {
       authority: { kind: 'secp256k1' | 'secp256r1'; publicKey: Hex }
       /** The 32-byte Swig id, lowercase hex. */
       id?: Hex
+      /**
+       * The 100-byte reservation package the Swig is activated from, in place
+       * of `id`, lowercase hex.
+       */
+      reservation?: Hex
     }
   }
 }
