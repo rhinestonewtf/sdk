@@ -1,5 +1,8 @@
 import { type Address, type Hex, isAddress } from 'viem'
-import { locateSwigWallet } from '../accounts/solana/address'
+import {
+  locateReservedSwig,
+  locateSwigWallet,
+} from '../accounts/solana/address'
 import { compressP256PublicKey } from '../accounts/solana/passkey'
 import { type SolanaAddress, solanaAddress } from '../chains/non-evm'
 import type {
@@ -33,6 +36,7 @@ import {
   isManagedSolanaEndpoint,
   type RhinestoneAccount,
   type RhinestoneAccountBase,
+  solanaRootAuthority,
 } from './account'
 import { createConfiguredCoreComposition } from './compose'
 import type { CoreComposition } from './compose-types'
@@ -128,6 +132,33 @@ function parseSwig(value: unknown): ParsedSolanaSwig {
   }
 }
 
+/** The Swig reserved for the owner's key, which `deploy` creates with no id. */
+function reservedSwig(owner: SolanaOwner): ParsedSolanaSwig {
+  const refuse = (message: string): never => {
+    throw new InvalidAccountConfigError(
+      `Without \`swig\`, the SDK derives the Swig from the owner's public key. ${message}`,
+    )
+  }
+  const reserved = locateReservedSwig(solanaRootAuthority(owner, refuse))
+  if (!reserved) {
+    return refuse("The owner's public key is not a point on its curve.")
+  }
+  return { address: reserved.wallet, swigAccount: reserved.swig }
+}
+
+/**
+ * The wallet of the Swig derived from the owner; `undefined` for a key that
+ * derives none.
+ */
+function derivedSwigWallet(owner: SolanaOwner): SolanaAddress | undefined {
+  try {
+    return reservedSwig(owner).address
+  } catch (error) {
+    if (error instanceof InvalidAccountConfigError) return undefined
+    throw error
+  }
+}
+
 export function attachAccount<const C extends RhinestoneAccountConfig>(
   sdk: SdkComposition,
   config: C,
@@ -145,6 +176,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
   let managedEvm: EvmAccountConfig | undefined
   let managedSolanaOwner: SolanaOwner | undefined
   let managedSolanaSwig: ParsedSolanaSwig | undefined
+  let solanaSwigNamed = false
   let solanaReceiver: SolanaAddress | undefined
 
   if (input.evm !== undefined) {
@@ -191,11 +223,20 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
         )
       }
       if (solana.swig === undefined) {
-        throw new InvalidAccountConfigError(
-          'Managed Solana requires `swig` with the existing provisioned Swig state account address; the SDK no longer derives it from an EVM account.',
-        )
+        managedSolanaSwig = reservedSwig(managedSolanaOwner)
+      } else {
+        solanaSwigNamed = true
+        managedSolanaSwig = parseSwig(solana.swig)
+        // A wallet's wallet belongs to no Swig: funds sent to it are lost.
+        if (
+          managedSolanaSwig.swigAccount ===
+          derivedSwigWallet(managedSolanaOwner)
+        ) {
+          throw new InvalidAccountConfigError(
+            '`solana.swig` is the wallet of the Swig derived from the owner: omit `swig` to use that Swig.',
+          )
+        }
       }
-      managedSolanaSwig = parseSwig(solana.swig)
     }
   }
   if (
@@ -248,7 +289,7 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     ...config,
     ...(capturedEvmReceiver ? { evm: capturedEvmReceiver } : {}),
     ...(capturedSolanaReceiver ? { solana: capturedSolanaReceiver } : {}),
-  }) as Readonly<C>
+  }) as RhinestoneAccountBase<C>['config']
   if (!managedEvm) {
     const receiver: RhinestoneAccountBase<C> = {
       config: captured,
@@ -281,5 +322,6 @@ export function attachAccount<const C extends RhinestoneAccountConfig>(
     compatibilityConfig,
     managedCaptured,
     sdk.composition,
+    solanaSwigNamed,
   )
 }

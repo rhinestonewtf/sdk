@@ -1,11 +1,12 @@
 import {
   type Account,
+  type Address,
   bytesToHex,
   type Chain,
   type Hex,
   hexToBytes,
 } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
+import { privateKeyToAccount, publicKeyToAddress } from 'viem/accounts'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -22,6 +23,7 @@ import {
   asSwigNamespace,
   locateSwig,
   locateSwigById,
+  locateSwigWallet,
 } from '../accounts/solana/address'
 import { formatCaip2, parseCaip2, toEvmChainReference } from '../chains/caip2'
 import type { SolanaAddress } from '../chains/non-evm'
@@ -67,6 +69,7 @@ import { resolveAccountConfig, resolveSdkConfig } from '../config/resolve'
 import type { AccountInvocationContext } from '../config/resolved'
 import {
   AccountVmNotConfiguredError,
+  InvalidAccountConfigError,
   ManagedSolanaAccountNotSupportedError,
   UnsupportedAccountCapabilityError,
 } from '../errors/capability'
@@ -116,6 +119,30 @@ const DEV_ORCHESTRATOR_URL = 'https://dev.v1.orchestrator.rhinestone.dev'
 const PROD_ORCHESTRATOR_URL = 'https://v1.orchestrator.rhinestone.dev'
 const owner = privateKeyToAccount(`0x${'02'.repeat(32)}`)
 const guardian = privateKeyToAccount(`0x${'03'.repeat(32)}`)
+// Private key 1, whose public key is the secp256k1 generator.
+const generatorOwner = privateKeyToAccount(`0x${'00'.repeat(31)}01`)
+const P256_GENERATOR =
+  '0x046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5' as const
+// The generator with y's low bit flipped: off P-256, though compressing it
+// gives -G, a valid point.
+const P256_GENERATOR_WRONG_Y = `${P256_GENERATOR.slice(0, -2)}f4` as Hex
+const OFF_CURVE_K1 = `0x04${'11'.repeat(64)}` as const
+// source: swig-wallet interface/tests/data/reservation-v1.json (c64127837995),
+// the Swig program's own vectors: each generator as the owner, account index 0.
+const SWIG_RESERVATIONS = {
+  k1: {
+    reservation:
+      '0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe000000000000000000000000000000000000000000000000000000000000000003000279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+    swig: '7vQDpvZtkebG86pDVWMfWqPt5d463gFFXW9VcLRQsLoq',
+    wallet: '4vzcpxuuBUovaEWG9ADk5zMhYAtYPfuMFj3f4G3SjMYs',
+  },
+  r1: {
+    reservation:
+      '0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe00000000000000000000000000000000000000000000000000000000000000000500036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296',
+    swig: 'F5DJQ8TKFBvmjQ8wkH4H4DxRrYJgcGDhTLTWCbZApJyx',
+    wallet: '2E4ar4rbgHH5QyqMEEJvMWHp2Qp1emH9xuvFgN8gk753',
+  },
+} as const
 const managedSwigLocation = locateSwig(asSwigNamespace('dev-v1'), owner.address)
 const managedSwig = managedSwigLocation.swig
 const prodSwigLocation = locateSwig(asSwigNamespace('prod-v1'), owner.address)
@@ -388,16 +415,7 @@ describe('managed Solana account construction', () => {
     }
   })
 
-  test('rejects a managed account naming no Swig, and widened unsupported owners', async () => {
-    await expect(
-      new RhinestoneSDK({
-        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
-        endpointUrl: DEV_ORCHESTRATOR_URL,
-        useDevContracts: true,
-      }).createAccount({
-        solana: { owner: { type: 'ecdsa', account: owner } },
-      } as never),
-    ).rejects.toThrow(/requires `swig`/)
+  test('rejects widened unsupported owners', async () => {
     await expect(
       new RhinestoneSDK({
         auth: { mode: 'apiKey' as const, apiKey: 'offline' },
@@ -407,6 +425,101 @@ describe('managed Solana account construction', () => {
         solana: { owner: { type: 'passkey', account: {} }, nonce: 1n },
       } as never),
     ).rejects.toThrow(/unknown managed Solana field `nonce`/)
+  })
+
+  describe('with no `swig`, on the Swig derived from the owner', () => {
+    const devSdk = () =>
+      new RhinestoneSDK({
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
+        endpointUrl: DEV_ORCHESTRATOR_URL,
+        useDevContracts: true,
+      })
+
+    test.each([
+      ['standing alone', {}],
+      [
+        'beside a managed EVM account',
+        { evm: { owners: { type: 'ecdsa' as const, accounts: [owner] } } },
+      ],
+    ])('derives the ECDSA owner reservation %s', async (_label, evm) => {
+      const account = await devSdk().createAccount({
+        ...evm,
+        solana: { owner: { type: 'ecdsa', account: generatorOwner } },
+      })
+
+      expect(account.getAddress('solana')).toBe(SWIG_RESERVATIONS.k1.wallet)
+      expect(account.config.solana).toMatchObject({
+        swig: SWIG_RESERVATIONS.k1.swig,
+      })
+    })
+
+    test('derives the passkey owner reservation', async () => {
+      const passkey = { ...signingPasskey().account, publicKey: P256_GENERATOR }
+      const account = await devSdk().createAccount({
+        solana: { owner: { type: 'passkey', account: passkey } },
+      })
+
+      expect(account.getAddress('solana')).toBe(SWIG_RESERVATIONS.r1.wallet)
+      expect(account.config.solana).toMatchObject({
+        swig: SWIG_RESERVATIONS.r1.swig,
+      })
+    })
+
+    test.each([
+      [
+        'an ECDSA owner exposing no public key',
+        { type: 'ecdsa', account: { address: owner.address } },
+        /carries no uncompressed/,
+      ],
+      [
+        'an ECDSA owner whose public key is no point on secp256k1',
+        {
+          type: 'ecdsa',
+          account: {
+            address: publicKeyToAddress(OFF_CURVE_K1),
+            publicKey: OFF_CURVE_K1,
+          },
+        },
+        /not a point on its curve/,
+      ],
+      [
+        "an ECDSA owner carrying another key's public key",
+        {
+          type: 'ecdsa',
+          account: { ...owner, publicKey: generatorOwner.publicKey },
+        },
+        /does not belong to its `address`/,
+      ],
+      [
+        'a passkey whose key is no point on P-256',
+        {
+          type: 'passkey',
+          account: {
+            ...signingPasskey().account,
+            // x = 1: x³ - 3x + b is not a square mod p, so no y exists.
+            publicKey: `0x02${'00'.repeat(31)}01`,
+          },
+        },
+        /not a point on P-256/,
+      ],
+      [
+        'a passkey whose y is not on P-256',
+        {
+          type: 'passkey',
+          account: {
+            ...signingPasskey().account,
+            publicKey: P256_GENERATOR_WRONG_Y,
+          },
+        },
+        /not a point on P-256/,
+      ],
+    ])('refuses %s', async (_label, solanaOwner, message) => {
+      const refusal = devSdk().createAccount({
+        solana: { owner: solanaOwner },
+      } as never)
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(message)
+    })
   })
 
   describe('standing alone on the Swig it names', () => {
@@ -419,6 +532,10 @@ describe('managed Solana account construction', () => {
         auth: { mode: 'apiKey' as const, apiKey: 'offline' },
         endpointUrl: DEV_ORCHESTRATOR_URL,
         useDevContracts: true,
+      })
+    const prodSdk = () =>
+      new RhinestoneSDK({
+        auth: { mode: 'apiKey' as const, apiKey: 'offline' },
       })
 
     test('is addressed by its wallet and exposes only the intent lifecycle, offline', async () => {
@@ -459,6 +576,190 @@ describe('managed Solana account construction', () => {
           solana: { owner: ecdsaOwner, swig: malformed },
         } as never),
       ).rejects.toThrow(/Swig state account address/)
+    })
+
+    test('names its Swig for an ECDSA owner exposing no public key', async () => {
+      const account = await devSdk().createAccount({
+        solana: {
+          owner: {
+            type: 'ecdsa',
+            account: { address: owner.address, type: 'json-rpc' },
+          },
+          swig,
+        },
+      })
+
+      expect(account.getAddress('solana')).toBe(location.wallet)
+    })
+
+    test('takes the state account of the Swig derived from the owner', async () => {
+      const derived = await devSdk().createAccount({
+        solana: { owner: ecdsaOwner },
+      })
+      const named = await devSdk().createAccount({
+        solana: { owner: ecdsaOwner, swig: derived.config.solana.swig },
+      })
+
+      expect(named.getAddress('solana')).toBe(derived.getAddress('solana'))
+    })
+
+    test('refuses the wallet of the Swig derived from the owner', async () => {
+      const derived = await devSdk().createAccount({
+        solana: { owner: ecdsaOwner },
+      })
+      const refusal = devSdk().createAccount({
+        solana: { owner: ecdsaOwner, swig: derived.getAddress('solana') },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        '`solana.swig` is the wallet of the Swig derived from the owner: omit `swig` to use that Swig.',
+      )
+    })
+
+    test('refuses the wallet of the Swig the managed EVM account pairs with', async () => {
+      const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+      const managed = await devSdk().createAccount({ evm })
+      const paired = locateSwig(
+        asSwigNamespace('dev-v1'),
+        managed.getAddress('evm'),
+      )
+      const refusal = devSdk().createAccount({
+        evm,
+        solana: { owner: ecdsaOwner, swig: paired.wallet },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `the wallet of the Swig paired with ${managed.getAddress('evm')} in development: configure its state account, ${paired.swig}, instead`,
+      )
+    })
+
+    test.each([
+      ['development', 'production', 'prod-v1'],
+      ['production', 'development', 'dev-v1'],
+    ] as const)(
+      'refuses, in %s, the wallet of the Swig the managed smart account pairs with in %s',
+      async (createdIn, pairedIn, namespace) => {
+        const sdks = { development: devSdk, production: prodSdk }
+        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+        const here = await sdks[createdIn]().createAccount({ evm })
+        const there = await sdks[pairedIn]().createAccount({ evm })
+        expect(there.getAddress('evm')).not.toBe(here.getAddress('evm'))
+        const paired = locateSwig(
+          asSwigNamespace(namespace),
+          there.getAddress('evm'),
+        )
+        const refusal = sdks[createdIn]().createAccount({
+          evm,
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `the wallet of the Swig paired with ${there.getAddress('evm')} in ${pairedIn}: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test.each([
+      ['development', 'production', 'prod-v1'],
+      ['production', 'development', 'dev-v1'],
+    ] as const)(
+      'points deploy in %s to the Swig the managed smart account pairs with in %s',
+      async (createdIn, pairedIn, namespace) => {
+        const sdks = { development: devSdk, production: prodSdk }
+        const evm = { owners: { type: 'ecdsa' as const, accounts: [owner] } }
+        const there = (
+          await sdks[pairedIn]().createAccount({ evm })
+        ).getAddress('evm')
+        const paired = locateSwig(asSwigNamespace(namespace), there)
+        const account = await sdks[createdIn]().createAccount({
+          evm,
+          solana: { owner: ecdsaOwner, swig: paired.swig },
+        })
+        const refusal = account.deploy('solana', solanaDevnet)
+        await expect(refusal).rejects.toBeInstanceOf(
+          UnsupportedAccountCapabilityError,
+        )
+        await expect(refusal).rejects.toThrow(
+          `The Swig ${paired.swig} is paired with ${there} in ${pairedIn}: create it in ${pairedIn} from an account whose managed EVM account is ${there}.`,
+        )
+        await expect(refusal).rejects.toMatchObject({
+          context: { field: 'swig' },
+        })
+      },
+    )
+
+    test('refuses the production wallet of the Swig an EOA account pairs with', async () => {
+      const paired = locateSwig(asSwigNamespace('prod-v1'), guardian.address)
+      const refusal = devSdk().createAccount({
+        evm: { account: { type: 'eoa' }, eoa: guardian },
+        solana: { owner: ecdsaOwner, swig: paired.wallet },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `paired with ${guardian.address} in production: configure its state account, ${paired.swig}, instead`,
+      )
+    })
+
+    test.each([
+      ['development', 'dev-v1'],
+      ['production', 'prod-v1'],
+    ])(
+      'refuses the wallet of the Swig an EVM receiver pairs with in %s',
+      async (environment, namespace) => {
+        const paired = locateSwig(asSwigNamespace(namespace), guardian.address)
+        const refusal = devSdk().createAccount({
+          evm: { address: guardian.address },
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `paired with ${guardian.address} in ${environment}: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test.each([
+      ['development', 'dev-v1'],
+      ['production', 'prod-v1'],
+    ])(
+      "refuses the wallet of the Swig the owner's address pairs with in %s",
+      async (environment, namespace) => {
+        const paired = locateSwig(asSwigNamespace(namespace), owner.address)
+        const refusal = devSdk().createAccount({
+          solana: { owner: ecdsaOwner, swig: paired.wallet },
+        })
+        await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+        await expect(refusal).rejects.toThrow(
+          `paired with ${owner.address} in ${environment}: configure its state account, ${paired.swig}, instead`,
+        )
+      },
+    )
+
+    test("refuses the wallet of the Swig the owner's address pairs with beside a managed EVM account", async () => {
+      const paired = locateSwig(asSwigNamespace('dev-v1'), owner.address)
+      const refusal = devSdk().createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: { owner: ecdsaOwner, swig: paired.wallet },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `paired with ${owner.address} in development: configure its state account, ${paired.swig}, instead`,
+      )
+    })
+
+    test('refuses the wallet of the Swig an EVM receiver pairs with for a passkey owner', async () => {
+      const paired = locateSwig(asSwigNamespace('dev-v1'), guardian.address)
+      const refusal = devSdk().createAccount({
+        evm: { address: guardian.address },
+        solana: {
+          owner: { type: 'passkey', account: signingPasskey().account },
+          swig: paired.wallet,
+        },
+      })
+      await expect(refusal).rejects.toBeInstanceOf(InvalidAccountConfigError)
+      await expect(refusal).rejects.toThrow(
+        `paired with ${guardian.address} in development: configure its state account, ${paired.swig}, instead`,
+      )
     })
 
     test('snapshots an EVM receiver without leaking managed capabilities through mutation', async () => {
@@ -2487,17 +2788,21 @@ describe('managed Solana cross-chain delivery facade', () => {
 
       await expect(
         base.facade.prepareTransaction(callsTransaction()),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        `run only from the Swig derived from the managed EVM account, ${managedSwig}, and`,
+      )
       const replayWithCalls = {
         ...prepared,
         transaction: withDestination({ calls: [call] }),
       }
       expect(() => base.facade.getTransactionMessages(replayWithCalls)).toThrow(
-        /independently selected Swig/,
+        /run only from the Swig derived from the managed EVM account/,
       )
       await expect(
         base.facade.signTransaction(replayWithCalls),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
       expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
       expect(base.workflows.prepareSolanaIntent).not.toHaveBeenCalled()
     })
@@ -2523,7 +2828,9 @@ describe('managed Solana cross-chain delivery facade', () => {
 
       await expect(
         facade.prepareTransaction(callsTransaction()),
-      ).rejects.toThrow(/independently selected Swig/)
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
       expect(resolveSolanaEvmDestination).not.toHaveBeenCalled()
     })
 
@@ -5600,29 +5907,31 @@ describe('managed Solana Swig creation', () => {
       readonly environment?: 'development' | 'production'
       readonly endpoint?: string
       readonly route?: OrchestratorQuote
+      readonly target?: { readonly swig: string; readonly wallet: string }
+      readonly evmRecipient?: Address
     } = {},
   ) {
     const solanaOwner = options.owner ?? { type: 'ecdsa', account: owner }
+    const target = options.target ?? independent
     const authority = options.authority ?? {
       kind: 'secp256k1',
       address: owner.address,
     }
     const sdk = options.sdk ?? devSdk
-    const workflows = ports(
-      options.route ?? deploymentRoute(independent, authority),
-    )
+    const workflows = ports(options.route ?? deploymentRoute(target, authority))
     const waitForIntentStatus = vi.fn(async (intentId: string) =>
       completed(intentId),
     )
     const facade = createSolanaAccountFacade(
       {
         owner: solanaOwner,
-        walletAddress: independent.wallet,
-        swigAddress: independent.swig,
+        walletAddress: target.wallet as SolanaAddress,
+        swigAddress: target.swig as SolanaAddress,
         environment: options.environment ?? 'development',
         endpoint: options.endpoint ?? devSdk.orchestratorUrl,
+        ...(options.evmRecipient ? { evmRecipient: options.evmRecipient } : {}),
       },
-      { solana: { owner: solanaOwner, swig: independent.swig } },
+      { solana: { owner: solanaOwner, swig: target.swig as SolanaAddress } },
       {
         config: sdk,
         project: { solana: workflows, waitForIntentStatus } as never,
@@ -5713,6 +6022,182 @@ describe('managed Solana Swig creation', () => {
     },
   )
 
+  test('points a Swig derived from another owner to that owner before contacting the orchestrator', async () => {
+    const { facade, workflows } = standalone({ target: SWIG_RESERVATIONS.k1 })
+    const refusal = facade.deploy('solana', solanaDevnet)
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toThrow(
+      /an account configured with the owner or the managed EVM account it is derived from/,
+    )
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ["the owner's address", 'development', 'dev-v1', owner.address, undefined],
+    ["the owner's address", 'production', 'prod-v1', owner.address, undefined],
+    [
+      'an EVM receiver',
+      'production',
+      'prod-v1',
+      guardian.address,
+      guardian.address,
+    ],
+    [
+      "the owner's address beside an EVM receiver",
+      'development',
+      'dev-v1',
+      owner.address,
+      guardian.address,
+    ],
+  ])(
+    'points a Swig paired with %s in %s to that pairing before contacting the orchestrator',
+    async (_label, environment, namespace, pairedWith, receiver) => {
+      const target = locateSwig(asSwigNamespace(namespace), pairedWith)
+      const { facade, workflows } = standalone({
+        target,
+        evmRecipient: receiver,
+      })
+      const refusal = facade.deploy('solana', solanaDevnet)
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(
+        `The Swig ${target.swig} is paired with ${pairedWith} in ${environment}: create it in ${environment} from an account whose managed EVM account is ${pairedWith}.`,
+      )
+      await expect(refusal).rejects.toMatchObject({
+        context: { field: 'swig' },
+      })
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    },
+  )
+
+  test("refuses a minted Swig's wallet named as its Swig before contacting the orchestrator", async () => {
+    const { facade, workflows } = standalone({
+      target: {
+        swig: independent.wallet,
+        wallet: locateSwigWallet(independent.wallet).address,
+      },
+    })
+    const refusal = facade.deploy('solana', solanaDevnet, {
+      swigId: independentId,
+    })
+    await expect(refusal).rejects.toBeInstanceOf(
+      UnsupportedAccountCapabilityError,
+    )
+    await expect(refusal).rejects.toThrow(
+      `\`solana.swig\` is the wallet of the Swig this \`swigId\` derives: configure its state account, ${independent.swig}, instead`,
+    )
+    await expect(refusal).rejects.toMatchObject({ context: { field: 'swig' } })
+    expect(workflows.createQuote).not.toHaveBeenCalled()
+  })
+
+  describe('from the reservation of the Swig derived from the owner', () => {
+    const k1 = { kind: 'secp256k1' as const, address: generatorOwner.address }
+
+    test('sends the ECDSA owner reservation in place of an id', async () => {
+      const { facade, workflows, waitForIntentStatus } = standalone({
+        owner: { type: 'ecdsa', account: generatorOwner },
+        authority: k1,
+        target: SWIG_RESERVATIONS.k1,
+      })
+
+      await expect(facade.deploy('solana', solanaDevnet)).resolves.toBe(true)
+
+      expect(workflows.createQuote.mock.calls[0]![0].account).toEqual({
+        svm: {
+          type: 'swig',
+          address: SWIG_RESERVATIONS.k1.wallet,
+          swigAccount: SWIG_RESERVATIONS.k1.swig,
+          authorization: k1,
+          initData: {
+            authority: {
+              kind: 'secp256k1',
+              publicKey: generatorOwner.publicKey,
+            },
+            reservation: SWIG_RESERVATIONS.k1.reservation,
+          },
+        },
+      })
+      expect(waitForIntentStatus).toHaveBeenCalledWith('deployment-intent')
+    })
+
+    test('sends the passkey owner reservation under its compressed key', async () => {
+      const passkey = { ...signingPasskey().account, publicKey: P256_GENERATOR }
+      const authority = {
+        kind: 'secp256r1' as const,
+        publicKey: `0x03${P256_GENERATOR.slice(4, 68)}` as Hex,
+      }
+      const { facade, workflows } = standalone({
+        owner: { type: 'passkey', account: passkey },
+        authority,
+        target: SWIG_RESERVATIONS.r1,
+      })
+
+      await expect(facade.deploy('solana', solanaDevnet)).resolves.toBe(true)
+
+      expect(workflows.createQuote.mock.calls[0]![0].account.svm).toEqual({
+        type: 'swig',
+        address: SWIG_RESERVATIONS.r1.wallet,
+        swigAccount: SWIG_RESERVATIONS.r1.swig,
+        authorization: authority,
+        initData: {
+          authority,
+          reservation: SWIG_RESERVATIONS.r1.reservation,
+        },
+      })
+    })
+
+    test('refuses an id for it before contacting the orchestrator', async () => {
+      const { facade, workflows } = standalone({
+        owner: { type: 'ecdsa', account: generatorOwner },
+        authority: k1,
+        target: SWIG_RESERVATIONS.k1,
+      })
+
+      const refusal = facade.deploy('solana', solanaDevnet, {
+        swigId: independentId,
+      })
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(/Omit `swigId`/)
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    })
+
+    test('refuses a passkey whose key is off P-256 before contacting the orchestrator', async () => {
+      const passkey = {
+        ...signingPasskey().account,
+        publicKey: P256_GENERATOR_WRONG_Y,
+      }
+      const { facade, workflows } = standalone({
+        owner: { type: 'passkey', account: passkey },
+      })
+
+      const refusal = facade.deploy('solana', solanaDevnet, {
+        swigId: independentId,
+      })
+      await expect(refusal).rejects.toBeInstanceOf(
+        UnsupportedAccountCapabilityError,
+      )
+      await expect(refusal).rejects.toThrow(/not a point on P-256/)
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    })
+
+    test('still needs the id for a minted Swig of an owner with a reservation', async () => {
+      const { facade, workflows } = standalone({
+        owner: { type: 'ecdsa', account: generatorOwner },
+        authority: k1,
+      })
+
+      await expect(facade.deploy('solana', solanaDevnet)).rejects.toThrow(
+        /createSolanaSwigId\(\)/,
+      )
+      expect(workflows.createQuote).not.toHaveBeenCalled()
+    })
+  })
+
   test('creates an independent Swig on a production account', async () => {
     const { facade, workflows } = standalone({
       sdk: resolveSdkConfig({
@@ -5777,7 +6262,7 @@ describe('managed Solana Swig creation', () => {
     [
       'exposes no public key',
       { address: owner.address, type: 'json-rpc' } as unknown as Account,
-      /exposes none/,
+      /carries no uncompressed/,
     ],
     [
       "carries another key's public key",
@@ -5967,14 +6452,16 @@ describe('managed Solana Swig creation', () => {
     })
   })
 
-  test('needs the saved id for the dev-v1 Swig on a production account', async () => {
+  // The fixture's managed EVM account keeps the owner's address in both
+  // environments, as an EOA does.
+  test('points the dev-v1 Swig of an address both environments share to development', async () => {
     const { facade, workflows } = composite({
       environment: 'production',
       swig: managedSwig,
     })
 
     await expect(facade.deploy('solana', solanaDevnet)).rejects.toThrow(
-      /createSolanaSwigId\(\)/,
+      `The Swig ${managedSwig} is paired with ${owner.address} in development: create it in development from an account whose managed EVM account is ${owner.address}.`,
     )
     expect(workflows.createQuote).not.toHaveBeenCalled()
   })
@@ -6327,6 +6814,71 @@ describe('quote-time sponsorship approval', () => {
         approvals[0],
       )
       expect(server.submissions[0]?.has('X-Intent-Extension')).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('creates the owner-derived Swig of a composite account, which makes plain deliveries only', async () => {
+    const reserved = {
+      ...leg,
+      account: {
+        wallet: SWIG_RESERVATIONS.k1.wallet,
+        swigAccount: SWIG_RESERVATIONS.k1.swig,
+        authority: {
+          kind: 'secp256k1' as const,
+          address: generatorOwner.address,
+        },
+      },
+    }
+    const server = orchestrator({
+      ...deploymentRoute(),
+      plan: { source: [], destination: reserved, deployments: [reserved] },
+    })
+    vi.stubGlobal('fetch', server.fetch)
+    try {
+      const account = await sdk(async () => 'extension').createAccount({
+        evm: { owners: { type: 'ecdsa', accounts: [owner] } },
+        solana: { owner: { type: 'ecdsa', account: generatorOwner } },
+      })
+
+      await expect(account.deploy('solana', solanaDevnet)).resolves.toBe(true)
+
+      const { account: quoted } = server.quotes[0]?.body as {
+        account: Record<string, unknown>
+      }
+      expect(quoted).toEqual({
+        svm: {
+          type: 'swig',
+          address: SWIG_RESERVATIONS.k1.wallet,
+          swigAccount: SWIG_RESERVATIONS.k1.swig,
+          authorization: {
+            kind: 'secp256k1',
+            address: generatorOwner.address,
+          },
+          initData: {
+            authority: {
+              kind: 'secp256k1',
+              publicKey: generatorOwner.publicKey,
+            },
+            reservation: SWIG_RESERVATIONS.k1.reservation,
+          },
+        },
+      })
+      await expect(
+        account.prepareTransaction({
+          source: { chain: solanaDevnet, token: mint },
+          destination: {
+            chain: optimism,
+            token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+            amount: 100n,
+            calls: [{ to: '0x00000000000000000000000000000000000000c1' }],
+          },
+        }),
+      ).rejects.toThrow(
+        /run only from the Swig derived from the managed EVM account/,
+      )
+      expect(server.quotes).toHaveLength(1)
     } finally {
       vi.unstubAllGlobals()
     }

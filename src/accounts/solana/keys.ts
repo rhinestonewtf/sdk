@@ -1,8 +1,22 @@
 import { bytesToHex, type Hex, hexToBytes } from 'viem'
 
-// source: SEC 2 v2 §2.4.1 — secp256k1 field prime p = 2^256 - 2^32 - 977, curve y² = x³ + 7.
-const SECP256K1_P = 2n ** 256n - 2n ** 32n - 977n
-const SECP256K1_B = 7n
+/** A short-Weierstrass curve y² = x³ + ax + b over the prime field of `p`. */
+interface Curve {
+  readonly p: bigint
+  readonly a: bigint
+  readonly b: bigint
+}
+
+const CURVES = {
+  // source: SEC 2 v2 §2.4.1 — secp256k1, p = 2^256 - 2^32 - 977, y² = x³ + 7.
+  secp256k1: { p: 2n ** 256n - 2n ** 32n - 977n, a: 0n, b: 7n },
+  // source: SEC 2 v2 §2.4.2 — secp256r1 (P-256), a = -3.
+  secp256r1: {
+    p: 2n ** 256n - 2n ** 224n + 2n ** 192n + 2n ** 96n - 1n,
+    a: -3n,
+    b: 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn,
+  },
+} as const satisfies Record<string, Curve>
 
 const HEX = /^0x(?:[0-9a-fA-F]{2})+$/u
 
@@ -44,8 +58,35 @@ export function canonicalSecp256k1PublicKey(value: unknown): Hex | undefined {
   if (typeof value !== 'string' || !HEX.test(value)) return undefined
   const bytes = hexToBytes(value as Hex)
   const point = uncompressedPoint(bytes)
-  if (point && !onSecp256k1(point)) return undefined
+  if (point && !onCurve(CURVES.secp256k1, point)) return undefined
   return compressSec1PublicKey(value as Hex)?.toLowerCase() as Hex | undefined
+}
+
+/**
+ * The compressed, lowercase form of a public key that is a point on `curve`,
+ * from 33-byte compressed, 65-byte uncompressed or 64-byte x‖y hex. Unlike
+ * `canonicalSecp256k1PublicKey`, a compressed key is checked too. `undefined`
+ * for any other shape and for a point off the curve.
+ */
+export function compressedCurvePoint(
+  curve: keyof typeof CURVES,
+  value: Hex,
+): Hex | undefined {
+  if (!HEX.test(value)) return undefined
+  const bytes = hexToBytes(value)
+  const params = CURVES[curve]
+  if (bytes.length === 33 && (bytes[0] === 2 || bytes[0] === 3)) {
+    const x = BigInt(bytesToHex(bytes.subarray(1)))
+    // Euler's criterion: some y solves the curve equation iff its right side is
+    // a square. It is never 0: neither curve has a point of order 2.
+    const isSquare =
+      x < params.p &&
+      modPow(curveSide(params, x), (params.p - 1n) / 2n, params.p) === 1n
+    return isSquare ? (value.toLowerCase() as Hex) : undefined
+  }
+  const point = uncompressedPoint(bytes)
+  if (!point || !onCurve(params, point)) return undefined
+  return compressSec1PublicKey(value)?.toLowerCase() as Hex
 }
 
 function uncompressedPoint(bytes: Uint8Array): Uint8Array | undefined {
@@ -54,9 +95,24 @@ function uncompressedPoint(bytes: Uint8Array): Uint8Array | undefined {
   return undefined
 }
 
-function onSecp256k1(point: Uint8Array): boolean {
+function onCurve(curve: Curve, point: Uint8Array): boolean {
   const x = BigInt(bytesToHex(point.subarray(0, 32)))
   const y = BigInt(bytesToHex(point.subarray(32)))
-  if (x >= SECP256K1_P || y >= SECP256K1_P) return false
-  return (y * y - (x * x * x + SECP256K1_B)) % SECP256K1_P === 0n
+  if (x >= curve.p || y >= curve.p) return false
+  return (y * y) % curve.p === curveSide(curve, x)
+}
+
+/** x³ + ax + b mod p. Both curves keep it positive for x ≥ 0, so no sign fix. */
+function curveSide(curve: Curve, x: bigint): bigint {
+  return (x * x * x + curve.a * x + curve.b) % curve.p
+}
+
+function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
+  let result = 1n
+  let factor = base % modulus
+  for (let e = exponent; e > 0n; e >>= 1n) {
+    if (e & 1n) result = (result * factor) % modulus
+    factor = (factor * factor) % modulus
+  }
+  return result
 }

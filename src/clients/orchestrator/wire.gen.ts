@@ -176,7 +176,7 @@ export interface paths {
     }
     /**
      * Get App-Fee Balances
-     * @description The authenticated project's app-fee balance as USD totals valued at collection time. `pendingUsd` is the payout value permanently reserved by signed withdrawals whose target-chain FILL has not completed, including failed or expired payouts.
+     * @description The authenticated project's app-fee balance as USD totals valued at collection time. `pendingUsd` is the payout value permanently reserved by signed withdrawals whose target-chain FILL has not completed, including failed or expired payouts. `unavailableUsd` is earned fees that cannot be withdrawn yet because payouts are not enabled for the chain they were collected on, net of the current cut like `withdrawableUsd`.
      */
     get: operations['getAppFeeBalances']
     put?: never
@@ -311,7 +311,7 @@ export interface operations {
                 address: string
                 decimals: number
               }
-              /** @description Block explorer, or null for a chain that has none. Lets a client link a transaction on a chain it was never compiled against, instead of bundling a per-chain URL table. */
+              /** @description Block explorer, or null for a chain that has none. Compose a link as ${url}${addressPath}${value} or ${url}${txPath}${value}, then append ?${query} verbatim when present. Absent query means no suffix; null explorer means render plain text instead of a link. */
               explorer: {
                 /** @example https://basescan.org */
                 url: string
@@ -319,6 +319,11 @@ export interface operations {
                 addressPath: string
                 /** @example /tx/ */
                 txPath: string
+                /**
+                 * @description Optional query content with no leading ?. Append ?${query} verbatim after the linked value; absent means no query suffix.
+                 * @example cluster=devnet
+                 */
+                query?: string
               } | null
               /** @description What an SDK session pins on this chain: the contracts each settlement layer calls, and the USD stablecoins a stable-swap floor treats as 1:1. A layer appears only when every address it needs is known. Absent when the chain has none of these. */
               settlement?: {
@@ -417,7 +422,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -490,6 +516,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -606,7 +633,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -679,6 +727,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -742,7 +791,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -815,6 +885,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -878,7 +949,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -951,6 +1043,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -1859,7 +1952,9 @@ export interface operations {
                       /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                       actions?: {
                         /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                        action?: Record<string, never>
+                        action: {
+                          [key: string]: unknown
+                        }
                         /**
                          * @description The nonce the action commits to
                          * @example 1633493192000
@@ -2091,7 +2186,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2164,6 +2280,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2227,7 +2344,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2300,6 +2438,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2363,7 +2502,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2436,6 +2596,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2499,7 +2660,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2572,6 +2754,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2697,7 +2880,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2770,6 +2974,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2833,7 +3038,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -2906,6 +3132,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -2969,7 +3196,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -3042,6 +3290,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -3311,7 +3560,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -3384,6 +3654,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -3447,7 +3718,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -3520,6 +3812,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -3583,7 +3876,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -3656,6 +3970,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -3734,7 +4049,6 @@ export interface operations {
                   /**
                    * @description Parity of the authorization signature
                    * @example 0
-                   * @enum {number}
                    */
                   yParity: 0 | 1
                 }
@@ -3823,7 +4137,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -3896,6 +4231,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -3959,7 +4295,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4032,6 +4389,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4095,7 +4453,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4168,6 +4547,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4231,7 +4611,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4304,6 +4705,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4367,7 +4769,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4440,6 +4863,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4503,7 +4927,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4576,6 +5021,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4639,7 +5085,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4712,6 +5179,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -4878,7 +5346,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -4951,6 +5440,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -5014,7 +5504,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -5087,6 +5598,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -5178,7 +5690,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -5251,6 +5784,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -5429,8 +5963,10 @@ export interface operations {
                            */
                           publicKey: string
                         }
-                    /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account, whose `swigAccount` it must derive; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
+                    /** @description The 32-byte Swig id, 0x-prefixed hex. Required for a Solana-only account that gives no `reservation`, and must derive its `swigAccount`; refused for an account paired with an EVM entry, whose id the orchestrator derives. */
                     id?: string
+                    /** @description A Swig reservation package, 100 bytes as 0x-prefixed hex, for a Solana-only account in place of `id`. The Swig is activated from it, at the `swigAccount` it reserves and with the root it commits to, which must be `authority`. Refused beside `id`, and for an account paired with an EVM entry. */
+                    reservation?: string
                   }
                 }
           }
@@ -5645,6 +6181,7 @@ export interface operations {
                   | 'ensUSDC'
                   | 'ensUSDC2'
                   | 'ensUSDC3'
+                  | 'ensUSDC4'
                   | 'TRX'
                   | 'WTRX'
                   | 'SOL'
@@ -5734,6 +6271,7 @@ export interface operations {
                       | 'ensUSDC'
                       | 'ensUSDC2'
                       | 'ensUSDC3'
+                      | 'ensUSDC4'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -5902,6 +6440,7 @@ export interface operations {
                       | 'ensUSDC'
                       | 'ensUSDC2'
                       | 'ensUSDC3'
+                      | 'ensUSDC4'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -6061,6 +6600,7 @@ export interface operations {
                       | 'ensUSDC'
                       | 'ensUSDC2'
                       | 'ensUSDC3'
+                      | 'ensUSDC4'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -6128,6 +6668,7 @@ export interface operations {
                       | 'ensUSDC'
                       | 'ensUSDC2'
                       | 'ensUSDC3'
+                      | 'ensUSDC4'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -6195,6 +6736,7 @@ export interface operations {
                       | 'ensUSDC'
                       | 'ensUSDC2'
                       | 'ensUSDC3'
+                      | 'ensUSDC4'
                       | 'TRX'
                       | 'WTRX'
                       | 'SOL'
@@ -6950,7 +7492,9 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: Record<string, never>
+                              action: {
+                                [key: string]: unknown
+                              }
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -7254,7 +7798,9 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: Record<string, never>
+                              action: {
+                                [key: string]: unknown
+                              }
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -7954,7 +8500,9 @@ export interface operations {
                           /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
                           hyperCore?: {
                             /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
-                            action?: Record<string, never>
+                            action: {
+                              [key: string]: unknown
+                            }
                             /**
                              * @description The nonce the action commits to
                              * @example 1633493192000
@@ -8409,6 +8957,11 @@ export interface operations {
                         sourceDomainId: number
                         /** @description Circle CCTP destination domain ID. */
                         destinationDomainId: number
+                        /**
+                         * @description Who submits the destination mint. Absent or 'FORWARD': Circle's Forwarding Service. 'RELAYER': the Rhinestone relayer.
+                         * @enum {string}
+                         */
+                        delivery?: 'FORWARD' | 'RELAYER'
                       }
                     | {
                         /**
@@ -8720,7 +9273,9 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: Record<string, never>
+                              action: {
+                                [key: string]: unknown
+                              }
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -9024,7 +9579,9 @@ export interface operations {
                             /** @description The canonical actions, IN THE ORDER they are sent, each with its nonce and the agent that authorises it. Absent when the route carries none. */
                             actions?: {
                               /** @description The canonical Hyperliquid action, in the key order the agent address commits to */
-                              action?: Record<string, never>
+                              action: {
+                                [key: string]: unknown
+                              }
                               /**
                                * @description The nonce the action commits to
                                * @example 1633493192000
@@ -9751,7 +10308,9 @@ export interface operations {
                           /** @description Present only on a request that authorizes at least one HyperCore agent registration. Lists every registration the payload commits to, in registration (slot) order: one item for a per-leg payload, all of them for an aggregate `MultiChainOps` payload. Names what each registration commits to, which the payload itself carries only as CoreWriter calldata. Changing any action, their order, a nonce or an agent requires a fresh quote. */
                           hyperCore?: {
                             /** @description The canonical Hyperliquid action, exactly as the agent commits to it. Key order is part of the commitment — the agent address is recovered from a signature over its msgpack encoding — so it is served in the order it was signed in, not re-sorted. */
-                            action?: Record<string, never>
+                            action: {
+                              [key: string]: unknown
+                            }
                             /**
                              * @description The nonce the action commits to
                              * @example 1633493192000
@@ -10118,7 +10677,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10191,6 +10771,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10254,7 +10835,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10327,6 +10929,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10390,7 +10993,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10463,6 +11087,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10526,7 +11151,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10599,6 +11245,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10662,7 +11309,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10735,6 +11403,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10798,7 +11467,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -10871,6 +11561,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -10934,7 +11625,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -11007,6 +11719,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -11070,7 +11783,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -11143,6 +11877,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -11650,7 +12385,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -11723,6 +12479,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -11786,7 +12543,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -11859,6 +12637,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -11922,7 +12701,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -11995,6 +12795,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12058,7 +12859,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12131,6 +12953,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12194,7 +13017,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12267,6 +13111,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12330,7 +13175,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12403,6 +13269,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12421,7 +13288,7 @@ export interface operations {
               }
         }
       }
-      /** @description Quoting is paused */
+      /** @description Quoting is paused (`SERVICE_PAUSED`), or a dependency the estimate requires is temporarily unavailable (`DEPENDENCY_UNAVAILABLE`, retryable; `details[0].context` names the `dependency` and planner `code`) */
       503: {
         headers: {
           [name: string]: unknown
@@ -12466,7 +13333,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12539,6 +13427,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12602,7 +13491,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12675,6 +13585,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12716,6 +13627,7 @@ export interface operations {
           'application/json': {
             withdrawableUsd: number
             pendingUsd: number
+            unavailableUsd: number
           }
         }
       }
@@ -12764,7 +13676,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12837,6 +13770,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -12900,7 +13834,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -12973,6 +13928,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13036,7 +13992,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13109,6 +14086,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13205,7 +14183,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13278,6 +14277,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13341,7 +14341,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13414,6 +14435,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13477,7 +14499,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13550,6 +14593,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13613,7 +14657,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13686,6 +14751,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13787,7 +14853,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13860,6 +14947,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -13923,7 +15011,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -13996,6 +15105,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14059,7 +15169,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14132,6 +15263,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14195,7 +15327,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14268,6 +15421,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14363,7 +15517,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14436,6 +15611,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14499,7 +15675,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14572,6 +15769,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14635,7 +15833,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14708,6 +15927,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14771,7 +15991,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -14844,6 +16085,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -14945,7 +16187,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -15018,6 +16281,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -15081,7 +16345,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -15154,6 +16439,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -15217,7 +16503,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -15290,6 +16597,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -15353,7 +16661,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -15426,6 +16755,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message
@@ -15489,7 +16819,28 @@ export interface operations {
                   retryable: boolean
                   /** @enum {string} */
                   retryHint?: 'RE_PREPARE' | 'RETRY_LATER'
-                  simulations?: unknown
+                  /** @description Contract that produced the revert, when the simulator recovered it from a call trace. Names the called address (a proxy rather than its implementation). */
+                  revertedBy?: string
+                  /** @description Every simulated claim and fill, in order */
+                  simulations?: {
+                    success: boolean
+                    /** @enum {string} */
+                    action: 'claim' | 'fill'
+                    /**
+                     * @description CAIP-2 chain id; a number only for a chain no longer supported
+                     * @example eip155:10
+                     */
+                    chainId: string | number
+                    /** @description Estimated gas, when the leg succeeded */
+                    gasEstimation?: string
+                    errorSelector?: string
+                    errorName?: string
+                    errorArgs?: {
+                      [key: string]: string
+                    }
+                    errorCategory?: string
+                    revertedBy?: string
+                  }[]
                 } & {
                   [key: string]: unknown
                 }
@@ -15562,6 +16913,7 @@ export interface operations {
                   | 'EXTERNAL_SERVICE_TIMEOUT'
                   | 'RELAYER_MARKET_UNAVAILABLE'
                   | 'SERVICE_PAUSED'
+                  | 'DEPENDENCY_UNAVAILABLE'
                   | 'INTERNAL_ERROR'
                 /**
                  * @description Human-readable error message

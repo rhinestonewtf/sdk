@@ -1411,21 +1411,33 @@ type SolanaOwner =
   | { type: 'passkey'; account: WebAuthnAccount }
 
 /**
- * Managed Solana account identified by its Swig.
+ * Managed Solana account: a Swig whose root is `owner`.
  *
- * The wallet is independent from any EVM entry in the composite account. Save
- * the Swig state address when the account is provisioned and supply the matching
- * private-key or passkey owner when attaching it; the wallet PDA is derived.
+ * The wallet is independent from any EVM entry in the composite account. With
+ * only an `owner`, the SDK derives the Swig from the owner's public key: the
+ * same owner always yields the same Swig, in development and production. An
+ * ECDSA owner must then be a viem local account (such as `privateKeyToAccount`),
+ * which carries its public key. Another key as `owner` derives another Swig, so
+ * name an existing Swig with `swig` to use it with another key;
+ * `account.config.solana.swig` holds the derived one. The derived Swig is never
+ * the one a managed EVM account pairs with, so it makes plain deliveries only,
+ * without EVM destination calls.
  * A Swig that does not exist yet is created with `account.deploy('solana', solanaChain)`.
  */
 interface SolanaManagedAccountConfig {
   owner: SolanaOwner
-  /** Swig state account. Its asset-holding wallet PDA is derived. */
-  swig: SolanaAddress
+  /**
+   * Swig state account of an existing Swig: one minted with
+   * `createSolanaSwigId()`, or, for EVM destination calls, the Swig derived
+   * from the managed EVM account. Omit it to use the Swig derived from
+   * `owner`. Its asset-holding wallet PDA is derived, so never pass a wallet,
+   * such as the address `getAddress('solana')` returns.
+   */
+  swig?: SolanaAddress
   address?: never
 }
 
-/** Backwards-compatible name for an explicitly identified managed Solana account. */
+/** Backwards-compatible name for a managed Solana account. */
 type SolanaStandaloneAccountConfig = SolanaManagedAccountConfig
 
 /** Address-only Solana destination without spending authority. */

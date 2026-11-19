@@ -41,10 +41,25 @@ if (swig) {
   const stateAccount: string | undefined = swig.swigAccount
   const authority: 'secp256k1' | 'secp256r1' = swig.authorization.kind
   const installed: `0x${string}` | undefined = swig.initData?.id
-  void [wallet, stateAccount, authority, installed]
+  const reservation: `0x${string}` | undefined = swig.initData?.reservation
+  void [wallet, stateAccount, authority, installed, reservation]
   // @ts-expect-error the Swig entry is always a Swig
   swig.type = 'erc7579'
 }
+// A creation carries its id or its reservation, or neither for a paired Swig.
+const root = { kind: 'secp256k1', publicKey: '0x02' } as const
+type SwigInitData = NonNullable<NonNullable<typeof swig>['initData']>
+const creations: SwigInitData[] = [
+  { authority: root, id: '0x01' },
+  { authority: root, reservation: '0x01' },
+  { authority: root },
+]
+void creations
+// Named, so the excess-property check cannot stand in for the union.
+const bothKeys = { authority: root, id: '0x01', reservation: '0x01' } as const
+// @ts-expect-error the wire refuses `reservation` beside `id`
+const both: SwigInitData = bothKeys
+void both
 // @ts-expect-error `svm` is optional
 const required: NonNullable<typeof swig> = prepared.intentInput.account.svm
 void required

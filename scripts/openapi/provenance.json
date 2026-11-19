@@ -1,10 +1,10 @@
 {
   "apiVersion": "2026-09.caucasus",
   "artifact": "caucasus.json",
-  "sha256": "5432d0f8e596b2d8846f8b84ed90164e180b881e0719aee315256012766931cc",
+  "sha256": "873e3ba1e4149edac059918dedad9429cd589be86261c9017e68a2b4fe7e77e8",
   "upstream": {
     "repository": "https://github.com/rhinestonewtf/openapi",
-    "commit": "836e9f6157943b30d1b30daff3c5b4e46e559c98"
+    "commit": "5a903955cfab511bc14640a9043187f28a754c40"
   },
   "generatedBy": "rhinestonewtf/openapi: published orchestrator document",
   "note": "Synced from the public OpenAPI repo by the Sync wire types workflow."

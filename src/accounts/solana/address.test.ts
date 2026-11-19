@@ -7,6 +7,7 @@ import {
   createProgramAddress,
   createSolanaSwigId,
   findProgramAddress,
+  locateReservedSwig,
   locateSwig,
   locateSwigById,
   locateSwigWallet,
@@ -188,5 +189,71 @@ describe('Swig id derivation', () => {
       wallet: minted.wallet,
     })
     expect(createSolanaSwigId().id).not.toBe(minted.id)
+  })
+})
+
+describe('Swig reservation derivation', () => {
+  // swig-wallet c64127837995 `interface/tests/data/reservation-v1.json`: each
+  // curve's generator as the owner, at account index 0. `config` is the Swig,
+  // `deposit` its wallet.
+  const vectors = [
+    {
+      kind: 'secp256k1',
+      publicKey:
+        '0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+      uncompressed:
+        '0x0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8',
+      reservation:
+        '0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe000000000000000000000000000000000000000000000000000000000000000003000279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+      swig: '7vQDpvZtkebG86pDVWMfWqPt5d463gFFXW9VcLRQsLoq',
+      swigBump: 255,
+      wallet: '4vzcpxuuBUovaEWG9ADk5zMhYAtYPfuMFj3f4G3SjMYs',
+      walletBump: 255,
+    },
+    {
+      kind: 'secp256r1',
+      publicKey:
+        '0x036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296',
+      uncompressed:
+        '0x046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5',
+      reservation:
+        '0x010d0ce942e1e7c506e218df0d7df1c52fafdc3529e48d674d1db24c75b54cccbe00000000000000000000000000000000000000000000000000000000000000000500036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296',
+      swig: 'F5DJQ8TKFBvmjQ8wkH4H4DxRrYJgcGDhTLTWCbZApJyx',
+      swigBump: 255,
+      wallet: '2E4ar4rbgHH5QyqMEEJvMWHp2Qp1emH9xuvFgN8gk753',
+      walletBump: 255,
+    },
+  ] as const
+
+  test.each(vectors)(
+    'matches the Swig program vector for a $kind owner',
+    (vector) => {
+      const expected = {
+        reservation: vector.reservation,
+        swig: vector.swig,
+        swigBump: vector.swigBump,
+        wallet: vector.wallet,
+        walletBump: vector.walletBump,
+      }
+      expect(
+        locateReservedSwig({ kind: vector.kind, publicKey: vector.publicKey }),
+      ).toEqual(expected)
+      expect(
+        locateReservedSwig({
+          kind: vector.kind,
+          publicKey: vector.uncompressed,
+        }),
+      ).toEqual(expected)
+    },
+  )
+
+  test('derives nothing for a key off its curve', () => {
+    const [k1, r1] = vectors
+    expect(
+      locateReservedSwig({ kind: 'secp256r1', publicKey: k1.uncompressed }),
+    ).toBeUndefined()
+    expect(
+      locateReservedSwig({ kind: 'secp256k1', publicKey: r1.uncompressed }),
+    ).toBeUndefined()
   })
 })

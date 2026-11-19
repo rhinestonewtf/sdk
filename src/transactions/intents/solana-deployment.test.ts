@@ -1,7 +1,9 @@
+import { secp256k1 } from '@noble/curves/secp256k1'
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test, vi } from 'vitest'
 import { quote as caucasusQuote, emptyCost } from '../../../test/utils/caucasus'
+import { locateReservedSwig } from '../../accounts/solana/address'
 import { solanaAddress, solanaDevnet } from '../../chains/non-evm'
 import { mapIntentRequestToWire } from '../../clients/orchestrator/mappers'
 import type {
@@ -30,6 +32,7 @@ import {
 } from './solana-deployment'
 
 const owner = privateKeyToAccount(`0x${'12'.repeat(32)}`)
+const otherOwner = privateKeyToAccount(`0x${'34'.repeat(32)}`)
 const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
 const MAINNET = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
 // `createSolanaSwigId`-style independent Swig for id = 32 × 0x07.
@@ -48,7 +51,7 @@ function ecdsaInput(
     swigAddress: swig,
     authorization: { kind: 'secp256k1', address: owner.address },
     initAuthority: { kind: 'secp256k1', publicKey: owner.publicKey },
-    swigId,
+    creation: { id: swigId },
     namespace: 'dev-v1',
     endpoint: 'https://dev.example',
     ...overrides,
@@ -182,10 +185,14 @@ describe('Solana Swig deployment request', () => {
   })
 
   test.each([
-    ['a malformed id', { swigId: '0x1234' as Hex }, /32 bytes of hex/],
+    [
+      'a malformed id',
+      { creation: { id: '0x1234' as Hex } },
+      /32 bytes of hex/,
+    ],
     [
       'an id deriving another Swig',
-      { swigId: `0x${'08'.repeat(32)}` as Hex },
+      { creation: { id: `0x${'08'.repeat(32)}` as Hex } },
       /does not derive the configured Swig/,
     ],
     [
@@ -203,7 +210,37 @@ describe('Solana Swig deployment request', () => {
       {
         initAuthority: { kind: 'secp256k1', publicKey: '0x04' as Hex } as const,
       },
-      /SEC1 secp256k1 public key/,
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
+      "another owner's ECDSA public key",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: otherOwner.publicKey,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
+      "a wrong SEC1 prefix on the owner's point",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x05${owner.publicKey.slice(4)}`,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
+    ],
+    [
+      "the owner's compressed ECDSA public key",
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x${secp256k1.ProjectivePoint.fromHex(owner.publicKey.slice(2)).toHex(true)}`,
+        } as const,
+      },
+      /configured owner's uncompressed secp256k1 public key/,
     ],
     [
       'another namespace',
@@ -235,6 +272,88 @@ describe('Solana Swig deployment request', () => {
         }),
       ),
     ).toThrow(/configured 33-byte compressed P-256 key/)
+  })
+})
+
+describe('Solana Swig deployment request from a reservation', () => {
+  const reserved = (kind: 'secp256k1' | 'secp256r1', publicKey: Hex) =>
+    locateReservedSwig({ kind, publicKey })!
+  const ecdsa = reserved('secp256k1', owner.publicKey)
+  const other = reserved('secp256k1', otherOwner.publicKey)
+  const p256 = reserved('secp256r1', passkey)
+
+  function reservationInput(
+    overrides: Partial<SolanaDeploymentInput> = {},
+  ): SolanaDeploymentInput {
+    return ecdsaInput({
+      walletAddress: ecdsa.wallet,
+      swigAddress: ecdsa.swig,
+      creation: 'reservation',
+      ...overrides,
+    })
+  }
+
+  test.each([
+    ['ECDSA', reservationInput(), ecdsa.reservation],
+    [
+      'passkey',
+      passkeyInput({
+        walletAddress: p256.wallet,
+        swigAddress: p256.swig,
+        creation: 'reservation',
+      }),
+      p256.reservation,
+    ],
+  ])(
+    'sends the %s reservation in place of an id',
+    (_label, input, reservation) => {
+      const { request, intentInput } = buildSolanaDeploymentRequest(input)
+      expect(request.account.svm).toEqual({
+        type: 'swig',
+        address: input.walletAddress,
+        swigAccount: input.swigAddress,
+        authorization: input.authorization,
+        initData: { authority: input.initAuthority, reservation },
+      })
+      expect(intentInput.account).toEqual({ svm: request.account.svm })
+      expect(
+        projectSponsorshipApproval(mapIntentRequestToWire(request)),
+      ).toEqual(intentInput)
+    },
+  )
+
+  test.each([
+    ['a Swig minted from an id', { swigAddress: swig, walletAddress: wallet }],
+    ['a wallet the reservation does not derive', { walletAddress: wallet }],
+    [
+      "another owner's reserved Swig",
+      { swigAddress: other.swig, walletAddress: other.wallet },
+    ],
+    [
+      'a root off its curve',
+      {
+        initAuthority: {
+          kind: 'secp256k1',
+          publicKey: `0x02${'00'.repeat(32)}`,
+        } as const,
+      },
+    ],
+  ])('refuses %s', (_label, overrides) => {
+    expect(() =>
+      buildSolanaDeploymentRequest(
+        reservationInput(overrides as Partial<SolanaDeploymentInput>),
+      ),
+    ).toThrow(/reservation does not derive the configured Swig and wallet/)
+  })
+
+  test('refuses a reserved root that is not the configured ECDSA owner', () => {
+    expect(() =>
+      buildSolanaDeploymentRequest(
+        reservationInput({
+          authorization: { kind: 'secp256k1', address: otherOwner.address },
+        }),
+      ),
+    ).toThrow(/configured owner's uncompressed secp256k1 public key/)
   })
 })
 

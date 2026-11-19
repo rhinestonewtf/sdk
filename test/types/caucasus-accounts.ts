@@ -199,6 +199,38 @@ const creation = {
 } satisfies OrchestratorSvmAccount
 const wireCreation: WireSvmAccount = creation
 
+// A reserved Swig is created from its reservation package in place of `id`.
+const reservedCreation = {
+  type: 'swig',
+  address: wallet,
+  swigAccount,
+  authorization: { kind: 'secp256r1', publicKey: '0x02' },
+  initData: {
+    authority: { kind: 'secp256r1', publicKey: '0x02' },
+    reservation: `0x${'07'.repeat(100)}`,
+  },
+} satisfies OrchestratorSvmAccount
+const wireReservedCreation: WireSvmAccount = reservedCreation
+
+// Indexed, so dropping either arm from the wire `initData` fails to compile;
+// assigning a named object skips the excess-property check.
+type WireSwigInitData = NonNullable<WireSvmAccount['initData']>
+const wireId: WireSwigInitData['id'] = creation.initData.id
+const wireReservation: WireSwigInitData['reservation'] =
+  reservedCreation.initData.reservation
+
+type SwigInitData = NonNullable<OrchestratorSvmAccount['initData']>
+const root = { kind: 'secp256r1', publicKey: '0x02' } as const
+// A Swig paired with an EVM entry sends neither `id` nor `reservation`.
+const pairedCreation: SwigInitData = { authority: root }
+// Named, so the excess-property check cannot stand in for the union.
+const bothKeys = { authority: root, id: '0x01', reservation: '0x01' } as const
+// @ts-expect-error the wire refuses `reservation` beside `id`
+const both: SwigInitData = bothKeys
+declare const installed: SwigInitData
+// @ts-expect-error the root is permanent, so its key is readonly
+installed.authority.publicKey = '0x03'
+
 const deploymentStatus = {
   traceId: 'trace-2',
   purpose: 'deployment',
@@ -209,6 +241,11 @@ const deploymentStatus = {
 void status
 void deploymentStatus
 void wireCreation
+void wireReservedCreation
+void wireId
+void wireReservation
+void pairedCreation
+void both
 void plan
 void wireIntentAccounts
 void wireDeploymentAccounts
