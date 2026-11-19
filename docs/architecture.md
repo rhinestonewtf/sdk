@@ -107,28 +107,28 @@ operation. Each environment derives EVM-paired Swigs under its own namespace
 a local mirror of that orchestrator's `SOLANA_SWIG_NAMESPACE` that must be kept
 in step with it; the namespace is also bound into the execution metadata. The
 Swig derived from the owner has no namespace, so both environments derive the
-same one. The SDK adds no per-environment refusals beyond that — whatever an environment
-cannot serve yet, its orchestrator refuses. Its Swig must exist and carry the
-configured owner as its authority on the target cluster before it can spend.
-A managed Solana
-config names its state account with `swig: stateAddress`, or names only its
-owner and uses the Swig derived from the owner's key; adding, removing, or
-replacing an EVM branch never selects another wallet. The SDK derives the
-asset-holding wallet PDA from that state account, and refuses a `swig` that is
-the wallet of a Swig it can derive: the one derived from the owner, one paired
-under either environment's namespace with the account's EVM address or an
-ECDSA owner's address, or, at `deploy`, the one a `swigId` derives. The wallet
-derived from a wallet belongs to no Swig. Plain transfers,
-instructions, and cross-chain deliveries name `svm.swigAccount`, carry no
-`account.evm`, bind sponsorship to the wallet, and persist no `accountType`.
-The owner is an independent ECDSA key or passkey; either credential may also be
-used by EVM, but each VM retains its own authorization protocol. A passkey is
-named to the orchestrator by its SEC1-compressed P-256 key. Its assertion's
-challenge and type are checked locally, but the orchestrator verifies the
-signature. The SDK derives only PDA relationships offline with the small
-`@noble/curves` and `@scure/base` primitives, and checks owner keys on secp256k1
-and P-256 with its own arithmetic (`accounts/solana/keys.ts`); it imports no
-Solana RPC or transaction stack and does not verify the account onchain.
+same one. The SDK adds no per-environment refusals beyond that — whatever an
+environment cannot serve yet, its orchestrator refuses. Its Swig must exist and
+carry the configured owner as its authority on the target cluster before it can
+spend. A managed Solana config names its state account with
+`swig: stateAddress`, or names only its owner and uses the Swig derived from the
+owner's key; adding, removing, or replacing an EVM branch never selects another
+wallet. The SDK derives the asset-holding wallet PDA from that state account,
+and refuses a `swig` that is the wallet of one of these Swigs: the one derived
+from the owner; one paired, under either environment's namespace, with the
+account's EVM address or, for an ECDSA owner, the owner's address; or, at
+`deploy`, the one a `swigId` derives. The wallet derived from a wallet belongs
+to no Swig. Plain transfers, instructions, and cross-chain deliveries name
+`svm.swigAccount`, carry no `account.evm`, bind sponsorship to the wallet, and
+persist no `accountType`. The owner is an independent ECDSA key or passkey;
+either credential may also be used by EVM, but each VM retains its own
+authorization protocol. A passkey is named to the orchestrator by its
+SEC1-compressed P-256 key. Its assertion's challenge and type are checked
+locally, but the orchestrator verifies the signature. The SDK derives only PDA
+relationships offline with the small `@noble/curves` and `@scure/base`
+primitives, and checks owner keys on secp256k1 and P-256 with its own arithmetic
+(`accounts/solana/keys.ts`); it imports no Solana RPC or transaction stack and
+does not verify the account onchain.
 
 `deploy` names its VM first: `deploy('evm', chain, { sponsored, source })` runs
 the EVM deployment — a sponsored intent deployment is source-free, and an

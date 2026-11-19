@@ -1820,7 +1820,10 @@ export interface SolanaSource {
   readonly environment: ResolvedSdkConfig['environment']
   /** The orchestrator the account was created against. */
   readonly endpoint: string
-  /** Address used only as the default recipient for plain EVM delivery. */
+  /**
+   * The account's EVM address, managed or receiver: the default recipient for
+   * plain EVM delivery.
+   */
   readonly evmRecipient?: Address
   /** Managed EVM account available to execute destination calls. */
   readonly evmExecution?: {
@@ -1853,12 +1856,12 @@ function assertSolanaMetadata(
 }
 
 /**
- * Refuses a `swig` that is the wallet of a Swig paired, under either
- * environment's namespace, with the account's EVM address or an ECDSA owner's
- * address: a wallet's own wallet belongs to no Swig, so funds sent to it are
- * lost.
+ * The pairing, under either environment's namespace, of the account's EVM
+ * address or an ECDSA owner's address whose `account` is the configured
+ * `swig`. A smart account's address differs per environment, so the other
+ * environment matches only an address both share, such as an EOA's.
  */
-function assertNotPairedSwigWallet(source: SolanaSource): void {
+function findPairedSwig(source: SolanaSource, account: 'swig' | 'wallet') {
   const evmAddresses = [
     source.evmRecipient,
     source.owner.type === 'ecdsa' ? source.owner.account.address : undefined,
@@ -1869,13 +1872,12 @@ function assertNotPairedSwigWallet(source: SolanaSource): void {
       MANAGED_SWIG_NAMESPACES,
     )) {
       const paired = locateSwig(asSwigNamespace(namespace), evmAddress)
-      if (paired.wallet === source.swigAddress) {
-        throw new InvalidAccountConfigError(
-          `\`solana.swig\` is the wallet of the Swig paired with ${evmAddress} in ${environment}: configure its state account, ${paired.swig}, instead.`,
-        )
+      if (paired[account] === source.swigAddress) {
+        return { evmAddress, environment, swig: paired.swig }
       }
     }
   }
+  return undefined
 }
 
 /**
@@ -1922,7 +1924,13 @@ function createSolanaOrigin(
   source: SolanaSource,
   publicConfig: Readonly<RhinestoneAccountConfig>,
 ) {
-  assertNotPairedSwigWallet(source)
+  // A wallet's wallet belongs to no Swig: funds sent to it are lost.
+  const pairedWallet = findPairedSwig(source, 'wallet')
+  if (pairedWallet) {
+    throw new InvalidAccountConfigError(
+      `\`solana.swig\` is the wallet of the Swig paired with ${pairedWallet.evmAddress} in ${pairedWallet.environment}: configure its state account, ${pairedWallet.swig}, instead.`,
+    )
+  }
   const namespace = MANAGED_SWIG_NAMESPACES[source.environment]
   const assertDestinationCallsSupported = (): void => {
     if (!source.evmExecution) {
@@ -2184,8 +2192,11 @@ function createSolanaOrigin(
       )
       if (derived.swig === source.swigAddress) return bytesToHex(derived.id)
     }
+    const paired = findPairedSwig(source, 'swig')
     return refuse(
-      `The Swig ${source.swigAddress} is not derived from this owner. If \`createSolanaSwigId()\` minted it, pass the \`swigId\` saved with it. Otherwise create it from an account configured with the owner or the managed EVM account it is derived from.`,
+      paired
+        ? `The Swig ${source.swigAddress} is paired with ${paired.evmAddress} in ${paired.environment}: create it in ${paired.environment} from an account whose managed EVM account is ${paired.evmAddress}.`
+        : `The Swig ${source.swigAddress} is not derived from this owner. If \`createSolanaSwigId()\` minted it, pass the \`swigId\` saved with it. Otherwise create it from an account configured with the owner or the managed EVM account it is derived from.`,
     )
   }
 
