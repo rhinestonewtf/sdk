@@ -1,5 +1,12 @@
 # @rhinestone/sdk
 
+## 3.4.1
+
+### Patch Changes
+
+- 779e56c: Use the execution chain's Smart Session for bridge-deposit signatures when payout calls run on another chain.
+- 26c6a12: Fix scoped origin-swap preparation to distinguish the authorized wallet input from the post-swap Permit2 settlement token while preserving their separate spending caps.
+
 ## 3.4.0
 
 ### Minor Changes
