@@ -285,12 +285,15 @@ function classifyRequests(
         const digest = hashTypedData(typedData)
         const identity = signerIdentity(request)
         const artifactId = `request-${index}`
-        // A destination authorization repeats the origin's source-domain
-        // message. It is validated on the destination only when the account
-        // executes calls there, and session envelopes are chain-local;
-        // otherwise the origin proof answers it.
+        // Executor payloads validate on their signed chain, even when a bridge
+        // deposit precedes calls on another chain. Only a Permit2-style claim
+        // can repeat its source-domain message for destination validation.
+        const executorPayload =
+          typedData.primaryType === 'SingleChainOps' ||
+          typedData.primaryType === 'MultiChainOps'
         const validationChain =
           purpose === 'destinationAuthorization' &&
+          !executorPayload &&
           sessions &&
           executingDestination
             ? executingDestination

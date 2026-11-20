@@ -32,17 +32,35 @@ export function constrainSessionIntent<C>(
         throw new Error(
           'A scoped Permit2 session without a swap scope settles cross-chain intents only',
         )
-      const legs =
-        sameChain && origin.swap
-          ? (
-              origin.swap.sell.tokens ??
-              (origin.swap.sell.token ? [origin.swap.sell.token] : [])
-            ).map((token) => ({
-              chain: origin.chain,
-              token,
-              maxAmount: origin.swap!.sell.maxTotal,
-            }))
-          : origin.permit2Sources
+      const direct = origin.permit2Sources.find(
+        (leg) =>
+          leg.chain.id === source!.chain.id &&
+          leg.token.toLowerCase() === source!.token.toLowerCase(),
+      )
+      const swap = origin.swap
+      const fundingSwap =
+        swap &&
+        (sameChain ||
+          (!direct &&
+            origin.chain.id === source.chain.id &&
+            swap.to.toLowerCase() === account.toLowerCase() &&
+            origin.permit2Sources.some(
+              (leg) =>
+                leg.chain.id === source!.chain.id &&
+                leg.token.toLowerCase() === swap.buy.token.toLowerCase(),
+            )))
+          ? swap
+          : undefined
+      const legs = fundingSwap
+        ? (
+            fundingSwap.sell.tokens ??
+            (fundingSwap.sell.token ? [fundingSwap.sell.token] : [])
+          ).map((token) => ({
+            chain: origin.chain,
+            token,
+            maxAmount: fundingSwap.sell.maxTotal,
+          }))
+        : origin.permit2Sources
       const leg = legs.find(
         (leg) =>
           leg.chain.id === source!.chain.id &&
