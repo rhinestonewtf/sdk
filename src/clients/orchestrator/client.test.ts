@@ -513,6 +513,20 @@ describe('orchestrator client', () => {
     )
   })
 
+  test('maps an error status with a null JSON body to a typed error', async () => {
+    const errorClient = client(
+      async () => new Response('null', { status: 502 }),
+    )
+
+    await expect(errorClient.getIntentStatus('intent-1')).rejects.toMatchObject(
+      {
+        message: 'Orchestrator request failed with status 502',
+        statusCode: 502,
+        code: 'INTERNAL_ERROR',
+      },
+    )
+  })
+
   describe('chain catalog', () => {
     const chains = (name: string) =>
       new Response(

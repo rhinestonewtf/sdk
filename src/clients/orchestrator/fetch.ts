@@ -20,16 +20,12 @@ export async function fetchOrchestratorJson(input: {
       message?: string
       traceId?: string
       details?: unknown
-    }
+    } = {}
     try {
-      body = (await response.json()) as typeof body
-    } catch {
-      body = {
-        code: 'INTERNAL_ERROR',
-        message: `Orchestrator request failed with status ${response.status}`,
-        traceId: '',
-      }
-    }
+      const parsed: unknown = await response.json()
+      // A gateway can answer an error status with a JSON scalar or `null`.
+      if (parsed && typeof parsed === 'object') body = parsed
+    } catch {}
     const envelope = {
       code: body.code ?? 'INTERNAL_ERROR',
       message:
